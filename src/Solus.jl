@@ -41,10 +41,20 @@ SolusProblem(prior, forwardmodel, obs) = SolusProblem(prior, forwardmodel, obs, 
     Ensemble
 
 An ensemble of `inputs` and their corresponding `outputs` from the forward model.
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
 """
 struct Ensemble{T,O}
-    inputs::Matrix{T} # on your theta space: each row is a vector of θ
-    outputs::Vector{O} # computed from forward model
+    """
+    A matrix of inputs: each column corresponds to a vector of ``θ``s
+    """
+    inputs::Matrix{T}
+    """
+    Result of forward model for each column of `inputs`.
+    """
+    outputs::Vector{O}
 end
 
 """
@@ -53,18 +63,18 @@ end
 Peform an iteration of NEKI, returning a new `Ensemble` object.
 """
 function neki_iter(prob::SolusProblem, ens::Ensemble)
-    covθ = cov(ens.inputs)
+    covθ = cov(ens.inputs; dims=2)
     covθ += (tr(covθ)*1e-15)I
     
     m = mean(ens.outputs)
     CG = [dot(u-prob.obs, v-m, prob.space) for u in ens.outputs, v in ens.outputs] #compute mean-field matrix
     
     Δt = 0.1 / norm(CG)
-    implicit = lu( I + 1 * Δt .* covθ * cov(prior)) # todo: incorporate means
-    rhsv = CG*ens.inputs
+    implicit = lu( I + 1 * Δt .* covθ * cov(prob.prior)) # todo: incorporate means
+    rhsv = ens.inputs*CG
     rhs = ens.inputs - rhsv*Δt
-    
-    inputs = (implicit \ rhs) + rand(MvNormal(Δt .* covθ))
+
+    inputs = (implicit \ rhs) + rand(MvNormal(Δt .* covθ), size(ens.inputs, 2))
     outputs = [prob.forwardmodel(θ) for θ in eachslice(ens.inputs,dims=2)]
     Ensemble(inputs, outputs)
 end
