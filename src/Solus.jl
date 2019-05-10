@@ -27,14 +27,14 @@ struct SolusProblem{P<:MvNormal,M,O,S<:HilbertSpace}
     """
     The observed data.
     """
-    observation::O
+    obs::O
 
     """
     The space on which the forward model output and observation exist. `DefaultSpace()` is the default.
     """
     space::S
 end
-SolusModel(prior, forwardmodel, observation) = SolusModel(prior, forwardmodel, observation, DefaultSpace())
+SolusProblem(prior, forwardmodel, obs) = SolusProblem(prior, forwardmodel, obs, DefaultSpace())
 
 
 """
@@ -57,7 +57,7 @@ function neki_iter(prob::SolusProblem, ens::Ensemble)
     covθ += (tr(covθ)*1e-15)I
     
     m = mean(ens.outputs)
-    CG = [dot(u-prob.observation, v-m, prob.space) for u in ens.outputs, v in ens.outputs] #compute mean-field matrix
+    CG = [dot(u-prob.obs, v-m, prob.space) for u in ens.outputs, v in ens.outputs] #compute mean-field matrix
     
     Δt = 0.1 / norm(CG)
     implicit = lu( I + 1 * Δt .* covθ * cov(prior)) # todo: incorporate means
