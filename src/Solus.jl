@@ -42,17 +42,17 @@ SolusModel(prior, forwardmodel, observation) = SolusModel(prior, forwardmodel, o
 
 An ensemble of `inputs` and their corresponding `outputs` from the forward model.
 """
-mutable struct Ensemble{T,O}
+struct Ensemble{T,O}
     inputs::Matrix{T} # on your theta space: each row is a vector of θ
     outputs::Vector{O} # computed from forward model
 end
 
 """
-    neki_iter!(prob::SolusProblem, ens::Ensemble)
+    neki_iter(prob::SolusProblem, ens::Ensemble)
 
-Peform an iteration of NEKI
+Peform an iteration of NEKI, returning a new `Ensemble` object.
 """
-function neki_iter!(prob::SolusProblem, ens::Ensemble)
+function neki_iter(prob::SolusProblem, ens::Ensemble)
     covθ = cov(ens.inputs)
     covθ += (tr(covθ)*1e-15)I
     
@@ -63,8 +63,10 @@ function neki_iter!(prob::SolusProblem, ens::Ensemble)
     implicit = lu( I + 1 * Δt .* covθ * cov(prior)) # todo: incorporate means
     rhsv = CG*ens.inputs
     rhs = ens.inputs - rhsv*Δt
-    ens.inputs = (implicit \ rhs) + rand(MvNormal(Δt .* covθ))
-    ens.outputs = [prob.forwardmodel(θ) for θ in eachslice(ens.inputs,dims=2)]
+    
+    inputs = (implicit \ rhs) + rand(MvNormal(Δt .* covθ))
+    outputs = [prob.forwardmodel(θ) for θ in eachslice(ens.inputs,dims=2)]
+    Ensemble(inputs, outputs)
 end
     
 
