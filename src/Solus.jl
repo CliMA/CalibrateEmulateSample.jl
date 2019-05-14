@@ -13,7 +13,7 @@ An uncertainty quantification problem.
 
 $(DocStringExtensions.FIELDS)
 """
-struct SolusProblem{P<:MvNormal,M,O,S<:HilbertSpace}
+struct SolusProblem{P,M,O,S<:HilbertSpace}
     """
     The prior distribution for the parameters ``θ``. Currently only `MvNormal` objects are supported.
     """
@@ -35,6 +35,15 @@ struct SolusProblem{P<:MvNormal,M,O,S<:HilbertSpace}
     space::S
 end
 SolusProblem(prior, forwardmodel, obs) = SolusProblem(prior, forwardmodel, obs, DefaultSpace())
+
+struct FlatPrior
+end
+
+Distributions.logpdf(::FlatPrior, x) = 0.0
+
+function neglogposteriordensity(s::SolusProblem, θ)
+    -logpdf(s.prior, θ) + norm(s.forwardmodel(θ) - s.obs, s.space)
+end
 
 
 """
