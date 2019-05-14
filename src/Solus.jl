@@ -46,11 +46,11 @@ An ensemble of `inputs` and their corresponding `outputs` from the forward model
 
 $(DocStringExtensions.FIELDS)
 """
-struct Ensemble{T,O}
+struct Ensemble{I,O}
     """
     A matrix of inputs: each column corresponds to a vector of ``θ``s
     """
-    inputs::Matrix{T}
+    inputs::Vector{I}
     """
     Result of forward model for each column of `inputs`.
     """
@@ -63,19 +63,26 @@ end
 Peform an iteration of NEKI, returning a new `Ensemble` object.
 """
 function neki_iter(prob::SolusProblem, ens::Ensemble)
-    covθ = cov(ens.inputs; dims=2)
+    covθ = cov(ens.inputs)
     covθ += (tr(covθ)*1e-15)I
     
     m = mean(ens.outputs)
-    CG = [dot(u-prob.obs, v-m, prob.space) for u in ens.outputs, v in ens.outputs] #compute mean-field matrix
-    
-    Δt = 0.1 / norm(CG)
-    implicit = lu( I + 1 * Δt .* covθ * cov(prob.prior)) # todo: incorporate means
-    rhsv = ens.inputs*CG
-    rhs = ens.inputs - rhsv*Δt
 
-    inputs = (implicit \ rhs) + rand(MvNormal(Δt .* covθ), size(ens.inputs, 2))
-    outputs = [prob.forwardmodel(θ) for θ in eachslice(ens.inputs,dims=2)]
+    CG = [dot(Gθk - m, Gθj - prob.obs, prob.space) for Gθj in ens.outputs, Gθk in ens.outputs]
+    
+    Δt = 0.1 / norm(CG) # use better constants  
+    implicit = lu( I + Δt .* (covθ / cov(prob.prior)) ) # todo: incorporate means
+    noise = MvNormal(covθ)
+    
+    inputs = map(enumerate(ens.inputs)) do (j, θj)
+        X = sum(enumerate(ens.inputs)) do (k, θk)
+            CG[k,j]*θk
+        end
+        rhs = θj .- Δt .* X
+        (implicit \ rhs) .+ sqrt(Δt)*rand(noise)
+    end
+    
+    outputs = map(prob.forwardmodel, inputs)
     Ensemble(inputs, outputs)
 end
     

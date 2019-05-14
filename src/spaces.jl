@@ -20,4 +20,11 @@ end
 norm(x, ::DefaultSpace) = norm(x)
 dot(x,y, ::DefaultSpace) = dot(x,y)
 
+
+struct CovarianceSpace{M} <: HilbertSpace
+    Γ::M
+end
+norm(x, c::CovarianceSpace) = x'*(c.Γ\x)
+dot(x,y, c::CovarianceSpace) = x'*(c.Γ\y)
+
 # TODO: CovarianceSpace/PDSpace with a positive definite matrix
