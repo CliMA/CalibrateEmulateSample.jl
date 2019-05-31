@@ -12,7 +12,7 @@ EPS = 1e-14
 DEBUG = false
 
 T = 4 # integration time
-T_conv = 10 # converging integration time
+T_conv = 4 # converging integration time
 T_learn = 15 # time to gather training data for GP
 T_hist = 10000 # time to gather histogram statistics
 
@@ -44,14 +44,18 @@ end
 ################################################################################
 
 # full L96m integration (converging to attractor)
-prob = ODEProblem(full, z0, (0.0, T), l96)
-sol = solve(prob, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+print("(full, converging)\t")
+start_conv = time()
+pb_conv = ODEProblem(full, z0, (0.0, T_conv), l96)
+sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+elapsed_conv = time() - start_conv
+println("steps: ", length(sol_conv.t), " elapsed: ", elapsed_conv)
 
 ################################################################################
 # plot section #################################################################
 ################################################################################
-plot(sol.t, sol[k,:], label = "dns")
-plot(sol.t, sol[l96.K + (k-1)*l96.J + j,:],
+plot(sol_conv.t, sol_conv[k,:], label = "dns")
+plot(sol_conv.t, sol_conv[l96.K + (k-1)*l96.J + j,:],
     lw = 0.6, alpha = 0.6, color="gray")
 show()
 
