@@ -8,17 +8,15 @@ include("L96m.jl")
 ################################################################################
 # constants section ############################################################
 ################################################################################
-EPS = 1e-14
-DEBUG = false
 
-T = 4 # integration time
+# T = 4 # integration time
 T_conv = 4 # converging integration time
-T_learn = 15 # time to gather training data for GP
-T_hist = 10000 # time to gather histogram statistics
+# T_learn = 15 # time to gather training data for GP
+# T_hist = 10000 # time to gather histogram statistics
 
-dt = 0.010 # maximum step size
-tau = 1e-3 # maximum step size for histogram statistics
-dt_conv = 0.01 # maximum step size for converging to attractor
+# dt = 0.010 # maximum step size
+# tau = 1e-3 # maximum step size for histogram statistics
+# dt_conv = 0.01 # maximum step size for converging to attractor
 
 k = 1 # index of the slow variable to save etc.
 j = 2 # index of the fast variable to save/plot etc.
@@ -44,12 +42,16 @@ end
 ################################################################################
 
 # full L96m integration (converging to attractor)
-print("(full, converging)\t")
-start_conv = time()
-pb_conv = ODEProblem(full, z0, (0.0, T_conv), l96)
-sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
-elapsed_conv = time() - start_conv
-println("steps: ", length(sol_conv.t), " elapsed: ", elapsed_conv)
+@time begin
+    pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
+    sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+end
+
+@time begin
+    pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
+    sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+end
+
 
 ################################################################################
 # plot section #################################################################
