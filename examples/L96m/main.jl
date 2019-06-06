@@ -42,15 +42,12 @@ end
 ################################################################################
 
 # full L96m integration (converging to attractor)
-@time begin
-    pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
-    sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+print("(full, converging)\t")
+elapsed_conv = @elapsed begin
+  pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
+  sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
 end
-
-@time begin
-    pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
-    sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
-end
+println("steps: ", length(sol_conv.t), " elapsed: ", elapsed_conv)
 
 
 ################################################################################
