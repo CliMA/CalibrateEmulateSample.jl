@@ -15,6 +15,7 @@ const data_dir = joinpath(@__DIR__, "data")
 const z0 = NPZ.npzread(joinpath(data_dir, "ic.npy"))
 const Yk_test = NPZ.npzread(joinpath(data_dir, "Yk.npy"))
 const full_test = NPZ.npzread(joinpath(data_dir, "full.npy"))
+const balanced_test = NPZ.npzread(joinpath(data_dir, "balanced.npy"))
 const dp5_test = NPZ.npzread(joinpath(data_dir, "dp5.npy"))
 const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8.npy"))
 
@@ -23,10 +24,13 @@ const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8.npy"))
 ################################################################################
 Yk_comp = compute_Yk(l96, z0)
 full_comp = similar(z0)
-full(full_comp, z0, l96, 0)
+full(full_comp, z0, l96, 0.0)
+balanced_comp = similar(z0[1:l96.K])
+balanced(balanced_comp, z0[1:l96.K], l96, 0.0)
 @testset "unit testing" begin
   @test isapprox(Yk_test, Yk_comp, atol=1e-15)
   @test isapprox(full_test, full_comp, atol=1e-15)
+  @test isapprox(balanced_test, balanced_comp, atol=1e-15)
 end
 println("")
 

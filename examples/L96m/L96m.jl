@@ -83,6 +83,38 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
   return rhs
 end
 
+function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, _s::L96m, t)
+  """
+  Compute balanced RHS of the Lorenz '96 multiscale system; i.e. only slow
+  variables with the linear closure.
+  Both `rhs` and `x` are vectors of size _s.K.
+
+  Input:
+  - `x`   : vector of size K
+  - `_s`  : parameters
+  - `t`   : time (not used here since L96m is autonomous)
+
+  Output:
+  - `rhs` : balanced RHS computed at `x`
+
+  """
+
+  K = _s.K
+
+  # three boundary cases
+  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - _s.hx*_s.hy) * x[1]
+  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - _s.hx*_s.hy) * x[2]
+  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - _s.hx*_s.hy) * x[K]
+
+  # general case
+  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - (1 - _s.hx*_s.hy) * x[3:K-1]
+
+  # add forcing
+  rhs .+= _s.F
+
+  return rhs
+end
+
 function compute_Yk(_s::L96m, z::Array{<:Real,1})
   """
   Reshape a vector of y_{j,k} into a matrix, then sum along one dim and divide
