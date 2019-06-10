@@ -24,7 +24,7 @@ using Parameters # lets you have defaults for fields
   G = nothing
 end
 
-function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
+function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   """
   Compute full RHS of the Lorenz '96 multiscale system.
   The convention is that the first K variables are slow, while the rest K*J
@@ -32,7 +32,7 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
 
   Input:
   - `z`   : vector of size (K + K*J)
-  - `_s`  : parameters
+  - `p`   : parameters
   - `t`   : time (not used here since L96m is autonomous)
 
   Output:
@@ -40,14 +40,14 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
 
   """
 
-  K = _s.K
-  J = _s.J
+  K = p.K
+  J = p.J
   x = @view(z[1:K])
   y = @view(z[K+1:end])
 
   ### slow variables subsystem ###
   # compute Yk averages
-  Yk = compute_Yk(_s, z)
+  Yk = compute_Yk(p, z)
 
   # three boundary cases
   rhs[1] = -x[K]   * (x[K-1] - x[2]) - x[1]
@@ -58,10 +58,10 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
   rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - x[3:K-1]
 
   # add forcing
-  rhs[1:K] .+= _s.F
+  rhs[1:K] .+= p.F
 
   # add coupling w/ fast variables via averages
-  rhs[1:K] .+= _s.hx * Yk
+  rhs[1:K] .+= p.hx * Yk
 
   ### fast variables subsystem ###
   # three boundary cases
@@ -74,24 +74,24 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, _s::L96m, t)
 
   # add coupling w/ slow variables
   for k in 1:K
-    rhs[K+1 + (k-1)*J : K + k*J] .+= _s.hy * x[k]
+    rhs[K+1 + (k-1)*J : K + k*J] .+= p.hy * x[k]
   end
 
   # divide by epsilon
-  rhs[K+1:end] ./= _s.eps
+  rhs[K+1:end] ./= p.eps
 
   return rhs
 end
 
-function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, _s::L96m, t)
+function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
   """
   Compute balanced RHS of the Lorenz '96 multiscale system; i.e. only slow
   variables with the linear closure.
-  Both `rhs` and `x` are vectors of size _s.K.
+  Both `rhs` and `x` are vectors of size p.K.
 
   Input:
   - `x`   : vector of size K
-  - `_s`  : parameters
+  - `p`   : parameters
   - `t`   : time (not used here since L96m is autonomous)
 
   Output:
@@ -99,31 +99,31 @@ function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, _s::L96m, t)
 
   """
 
-  K = _s.K
+  K = p.K
 
   # three boundary cases
-  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - _s.hx*_s.hy) * x[1]
-  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - _s.hx*_s.hy) * x[2]
-  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - _s.hx*_s.hy) * x[K]
+  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - p.hx*p.hy) * x[1]
+  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - p.hx*p.hy) * x[2]
+  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - p.hx*p.hy) * x[K]
 
   # general case
-  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - (1 - _s.hx*_s.hy) * x[3:K-1]
+  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - (1 - p.hx*p.hy) * x[3:K-1]
 
   # add forcing
-  rhs .+= _s.F
+  rhs .+= p.F
 
   return rhs
 end
 
-function compute_Yk(_s::L96m, z::Array{<:Real,1})
+function compute_Yk(p::L96m, z::Array{<:Real,1})
   """
   Reshape a vector of y_{j,k} into a matrix, then sum along one dim and divide
   by J to get averages
   """
   return dropdims(
-      sum( reshape(z[_s.K+1:end], _s.J, _s.K), dims = 1 ),
+      sum( reshape(z[p.K+1:end], p.J, p.K), dims = 1 ),
       dims = 1
-  ) / _s.J
+  ) / p.J
 end
 
 
