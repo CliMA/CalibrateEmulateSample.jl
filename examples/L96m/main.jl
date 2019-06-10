@@ -1,61 +1,88 @@
 #!/usr/bin/julia --
 
-using DifferentialEquations
-using PyPlot
+import DifferentialEquations
+import PyPlot
+const DE = DifferentialEquations
+const plt = PyPlot
 include("L96m.jl")
 
 
 ################################################################################
 # constants section ############################################################
 ################################################################################
+const RPAD = 42
+const LPAD_INTEGER = 7
+const LPAD_FLOAT = 13
+const SOLVER = DE.Tsit5()
 
-# T = 4 # integration time
-T_conv = 4 # converging integration time
-# T_learn = 15 # time to gather training data for GP
-# T_hist = 10000 # time to gather histogram statistics
+const T = 4 # integration time
+const T_compile = 1e-10 # force JIT compilation
+const T_conv = 100 # converging integration time
+# const T_learn = 15 # time to gather training data for GP
+# const T_hist = 10000 # time to gather histogram statistics
 
-# dt = 0.010 # maximum step size
-# tau = 1e-3 # maximum step size for histogram statistics
-# dt_conv = 0.01 # maximum step size for converging to attractor
+# const dt = 0.010 # maximum step size
+# const tau = 1e-3 # maximum step size for histogram statistics
+# const dt_conv = 0.01 # maximum step size for converging to attractor
 
-k = 1 # index of the slow variable to save etc.
-j = 2 # index of the fast variable to save/plot etc.
+const k = 1 # index of the slow variable to save etc.
+const j = 1 # index of the fast variable to save/plot etc.
 
-hx = -0.8
+const hx = -0.8
 
 ################################################################################
 # IC section ###################################################################
 ################################################################################
 l96 = L96m(hx = hx, J = 8)
 
-#z0 = zeros(l96.K + l96.K * l96.J)
-z0 = Array{Float64}(undef, l96.K + l96.K * l96.J)
+z00 = Array{Float64}(undef, l96.K + l96.K * l96.J)
 
 # method 1
-z0[1:l96.K] .= rand(l96.K) * 15 .- 5
+z00[1:l96.K] .= rand(l96.K) * 15 .- 5
 for k_ in 1:l96.K
-  z0[l96.K+1 + (k_-1)*l96.J : l96.K + k_*l96.J] .= z0[k_]
+  z00[l96.K+1 + (k_-1)*l96.J : l96.K + k_*l96.J] .= z00[k_]
 end
 
 ################################################################################
 # main section #################################################################
 ################################################################################
 
-# full L96m integration (converging to attractor)
-print("(full, converging)\t")
-elapsed_conv = @elapsed begin
-  pb_conv = ODEProblem(lorenz96multiscale, z0, (0.0, T_conv), l96)
-  sol_conv = solve(pb_conv, Tsit5(), reltol = 1e-3, abstol = 1e-6)
+# force compilation of functions used in numerical integration
+print(rpad("(JIT compilation)", RPAD))
+elapsed_jit = @elapsed begin
+  pb_jit = DE.ODEProblem(full, z00, (0.0, T_compile), l96)
+  sol_jit = DE.solve(pb_jit, SOLVER, reltol = 1e-3, abstol = 1e-6)
 end
-println("steps: ", length(sol_conv.t), " elapsed: ", elapsed_conv)
+println("steps:", lpad(length(sol_jit.t), LPAD_INTEGER),
+        "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
 
+# full L96m integration (converging to attractor)
+print(rpad("(full, converging)", RPAD))
+elapsed_conv = @elapsed begin
+  pb_conv = DE.ODEProblem(full, z00, (0.0, T_conv), l96)
+  sol_conv = DE.solve(pb_conv, SOLVER, reltol = 1e-3, abstol = 1e-6)
+end
+println("steps:", lpad(length(sol_conv.t), LPAD_INTEGER),
+        "\t\telapsed:", lpad(elapsed_conv, LPAD_FLOAT))
+z0 = sol_conv[:,end]
+
+# full L96m integration
+print(rpad("(full)", RPAD))
+elapsed_dns = @elapsed begin
+  pb_dns = DE.ODEProblem(full, z0, (0.0, T), l96)
+  sol_dns = DE.solve(pb_dns, SOLVER, reltol = 1e-3, abstol = 1e-6)
+end
+println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
+        "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
 
 ################################################################################
 # plot section #################################################################
 ################################################################################
-plot(sol_conv.t, sol_conv[k,:], label = "dns")
-plot(sol_conv.t, sol_conv[l96.K + (k-1)*l96.J + j,:],
+plt.plot(sol_dns.t, sol_dns[k,:], label = "DNS")
+plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
     lw = 0.6, alpha = 0.6, color="gray")
-show()
+
+plt.legend()
+plt.show()
 
 
