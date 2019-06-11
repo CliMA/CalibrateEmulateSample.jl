@@ -55,6 +55,8 @@ print(rpad("(JIT compilation)", RPAD))
 elapsed_jit = @elapsed begin
   pb_jit = DE.ODEProblem(full, z00, (0.0, T_compile), l96)
   DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
+  pb_jit = DE.ODEProblem(balanced, z00[1:l96.K], (0.0, T_compile), l96)
+  DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
 end
 println(" " ^ (LPAD_INTEGER + 6),
         "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
@@ -88,12 +90,30 @@ end
 println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
         "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
 
+# balanced L96m integration
+print(rpad("(balanced)", RPAD))
+elapsed_bal = @elapsed begin
+  pb_bal = DE.ODEProblem(balanced, z0[1:l96.K], (0.0, T), l96)
+  sol_bal = DE.solve(pb_bal,
+                     SOLVER,
+                     reltol = reltol,
+                     abstol = abstol,
+                     dtmax = dtmax
+                    )
+end
+println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
+        "\t\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
+
 ################################################################################
 # plot section #################################################################
 ################################################################################
+# plot DNS
 plt.plot(sol_dns.t, sol_dns[k,:], label = "DNS")
 plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
     lw = 0.6, alpha = 0.6, color="gray")
+
+# plot balanced
+plt.plot(sol_bal.t, sol_bal[k,:], label = "balanced")
 
 plt.legend()
 plt.show()
