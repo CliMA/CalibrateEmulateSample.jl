@@ -38,7 +38,7 @@ println("")
 ################################################################################
 # integration testing ##########################################################
 ################################################################################
-const T = 1.0
+const T = 0.1
 const dtmax = 1e-5
 const saveat = 1e-2
 pb_full = DE.ODEProblem(full, z0, (0.0, T), l96)
@@ -69,8 +69,8 @@ println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
         "\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
 
 @testset "integration testing" begin
-  @test isapprox(sol_dp5[:,1:end], dp5_test, atol=1e-5)
-  @test isapprox(sol_tp8[:,1:end], tp8_test, atol=1e-5)
+  @test isapprox(sol_dp5[:,1:end], dp5_test, atol=1e-3)
+  @test isapprox(sol_tp8[:,1:end], tp8_test, atol=1e-3)
   @test isapprox(sol_bal[:,1:end], bal_test, atol=1e-5)
 end
 println("")
