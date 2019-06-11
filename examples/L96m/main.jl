@@ -18,12 +18,15 @@ const SOLVER = DE.Tsit5()
 const T = 4 # integration time
 const T_compile = 1e-10 # force JIT compilation
 const T_conv = 100 # converging integration time
-# const T_learn = 15 # time to gather training data for GP
-# const T_hist = 10000 # time to gather histogram statistics
+#const T_learn = 15 # time to gather training data for GP
+#const T_hist = 10000 # time to gather histogram statistics
 
-# const dt = 0.010 # maximum step size
-# const tau = 1e-3 # maximum step size for histogram statistics
-# const dt_conv = 0.01 # maximum step size for converging to attractor
+# integrator parameters
+const dtmax = 1e-3 # maximum step size
+#const tau = 1e-3 # maximum step size for histogram statistics
+#const dt_conv = 0.01 # maximum step size for converging to attractor
+const reltol = 1e-3 # relative tolerance
+const abstol = 1e-6 # absolute tolerance
 
 const k = 1 # index of the slow variable to save etc.
 const j = 1 # index of the fast variable to save/plot etc.
@@ -51,16 +54,21 @@ end
 print(rpad("(JIT compilation)", RPAD))
 elapsed_jit = @elapsed begin
   pb_jit = DE.ODEProblem(full, z00, (0.0, T_compile), l96)
-  sol_jit = DE.solve(pb_jit, SOLVER, reltol = 1e-3, abstol = 1e-6)
+  DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
 end
-println("steps:", lpad(length(sol_jit.t), LPAD_INTEGER),
+println(" " ^ (LPAD_INTEGER + 6),
         "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
 
 # full L96m integration (converging to attractor)
 print(rpad("(full, converging)", RPAD))
 elapsed_conv = @elapsed begin
   pb_conv = DE.ODEProblem(full, z00, (0.0, T_conv), l96)
-  sol_conv = DE.solve(pb_conv, SOLVER, reltol = 1e-3, abstol = 1e-6)
+  sol_conv = DE.solve(pb_conv,
+                      SOLVER,
+                      reltol = reltol,
+                      abstol = abstol,
+                      dtmax = dtmax
+                     )
 end
 println("steps:", lpad(length(sol_conv.t), LPAD_INTEGER),
         "\t\telapsed:", lpad(elapsed_conv, LPAD_FLOAT))
@@ -70,7 +78,12 @@ z0 = sol_conv[:,end]
 print(rpad("(full)", RPAD))
 elapsed_dns = @elapsed begin
   pb_dns = DE.ODEProblem(full, z0, (0.0, T), l96)
-  sol_dns = DE.solve(pb_dns, SOLVER, reltol = 1e-3, abstol = 1e-6)
+  sol_dns = DE.solve(pb_dns,
+                     SOLVER,
+                     reltol = reltol,
+                     abstol = abstol,
+                     dtmax = dtmax
+                    )
 end
 println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
         "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
