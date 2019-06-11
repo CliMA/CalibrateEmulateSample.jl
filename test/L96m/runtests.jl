@@ -16,8 +16,9 @@ const z0 = NPZ.npzread(joinpath(data_dir, "ic.npy"))
 const Yk_test = NPZ.npzread(joinpath(data_dir, "Yk.npy"))
 const full_test = NPZ.npzread(joinpath(data_dir, "full.npy"))
 const balanced_test = NPZ.npzread(joinpath(data_dir, "balanced.npy"))
-const dp5_test = NPZ.npzread(joinpath(data_dir, "dp5.npy"))
-const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8.npy"))
+const dp5_test = NPZ.npzread(joinpath(data_dir, "dp5_full.npy"))
+const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8_full.npy"))
+const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
 
 ################################################################################
 # unit testing #################################################################
@@ -37,26 +38,40 @@ println("")
 ################################################################################
 # integration testing ##########################################################
 ################################################################################
-const T = 4
-pb = DE.ODEProblem(full, z0, (0.0, T), l96)
+const T = 1.0
+const dtmax = 1e-4
+const saveat = 1e-2
+pb_full = DE.ODEProblem(full, z0, (0.0, T), l96)
+pb_bal = DE.ODEProblem(balanced, z0[1:l96.K], (0.0, T), l96)
 
+# full, DP5
 print(rpad("(full, DP5)", RPAD))
 elapsed_dp5 = @elapsed begin
-  sol_dp5 = DE.solve(pb, DE.DP5(), reltol=1e-5, abstol=1e-9, saveat=0.1)
+  sol_dp5 = DE.solve(pb_full, DE.DP5(), dtmax = dtmax, saveat = saveat)
 end
 println("steps:", lpad(length(sol_dp5.t), LPAD_INTEGER),
         "\telapsed:", lpad(elapsed_dp5, LPAD_FLOAT))
 
+# full, TsitPap8
 print(rpad("(full, TsitPap8)", RPAD))
 elapsed_tp8 = @elapsed begin
-  sol_tp8 = DE.solve(pb, DE.TsitPap8(), reltol=1e-5, abstol=1e-9, saveat=0.1)
+  sol_tp8 = DE.solve(pb_full, DE.TsitPap8(), dtmax = dtmax, saveat = saveat)
 end
 println("steps:", lpad(length(sol_tp8.t), LPAD_INTEGER),
         "\telapsed:", lpad(elapsed_tp8, LPAD_FLOAT))
 
+# balanced, DP5
+print(rpad("(balanced, DP5)", RPAD))
+elapsed_bal = @elapsed begin
+  sol_bal = DE.solve(pb_bal, DE.DP5(), dtmax = dtmax, saveat = saveat)
+end
+println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
+        "\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
+
 @testset "integration testing" begin
-  @test isapprox(sol_dp5[:,1:end], dp5_test, atol=5e-8)
-  @test isapprox(sol_tp8[:,1:end], tp8_test, atol=5e-8)
+  @test isapprox(sol_dp5[:,1:end], dp5_test, atol=1e-6)
+  @test isapprox(sol_tp8[:,1:end], tp8_test, atol=1e-6)
+  @test isapprox(sol_bal[:,1:end], bal_test, atol=1e-6)
 end
 println("")
 
