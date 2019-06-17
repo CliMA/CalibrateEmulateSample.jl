@@ -37,6 +37,7 @@ const hx = -0.8
 # IC section ###################################################################
 ################################################################################
 l96 = L96m(hx = hx, J = 8)
+set_G0(l96) # set the linear closure (essentially, as in balanced)
 
 z00 = Array{Float64}(undef, l96.K + l96.K * l96.J)
 
@@ -56,6 +57,8 @@ elapsed_jit = @elapsed begin
   pb_jit = DE.ODEProblem(full, z00, (0.0, T_compile), l96)
   DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
   pb_jit = DE.ODEProblem(balanced, z00[1:l96.K], (0.0, T_compile), l96)
+  DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
+  pb_jit = DE.ODEProblem(regressed, z00[1:l96.K], (0.0, T_compile), l96)
   DE.solve(pb_jit, SOLVER, reltol = reltol, abstol = abstol, dtmax = dtmax)
 end
 println(" " ^ (LPAD_INTEGER + 6),
@@ -104,6 +107,20 @@ end
 println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
         "\t\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
 
+# regressed L96m integration
+print(rpad("(regressed)", RPAD))
+elapsed_reg = @elapsed begin
+  pb_reg = DE.ODEProblem(regressed, z0[1:l96.K], (0.0, T), l96)
+  sol_reg = DE.solve(pb_reg,
+                     SOLVER,
+                     reltol = reltol,
+                     abstol = abstol,
+                     dtmax = dtmax
+                    )
+end
+println("steps:", lpad(length(sol_reg.t), LPAD_INTEGER),
+        "\t\telapsed:", lpad(elapsed_reg, LPAD_FLOAT))
+
 ################################################################################
 # plot section #################################################################
 ################################################################################
@@ -114,6 +131,9 @@ plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
 
 # plot balanced
 plt.plot(sol_bal.t, sol_bal[k,:], label = "balanced")
+
+# plot regressed
+plt.plot(sol_reg.t, sol_reg[k,:], label = "regressed")
 
 plt.legend()
 plt.show()
