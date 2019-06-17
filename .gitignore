@@ -1,0 +1,5 @@
+# ignore the following patterns
+
+# vim swap files
+*.swp
+
