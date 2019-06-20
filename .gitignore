@@ -1,5 +1,7 @@
 # ignore the following patterns
 
+Manifest.toml
+
 # vim swap files
 *.swp
 
