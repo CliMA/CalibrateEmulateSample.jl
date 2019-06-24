@@ -1,6 +1,8 @@
 using Test
-#using Solus
+using Solus
 ENV["JULIA_LOG_LEVEL"] = "WARN"
+
+include("neki.jl")
 
 for submodule in ["L96m",
                  ]
