@@ -27,7 +27,7 @@ end
 ################################################################################
 function set_data!(gprw::GPRWrap, data::Array{<:Real})
   """
-  Set `gprw.data`
+  Set `gprw.data` and reset `gprw.subsample` and `gprw.GPR` -- very important!
   """
   if ndims(data) > 2
     println(warn("set_data!"), "ndims(data) > 2; will use the first two dims")
@@ -37,6 +37,8 @@ function set_data!(gprw::GPRWrap, data::Array{<:Real})
     throw(error("set_data!: ndims(data) < 2; cannot proceed"))
   end
   gprw.data = data
+  gprw.subsample = nothing
+  gprw.GPR = nothing
   gprw.__data_set = true
   gprw.__subsample_set = false
   println(name("set_data!"), size(gprw.data,1), " points")
@@ -115,6 +117,18 @@ function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
 
   println(name("learn!"), gprw.GPR.kernel_)
   flush(stdout)
+end
+
+function predict(gprw::GPRWrap, x)
+  """
+  Add an extra dimension to `x` if it is a vector (scikit-learn's whim);
+  return predicted values
+  """
+  if ndims(x) == 1
+    return gprw.GPR.predict( reshape(x, (size(x)...,1)) )
+  else
+    return gprw.GPR.predict(x)
+  end
 end
 
 ################################################################################
