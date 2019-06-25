@@ -22,21 +22,24 @@ sklearn.@sk_import gaussian_process.kernels : (RBF, Matern, WhiteKernel)
   __subsample_set::Bool = false
 end
 
+################################################################################
+# GRPWrap-related functions ####################################################
+################################################################################
 function set_data!(gprw::GPRWrap, data::Array{<:Real})
   """
   Set `gprw.data`
   """
   if ndims(data) > 2
-    println("WARNING (set_data!): ndims(data) > 2; will use the first two dims")
+    println(warn("set_data!"), "ndims(data) > 2; will use the first two dims")
     idx = fill(1, ndims(data) - 2)
     data = data[:,:,idx...]
   elseif ndims(data) < 2
-    throw(ErrorException("set_data!: ndims(data) < 2; cannot proceed"))
+    throw(error("set_data!: ndims(data) < 2; cannot proceed"))
   end
   gprw.data = data
   gprw.__data_set = true
   gprw.__subsample_set = false
-  println("set_data!: success, number of data points: ", size(data,1))
+  println(name("set_data!"), size(gprw.data,1), " points")
   flush(stdout)
 end
 
@@ -46,6 +49,8 @@ function subsample!(gprw::GPRWrap; indices::Union{Array{Int,1}, UnitRange{Int}})
   """
   gprw.subsample = @view(gprw.data[indices,..])
   gprw.__subsample_set = true
+  println(name("subsample!"), size(gprw.subsample,1), " subsampled")
+  flush(stdout)
 end
 
 function subsample!(gprw::GPRWrap, thrsh::Int)
@@ -58,10 +63,10 @@ function subsample!(gprw::GPRWrap, thrsh::Int)
   This function ignores `gprw.thrsh`
   """
   if !gprw.__data_set
-    throw(ErrorException("subsample!: 'data' is not set, cannot sample"))
+    throw(error("subsample!: 'data' is not set, cannot sample"))
   end
   if thrsh == 0
-    throw(ErrorException("subsample!: 'thrsh' == 0, cannot sample"))
+    throw(error("subsample!: 'thrsh' == 0, cannot sample"))
   end
 
   N = size(gprw.data,1)
@@ -87,18 +92,18 @@ end
 
 function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
   if !gprw.__subsample_set
-    println("WARNING (learn!): 'subsample' is not set; attempting to set...")
+    println(warn("learn!"), "'subsample' is not set; attempting to set...")
     subsample!(gprw)
   end
 
   if kernel == "matern"
-    GPR_kernel = 1.0 * Matern(length_scale = 3, nu = 1.5)
+    GPR_kernel = 1.0 * Matern(length_scale = 1, nu = 1.5)
   else # including "rbf", which is the default
     if kernel != "rbf"
-      println("WARNING (learn!): Kernel '", kernel, "' is not supported; ",
+      println(warn("learn!"), "Kernel '", kernel, "' is not supported; ",
               "falling back to RBF")
     end
-    GPR_kernel = 1.0 * RBF(3, (1e-10, 1e+6)) + WhiteKernel()
+    GPR_kernel = 1.0 * RBF(1, (1e-10, 1e+6)) + WhiteKernel(1, (1e-10, 10))
   end
 
   gprw.GPR = GaussianProcessRegressor(
@@ -108,8 +113,21 @@ function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
       )
   sklearn.fit!(gprw.GPR, gprw.subsample[:,1:end-1], gprw.subsample[:,end])
 
-  println("learn!:\t\t", gprw.GPR.kernel_)
+  println(name("learn!"), gprw.GPR.kernel_)
   flush(stdout)
+end
+
+################################################################################
+# convenience functions ########################################################
+################################################################################
+const RPAD = 25
+
+function name(name::AbstractString)
+  return rpad(name * ":", RPAD)
+end
+
+function warn(name::AbstractString)
+  return rpad("WARNING (" * name * "):", RPAD)
 end
 
 
