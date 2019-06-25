@@ -1,5 +1,10 @@
 # Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
+
+env:
+  global:
+    - PYTHON=Conda
+
 os:
   - linux
   - osx
