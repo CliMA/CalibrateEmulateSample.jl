@@ -98,7 +98,7 @@ learn!(gprw)
 @testset "non-synthetic testing" begin
   @test size(gprw.data,1) == 800
   @test size(gprw.subsample,1) == 800
-  @test isapprox( predict(gprw, gpr_mesh), gpr_mean, atol=1e-4, norm=inf_norm)
+  @test isapprox( predict(gprw, gpr_mesh), gpr_mean, atol=1e-3, norm=inf_norm)
 end
 println("")
 
