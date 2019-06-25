@@ -16,62 +16,86 @@ sklearn.@sk_import gaussian_process.kernels : (RBF, Matern, WhiteKernel)
   """
   thrsh::Int = 500
   data = nothing
-  data_sample = nothing
+  subsample = nothing
   GPR = nothing
-  __set::Bool = false
-  __sample_set::Bool = false
+  __data_set::Bool = false
+  __subsample_set::Bool = false
 end
 
-function set_data(gprw::GPRWrap, data::Array{<:Real})
+function set_data!(gprw::GPRWrap, data::Array{<:Real})
+  """
+  Set `gprw.data`
+  """
   if ndims(data) > 2
-    # TODO : how to slice a multidimensional array? [:,:, 1,..,1]
-    #println("WARNING (set_data): ndims(data) > 2; will use the first two dims")
-    throw(ErrorException("set_data: ndims(data) > 2; cannot proceed"))
+    println("WARNING (set_data!): ndims(data) > 2; will use the first two dims")
+    idx = fill(1, ndims(data) - 2)
+    data = data[:,:,idx...]
   elseif ndims(data) < 2
-    throw(ErrorException("set_data: ndims(data) < 2; cannot proceed"))
+    throw(ErrorException("set_data!: ndims(data) < 2; cannot proceed"))
   end
   gprw.data = data
-  gprw.__set = true
-  println("set_data: success, number of data points: ", size(data,1))
+  gprw.__data_set = true
+  gprw.__subsample_set = false
+  println("set_data!: success, number of data points: ", size(data,1))
   flush(stdout)
 end
 
-function set_sample(gprw::GPRWrap, thrsh::Int)
-  if thrsh == 0
-    throw(ErrorException("set_sample: 'thrsh' == 0, cannot sample"))
+function subsample!(gprw::GPRWrap; indices::Union{Array{Int,1}, UnitRange{Int}})
+  """
+  Subsample `gprw.data` using `indices`
+  """
+  gprw.subsample = @view(gprw.data[indices,..])
+  gprw.__subsample_set = true
+end
+
+function subsample!(gprw::GPRWrap, thrsh::Int)
+  """
+  Randomly subsample `gprw.data` if `thrsh` is greater than number of points;
+  otherwise, just use the whole `gprw.data`
+
+  Convention: if `thrsh` < 0, then no subsampling either, i.e. use all data
+
+  This function ignores `gprw.thrsh`
+  """
+  if !gprw.__data_set
+    throw(ErrorException("subsample!: 'data' is not set, cannot sample"))
   end
-  if !gprw.__set
-    throw(ErrorException("set_sample: 'data' is not set, cannot sample"))
+  if thrsh == 0
+    throw(ErrorException("subsample!: 'thrsh' == 0, cannot sample"))
   end
 
-  gprw.thrsh = thrsh
   N = size(gprw.data,1)
-  if N > gprw.thrsh
-    inds = StatsBase.sample(1:N, gprw.thrsh, replace = false)
+  if thrsh < 0
+    thrsh = N
+  end
+
+  if N > thrsh
+    inds = StatsBase.sample(1:N, thrsh, replace = false)
   else
     inds = 1:N
   end
-  gprw.data_sample = @view(gprw.data[inds,..])
-  gprw.__sample_set = true
+
+  subsample!(gprw, indices = inds)
 end
 
-function set_sample(gprw::GPRWrap)
+function subsample!(gprw::GPRWrap)
   """
-  Wrapper for set_sample(gprw::GPRWrap, thrsh:Int)
+  Wrapper for subsample!(gprw::GPRWrap, thrsh:Int)
   """
-  set_sample(gprw, gprw.thrsh)
+  subsample!(gprw, gprw.thrsh)
 end
 
-function learn(gprw::GPRWrap; kernel::String = "rbf")
-  if !gprw.__sample_set
-    throw(ErrorException("learn: 'sample_data' is not set"))
+function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
+  if !gprw.__subsample_set
+    println("WARNING (learn!): 'subsample' is not set; attempting to set...")
+    subsample!(gprw)
   end
 
   if kernel == "matern"
     GPR_kernel = 1.0 * Matern(length_scale = 3, nu = 1.5)
   else # including "rbf", which is the default
     if kernel != "rbf"
-      println("WARNING (learn): Kernel '", kernel, "' is not supported; ",
+      println("WARNING (learn!): Kernel '", kernel, "' is not supported; ",
               "falling back to RBF")
     end
     GPR_kernel = 1.0 * RBF(3, (1e-10, 1e+6)) + WhiteKernel()
@@ -80,11 +104,11 @@ function learn(gprw::GPRWrap; kernel::String = "rbf")
   gprw.GPR = GaussianProcessRegressor(
       kernel = GPR_kernel,
       n_restarts_optimizer = 7,
-      alpha = 0.5
+      alpha = alpha
       )
-  sklearn.fit!(gprw.GPR, gprw.data_sample[:,1:end-1], gprw.data_sample[:,end])
+  sklearn.fit!(gprw.GPR, gprw.subsample[:,1:end-1], gprw.subsample[:,end])
 
-  println("learn: ", gprw.GPR.kernel_)
+  println("learn!:\t\t", gprw.GPR.kernel_)
   flush(stdout)
 end
 
