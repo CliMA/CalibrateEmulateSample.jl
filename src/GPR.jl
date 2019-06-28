@@ -11,11 +11,18 @@ sklearn.@sk_import gaussian_process : GaussianProcessRegressor
 sklearn.@sk_import gaussian_process.kernels : (RBF, Matern, WhiteKernel)
 
 
-@with_kw mutable struct Wrap
-  """
-  A simple struct to handle Gaussian Process Regression related stuff
+"""
+A simple struct to handle Gaussian Process Regression related stuff
 
-  """
+Functions that operate on GPR.Wrap struct:
+ - set_data! (1 method)
+ - subsample! (3 methods)
+ - learn! (1 method)
+ - predict (1 method)
+
+Do *not* set Wrap's variables except for `thrsh`; use setter functions!
+"""
+@with_kw mutable struct Wrap
   thrsh::Int = 500
   data = nothing
   subsample = nothing
@@ -27,10 +34,18 @@ end
 ################################################################################
 # GRPWrap-related functions ####################################################
 ################################################################################
+"""
+Set `gprw.data` and reset `gprw.subsample` and `gprw.GPR` -- very important!
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - data:        input data to learn from (at least 2-dimensional)
+
+`data` should be in the following format:
+  last column: values/labels/y values
+  first column(s): locations/x values
+"""
 function set_data!(gprw::Wrap, data::Array{<:Real})
-  """
-  Set `gprw.data` and reset `gprw.subsample` and `gprw.GPR` -- very important!
-  """
   if ndims(data) > 2
     println(warn("set_data!"), "ndims(data) > 2; will use the first two dims")
     idx = fill(1, ndims(data) - 2)
@@ -47,25 +62,37 @@ function set_data!(gprw::Wrap, data::Array{<:Real})
   flush(stdout)
 end
 
+"""
+Subsample `gprw.data` using `indices`
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - indices:     indices that will be used to subsample `gprw.data`
+"""
 function subsample!(gprw::Wrap; indices::Union{Array{Int,1}, UnitRange{Int}})
-  """
-  Subsample `gprw.data` using `indices`
-  """
   gprw.subsample = @view(gprw.data[indices,..])
   gprw.__subsample_set = true
   println(name("subsample!"), size(gprw.subsample,1), " subsampled")
   flush(stdout)
 end
 
+"""
+Draw `thrsh` subsamples from `gprw.data`
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - thrsh:       threshold for the maximum number of points used in subsampling
+
+If `thrsh` > 0 and `thrsh` < number of `gprw.data` points:
+  subsample `thrsh` points uniformly randomly from `gprw.data`
+If `thrsh` > 0 and `thrsh` >= number of `gprw.data` points:
+  no subsampling, use whole `gprw.data`
+If `thrsh` < 0:
+  no subsampling, use whole `gprw.data`
+
+This function ignores `gprw.thrsh`
+"""
 function subsample!(gprw::Wrap, thrsh::Int)
-  """
-  Randomly subsample `gprw.data` if `thrsh` is greater than number of points;
-  otherwise, just use the whole `gprw.data`
-
-  Convention: if `thrsh` < 0, then no subsampling either, i.e. use all data
-
-  This function ignores `gprw.thrsh`
-  """
   if !gprw.__data_set
     throw(error("subsample!: 'data' is not set, cannot sample"))
   end
@@ -87,13 +114,23 @@ function subsample!(gprw::Wrap, thrsh::Int)
   subsample!(gprw, indices = inds)
 end
 
+"""
+Wrapper for subsample!(gprw::Wrap, thrsh:Int)
+"""
 function subsample!(gprw::Wrap)
-  """
-  Wrapper for subsample!(gprw::Wrap, thrsh:Int)
-  """
   subsample!(gprw, gprw.thrsh)
 end
 
+"""
+Fit a GP regressor to `gprw.data` that was previously set
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - kernel:      "rbf" or "matern"; "rbf" by default
+  - noise:       non-optimized noise level for the RBF kernel
+                 (in addition to the optimized one)
+  - nu:          Matern's nu parameter (smoothness of functions)
+"""
 function learn!(gprw::Wrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
   if !gprw.__subsample_set
     println(warn("learn!"), "'subsample' is not set; attempting to set...")
@@ -122,12 +159,21 @@ function learn!(gprw::Wrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
   flush(stdout)
 end
 
+"""
+Return mean (and st. deviation) values
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - x:           data for prediction
+  - return_std:  boolean flag, whether to return st. deviation
+
+Returns:
+  - mean:        mean of the GP regressor at `x` locations
+  - (mean, std): mean and st. deviation if `return_std` flag is true
+"""
 function predict(gprw::Wrap, x; return_std = false)
-  """
-  Add an extra dimension to `x` if it is a vector (scikit-learn's whim);
-  return predicted values
-  """
   if ndims(x) == 1
+    # add an extra dimension to `x` if it's a vector (scikit-learn's whim)
     return gprw.GPR.predict(reshape(x, (size(x)...,1)), return_std = return_std)
   else
     return gprw.GPR.predict(x, return_std = return_std)
@@ -147,6 +193,6 @@ function warn(name::AbstractString)
   return rpad("WARNING (" * name * "):", RPAD)
 end
 
-end
+end # module
 
 
