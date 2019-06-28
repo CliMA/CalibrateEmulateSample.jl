@@ -92,26 +92,27 @@ function subsample!(gprw::GPRWrap)
   subsample!(gprw, gprw.thrsh)
 end
 
-function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
+function learn!(gprw::GPRWrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
   if !gprw.__subsample_set
     println(warn("learn!"), "'subsample' is not set; attempting to set...")
     subsample!(gprw)
   end
 
+  WK = WhiteKernel(1, (1e-10, 10))
   if kernel == "matern"
-    GPR_kernel = 1.0 * Matern(length_scale = 1, nu = 1.5)
+    GPR_kernel = 1.0 * Matern(length_scale = 1.0, nu = nu) + WK
   else # including "rbf", which is the default
     if kernel != "rbf"
       println(warn("learn!"), "Kernel '", kernel, "' is not supported; ",
               "falling back to RBF")
     end
-    GPR_kernel = 1.0 * RBF(1, (1e-10, 1e+6)) + WhiteKernel(1, (1e-10, 10))
+    GPR_kernel = 1.0 * RBF(1.0, (1e-10, 1e+6)) + WK
   end
 
   gprw.GPR = GaussianProcessRegressor(
       kernel = GPR_kernel,
       n_restarts_optimizer = 7,
-      alpha = alpha
+      alpha = noise
       )
   sklearn.fit!(gprw.GPR, gprw.subsample[:,1:end-1], gprw.subsample[:,end])
 
@@ -119,15 +120,15 @@ function learn!(gprw::GPRWrap; kernel::String = "rbf", alpha = 0.5)
   flush(stdout)
 end
 
-function predict(gprw::GPRWrap, x)
+function predict(gprw::GPRWrap, x; return_std = false)
   """
   Add an extra dimension to `x` if it is a vector (scikit-learn's whim);
   return predicted values
   """
   if ndims(x) == 1
-    return gprw.GPR.predict( reshape(x, (size(x)...,1)) )
+    return gprw.GPR.predict(reshape(x, (size(x)...,1)), return_std = return_std)
   else
-    return gprw.GPR.predict(x)
+    return gprw.GPR.predict(x, return_std = return_std)
   end
 end
 
