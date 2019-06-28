@@ -5,9 +5,14 @@ import LinearAlgebra
 include("../../src/GPRWrap/GPRWrap.jl")
 
 const data_dir = joinpath(@__DIR__, "data")
+const gpr_data = NPZ.npzread(joinpath(data_dir, "data_points.npy"))
 const gpr_mesh = NPZ.npzread(joinpath(data_dir, "mesh.npy"))
-const gpr_mean = NPZ.npzread(joinpath(data_dir, "mean.npy"))
-const gpr_subsample = NPZ.npzread(joinpath(data_dir, "subsample.npy"))
+const rbf_mean = NPZ.npzread(joinpath(data_dir, "rbf_mean.npy"))
+const rbf_std = NPZ.npzread(joinpath(data_dir, "rbf_std.npy"))
+const matern_def_mean = NPZ.npzread(joinpath(data_dir, "matern_def_mean.npy"))
+const matern_def_std = NPZ.npzread(joinpath(data_dir, "matern_def_std.npy"))
+const matern_05_mean = NPZ.npzread(joinpath(data_dir, "matern_05_mean.npy"))
+const matern_05_std = NPZ.npzread(joinpath(data_dir, "matern_05_std.npy"))
 
 const inf_norm = x -> LinearAlgebra.norm(x, Inf)
 
@@ -78,27 +83,46 @@ thrsh = gprw.thrsh
   @test size(gprw.subsample,1) == 20
 
   set_data!(gprw, cat(X,y,dims=2))
-  learn!(gprw, alpha = 1e-10)
+  learn!(gprw, noise = 1e-10)
   @test occursin(r"rbf"i, string(gprw.GPR.kernel))
 
   ytrue = xmesh.^2
   ypred = predict(gprw, xmesh)
   @test isapprox(ytrue, ypred, atol=1e-5, norm=inf_norm)
 
+  mean, std = predict(gprw, xmesh, return_std = true)
+  @test ndims(mean) == 1
+  @test ndims(std) == 1
+  @test size(std,1) == size(mean,1)
+  @test all(std .>= 0)
+
   @test gprw.thrsh == thrsh
 end
 println("")
 
 ################################################################################
-# non-synthetic data testing ###################################################
+# tests w/ non-synthetic data ##################################################
 ################################################################################
-set_data!(gprw, gpr_subsample)
+set_data!(gprw, gpr_data)
 gprw.thrsh = -1
-learn!(gprw)
 @testset "non-synthetic testing" begin
+  learn!(gprw)
+  mean, std = predict(gprw, gpr_mesh, return_std = true)
   @test size(gprw.data,1) == 800
   @test size(gprw.subsample,1) == 800
-  @test isapprox( predict(gprw, gpr_mesh), gpr_mean, atol=1e-3, norm=inf_norm)
+  @test isapprox(mean, rbf_mean, atol=1e-3, norm=inf_norm)
+  @test isapprox(std, rbf_std, atol=1e-3, norm=inf_norm)
+
+  learn!(gprw, kernel = "matern")
+  mean, std = predict(gprw, gpr_mesh, return_std = true)
+  @test isapprox(mean, matern_def_mean, atol=1e-3, norm=inf_norm)
+  @test isapprox(std, matern_def_std, atol=1e-3, norm=inf_norm)
+
+  learn!(gprw, kernel = "matern", nu = 0.5)
+  mean, std = predict(gprw, gpr_mesh, return_std = true)
+  @test isapprox(mean, matern_05_mean, atol=1e-3, norm=inf_norm)
+  @test isapprox(std, matern_05_std, atol=1e-3, norm=inf_norm)
 end
 println("")
+
 
