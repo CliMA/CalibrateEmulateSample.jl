@@ -4,9 +4,9 @@ import NPZ
 import PyPlot
 const plt = PyPlot
 
-include("../../src/GPRWrap/GPRWrap.jl")
+include("../../src/GPR.jl")
 
-const gpr_data = NPZ.npzread("../../test/GPRWrap/data/data_points.npy")
+const gpr_data = NPZ.npzread("../../test/GPR/data/data_points.npy")
 
 ################################################################################
 # main section #################################################################
@@ -16,26 +16,26 @@ const gpr_data = NPZ.npzread("../../test/GPRWrap/data/data_points.npy")
 # julia --depwarn=no main.jl
 #
 
-# create an instance of GPRWrap with threshold set to -1
+# create an instance of GPR.Wrap with threshold set to -1
 # by convention, negative threshold means use all data, i.e. do not subsample
-gprw = GPRWrap(thrsh = -1)
-#gprw = GPRWrap()
+gprw = GPR.Wrap(thrsh = -1)
+#gprw = GPR.Wrap()
 
-set_data!(gprw, gpr_data)
+GPR.set_data!(gprw, gpr_data)
 
-subsample!(gprw) # this form is unnecessary, `learn!` will do it anyway
-#subsample!(gprw, 500) # ignore `gprw.thrsh` and subsample 500 points
-#subsample!(gprw, indices = 1:10) # subsample points with indices `indices`
+GPR.subsample!(gprw) # this form is unnecessary, `learn!` will do it anyway
+#GPR.subsample!(gprw, 500) # ignore `gprw.thrsh` and subsample 500 points
+#GPR.subsample!(gprw, indices = 1:10) # subsample points with indices `indices`
 
-learn!(gprw) # fit GPR with "Const * RBF + White" kernel
-#learn!(gprw, noise = 1e-8) # `noise` is *non-optimized* additional noise
-#learn!(gprw, kernel = "matern") # "rbf" and "matern" are supported right now
-#learn!(gprw, kernel = "matern", nu = 0.5) # Matern's parameter nu (1.5 by def)
+GPR.learn!(gprw) # fit GPR with "Const * RBF + White" kernel
+#GPR.learn!(gprw, noise = 1e-8) # `noise` is *non-optimized* additional noise
+#GPR.learn!(gprw, kernel = "matern") # "rbf" and "matern" are supported for now
+#GPR.learn!(gprw, kernel = "matern", nu = 1) # Matern's parameter nu; 1.5 by def
 
 mesh = minimum(gpr_data, dims=1)[1] : 0.01 : maximum(gpr_data, dims=1)[1]
 
-mean, std = predict(gprw, mesh, return_std = true)
-#mean = predict(gprw, mesh) # `return_std` is false by default
+mean, std = GPR.predict(gprw, mesh, return_std = true)
+#mean = GPR.predict(gprw, mesh) # `return_std` is false by default
 
 ################################################################################
 # plot section #################################################################

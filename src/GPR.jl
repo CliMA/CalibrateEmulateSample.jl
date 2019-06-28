@@ -1,3 +1,5 @@
+module GPR
+
 using Parameters # lets you have defaults for fields
 
 using EllipsisNotation # adds '..' to refer to the rest of array
@@ -9,7 +11,7 @@ sklearn.@sk_import gaussian_process : GaussianProcessRegressor
 sklearn.@sk_import gaussian_process.kernels : (RBF, Matern, WhiteKernel)
 
 
-@with_kw mutable struct GPRWrap
+@with_kw mutable struct Wrap
   """
   A simple struct to handle Gaussian Process Regression related stuff
 
@@ -25,7 +27,7 @@ end
 ################################################################################
 # GRPWrap-related functions ####################################################
 ################################################################################
-function set_data!(gprw::GPRWrap, data::Array{<:Real})
+function set_data!(gprw::Wrap, data::Array{<:Real})
   """
   Set `gprw.data` and reset `gprw.subsample` and `gprw.GPR` -- very important!
   """
@@ -45,7 +47,7 @@ function set_data!(gprw::GPRWrap, data::Array{<:Real})
   flush(stdout)
 end
 
-function subsample!(gprw::GPRWrap; indices::Union{Array{Int,1}, UnitRange{Int}})
+function subsample!(gprw::Wrap; indices::Union{Array{Int,1}, UnitRange{Int}})
   """
   Subsample `gprw.data` using `indices`
   """
@@ -55,7 +57,7 @@ function subsample!(gprw::GPRWrap; indices::Union{Array{Int,1}, UnitRange{Int}})
   flush(stdout)
 end
 
-function subsample!(gprw::GPRWrap, thrsh::Int)
+function subsample!(gprw::Wrap, thrsh::Int)
   """
   Randomly subsample `gprw.data` if `thrsh` is greater than number of points;
   otherwise, just use the whole `gprw.data`
@@ -85,14 +87,14 @@ function subsample!(gprw::GPRWrap, thrsh::Int)
   subsample!(gprw, indices = inds)
 end
 
-function subsample!(gprw::GPRWrap)
+function subsample!(gprw::Wrap)
   """
-  Wrapper for subsample!(gprw::GPRWrap, thrsh:Int)
+  Wrapper for subsample!(gprw::Wrap, thrsh:Int)
   """
   subsample!(gprw, gprw.thrsh)
 end
 
-function learn!(gprw::GPRWrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
+function learn!(gprw::Wrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
   if !gprw.__subsample_set
     println(warn("learn!"), "'subsample' is not set; attempting to set...")
     subsample!(gprw)
@@ -120,7 +122,7 @@ function learn!(gprw::GPRWrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
   flush(stdout)
 end
 
-function predict(gprw::GPRWrap, x; return_std = false)
+function predict(gprw::Wrap, x; return_std = false)
   """
   Add an extra dimension to `x` if it is a vector (scikit-learn's whim);
   return predicted values
@@ -143,6 +145,8 @@ end
 
 function warn(name::AbstractString)
   return rpad("WARNING (" * name * "):", RPAD)
+end
+
 end
 
 
