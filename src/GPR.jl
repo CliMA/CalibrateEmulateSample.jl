@@ -1,4 +1,8 @@
 module GPR
+"""
+For the time being, please use `include("src/GPR.jl")` and not `using Solus.GPR`
+since there are precompile issues with the backend (scikit-learn)
+"""
 
 using Parameters # lets you have defaults for fields
 
