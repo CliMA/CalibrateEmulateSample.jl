@@ -54,6 +54,17 @@ function print_var(var_names::Array{String})
   end
 end
 
+function run_l96(rhs, ic, T)
+  pb = DE.ODEProblem(rhs, ic, (0.0, T), l96)
+  return DE.solve(
+                  pb,
+                  SOLVER,
+                  reltol = reltol,
+                  abstol = abstol,
+                  dtmax = dtmax
+                 )
+end
+
 ################################################################################
 # config section ###############################################################
 ################################################################################
@@ -76,6 +87,18 @@ const LPAD_FLOAT = 13
 const LPAD_VAR = 29
 
 parameters = String[]
+# which runs to perform ########################################################
+# run_conv     DNS, converging to attractor run, skipped; full system
+# run_dns      DNS, direct numerical simulation; full system
+# run_bal      balanced, naive closure; only slow variables
+# run_reg      regressed, GPR closure; only slow variables
+push!(parameters, "run_conv", "run_dns", "run_bal", "run_reg")
+
+const run_conv = get_cfg_value(config, "runs", "run_conv", true)
+const run_dns  = get_cfg_value(config, "runs", "run_dns",  true)
+const run_bal  = get_cfg_value(config, "runs", "run_bal",  true)
+const run_reg  = get_cfg_value(config, "runs", "run_reg",  true)
+
 # integration parameters #######################################################
 # T            integration time
 # T_conv       converging integration time
@@ -147,75 +170,65 @@ println(" " ^ (LPAD_INTEGER + 6),
         "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
 
 # full L96m integration (converging to attractor)
-print(rpad("(full, converging)", RPAD))
-elapsed_conv = @elapsed begin
-  pb_conv = DE.ODEProblem(full, z00, (0.0, T_conv), l96)
-  sol_conv = DE.solve(pb_conv,
-                      SOLVER,
-                      reltol = reltol,
-                      abstol = abstol,
-                      dtmax = dtmax
-                     )
+if run_conv
+  print(rpad("(full, converging)", RPAD))
+  elapsed_conv = @elapsed begin
+    sol_conv = run_l96(full, z00, T_conv)
+  end
+  println("steps:", lpad(length(sol_conv.t), LPAD_INTEGER),
+          "\t\telapsed:", lpad(elapsed_conv, LPAD_FLOAT))
+  z0 = sol_conv[:,end]
 end
-println("steps:", lpad(length(sol_conv.t), LPAD_INTEGER),
-        "\t\telapsed:", lpad(elapsed_conv, LPAD_FLOAT))
-z0 = sol_conv[:,end]
 
 # full L96m integration
-print(rpad("(full)", RPAD))
-elapsed_dns = @elapsed begin
-  pb_dns = DE.ODEProblem(full, z0, (0.0, T), l96)
-  sol_dns = DE.solve(pb_dns,
-                     SOLVER,
-                     reltol = reltol,
-                     abstol = abstol,
-                     dtmax = dtmax
-                    )
+if run_dns
+  print(rpad("(full)", RPAD))
+  elapsed_dns = @elapsed begin
+    sol_dns = run_l96(full, z0, T)
+  end
+  println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
+          "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
 end
-println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
-        "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
 
 # balanced L96m integration
-print(rpad("(balanced)", RPAD))
-elapsed_bal = @elapsed begin
-  pb_bal = DE.ODEProblem(balanced, z0[1:l96.K], (0.0, T), l96)
-  sol_bal = DE.solve(pb_bal,
-                     SOLVER,
-                     reltol = reltol,
-                     abstol = abstol,
-                     dtmax = dtmax
-                    )
+if run_bal
+  print(rpad("(balanced)", RPAD))
+  elapsed_bal = @elapsed begin
+    sol_bal = run_l96(balanced, z0[1:l96.K], T)
+  end
+  println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
+          "\t\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
 end
-println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
-        "\t\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
 
 # regressed L96m integration
-print(rpad("(regressed)", RPAD))
-elapsed_reg = @elapsed begin
-  pb_reg = DE.ODEProblem(regressed, z0[1:l96.K], (0.0, T), l96)
-  sol_reg = DE.solve(pb_reg,
-                     SOLVER,
-                     reltol = reltol,
-                     abstol = abstol,
-                     dtmax = dtmax
-                    )
+if run_reg
+  print(rpad("(regressed)", RPAD))
+  elapsed_reg = @elapsed begin
+    sol_reg = run_l96(regressed, z0[1:l96.K], T)
+  end
+  println("steps:", lpad(length(sol_reg.t), LPAD_INTEGER),
+          "\t\telapsed:", lpad(elapsed_reg, LPAD_FLOAT))
 end
-println("steps:", lpad(length(sol_reg.t), LPAD_INTEGER),
-        "\t\telapsed:", lpad(elapsed_reg, LPAD_FLOAT))
 
 ################################################################################
 # plot section #################################################################
 ################################################################################
 # plot DNS
-plt.plot(sol_dns.t, sol_dns[k,:], label = "DNS")
-plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
-    lw = 0.6, alpha = 0.6, color="gray")
+if run_dns
+  plt.plot(sol_dns.t, sol_dns[k,:], label = "DNS")
+  plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
+           lw = 0.6, alpha = 0.6, color="gray")
+end
 
 # plot balanced
-plt.plot(sol_bal.t, sol_bal[k,:], label = "balanced")
+if run_bal
+  plt.plot(sol_bal.t, sol_bal[k,:], label = "balanced")
+end
 
 # plot regressed
-plt.plot(sol_reg.t, sol_reg[k,:], label = "regressed")
+if run_reg
+  plt.plot(sol_reg.t, sol_reg[k,:], label = "regressed")
+end
 
 plt.legend()
 plt.show()
