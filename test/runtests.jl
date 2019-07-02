@@ -5,6 +5,7 @@ ENV["JULIA_LOG_LEVEL"] = "WARN"
 include("neki.jl")
 
 for submodule in ["L96m",
+                  "GPR",
                  ]
 
   println("Starting tests for $submodule")
