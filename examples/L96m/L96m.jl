@@ -31,7 +31,7 @@ variables are fast.
 
 Input:
  - `z`   : vector of size (K + K*J)
- - `p`   : parameters
+ - `p`   : parameters (L96m struct)
  - `t`   : time (not used here since L96m is autonomous)
 
 Output:
@@ -89,7 +89,7 @@ Both `rhs` and `x` are vectors of size p.K.
 
 Input:
  - `x`   : vector of size K
- - `p`   : parameters
+ - `p`   : parameters (L96m struct)
  - `t`   : time (not used here since L96m is autonomous)
 
 Output:
@@ -121,7 +121,7 @@ Both `rhs` and `x` are vectors of size p.K.
 
 Input:
  - `x`   : vector of size K
- - `p`   : parameters
+ - `p`   : parameters (L96m struct)
  - `t`   : time (not used here since L96m is autonomous)
 
 Output:
@@ -175,6 +175,57 @@ Wrapper for set_G0(p::L96m; slope = nothing).
 """
 function set_G0(p::L96m, slope::Real)
   set_G0(p, slope = slope)
+end
+
+"""
+Gather (xk, Yk) pairs that are further used to train a GP regressor
+
+Input:
+ - `p`     : parameters (L96m struct)
+ - `sol`   : time series of a solution; time steps are in the 2nd dimension
+             (usually, just `sol` output from a time-stepper)
+
+Output:
+ - `pairs` : a 2-d array of size (N, 2) containing (xk, Yk) pairs, where N is
+             the 2nd dimension in `sol` (number of time steps)
+
+"""
+function gather_pairs(p::L96m, sol)
+  N = size(sol, 2)
+  pairs = Array{Float64, 2}(undef, p.K * N, 2)
+  for n in 1:N
+    pairs[p.K * (n-1) + 1 : p.K * n, 1] = sol[1:p.K, n]
+    pairs[p.K * (n-1) + 1 : p.K * n, 2] = compute_Yk(p, sol[:,n])
+  end
+  return pairs
+end
+
+"""
+Returns a randomly initialized array that can be used as an IC to ODE solver
+
+The returned array is of size `p.K + p.K * p.J`.
+The first `p.K` variables are slow and are drawn randomly ~ U[-5; 10]; each of
+the fast variables corresponding to the same slow variable is set to the value
+of that slow variable.
+
+For example, if K == 2 and J = 3, the returned array will be
+  [ rand1, rand2, rand1, rand1, rand1, rand2, rand2, rand2 ]
+
+Input:
+ - `p`     : parameters (L96m struct)
+
+Output:
+ - `z00`   : array of size `p.K + p.K * p.J` with random values
+"""
+function random_init(p::L96m)
+  z00 = Array{Float64}(undef, p.K + p.K * p.J)
+
+  z00[1:p.K] .= rand(p.K) * 15 .- 5
+  for k_ in 1:p.K
+    z00[p.K+1 + (k_-1)*p.J : p.K + k_*p.J] .= z00[k_]
+  end
+
+  return z00
 end
 
 

@@ -17,6 +17,7 @@ const Yk_test = NPZ.npzread(joinpath(data_dir, "Yk.npy"))
 const full_test = NPZ.npzread(joinpath(data_dir, "full.npy"))
 const balanced_test = NPZ.npzread(joinpath(data_dir, "balanced.npy"))
 const regressed_test = NPZ.npzread(joinpath(data_dir, "regressed.npy"))
+const dp5_pairs = NPZ.npzread(joinpath(data_dir, "dp5_pairs.npy"))
 const dp5_test = NPZ.npzread(joinpath(data_dir, "dp5_full.npy"))
 const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8_full.npy"))
 const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
@@ -59,6 +60,27 @@ const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
     @test -0.5 * v1 == l96.G(v1)
     @test -0.5 * v2 == l96.G(v2)
   end
+
+  m1 = [1:9.0  1:9.0]
+  z00 = zeros(l96.K + l96.K * l96.J)
+  z00[1:l96.K] .= 1:l96.K
+  for k_ in 1:l96.K
+    z00[l96.K + 1 + (k_-1)*l96.J : l96.K + k_*l96.J] .= z00[k_]
+  end
+  @test isapprox(gather_pairs(l96, z00), m1)
+
+  z00 = random_init(l96)
+  x00 = @view(z00[1:l96.K])
+  y00 = @view(z00[l96.K+1:end])
+  @test size(z00,1) == l96.K + l96.K * l96.J
+  @test size(z00,1) == length(z00)
+  @test all(-5.0 .< x00 .< 10.0)
+  @test all(x00 .== reshape(y00, l96.J, l96.K)')
+
+  m2 = [x00  x00]
+  @test isapprox(gather_pairs(l96, z00), m2)
+
+  @test isapprox(gather_pairs(l96, dp5_test), dp5_pairs)
 end
 println("")
 

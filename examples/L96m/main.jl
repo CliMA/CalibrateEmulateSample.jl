@@ -143,13 +143,7 @@ print_var(parameters)
 l96 = L96m(hx = hx, J = 8)
 set_G0(l96) # set the linear closure (essentially, as in balanced)
 
-z00 = Array{Float64}(undef, l96.K + l96.K * l96.J)
-
-# method 1
-z00[1:l96.K] .= rand(l96.K) * 15 .- 5
-for k_ in 1:l96.K
-  z00[l96.K+1 + (k_-1)*l96.J : l96.K + k_*l96.J] .= z00[k_]
-end
+z00 = random_init(l96)
 
 ################################################################################
 # main section #################################################################
