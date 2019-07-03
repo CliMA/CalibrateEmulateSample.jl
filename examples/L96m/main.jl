@@ -54,14 +54,30 @@ function print_var(var_names::Array{String})
   end
 end
 
-function run_l96(rhs, ic, T)
+"""
+Prints information at the start of integration run
+"""
+function print_morning(name::String)
+  print(rpad("(" * name * ")", RPAD))
+end
+
+"""
+Prints information at the end of integration run
+"""
+function print_night(steps::Int, elapsed::Real)
+  println("steps:", lpad(steps, LPAD_INTEGER),
+          "\t\telapsed:", lpad(elapsed, LPAD_FLOAT))
+end
+
+function run_l96(rhs, ic, T; converging = false)
   pb = DE.ODEProblem(rhs, ic, (0.0, T), l96)
   return DE.solve(
                   pb,
                   SOLVER,
                   reltol = reltol,
                   abstol = abstol,
-                  dtmax = dtmax
+                  dtmax = dtmax,
+                  save_everystep = !converging
                  )
 end
 
@@ -92,23 +108,26 @@ parameters = String[]
 # run_dns      DNS, direct numerical simulation; full system
 # run_bal      balanced, naive closure; only slow variables
 # run_reg      regressed, GPR closure; only slow variables
-push!(parameters, "run_conv", "run_dns", "run_bal", "run_reg")
+# run_onl      online, GPR closure learned iteratively; only slow variables
+push!(parameters, "run_conv", "run_dns", "run_bal", "run_reg", "run_onl")
 
 const run_conv = get_cfg_value(config, "runs", "run_conv", true)
 const run_dns  = get_cfg_value(config, "runs", "run_dns",  true)
 const run_bal  = get_cfg_value(config, "runs", "run_bal",  true)
 const run_reg  = get_cfg_value(config, "runs", "run_reg",  true)
+const run_onl  = get_cfg_value(config, "runs", "run_onl",  true)
 
 # integration parameters #######################################################
 # T            integration time
 # T_conv       converging integration time
+# T_lrnreg     time for gathering training data for regressed GP closure
 # T_compile    force JIT compilation
-push!(parameters, "T", "T_conv", "T_compile")
+push!(parameters, "T", "T_conv", "T_lrnreg", "T_compile")
 
 const T = get_cfg_value(config, "integration", "T", 4.0)
 const T_conv = get_cfg_value(config, "integration", "T_conv", 100.0)
+const T_lrnreg = get_cfg_value(config, "integration", "T_lrnreg", 15.0)
 const T_compile = 1e-10
-#const T_learn = 15 # time to gather training data for GP
 #const T_hist = 10000 # time to gather histogram statistics
 
 # time-stepper parameters ######################################################
@@ -141,9 +160,12 @@ print_var(parameters)
 # IC section ###################################################################
 ################################################################################
 l96 = L96m(hx = hx, J = 8)
-set_G0(l96) # set the linear closure (essentially, as in balanced)
+set_G0(l96) # set the linear closure (as in balanced) -- needed for compilation
 
 z00 = random_init(l96)
+if run_reg || run_onl
+  z00_lrn = random_init(l96)
+end
 
 ################################################################################
 # main section #################################################################
@@ -163,45 +185,51 @@ end
 println(" " ^ (LPAD_INTEGER + 6),
         "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
 
+# full L96m integration (learning data)
+if run_reg || run_onl
+  print_morning("full, learning, converging")
+  elapsed_lrncv = @elapsed begin
+    sol_lrncv = run_l96(full, z00_lrn, T_conv, converging = true)
+  end
+  print_night(length(sol_lrncv.t), elapsed_lrncv)
+  z0_lrn = sol_lrncv[:,end]
+end
+
 # full L96m integration (converging to attractor)
 if run_conv
-  print(rpad("(full, converging)", RPAD))
+  print_morning("full, converging")
   elapsed_conv = @elapsed begin
-    sol_conv = run_l96(full, z00, T_conv)
+    sol_conv = run_l96(full, z00, T_conv, converging = true)
   end
-  println("steps:", lpad(length(sol_conv.t), LPAD_INTEGER),
-          "\t\telapsed:", lpad(elapsed_conv, LPAD_FLOAT))
+  print_night(length(sol_conv.t), elapsed_conv)
   z0 = sol_conv[:,end]
 end
 
 # full L96m integration
 if run_dns
-  print(rpad("(full)", RPAD))
+  print_morning("full")
   elapsed_dns = @elapsed begin
     sol_dns = run_l96(full, z0, T)
   end
-  println("steps:", lpad(length(sol_dns.t), LPAD_INTEGER),
-          "\t\telapsed:", lpad(elapsed_dns, LPAD_FLOAT))
+  print_night(length(sol_dns.t), elapsed_dns)
 end
 
 # balanced L96m integration
 if run_bal
-  print(rpad("(balanced)", RPAD))
+  print_morning("balanced")
   elapsed_bal = @elapsed begin
     sol_bal = run_l96(balanced, z0[1:l96.K], T)
   end
-  println("steps:", lpad(length(sol_bal.t), LPAD_INTEGER),
-          "\t\telapsed:", lpad(elapsed_bal, LPAD_FLOAT))
+  print_night(length(sol_bal.t), elapsed_bal)
 end
 
 # regressed L96m integration
 if run_reg
-  print(rpad("(regressed)", RPAD))
+  print_morning("regressed")
   elapsed_reg = @elapsed begin
     sol_reg = run_l96(regressed, z0[1:l96.K], T)
   end
-  println("steps:", lpad(length(sol_reg.t), LPAD_INTEGER),
-          "\t\telapsed:", lpad(elapsed_reg, LPAD_FLOAT))
+  print_night(length(sol_reg.t), elapsed_reg)
 end
 
 ################################################################################
