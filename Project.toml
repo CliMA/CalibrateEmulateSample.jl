@@ -4,6 +4,8 @@ authors = ["Simon Byrne <simonbyrne@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+ConfParser = "88353bc9-fd38-507d-a820-d3b43837d6b9"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"

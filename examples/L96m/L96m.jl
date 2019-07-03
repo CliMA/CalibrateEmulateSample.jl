@@ -1,45 +1,44 @@
 using Parameters # lets you have defaults for fields
 
+"""
+Lorenz '96 multiscale
+
+Parameters:
+ - `K`   : number of slow variables
+ - `J`   : number of fast variables per slow variable
+ - `hx`  : coupling term (in equations for slow variables)
+ - `hy`  : coupling term (in equations for fast variables)
+ - `F`   : forcing term for slow variables
+ - `eps` : scale separation constant
+
+Other:
+ - `G` : functional closure for slow variables (usually a GPR-closure)
+"""
 @with_kw mutable struct L96m
-  """
-  Lorenz '96 multiscale
-
-  Parameters:
-  - `K`   : number of slow variables
-  - `J`   : number of fast variables per slow variable
-  - `hx`  : coupling term (in equations for slow variables)
-  - `hy`  : coupling term (in equations for fast variables)
-  - `F`   : forcing term for slow variables
-  - `eps` : scale separation term
-
-  Other:
-  - `G` : functional closure for slow variables (usually a GPR-closure)
-  """
   K::Int = 9
   J::Int = 8
   hx::Float64 = -0.8
-  hy::Float64 = 1
-  F::Float64 = 10
+  hy::Float64 = 1.0
+  F::Float64 = 10.0
   eps::Float64 = 2^(-7)
   G = nothing
 end
 
+"""
+Compute full RHS of the Lorenz '96 multiscale system.
+The convention is that the first K variables are slow, while the rest K*J
+variables are fast.
+
+Input:
+ - `z`   : vector of size (K + K*J)
+ - `p`   : parameters (L96m struct)
+ - `t`   : time (not used here since L96m is autonomous)
+
+Output:
+ - `rhs` : RHS computed at `z`
+
+"""
 function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
-  """
-  Compute full RHS of the Lorenz '96 multiscale system.
-  The convention is that the first K variables are slow, while the rest K*J
-  variables are fast.
-
-  Input:
-  - `z`   : vector of size (K + K*J)
-  - `p`   : parameters
-  - `t`   : time (not used here since L96m is autonomous)
-
-  Output:
-  - `rhs` : RHS computed at `z`
-
-  """
-
   K = p.K
   J = p.J
   x = @view(z[1:K])
@@ -83,22 +82,21 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   return rhs
 end
 
+"""
+Compute balanced RHS of the Lorenz '96 multiscale system; i.e. only slow
+variables with the linear closure.
+Both `rhs` and `x` are vectors of size p.K.
+
+Input:
+ - `x`   : vector of size K
+ - `p`   : parameters (L96m struct)
+ - `t`   : time (not used here since L96m is autonomous)
+
+Output:
+ - `rhs` : balanced RHS computed at `x`
+
+"""
 function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
-  """
-  Compute balanced RHS of the Lorenz '96 multiscale system; i.e. only slow
-  variables with the linear closure.
-  Both `rhs` and `x` are vectors of size p.K.
-
-  Input:
-  - `x`   : vector of size K
-  - `p`   : parameters
-  - `t`   : time (not used here since L96m is autonomous)
-
-  Output:
-  - `rhs` : balanced RHS computed at `x`
-
-  """
-
   K = p.K
 
   # three boundary cases
@@ -115,15 +113,119 @@ function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
   return rhs
 end
 
+"""
+Compute slow-variable closed RHS of the Lorenz '96 Multiscale system;
+i.e. only slow variables with some closure instead of Yk.
+Closure is taken from p.G.
+Both `rhs` and `x` are vectors of size p.K.
+
+Input:
+ - `x`   : vector of size K
+ - `p`   : parameters (L96m struct)
+ - `t`   : time (not used here since L96m is autonomous)
+
+Output:
+ - `rhs` : regressed RHS computed at `x`
+
+"""
+function regressed(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
+  K = p.K
+
+  # three boundary cases
+  rhs[1] = -x[K]   * (x[K-1] - x[2]) - x[1]
+  rhs[2] = -x[1]   * (x[K]   - x[3]) - x[2]
+  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - x[K]
+
+  # general case
+  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - x[3:K-1]
+
+  # add forcing
+  rhs .+= p.F
+
+  # add closure
+  rhs .+= p.hx * p.G(x)
+
+  return rhs
+end
+
+"""
+Reshape a vector of y_{j,k} into a matrix, then sum along one dim and divide
+by J to get averages
+"""
 function compute_Yk(p::L96m, z::Array{<:Real,1})
-  """
-  Reshape a vector of y_{j,k} into a matrix, then sum along one dim and divide
-  by J to get averages
-  """
   return dropdims(
       sum( reshape(z[p.K+1:end], p.J, p.K), dims = 1 ),
       dims = 1
   ) / p.J
+end
+
+"""
+Set the closure `p.G` to a linear one with slope `slope`.
+If unspecified, slope is equal to `p.hy`.
+"""
+function set_G0(p::L96m; slope = nothing)
+  if (slope == nothing) || (!isa(slope, Real))
+    slope = p.hy
+  end
+  p.G = x -> slope * x
+end
+
+"""
+Wrapper for set_G0(p::L96m; slope = nothing).
+"""
+function set_G0(p::L96m, slope::Real)
+  set_G0(p, slope = slope)
+end
+
+"""
+Gather (xk, Yk) pairs that are further used to train a GP regressor
+
+Input:
+ - `p`     : parameters (L96m struct)
+ - `sol`   : time series of a solution; time steps are in the 2nd dimension
+             (usually, just `sol` output from a time-stepper)
+
+Output:
+ - `pairs` : a 2-d array of size (N, 2) containing (xk, Yk) pairs, where N is
+             the 2nd dimension in `sol` (number of time steps)
+
+"""
+function gather_pairs(p::L96m, sol)
+  N = size(sol, 2)
+  pairs = Array{Float64, 2}(undef, p.K * N, 2)
+  for n in 1:N
+    pairs[p.K * (n-1) + 1 : p.K * n, 1] = sol[1:p.K, n]
+    pairs[p.K * (n-1) + 1 : p.K * n, 2] = compute_Yk(p, sol[:,n])
+  end
+  return pairs
+end
+
+"""
+Returns a randomly initialized array that can be used as an IC to ODE solver
+
+The returned array is of size `p.K + p.K * p.J`.
+The first `p.K` variables are slow and are drawn randomly ~ U[-5; 10]; each of
+the fast variables corresponding to the same slow variable is set to the value
+of that slow variable.
+
+For example, if K == 2 and J = 3, the returned array will be
+  [ rand1, rand2, rand1, rand1, rand1, rand2, rand2, rand2 ]
+
+Input:
+ - `p`     : parameters (L96m struct)
+
+Output:
+ - `z00`   : array of size `p.K + p.K * p.J` with random values
+"""
+function random_init(p::L96m)
+  z00 = Array{Float64}(undef, p.K + p.K * p.J)
+
+  z00[1:p.K] .= rand(p.K) * 15 .- 5
+  for k_ in 1:p.K
+    z00[p.K+1 + (k_-1)*p.J : p.K + k_*p.J] .= z00[k_]
+  end
+
+  return z00
 end
 
 
