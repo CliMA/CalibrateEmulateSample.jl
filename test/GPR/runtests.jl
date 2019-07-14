@@ -11,6 +11,7 @@ const rbf_mean = NPZ.npzread(joinpath(data_dir, "rbf_mean.npy"))
 const rbf_std = NPZ.npzread(joinpath(data_dir, "rbf_std.npy"))
 const matern_def_mean = NPZ.npzread(joinpath(data_dir, "matern_def_mean.npy"))
 const matern_def_std = NPZ.npzread(joinpath(data_dir, "matern_def_std.npy"))
+const matern_05_mesh = NPZ.npzread(joinpath(data_dir, "matern_05_mesh.npy"))
 const matern_05_mean = NPZ.npzread(joinpath(data_dir, "matern_05_mean.npy"))
 const matern_05_std = NPZ.npzread(joinpath(data_dir, "matern_05_std.npy"))
 
@@ -90,7 +91,13 @@ thrsh = gprw.thrsh
   ypred = GPR.predict(gprw, xmesh)
   @test isapprox(ytrue, ypred, atol=1e-5, norm=inf_norm)
 
+  mesh_, mean_, std_ = GPR.mmstd(gprw, mesh_n=101)
+  @test isapprox(mesh_, xmesh, atol=1e-8, norm=inf_norm)
+  @test isapprox(ytrue, mean_, atol=1e-5, norm=inf_norm)
+
   mean, std = GPR.predict(gprw, xmesh, return_std = true)
+  @test isapprox(mean, mean_, atol=1e-8, norm=inf_norm)
+  @test isapprox(std, std_, atol=1e-8, norm=inf_norm)
   @test ndims(mean) == 1
   @test ndims(std) == 1
   @test size(std,1) == size(mean,1)
@@ -107,9 +114,10 @@ GPR.set_data!(gprw, gpr_data)
 gprw.thrsh = -1
 @testset "non-synthetic testing" begin
   GPR.learn!(gprw)
-  mean, std = GPR.predict(gprw, gpr_mesh, return_std = true)
+  mesh, mean, std = GPR.mmstd(gprw)
   @test size(gprw.data,1) == 800
   @test size(gprw.subsample,1) == 800
+  @test isapprox(mesh, gpr_mesh, atol=1e-8, norm=inf_norm)
   @test isapprox(mean, rbf_mean, atol=1e-3, norm=inf_norm)
   @test isapprox(std, rbf_std, atol=1e-3, norm=inf_norm)
 
@@ -119,7 +127,7 @@ gprw.thrsh = -1
   @test isapprox(std, matern_def_std, atol=1e-3, norm=inf_norm)
 
   GPR.learn!(gprw, kernel = "matern", nu = 0.5)
-  mean, std = GPR.predict(gprw, gpr_mesh, return_std = true)
+  mean, std = GPR.predict(gprw, matern_05_mesh, return_std = true)
   @test isapprox(mean, matern_05_mean, atol=1e-3, norm=inf_norm)
   @test isapprox(std, matern_05_std, atol=1e-3, norm=inf_norm)
 end

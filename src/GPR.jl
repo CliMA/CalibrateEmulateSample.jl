@@ -23,6 +23,8 @@ Functions that operate on GPR.Wrap struct:
  - subsample! (3 methods)
  - learn! (1 method)
  - predict (1 method)
+ - mmstd (1 method)
+ - plot_fit (1 method)
 
 Do *not* set Wrap's variables except for `thrsh`; use setter functions!
 """
@@ -181,6 +183,144 @@ function predict(gprw::Wrap, x; return_std = false)
     return gprw.GPR.predict(reshape(x, (size(x)...,1)), return_std = return_std)
   else
     return gprw.GPR.predict(x, return_std = return_std)
+  end
+end
+
+"""
+Return mesh, mean and st. deviation over the whole data range
+
+Computes min and max of `gprw.data` x-range and returns equispaced mesh with
+`mesh_n` number of points, mean and st. deviation computed over that mesh
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - mesh_n:      number of mesh points (1001 by default)
+
+Returns:
+  - (m, m, std): mesh, mean and st. deviation
+"""
+function mmstd(gprw::Wrap; mesh_n = 1001)
+  mesh = range(minimum(gprw.data, dims=1)[1],
+               maximum(gprw.data, dims=1)[1],
+               length = mesh_n)
+  return (mesh, predict(gprw, mesh, return_std = true)...)
+end
+
+"""
+Plot mean (and 95% interval) along with data and subsample
+
+The flag `plot_95` controls whether to plot 95% interval; `label` may provide
+labels in the following order:
+  data points, subsample, GP mean, 95% interval (if requested)
+
+If you're using Plots.jl and running it from a file rather than REPL, you need
+to wrap the call:
+`display(GPR.plot_fit(gprw, Plots))`
+
+Parameters:
+  - gprw:        an instance of GPR.Wrap
+  - plt:         a module used for plotting (only PyPlot & Plots supported)
+  - plot_95:     boolean flag, whether to plot 95% confidence interval
+  - label:       a 3- or 4-tuple or vector of strings (no label by default)
+"""
+function plot_fit(gprw::Wrap, plt; plot_95 = false, label = nothing)
+  if !gprw.__data_set
+    println(warn("plot_fit"), "data is not set, nothing to plot")
+    return
+  end
+  is_pyplot = (Symbol(plt) == :PyPlot)
+  is_plots = (Symbol(plt) == :Plots)
+  if !is_pyplot && !is_plots
+    println(warn("plot_fit"), "only PyPlot & Plots are supported; not plotting")
+    return
+  end
+
+  # set `cols` Dict with colors of the plots
+  alpha_95 = 0.3 # alpha channel for shaded region, i.e. 95% interval
+  cols = Dict{String, Any}()
+  cols["mean"] = "black"
+  if is_pyplot
+    cols["data"] = "tab:gray"
+    cols["sub"] = "tab:red"
+    cols["shade"] = (0, 0, 0, alpha_95)
+  elseif is_plots
+    cols["data"] = "#7f7f7f" # tab10 gray
+    cols["sub"] = "#d62728" # tab10 red
+  end
+
+  # set keyword argument dictionaries for plotting functions
+  kwargs_data = Dict{Symbol, Any}()
+  kwargs_sub  = Dict{Symbol, Any}()
+  kwargs_mean = Dict{Symbol, Any}()
+  kwargs_95   = Dict{Symbol, Any}()
+  kwargs_aux  = Dict{Symbol, Any}()
+
+  kwargs_data[:color]   = cols["data"]
+  kwargs_sub[:color]    = cols["sub"]
+  kwargs_mean[:color]   = cols["mean"]
+  kwargs_mean[:lw]      = 2.5
+  if is_pyplot
+    kwargs_data[:ms]      = 4
+    kwargs_sub[:ms]       = 4
+    kwargs_95[:facecolor] = cols["shade"]
+    kwargs_95[:edgecolor] = cols["mean"]
+    kwargs_95[:lw]        = 0.5
+    kwargs_95[:zorder]    = 10
+  elseif is_plots
+    kwargs_data[:ms]      = 2
+    kwargs_sub[:ms]       = 2
+    kwargs_95[:color]     = cols["mean"]
+    kwargs_95[:fillalpha] = alpha_95
+    kwargs_95[:lw]        = 2.5
+    kwargs_95[:z]         = 10
+    kwargs_aux[:color]    = cols["mean"]
+    kwargs_aux[:lw]       = 0.5
+    kwargs_aux[:label]    = ""
+  end
+
+  if label != nothing
+    kwargs_data[:label] = label[1]
+    kwargs_sub[:label]  = label[2]
+    kwargs_mean[:label] = label[3]
+    if is_pyplot
+      kwargs_95[:label] = label[4]
+    elseif is_plots
+      kwargs_95[:label] = label[3]
+    end
+  elseif is_plots
+    kwargs_data[:label] = ""
+    kwargs_sub[:label]  = ""
+    kwargs_mean[:label] = ""
+    kwargs_95[:label]   = ""
+  end
+
+
+  mesh, mean, std = mmstd(gprw)
+
+  # plot data, subsample and mean
+  if is_pyplot
+    plt.plot(gprw.data[:,1],      gprw.data[:,2], ".";      kwargs_data...)
+    plt.plot(gprw.subsample[:,1], gprw.subsample[:,2], "."; kwargs_sub...)
+    if plot_95
+      plt.fill_between(mesh,
+                       mean - 1.96 * std,
+                       mean + 1.96 * std;
+                       kwargs_95...)
+    end
+    plt.plot(mesh, mean; kwargs_mean...)
+  elseif is_plots
+    plt.scatter!(gprw.data[:,1],      gprw.data[:,2];      kwargs_data...)
+    plt.scatter!(gprw.subsample[:,1], gprw.subsample[:,2]; kwargs_sub...)
+    if plot_95
+      plt.plot!(mesh,
+                mean,
+                ribbon = (1.96 * std, 1.96 * std);
+                kwargs_95...)
+      plt.plot!(mesh, mean - 1.96 * std; kwargs_aux...)
+      plt.plot!(mesh, mean + 1.96 * std; kwargs_aux...)
+    else
+      plt.plot!(mesh, mean; kwargs_mean...)
+    end
   end
 end
 

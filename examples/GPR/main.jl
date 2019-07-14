@@ -32,18 +32,21 @@ GPR.learn!(gprw) # fit GPR with "Const * RBF + White" kernel
 #GPR.learn!(gprw, kernel = "matern") # "rbf" and "matern" are supported for now
 #GPR.learn!(gprw, kernel = "matern", nu = 1) # Matern's parameter nu; 1.5 by def
 
-mesh = minimum(gpr_data, dims=1)[1] : 0.01 : maximum(gpr_data, dims=1)[1]
+mesh, mean, std = GPR.mmstd(gprw) # equispaced mesh; mean and std at mesh points
+#mesh, mean, std = GPR.mmstd(gprw, mesh_n = 11) # by default, `mesh_n` is 1001
 
-mean, std = GPR.predict(gprw, mesh, return_std = true)
+#mean, std = GPR.predict(gprw, mesh, return_std = true) # your own mesh
 #mean = GPR.predict(gprw, mesh) # `return_std` is false by default
 
 ################################################################################
 # plot section #################################################################
 ################################################################################
-plt.plot(gpr_data[:,1], gpr_data[:,2], "r.", ms = 6, label = "Data points")
-plt.plot(mesh, mean, "k", lw = 2.5, label = "GPR mean")
-plt.fill_between(mesh, mean - 2*std, mean + 2*std, alpha = 0.4, zorder = 10,
-                 color = "k", label = "95% interval")
+#GPR.plot_fit(gprw, plt, plot_95 = true) # by default, `plot_95` is false
+
+# no legend by default, but you can specify yours in the following order:
+# data points, subsample, mean, 95% interval
+GPR.plot_fit(gprw, plt, plot_95 = true,
+             label = ["Points", "Training", "Mean", "95% interval"])
 
 plt.legend()
 plt.show()
