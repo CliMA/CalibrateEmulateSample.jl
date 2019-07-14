@@ -1,11 +1,11 @@
 #!/usr/bin/julia --
 
-import DifferentialEquations
+import OrdinaryDiffEq
 import PyPlot
 import ConfParser
 import ArgParse
 
-const DE = DifferentialEquations
+const DE = OrdinaryDiffEq
 const plt = PyPlot
 const CP = ConfParser
 const AP = ArgParse

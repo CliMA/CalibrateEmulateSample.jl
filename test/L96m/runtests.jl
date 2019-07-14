@@ -1,8 +1,8 @@
 using Test
-import DifferentialEquations
+import OrdinaryDiffEq
 import NPZ
 
-const DE = DifferentialEquations
+const DE = OrdinaryDiffEq
 
 include("../../examples/L96m/L96m.jl")
 
