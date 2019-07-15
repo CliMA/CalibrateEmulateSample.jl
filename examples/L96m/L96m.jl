@@ -4,15 +4,15 @@ using Parameters # lets you have defaults for fields
 Lorenz '96 multiscale
 
 Parameters:
- - `K`   : number of slow variables
- - `J`   : number of fast variables per slow variable
- - `hx`  : coupling term (in equations for slow variables)
- - `hy`  : coupling term (in equations for fast variables)
- - `F`   : forcing term for slow variables
- - `eps` : scale separation constant
+ - K:    number of slow variables
+ - J:    number of fast variables per slow variable
+ - hx:   coupling term (in equations for slow variables)
+ - hy:   coupling term (in equations for fast variables)
+ - F:    forcing term for slow variables
+ - eps:  scale separation constant
 
 Other:
- - `G` : functional closure for slow variables (usually a GPR-closure)
+ - G:    functional closure for slow variables (usually a GPR-closure)
 """
 @with_kw mutable struct L96m
   K::Int = 9
@@ -24,18 +24,107 @@ Other:
   G = nothing
 end
 
+const L96M_DNS = UInt8(0b000001)
+const L96M_BAL = UInt8(0b000010)
+const L96M_REG = UInt8(0b000100)
+const L96M_ONL = UInt8(0b001000)
+const L96M_FLT = UInt8(0b010000)
+const L96M_FST = UInt8(0b100000)
+
+"""
+Return a L96M id based on the name
+
+Input:
+ - name:    string
+
+Output:
+ - id:      one of the UInt8 constants (L96M_DNS etc.)
+
+"""
+function l96m_id(name::String)
+  id = UInt8(0)
+  regex_name = Regex(name, "i") # case-insensitive
+  if occursin(regex_name, "dns") || occursin(regex_name, "full")
+    id = L96M_DNS
+  elseif occursin(regex_name, "bal") || occursin(regex_name, "balanced")
+    id = L96M_BAL
+  elseif occursin(regex_name, "reg") || occursin(regex_name, "regressed")
+    id = L96M_REG
+  elseif occursin(regex_name, "onl") || occursin(regex_name, "online")
+    id = L96M_ONL
+  elseif occursin(regex_name, "flt") || occursin(regex_name, "filtered")
+    id = L96M_FLT
+  elseif occursin(regex_name, "fst") || occursin(regex_name, "fast")
+    id = L96M_FST
+  end
+  return id
+end
+
+"""
+Return a L96M plotting color based on the id
+
+Input:
+ - id:      one of the UInt8 constants (L96M_DNS etc.)
+
+Output:
+ - color:   string, either name of a color or its hex value
+
+"""
+function l96m_color(id::UInt8)
+  color = "black"
+  if id == L96M_DNS
+    color = "tab:blue"
+  elseif id == L96M_BAL
+    color = "tab:orange"
+  elseif id == L96M_REG
+    color = "tab:green"
+  elseif id == L96M_ONL
+    color = "tab:brown"
+  elseif id == L96M_FLT
+    color = "tab:olive"
+  elseif id == L96M_FST
+    color = "tab:gray"
+  else
+    println("WARNING (l96m_color): id not recognized")
+  end
+  return color
+end
+
+"""
+Plot timeseries of a solution
+
+Input:
+ - p:       parameters (L96m struct)
+ - plt:     a module used for plotting (currently has to be PyPlot)
+ - sol:     solution timeseries (ODESolution) with time steps in row direction
+ - k:       integer in [1, p.K]; slow variable to plot
+ - label:   string
+ - j:       integer in [1, p.J]; fast variable to plot (if requested)
+ - fast:    boolean flag; whether to plot fast variable (only in DNS case)
+
+"""
+function plot_solution(p::L96m, plt, sol; k, label::String, j = 1, fast = false)
+  id = l96m_id(label)
+  color = l96m_color(id)
+  plt.plot(sol.t, sol[k, : ], label = label, color = color)
+  if id == L96M_DNS && fast
+    plt.plot(sol.t, sol[p.K + (k-1)*p.J + j, : ],
+             lw = 0.6, alpha = 0.6, color = l96m_color(L96M_FST))
+  end
+end
+
 """
 Compute full RHS of the Lorenz '96 multiscale system.
 The convention is that the first K variables are slow, while the rest K*J
 variables are fast.
 
 Input:
- - `z`   : vector of size (K + K*J)
- - `p`   : parameters (L96m struct)
- - `t`   : time (not used here since L96m is autonomous)
+ - z:    vector of size (K + K*J)
+ - p:    parameters (L96m struct)
+ - t:    time (not used here since L96m is autonomous)
 
 Output:
- - `rhs` : RHS computed at `z`
+ - rhs:  RHS computed at `z`
 
 """
 function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
@@ -88,12 +177,12 @@ variables with the linear closure.
 Both `rhs` and `x` are vectors of size p.K.
 
 Input:
- - `x`   : vector of size K
- - `p`   : parameters (L96m struct)
- - `t`   : time (not used here since L96m is autonomous)
+ - x:    vector of size K
+ - p:    parameters (L96m struct)
+ - t:    time (not used here since L96m is autonomous)
 
 Output:
- - `rhs` : balanced RHS computed at `x`
+ - rhs:  balanced RHS computed at `x`
 
 """
 function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
@@ -120,12 +209,12 @@ Closure is taken from p.G.
 Both `rhs` and `x` are vectors of size p.K.
 
 Input:
- - `x`   : vector of size K
- - `p`   : parameters (L96m struct)
- - `t`   : time (not used here since L96m is autonomous)
+ - x:    vector of size K
+ - p:    parameters (L96m struct)
+ - t:    time (not used here since L96m is autonomous)
 
 Output:
- - `rhs` : regressed RHS computed at `x`
+ - rhs:  regressed RHS computed at `x`
 
 """
 function regressed(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
@@ -181,12 +270,12 @@ end
 Gather (xk, Yk) pairs that are further used to train a GP regressor
 
 Input:
- - `p`     : parameters (L96m struct)
- - `sol`   : time series of a solution; time steps are in the 2nd dimension
+ - p:      parameters (L96m struct)
+ - sol:    time series of a solution; time steps are in the 2nd dimension
              (usually, just `sol` output from a time-stepper)
 
 Output:
- - `pairs` : a 2-d array of size (N, 2) containing (xk, Yk) pairs, where N is
+ - pairs:  a 2-d array of size (N, 2) containing (xk, Yk) pairs, where N is
              the 2nd dimension in `sol` (number of time steps)
 
 """
@@ -212,10 +301,11 @@ For example, if K == 2 and J = 3, the returned array will be
   [ rand1, rand2, rand1, rand1, rand1, rand2, rand2, rand2 ]
 
 Input:
- - `p`     : parameters (L96m struct)
+ - p:      parameters (L96m struct)
 
 Output:
- - `z00`   : array of size `p.K + p.K * p.J` with random values
+ - z00:    array of size `p.K + p.K * p.J` with random values
+
 """
 function random_init(p::L96m)
   z00 = Array{Float64}(undef, p.K + p.K * p.J)

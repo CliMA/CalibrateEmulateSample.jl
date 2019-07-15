@@ -259,19 +259,17 @@ end
 ################################################################################
 # plot DNS
 if run_dns
-  plt.plot(sol_dns.t, sol_dns[k,:], label = "DNS")
-  plt.plot(sol_dns.t, sol_dns[l96.K + (k-1)*l96.J + j,:],
-           lw = 0.6, alpha = 0.6, color="gray")
+  plot_solution(l96, plt, sol_dns, k = k, label = "DNS")
 end
 
 # plot balanced
 if run_bal
-  plt.plot(sol_bal.t, sol_bal[k,:], label = "balanced")
+  plot_solution(l96, plt, sol_bal, k = k, label = "balanced")
 end
 
 # plot regressed
 if run_reg
-  plt.plot(sol_reg.t, sol_reg[k,:], label = "regressed")
+  plot_solution(l96, plt, sol_reg, k = k, label = "regressed")
 end
 
 plt.legend()
