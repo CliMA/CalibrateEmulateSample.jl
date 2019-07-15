@@ -10,6 +10,7 @@ const plt = PyPlot
 const CP = ConfParser
 const AP = ArgParse
 include("L96m.jl")
+include("../../src/GPR.jl")
 
 ################################################################################
 # function section #############################################################
@@ -146,6 +147,10 @@ const reltol = get_cfg_value(config, "integration", "reltol", 1e-3)
 const abstol = get_cfg_value(config, "integration", "abstol", 1e-6)
 
 # save/plot parameters #########################################################
+# plot_GPR     boolean, whether to run GPR.plot_fit
+push!(parameters, "plot_GPR")
+const plot_GPR = get_cfg_value(config, "plotting", "plot_GPR", false)
+
 const k = 1 # index of the slow variable to save etc.
 const j = 1 # index of the fast variable to save/plot etc.
 push!(parameters, "k", "j")
@@ -165,6 +170,7 @@ set_G0(l96) # set the linear closure (as in balanced) -- needed for compilation
 z00 = random_init(l96)
 if run_reg || run_onl
   z00_lrn = random_init(l96)
+  gprw = GPR.Wrap(thrsh = 800)
 end
 
 ################################################################################
@@ -225,6 +231,22 @@ end
 
 # regressed L96m integration
 if run_reg
+  print_morning("full, learning for regressed")
+  elapsed_lrn = @elapsed begin
+    sol_lrn = run_l96(full, z0_lrn, T_lrnreg)
+  end
+  print_night(length(sol_lrn.t), elapsed_lrn)
+  reg_pairs = gather_pairs(l96, sol_lrn)
+  GPR.set_data!(gprw, reg_pairs)
+  GPR.subsample!(gprw)
+  GPR.learn!(gprw)
+  l96.G = x -> GPR.predict(gprw, x)
+  if plot_GPR
+    GPR.plot_fit(gprw, plt, plot_95 = true,
+                 label = ("Data", "Training", "Mean", "95% interval"))
+    plt.show()
+  end
+
   print_morning("regressed")
   elapsed_reg = @elapsed begin
     sol_reg = run_l96(regressed, z0[1:l96.K], T)
