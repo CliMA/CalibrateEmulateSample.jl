@@ -89,11 +89,11 @@ thrsh = gprw.thrsh
 
   ytrue = xmesh.^2
   ypred = GPR.predict(gprw, xmesh)
-  @test isapprox(ytrue, ypred, atol=1e-5, norm=inf_norm)
+  @test isapprox(ytrue, ypred, atol=1e-4, norm=inf_norm)
 
   mesh_, mean_, std_ = GPR.mmstd(gprw, mesh_n=101)
   @test isapprox(mesh_, xmesh, atol=1e-8, norm=inf_norm)
-  @test isapprox(ytrue, mean_, atol=1e-5, norm=inf_norm)
+  @test isapprox(ypred, mean_, atol=1e-8, norm=inf_norm)
 
   mean, std = GPR.predict(gprw, xmesh, return_std = true)
   @test isapprox(mean, mean_, atol=1e-8, norm=inf_norm)
