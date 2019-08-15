@@ -1,12 +1,14 @@
 #!/usr/bin/julia --
 
 import OrdinaryDiffEq
+import ODEInterfaceDiffEq
 import PyPlot
 import ConfParser
 import ArgParse
 import NPZ
 
 const DE = OrdinaryDiffEq
+const ODE = ODEInterfaceDiffEq
 const plt = PyPlot
 const CP = ConfParser
 const AP = ArgParse
@@ -71,14 +73,25 @@ function print_night(steps::Int, elapsed::Real)
           "\t\telapsed:", lpad(elapsed, LPAD_FLOAT))
 end
 
-function run_l96(rhs, ic, T; converging = false)
+function run_l96(rhs, ic, T; converging = false, stiff = false)
   pb = DE.ODEProblem(rhs, ic, (0.0, T), l96)
+  solver_obj = if stiff && USE_STIFF
+    SOLVER_STIFF(autodiff = false)
+  else
+    SOLVER_RK()
+  end
   return DE.solve(
                   pb,
-                  SOLVER,
-                  reltol = reltol,
-                  abstol = abstol,
-                  dtmax = dtmax,
+                  solver_obj,
+                  #DE.AutoVern7(DE.Rodas5(autodiff=false),
+                  #             maxstiffstep=3,
+                  #             nonstifftol = 1//10,
+                  #             stifftol = 1//10,
+                  #             dtfac=1.0),
+                  #ODE.radau5(),
+                  reltol = RELTOL,
+                  abstol = ABSTOL,
+                  dtmax = DTMAX,
                   save_everystep = !converging
                  )
 end
@@ -120,6 +133,35 @@ const run_bal  = get_cfg_value(config, "runs", "run_bal",  true)
 const run_reg  = get_cfg_value(config, "runs", "run_reg",  true)
 const run_onl  = get_cfg_value(config, "runs", "run_onl",  true)
 
+# time-stepper parameters ######################################################
+# SOLVER_RK      time-stepper name for non-stiff integration
+# SOLVER_STIFF   time-stepper name for stiff integration
+# USE_STIFF      boolean; whether to use stiff solver at all
+# RELTOL         relative tolerance
+# ABSTOL         absolute tolerance
+# DTMAX          maximum step size
+push!(parameters, "SOLVER_RK", "SOLVER_STIFF", "USE_STIFF",
+                  "RELTOL", "ABSTOL", "DTMAX")
+
+const __SOLVER_RK = get_cfg_value(config, "solver", "SOLVER_RK", "dop853")
+const __SOLVER_STIFF = get_cfg_value(config, "solver", "SOLVER_STIFF", "Rodas5")
+const SOLVER_RK = try
+  getfield(DE, Symbol(__SOLVER_RK))
+catch
+  getfield(ODE, Symbol(__SOLVER_RK))
+end
+const SOLVER_STIFF = try
+  getfield(DE, Symbol(__SOLVER_STIFF))
+catch
+  getfield(ODE, Symbol(__SOLVER_STIFF))
+end
+const USE_STIFF = get_cfg_value(config, "solver", "USE_STIFF", false)
+const RELTOL = get_cfg_value(config, "solver", "RELTOL", 1e-3)
+const ABSTOL = get_cfg_value(config, "solver", "ABSTOL", 1e-6)
+const DTMAX  = get_cfg_value(config, "solver", "DTMAX",  1e-3)
+#const tau = 1e-3 # maximum step size for histogram statistics
+#const dt_conv = 0.01 # maximum step size for converging to attractor
+
 # integration parameters #######################################################
 # T              integration time
 # T_conv         converging integration time
@@ -132,21 +174,6 @@ const T_conv = get_cfg_value(config, "integration", "T_conv", 100.0)
 const T_lrnreg = get_cfg_value(config, "integration", "T_lrnreg", 15.0)
 const T_compile = 1e-10
 #const T_hist = 10000 # time to gather histogram statistics
-
-# time-stepper parameters ######################################################
-# SOLVER       time-stepper itself
-# dtmax        maximum step size
-# reltol       relative tolerance
-# abstol       absolute tolerance
-push!(parameters, "SOLVER", "dtmax", "reltol", "abstol")
-
-const SOLVER_STR = get_cfg_value(config, "integration", "SOLVER", "Tsit5")
-const SOLVER = getfield(DE, Symbol(SOLVER_STR))()
-const dtmax = get_cfg_value(config, "integration", "dtmax", 1e-3)
-#const tau = 1e-3 # maximum step size for histogram statistics
-#const dt_conv = 0.01 # maximum step size for converging to attractor
-const reltol = get_cfg_value(config, "integration", "reltol", 1e-3)
-const abstol = get_cfg_value(config, "integration", "abstol", 1e-6)
 
 # online parameters (if online is requested) ###################################
 # N_flt          number of filtering iterations (learning online closure)
@@ -170,15 +197,34 @@ const k = 1 # index of the slow variable to save etc.
 const j = 1 # index of the fast variable to save/plot etc.
 
 # L96 parameters ###############################################################
-const hx = -0.8
-push!(parameters, "hx")
+# K            number of slow variables
+# J            number of fast variables in one region
+# hx           coupling constant (featured in slow equation)
+# hy           coupling constant (featured in fast equation)
+# F            forcing term (featured in slow equation)
+# eps          scale separation constant
+# k0           DNS region to use in filtered integration
+push!(parameters, "K", "J", "hx", "hy", "F", "eps", "k0")
+const K   = get_cfg_value(config, "l96m", "K",  9)
+const J   = get_cfg_value(config, "l96m", "J",  8)
+const hx  = get_cfg_value(config, "l96m", "hx", -0.8)
+const hy  = get_cfg_value(config, "l96m", "hy", 1.0)
+const F   = get_cfg_value(config, "l96m", "F",  10.0)
+const eps = get_cfg_value(config, "l96m", "eps", 2^(-7))
+const k0  = get_cfg_value(config, "l96m", "k0", 1)
 
 print_var(parameters)
 
 ################################################################################
 # IC section ###################################################################
 ################################################################################
-l96 = L96m(hx = hx, J = 8)
+l96 = L96m(K = K,
+           J = J,
+           hx = hx,
+           hy = hy,
+           F = F,
+           eps = eps,
+           k0 = k0)
 set_G0(l96) # set the linear closure (as in balanced) -- needed for compilation
 
 z00 = random_init(l96)
@@ -201,6 +247,7 @@ println("\n# Main")
 print(rpad("(JIT compilation)", RPAD))
 elapsed_jit = @elapsed begin
   run_l96(full, z00, T_compile; converging = true)
+  run_l96(full, z00, T_compile; converging = true, stiff = true)
   run_l96(balanced, z00[1:l96.K], T_compile; converging = true)
   run_l96(regressed, z00[1:l96.K], T_compile; converging = true)
   run_l96(filtered, z00[1:l96.K+l96.J], T_compile; converging = true)
