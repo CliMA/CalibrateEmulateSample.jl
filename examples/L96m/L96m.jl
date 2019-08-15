@@ -32,7 +32,7 @@ const L96M_FLT = UInt8(0b010000)
 const L96M_FST = UInt8(0b100000)
 
 """
-Return a L96M id based on the name
+Return a L96m id based on the name
 
 Input:
  - name:    string
@@ -61,7 +61,7 @@ function l96m_id(name::String)
 end
 
 """
-Return a L96M plotting color based on the id
+Return a L96m plotting color based on the id
 
 Input:
  - id:      one of the UInt8 constants (L96M_DNS etc.)
@@ -73,15 +73,15 @@ Output:
 function l96m_color(id::UInt8)
   color = "black"
   if id == L96M_DNS
-    color = "tab:blue"
+    color = "#0072b2"
   elseif id == L96M_BAL
-    color = "tab:orange"
+    color = "#cc79a7"
   elseif id == L96M_REG
-    color = "tab:green"
+    color = "#009e73"
   elseif id == L96M_ONL
-    color = "tab:brown"
+    color = "#d55e00"
   elseif id == L96M_FLT
-    color = "tab:olive"
+    color = "tab:pink"
   elseif id == L96M_FST
     color = "tab:gray"
   else
@@ -114,7 +114,7 @@ function plot_solution(p::L96m, plt, sol; k, label::String, j = 1, fast = false)
 end
 
 """
-Compute full RHS of the Lorenz '96 multiscale system.
+Compute full RHS of the L96m system.
 The convention is that the first K variables are slow, while the rest K*J
 variables are fast.
 
@@ -172,9 +172,9 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
 end
 
 """
-Compute balanced RHS of the Lorenz '96 multiscale system; i.e. only slow
+Compute balanced RHS of the L96m system; i.e. only slow
 variables with the linear closure.
-Both `rhs` and `x` are vectors of size p.K.
+Both `rhs` and `x` are vectors of size `p.K`.
 
 Input:
  - x:    vector of size K
@@ -203,10 +203,10 @@ function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
 end
 
 """
-Compute slow-variable closed RHS of the Lorenz '96 Multiscale system;
+Compute slow-variable closed RHS of the L96m system;
 i.e. only slow variables with some closure instead of Yk.
-Closure is taken from p.G.
-Both `rhs` and `x` are vectors of size p.K.
+Closure is taken from `p.G`.
+Both `rhs` and `x` are vectors of size `p.K`.
 
 Input:
  - x:    vector of size K
@@ -267,15 +267,14 @@ function set_G0(p::L96m, slope::Real)
 end
 
 """
-Gather (xk, Yk) pairs that are further used to train a GP regressor
+Gather (xk, Yk) pairs that are further used to train a GPR
 
 Input:
  - p:      parameters (L96m struct)
- - sol:    time series of a solution; time steps are in the 2nd dimension
-             (usually, just `sol` output from a time-stepper)
+ - sol:    solution timeseries (ODESolution) with time steps in row direction
 
 Output:
- - pairs:  a 2-d array of size (N, 2) containing (xk, Yk) pairs, where N is
+ - pairs:  2-d array of size (p.K * N, 2) containing (xk, Yk) pairs, where N is
              the 2nd dimension in `sol` (number of time steps)
 
 """
