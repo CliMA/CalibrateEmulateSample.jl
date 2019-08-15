@@ -305,8 +305,10 @@ if run_reg
   GPR.learn!(gp_reg)
   l96.G = x -> GPR.predict(gp_reg, x)
   if plot_GPR_reg
+    plt.figure(figsize = (5, 5), dpi = 160)
     GPR.plot_fit(gp_reg, plt, plot_95 = false,
                  label = ("Data", "Training", "Mean", "95% interval"))
+    plt.legend()
     plt.show()
   end
 
@@ -381,6 +383,7 @@ end
 ################################################################################
 # plot section #################################################################
 ################################################################################
+plt.figure(figsize = (5, 3.125), dpi = 160) # 16:10 aspect ratio; 5 inches wide
 # plot DNS
 if run_dns
   plot_solution(l96, plt, sol_dns, k = k, label = "DNS")
