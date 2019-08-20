@@ -15,15 +15,17 @@ Parameters:
 Other:
  - G:    functional closure for slow variables (usually a GPR-closure)
 """
+# TODO : make immutable; implement immutable L96mClosed that inherits L96m;
+# maybe use constructors (?)
 @with_kw mutable struct L96m
-  K::Int = 9
-  J::Int = 8
-  hx::Float64 = -0.8
-  hy::Float64 = 1.0
-  F::Float64 = 10.0
-  eps::Float64 = 2^(-7)
-  k0::UInt = 1
-  G = nothing
+  K::Int
+  J::Int
+  hx::Array{Float64}
+  hy::Float64
+  F::Float64
+  eps::Float64
+  k0::UInt
+  G::Any
 end
 
 const L96M_DNS = UInt8(0b000001)
@@ -77,11 +79,11 @@ function l96m_color(id::UInt8)
   if id == L96M_DNS
     color = "#0072b2"
   elseif id == L96M_BAL
-    color = "#cc79a7"
+    color = "#d55e00"
   elseif id == L96M_REG
     color = "#009e73"
   elseif id == L96M_ONL
-    color = "#d55e00"
+    color = "#cc79a7"
   elseif id == L96M_FLT
     color = "tab:pink"
   elseif id == L96M_FST
@@ -151,7 +153,7 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   rhs[1:K] .+= p.F
 
   # add coupling w/ fast variables via averages
-  rhs[1:K] .+= p.hx * Yk
+  rhs[1:K] .+= p.hx .* Yk
 
   ### fast variables subsystem ###
   # three boundary cases
@@ -191,12 +193,13 @@ function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
   K = p.K
 
   # three boundary cases
-  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - p.hx*p.hy) * x[1]
-  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - p.hx*p.hy) * x[2]
-  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - p.hx*p.hy) * x[K]
+  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - p.hx[1]*p.hy) * x[1]
+  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - p.hx[2]*p.hy) * x[2]
+  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - p.hx[K]*p.hy) * x[K]
 
   # general case
-  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K]) - (1 - p.hx*p.hy) * x[3:K-1]
+  rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K])
+               - (1 .- p.hx[3:K-1] * p.hy) .* x[3:K-1]
 
   # add forcing
   rhs .+= p.F
@@ -234,7 +237,7 @@ function regressed(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
   rhs .+= p.F
 
   # add closure
-  rhs .+= p.hx * p.G(x)
+  rhs .+= p.hx .* p.G(x)
 
   return rhs
 end
@@ -264,9 +267,7 @@ function filtered(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
 
   ### slow variables subsystem ###
   # compute Yk0 average
-  # TODO : is it safe to use compute_Yk?
-  #Yk0 = compute_Yk(p, z)
-  Yk0 = sum(z[K+1:end]) / J
+  Yk0 = compute_Yk(p, z)
 
   # three boundary cases
   rhs[1] = -x[K]   * (x[K-1] - x[2]) - x[1]
@@ -280,11 +281,10 @@ function filtered(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   rhs[1:K] .+= p.F
 
   # add coupling w/ fast variables via average for k0
-  #rhs[p.k0] += p.hx * dropdims(Yk0, dims = 1)
-  rhs[p.k0] += p.hx * Yk0
+  rhs[p.k0] += p.hx[p.k0] * Yk0[1] # Yk0 is a 1-element 1-dimensional array
   # add coupling w/ the rest via closure
   idx_wo_k0 = [ 1:(p.k0-1); (p.k0+1):K ]
-  rhs[idx_wo_k0] .+= p.hx * p.G(x[idx_wo_k0])
+  rhs[idx_wo_k0] .+= p.hx[idx_wo_k0] .* p.G(x[idx_wo_k0])
 
   ### fast variables subsystem ###
   # three boundary cases

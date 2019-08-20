@@ -73,6 +73,13 @@ function print_night(steps::Int, elapsed::Real)
           "\t\telapsed:", lpad(elapsed, LPAD_FLOAT))
 end
 
+"""
+Compute the Gaussian PDF at points `x` with parameters `mu` and `sigma`
+"""
+function gaussian(x; mu = 0.0, sigma = 1.0)
+  return exp.(-0.5 * ( (x.-mu) / sigma ).^2) / (sigma * sqrt(2 * pi))
+end
+
 function run_l96(rhs, ic, T; converging = false, stiff = false)
   pb = DE.ODEProblem(rhs, ic, (0.0, T), l96)
   solver_obj = if stiff && USE_STIFF
@@ -190,28 +197,49 @@ end
 # save/plot parameters #########################################################
 # plot_GPR_reg     boolean; run `GPR.plot_fit` for regressed
 # plot_GPR_flt     boolean; run `GPR.plot_fit` for filtered on each iteration
+# k                index of a slow variable to plot/save
+# j                index of a fast variable to plot/save
 push!(parameters, "plot_GPR_reg", "plot_GPR_flt", "k", "j")
 const plot_GPR_reg = get_cfg_value(config, "plotting", "plot_GPR_reg", false)
 const plot_GPR_flt = get_cfg_value(config, "plotting", "plot_GPR_flt", false)
-const k = 1 # index of the slow variable to save etc.
-const j = 1 # index of the fast variable to save/plot etc.
+const k = get_cfg_value(config, "plotting", "k", 1)
+const j = get_cfg_value(config, "plotting", "j", 1)
 
 # L96 parameters ###############################################################
 # K            number of slow variables
 # J            number of fast variables in one region
-# hx           coupling constant (featured in slow equation)
-# hy           coupling constant (featured in fast equation)
-# F            forcing term (featured in slow equation)
+# hx           float; coupling constant (featured in slow equation) -- see below
+# hy           float; coupling constant (featured in fast equation)
+# F            float; forcing term (featured in slow equation)
 # eps          scale separation constant
 # k0           DNS region to use in filtered integration
-push!(parameters, "K", "J", "hx", "hy", "F", "eps", "k0")
-const K   = get_cfg_value(config, "l96m", "K",  9)
-const J   = get_cfg_value(config, "l96m", "J",  8)
-const hx  = get_cfg_value(config, "l96m", "hx", -0.8)
-const hy  = get_cfg_value(config, "l96m", "hy", 1.0)
-const F   = get_cfg_value(config, "l96m", "F",  10.0)
-const eps = get_cfg_value(config, "l96m", "eps", 2^(-7))
-const k0  = get_cfg_value(config, "l96m", "k0", 1)
+# hx_nonh      boolean; whether hx is non-homogeneous
+# hx_name      string; if hx_nonh is set, this specifies how hx is defined
+# hx_vec       vector of floats; regardless of hx_nonh, this is the real hx used
+push!(parameters, "K", "J", "hx", "hy", "F", "eps", "k0", "hx_nonh", "hx_vec")
+
+const K       = get_cfg_value(config, "l96m", "K",  9)
+const J       = get_cfg_value(config, "l96m", "J",  8)
+const hx      = get_cfg_value(config, "l96m", "hx", -0.8)
+const hy      = get_cfg_value(config, "l96m", "hy", 1.0)
+const F       = get_cfg_value(config, "l96m", "F",  10.0)
+const eps     = get_cfg_value(config, "l96m", "eps", 2^(-7))
+const k0      = get_cfg_value(config, "l96m", "k0", 1)
+const hx_nonh = get_cfg_value(config, "l96m", "hx_nonh", false)
+
+hx_vec = hx .* ones(K)
+if hx_nonh
+  push!(parameters, "hx_name")
+  const hx_name = get_cfg_value(config, "l96m", "hx_name", "gauss")
+  regex_hx_name = Regex(hx_name, "i") # case-insensitive
+  if occursin(regex_hx_name, "gauss")
+    bump = gaussian(1:K; mu = (K+1)/2) # peak in the middle
+    C = - hx / maximum(bump) # so that hx_vec is 0 in the middle
+    hx_vec += C * bump
+  else
+    println("WARNING (main): hx_name not recognized; leaving hx_vec untouched")
+  end
+end
 
 print_var(parameters)
 
@@ -220,11 +248,13 @@ print_var(parameters)
 ################################################################################
 l96 = L96m(K = K,
            J = J,
-           hx = hx,
+           hx = hx_vec,
            hy = hy,
            F = F,
            eps = eps,
-           k0 = k0)
+           k0 = k0,
+           G = nothing
+          )
 set_G0(l96) # set the linear closure (as in balanced) -- needed for compilation
 
 z00 = random_init(l96)
