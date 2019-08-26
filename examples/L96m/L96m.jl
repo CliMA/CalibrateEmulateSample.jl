@@ -47,18 +47,18 @@ Output:
 """
 function l96m_id(name::String)
   id = UInt8(0)
-  regex_name = Regex(name, "i") # case-insensitive
-  if occursin(regex_name, "dns") || occursin(regex_name, "full")
+  # r"string"i is the same as Regex("string", "i"), which means case-insensitive
+  if occursin(r"dns"i, name) || occursin(r"full"i, name)
     id = L96M_DNS
-  elseif occursin(regex_name, "bal") || occursin(regex_name, "balanced")
+  elseif occursin(r"bal"i, name)
     id = L96M_BAL
-  elseif occursin(regex_name, "reg") || occursin(regex_name, "regressed")
+  elseif occursin(r"reg"i, name)
     id = L96M_REG
-  elseif occursin(regex_name, "onl") || occursin(regex_name, "online")
+  elseif occursin(r"onl"i, name)
     id = L96M_ONL
-  elseif occursin(regex_name, "flt") || occursin(regex_name, "filtered")
+  elseif occursin(r"flt"i, name) || occursin(r"filtered"i, name)
     id = L96M_FLT
-  elseif occursin(regex_name, "fst") || occursin(regex_name, "fast")
+  elseif occursin(r"fst"i, name) || occursin(r"fast"i, name)
     id = L96M_FST
   end
   return id

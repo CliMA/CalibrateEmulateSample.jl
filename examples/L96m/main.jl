@@ -231,8 +231,7 @@ hx_vec = hx .* ones(K)
 if hx_nonh
   push!(parameters, "hx_name")
   const hx_name = get_cfg_value(config, "l96m", "hx_name", "gauss")
-  regex_hx_name = Regex(hx_name, "i") # case-insensitive
-  if occursin(regex_hx_name, "gauss")
+  if occursin(r"gauss"i, hx_name) # r"gauss"i means case-insensitive
     bump = gaussian(1:K; mu = (K+1)/2) # peak in the middle
     C = - hx / maximum(bump) # so that hx_vec is 0 in the middle
     hx_vec += C * bump
