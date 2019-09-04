@@ -2,6 +2,7 @@
 
 import OrdinaryDiffEq
 import ODEInterfaceDiffEq
+import StatsBase
 import PyPlot
 import ConfParser
 import ArgParse
@@ -9,6 +10,7 @@ import NPZ
 
 const DE = OrdinaryDiffEq
 const ODE = ODEInterfaceDiffEq
+const SB = StatsBase
 const plt = PyPlot
 const CP = ConfParser
 const AP = ArgParse
@@ -80,27 +82,38 @@ function gaussian(x; mu = 0.0, sigma = 1.0)
   return exp.(-0.5 * ( (x.-mu) / sigma ).^2) / (sigma * sqrt(2 * pi))
 end
 
-function run_l96(rhs, ic, T; converging = false, stiff = false)
+function run_l96(rhs, ic, T; converging = false, stiff = false, acf = false)
+  if converging && acf # mutually exclusive
+    println("WARNING (run_l96): 'converging' && 'acf' are true; leaving 'acf'")
+    converging = false
+  end
   pb = DE.ODEProblem(rhs, ic, (0.0, T), l96)
-  solver_obj = if stiff && USE_STIFF
+  solver = if stiff && USE_STIFF
     SOLVER_STIFF(autodiff = false)
   else
     SOLVER_RK()
   end
-  return DE.solve(
-                  pb,
-                  solver_obj,
-                  #DE.AutoVern7(DE.Rodas5(autodiff=false),
-                  #             maxstiffstep=3,
-                  #             nonstifftol = 1//10,
-                  #             stifftol = 1//10,
-                  #             dtfac=1.0),
-                  #ODE.radau5(),
-                  reltol = RELTOL,
-                  abstol = ABSTOL,
-                  dtmax = DTMAX,
-                  save_everystep = !converging
-                 )
+  #solver =
+  #DE.AutoVern7(DE.Rodas5(autodiff=false),
+  #             maxstiffstep=3,
+  #             nonstifftol = 1//10,
+  #             stifftol = 1//10,
+  #             dtfac=1.0)
+  #ODE.radau5()
+  kwargs = Dict{Symbol, Any}()
+  kwargs[:reltol]          = RELTOL
+  kwargs[:abstol]          = ABSTOL
+  kwargs[:save_everystep]  = !converging
+  if acf
+    kwargs[:saveat]        = DTMAX
+  else
+    kwargs[:dtmax]         = DTMAX
+  end
+  return DE.solve(pb, solver; kwargs...)
+end
+
+function autocorr_l96(sol)
+  return ( SB.autocor(sol'[1:end,1:end], 0 : size(sol, 2) - 1) )'
 end
 
 ################################################################################
@@ -132,13 +145,22 @@ parameters = String[]
 # run_bal        balanced, naive closure; only slow variables
 # run_reg        regressed, GPR closure; only slow variables
 # run_onl        online, GPR closure learned iteratively; only slow variables
-push!(parameters, "run_conv", "run_dns", "run_bal", "run_reg", "run_onl")
+# run_acf_dns    DNS ACF
+# run_acf_bal    balanced ACF
+# run_acf_reg    regressed ACF
+# run_acf_onl    online ACF
+push!(parameters, "run_conv", "run_dns", "run_bal", "run_reg", "run_onl",
+                  "run_acf_dns", "run_acf_bal", "run_acf_reg", "run_acf_onl")
 
 const run_conv = get_cfg_value(config, "runs", "run_conv", true)
 const run_dns  = get_cfg_value(config, "runs", "run_dns",  true)
 const run_bal  = get_cfg_value(config, "runs", "run_bal",  true)
 const run_reg  = get_cfg_value(config, "runs", "run_reg",  true)
 const run_onl  = get_cfg_value(config, "runs", "run_onl",  true)
+const run_acf_dns  = get_cfg_value(config, "runs", "run_acf_dns",  true)
+const run_acf_bal  = get_cfg_value(config, "runs", "run_acf_bal",  true)
+const run_acf_reg  = get_cfg_value(config, "runs", "run_acf_reg",  true)
+const run_acf_onl  = get_cfg_value(config, "runs", "run_acf_onl",  true)
 
 # time-stepper parameters ######################################################
 # SOLVER_RK      time-stepper name for non-stiff integration
@@ -185,7 +207,7 @@ const T_compile = 1e-10
 # online parameters (if online is requested) ###################################
 # N_flt          number of filtering iterations (learning online closure)
 # T_flt[n]       integration time of each filtering chunk, n = 1,..,N_flt
-if run_onl
+if run_onl || run_acf_onl
   push!(parameters, "N_flt", "T_flt")
   const N_flt = get_cfg_value(config, "online", "N_flt", 3)
   const T_flt = Array{Float64}(undef, 0)
@@ -257,13 +279,13 @@ l96 = L96m(K = K,
 set_G0(l96) # set the linear closure (as in balanced) -- needed for compilation
 
 z00 = random_init(l96)
-if run_reg || run_onl
+if run_reg || run_onl || run_acf_reg || run_acf_onl
   z00_lrn = random_init2(l96)
 end
-if run_reg
+if run_reg || run_acf_reg
   gp_reg = GPR.Wrap(thrsh = 500)
 end
-if run_onl
+if run_onl || run_acf_onl
   gp_flt = GPR.Wrap(thrsh = 500)
 end
 
@@ -285,10 +307,10 @@ println(" " ^ (LPAD_INTEGER + 6),
         "\t\telapsed:", lpad(elapsed_jit, LPAD_FLOAT))
 
 # full L96m integration (converging for learning runs)
-if run_reg || run_onl
+if run_reg || run_onl || run_acf_reg || run_acf_onl
   print_morning("full, learning, converging")
   elapsed_lrncv = @elapsed begin
-    sol_lrncv = run_l96(full, z00_lrn, T_conv, converging = true)
+    sol_lrncv = run_l96(full, z00_lrn, T_conv; converging = true)
   end
   print_night(length(sol_lrncv.t), elapsed_lrncv)
   z0_lrn = sol_lrncv[:,end]
@@ -298,32 +320,32 @@ end
 if run_conv
   print_morning("full, converging")
   elapsed_conv = @elapsed begin
-    sol_conv = run_l96(full, z00, T_conv, converging = true)
+    sol_conv = run_l96(full, z00, T_conv; converging = true)
   end
   print_night(length(sol_conv.t), elapsed_conv)
   z0 = sol_conv[:,end]
 end
 
 # full L96m integration
-if run_dns
-  print_morning("full")
+if run_dns || run_acf_dns
+  print_morning("full" * (", ACF" ^ run_acf_dns))
   elapsed_dns = @elapsed begin
-    sol_dns = run_l96(full, z0, T)
+    sol_dns = run_l96(full, z0, T; acf = run_acf_dns)
   end
   print_night(length(sol_dns.t), elapsed_dns)
 end
 
 # balanced L96m integration
-if run_bal
-  print_morning("balanced")
+if run_bal || run_acf_bal
+  print_morning("balanced" * (", ACF" ^ run_acf_bal))
   elapsed_bal = @elapsed begin
-    sol_bal = run_l96(balanced, z0[1:l96.K], T)
+    sol_bal = run_l96(balanced, z0[1:l96.K], T; acf = run_acf_bal)
   end
   print_night(length(sol_bal.t), elapsed_bal)
 end
 
 # regressed L96m integration
-if run_reg
+if run_reg || run_acf_reg
   print_morning("full, learning for regressed")
   elapsed_lrn = @elapsed begin
     sol_lrn = run_l96(full, z0_lrn, T_lrnreg)
@@ -341,15 +363,15 @@ if run_reg
     plt.show()
   end
 
-  print_morning("regressed")
+  print_morning("regressed" * (", ACF" ^ run_acf_reg))
   elapsed_reg = @elapsed begin
-    sol_reg = run_l96(regressed, z0[1:l96.K], T)
+    sol_reg = run_l96(regressed, z0[1:l96.K], T; acf = run_acf_reg)
   end
   print_night(length(sol_reg.t), elapsed_reg)
 end
 
 # filtered + online L96m integration
-if run_onl
+if run_onl || run_acf_onl
   idx_flt = [ 1:l96.K; (l96.K + 1 + (l96.k0 - 1)*l96.J):(l96.K + l96.k0*l96.J) ]
   z0_flt = z0_lrn[idx_flt]
   #=
@@ -402,9 +424,9 @@ if run_onl
     end
   end
 
-  print_morning("online")
+  print_morning("online" * (", ACF" ^ run_acf_onl))
   elapsed_onl = @elapsed begin
-    sol_onl = run_l96(regressed, z0[1:l96.K], T)
+    sol_onl = run_l96(regressed, z0[1:l96.K], T; acf = run_acf_onl)
   end
   print_night(length(sol_onl.t), elapsed_onl)
 end
@@ -412,25 +434,61 @@ end
 ################################################################################
 # plot section #################################################################
 ################################################################################
-plt.figure(figsize = (5, 3.125), dpi = 160) # 16:10 aspect ratio; 5 inches wide
+
+# plotting trajectories ########################################################
+if run_dns || run_bal || run_reg || run_onl
+  plt.figure(figsize = (5, 3.125), dpi = 160) # 16:10 aspect ratio; 5-inch wide
+end
 # plot DNS
 if run_dns
-  plot_solution(l96, plt, sol_dns, k = k, label = "DNS")
+  plot_solution(l96, plt, sol_dns; k = k, label = "DNS")
 end
 
 # plot balanced
 if run_bal
-  plot_solution(l96, plt, sol_bal, k = k, label = "balanced")
+  plot_solution(l96, plt, sol_bal; k = k, label = "balanced")
 end
 
 # plot regressed
 if run_reg
-  plot_solution(l96, plt, sol_reg, k = k, label = "regressed")
+  plot_solution(l96, plt, sol_reg; k = k, label = "regressed")
 end
 
 # plot online
 if run_onl
-  plot_solution(l96, plt, sol_onl, k = k, label = "online")
+  plot_solution(l96, plt, sol_onl; k = k, label = "online")
+end
+
+plt.legend()
+plt.show()
+
+# plotting ACFs ################################################################
+if run_acf_dns || run_acf_bal || run_acf_reg || run_acf_onl
+  plt.figure(figsize = (5, 3.125), dpi = 160)
+end
+
+# plot DNS ACF
+if run_acf_dns
+  plot_solution(l96, plt, autocorr_l96(sol_dns);
+                k = k, label = "DNS ACF", acf = true)
+end
+
+# plot balanced ACF
+if run_acf_bal
+  plot_solution(l96, plt, autocorr_l96(sol_bal);
+                k = k, label = "balanced ACF", acf = true)
+end
+
+# plot regressed ACF
+if run_acf_reg
+  plot_solution(l96, plt, autocorr_l96(sol_reg);
+                k = k, label = "regressed ACF", acf = true)
+end
+
+# plot online ACF
+if run_acf_onl
+  plot_solution(l96, plt, autocorr_l96(sol_onl);
+                k = k, label = "online ACF", acf = true)
 end
 
 plt.legend()
