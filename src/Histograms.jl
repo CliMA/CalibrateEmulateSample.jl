@@ -3,11 +3,13 @@ module Histograms
 This module is mostly a convenient wrapper of Python functions (numpy, scipy).
 
 Functions in this module:
- - wasserstein (2 methods)
+ - W1 (2 methods)
 
 """
 
 import PyCall
+include("ConvenienceFunctions.jl")
+
 scsta = PyCall.pyimport("scipy.stats")
 
 ################################################################################
@@ -22,9 +24,9 @@ Parameters:
   - normalize:     boolean; whether to normalize the distance by 1/(max-min)
 
 Returns:
-  - w1:            number; the Wasserstein-1 distance
+  - w1_uv:         number; the Wasserstein-1 distance
 """
-function wasserstein(u_samples::AbstractVector, v_samples::AbstractVector;
+function W1(u_samples::AbstractVector, v_samples::AbstractVector;
                      normalize = true)
   L = maximum([u_samples; v_samples]) - minimum([u_samples; v_samples])
   return if !normalize
@@ -51,27 +53,26 @@ of the two (minimum number of rows) will be taken.
 computed for each pair (u_j, v_j) individually.
 
 Returns:
-  - w1:            array-like; the pairwise Wasserstein-1 distances:
+  - w1_UV:         array-like; the pairwise Wasserstein-1 distances:
                    w1(u1, v1)
                    w1(u2, v2)
                    ...
                    w1(u_K, v_K)
 """
-function wasserstein(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
+function W1(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
                      normalize = true)
   if size(U_samples, 1) != size(V_samples, 1)
-    println(warn("wasserstein"), "sizes of U_samples & V_samples don't match; ",
+    println(warn("W1"), "sizes of U_samples & V_samples don't match; ",
             "will use the minimum of the two")
   end
   K = min(size(U_samples, 1), size(V_samples, 1))
-  w1 = zeros(K)
+  w1_UV = zeros(K)
   U_sorted = sort(U_samples[1:K, 1:end], dims = 2)
   V_sorted = sort(V_samples[1:K, 1:end], dims = 2)
   for k in 1:K
-    w1[k] = wasserstein(U_sorted[k, 1:end], V_sorted[k, 1:end];
-                        normalize = normalize)
+    w1_UV[k] = W1(U_sorted[k, 1:end], V_sorted[k, 1:end]; normalize = normalize)
   end
-  return w1
+  return w1_UV
 end
 
 end # module
