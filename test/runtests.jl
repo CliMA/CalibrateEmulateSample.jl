@@ -6,6 +6,8 @@ include("neki.jl")
 
 for submodule in ["L96m",
                   "GPR",
+                  "Histograms",
+                  "ConvenienceFunctions",
                  ]
 
   println("Starting tests for $submodule")
