@@ -9,6 +9,8 @@ using Parameters # lets you have defaults for fields
 using EllipsisNotation # adds '..' to refer to the rest of array
 import ScikitLearn
 import StatsBase
+include("ConvenienceFunctions.jl")
+
 const sklearn = ScikitLearn
 
 sklearn.@sk_import gaussian_process : GaussianProcessRegressor
@@ -322,19 +324,6 @@ function plot_fit(gprw::Wrap, plt; plot_95 = false, label = nothing)
       plt.plot!(mesh, mean; kwargs_mean...)
     end
   end
-end
-
-################################################################################
-# convenience functions ########################################################
-################################################################################
-const RPAD = 25
-
-function name(name::AbstractString)
-  return rpad(name * ":", RPAD)
-end
-
-function warn(name::AbstractString)
-  return rpad("WARNING (" * name * "):", RPAD)
 end
 
 end # module
