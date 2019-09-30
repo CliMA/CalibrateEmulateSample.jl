@@ -28,8 +28,8 @@ const w1_bal_onl_comb   = 0.8529846357976019
   arr2 = [1, 1, 2, 2, 3, 3, 4, 4, 4]
   @test Hgm.W1(arr1, arr2; normalize = false) == 0.25
   @test Hgm.W1(arr2, arr1; normalize = false) == 0.25
-  @test Hgm.W1(arr1, arr2; normalize = true) ==
-        Hgm.W1(arr2, arr1; normalize = true)
+  @test Hgm.W1([arr1; 5], arr2; normalize = true) ==
+        Hgm.W1(arr2, [arr1; 5]; normalize = true)
 
   @test isapprox(Hgm.W1(x1_dns, x1_bal), w1_dns_bal)
   @test isapprox(Hgm.W1(x1_dns, x1_onl), w1_dns_onl)
