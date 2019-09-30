@@ -106,6 +106,7 @@ function run_l96(rhs, ic, T; converging = false, stiff = false, acf = false)
   kwargs[:save_everystep]  = !converging
   if acf
     kwargs[:saveat]        = DTMAX
+    kwargs[:save_everystep]= false
   else
     kwargs[:dtmax]         = DTMAX
   end
@@ -231,14 +232,18 @@ const j = get_cfg_value(config, "plotting", "j", 1)
 # K            number of slow variables
 # J            number of fast variables in one region
 # hx           float; coupling constant (featured in slow equation) -- see below
-# hy           float; coupling constant (featured in fast equation)
+# hy           float; coupling constant (featured in fast equation) -- see below
 # F            float; forcing term (featured in slow equation)
 # eps          scale separation constant
 # k0           DNS region to use in filtered integration
 # hx_nonh      boolean; whether hx is non-homogeneous
 # hx_name      string; if hx_nonh is set, this specifies how hx is defined
 # hx_vec       vector of floats; regardless of hx_nonh, this is the real hx used
-push!(parameters, "K", "J", "hx", "hy", "F", "eps", "k0", "hx_nonh", "hx_vec")
+# hy_nonh      boolean; whether hy is non-homogeneous
+# hy_name      string; if hy_nonh is set, this specifies how hy is defined
+# hy_vec       vector of floats; regardless of hy_nonh, this is the real hy used
+push!(parameters, "K", "J", "hx", "hy", "F", "eps", "k0",
+                  "hx_nonh", "hx_vec", "hy_nonh", "hy_vec")
 
 const K       = get_cfg_value(config, "l96m", "K",  9)
 const J       = get_cfg_value(config, "l96m", "J",  8)
@@ -248,8 +253,10 @@ const F       = get_cfg_value(config, "l96m", "F",  10.0)
 const eps     = get_cfg_value(config, "l96m", "eps", 2^(-7))
 const k0      = get_cfg_value(config, "l96m", "k0", 1)
 const hx_nonh = get_cfg_value(config, "l96m", "hx_nonh", false)
+const hy_nonh = get_cfg_value(config, "l96m", "hy_nonh", false)
 
 hx_vec = hx .* ones(K)
+hy_vec = hy .* ones(K)
 if hx_nonh
   push!(parameters, "hx_name")
   const hx_name = get_cfg_value(config, "l96m", "hx_name", "gauss")
@@ -261,6 +268,17 @@ if hx_nonh
     println("WARNING (main): hx_name not recognized; leaving hx_vec untouched")
   end
 end
+if hy_nonh
+  push!(parameters, "hy_name")
+  const hy_name = get_cfg_value(config, "l96m", "hy_name", "gauss")
+  if occursin(r"gauss"i, hy_name) # r"gauss"i means case-insensitive
+    bump = gaussian(1:K; mu = (K+1)/2) # peak in the middle
+    C = - hy / maximum(bump) # so that hy_vec is 0 in the middle
+    hy_vec += C * bump
+  else
+    println("WARNING (main): hy_name not recognized; leaving hy_vec untouched")
+  end
+end
 
 print_var(parameters)
 
@@ -270,7 +288,7 @@ print_var(parameters)
 l96 = L96m(K = K,
            J = J,
            hx = hx_vec,
-           hy = hy,
+           hy = hy_vec,
            F = F,
            eps = eps,
            k0 = k0,
@@ -441,7 +459,7 @@ if run_dns || run_bal || run_reg || run_onl
 end
 # plot DNS
 if run_dns
-  plot_solution(l96, plt, sol_dns; k = k, label = "DNS")
+  plot_solution(l96, plt, sol_dns; k = k, j = j, fast = true, label = "DNS")
 end
 
 # plot balanced

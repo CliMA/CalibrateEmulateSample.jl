@@ -21,7 +21,7 @@ Other:
   K::Int
   J::Int
   hx::Array{Float64}
-  hy::Float64
+  hy::Array{Float64}
   F::Float64
   eps::Float64
   k0::UInt
@@ -176,7 +176,7 @@ function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
 
   # add coupling w/ slow variables
   for k in 1:K
-    rhs[K+1 + (k-1)*J : K + k*J] .+= p.hy * x[k]
+    rhs[K+1 + (k-1)*J : K + k*J] .+= p.hy[k] * x[k]
   end
 
   # divide by epsilon
@@ -203,13 +203,13 @@ function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
   K = p.K
 
   # three boundary cases
-  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - p.hx[1]*p.hy) * x[1]
-  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - p.hx[2]*p.hy) * x[2]
-  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - p.hx[K]*p.hy) * x[K]
+  rhs[1] = -x[K]   * (x[K-1] - x[2]) - (1 - p.hx[1]*p.hy[1]) * x[1]
+  rhs[2] = -x[1]   * (x[K]   - x[3]) - (1 - p.hx[2]*p.hy[2]) * x[2]
+  rhs[K] = -x[K-1] * (x[K-2] - x[1]) - (1 - p.hx[K]*p.hy[K]) * x[K]
 
   # general case
   rhs[3:K-1] = -x[2:K-2] .* (x[1:K-3] - x[4:K])
-               - (1 .- p.hx[3:K-1] * p.hy) .* x[3:K-1]
+               - (1 .- p.hx[3:K-1] .* p.hy[3:K-1]) .* x[3:K-1]
 
   # add forcing
   rhs .+= p.F
@@ -294,7 +294,7 @@ function filtered(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   rhs[p.k0] += p.hx[p.k0] * Yk0[1] # Yk0 is a 1-element 1-dimensional array
   # add coupling w/ the rest via closure
   idx_wo_k0 = [ 1:(p.k0-1); (p.k0+1):K ]
-  rhs[idx_wo_k0] .+= p.hx[idx_wo_k0] .* p.G(x[idx_wo_k0])
+  rhs[idx_wo_k0] .+= p.hx[idx_wo_k0] .* p.G(x)[idx_wo_k0]
 
   ### fast variables subsystem ###
   # three boundary cases
@@ -306,7 +306,7 @@ function filtered(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
   rhs[K+2:end-2] = -y[3:end-1] .* (y[4:end] - y[1:end-3]) - y[2:end-2]
 
   # add coupling w/ the k0 slow variable
-  rhs[K+1:end] .+= p.hy * x[p.k0]
+  rhs[K+1:end] .+= p.hy[p.k0] * x[p.k0]
 
   # divide by epsilon
   rhs[K+1:end] ./= p.eps
@@ -334,7 +334,7 @@ function set_G0(p::L96m; slope = nothing)
   if (slope == nothing) || (!isa(slope, Real))
     slope = p.hy
   end
-  p.G = x -> slope * x
+  p.G = x -> slope .* x
 end
 
 """
