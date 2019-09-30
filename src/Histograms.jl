@@ -193,11 +193,13 @@ Returns:
   - w1_uv:         number; the Wasserstein-1 distance
 """
 function W1(u_samples::AbstractVector, v_samples::AbstractVector;
-                     normalize = true)
-  L = maximum([u_samples; v_samples]) - minimum([u_samples; v_samples])
+                     normalize = false)
   return if !normalize
     scsta.wasserstein_distance(u_samples, v_samples)
   else
+    u_m, u_M = extrema(u_samples)
+    v_m, v_M = extrema(v_samples)
+    L = max(u_M, v_M) - min(u_m, v_m)
     scsta.wasserstein_distance(u_samples, v_samples) / L
   end
 end
@@ -226,7 +228,7 @@ of the two (minimum number of rows) will be taken.
 computed for each pair (u_j, v_j) individually.
 """
 function W1(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
-                     normalize = true)
+                     normalize = false)
   if size(U_samples, 1) != size(V_samples, 1)
     println(warn("W1"), "sizes of U_samples & V_samples don't match; ",
             "will use the minimum of the two")
@@ -241,10 +243,10 @@ function W1(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
   return w1_UV
 end
 
-W1(U_samples::AbstractMatrix, v_samples::AbstractVector; normalize = true) =
+W1(U_samples::AbstractMatrix, v_samples::AbstractVector; normalize = false) =
   W1(vec(U_samples), v_samples; normalize = normalize)
 
-W1(u_samples::AbstractVector, V_samples::AbstractMatrix; normalize = true) =
+W1(u_samples::AbstractVector, V_samples::AbstractMatrix; normalize = false) =
   W1(u_samples, vec(V_samples); normalize = normalize)
 
 """
