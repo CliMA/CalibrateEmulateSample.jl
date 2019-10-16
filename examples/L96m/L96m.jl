@@ -107,18 +107,25 @@ Input:
  - fast:    boolean flag; whether to plot fast variable (only in DNS case)
 
 """
-function plot_solution(p::L96m, plt, sol;
+function plot_solution(p::L96m, plt, sol, T_plot::Real = Inf;
                        k, label::String, j = 1, fast = false, acf = false)
   id = l96m_id(label)
   color = l96m_color(id)
   if !acf
-    plt.plot(sol.t, sol[k, : ], label = label, color = color)
+    N = findfirst(sol.t .>= T_plot) # findfirst may return nothing
+    if N == nothing
+      N = length(sol.t)
+    end
+  end
+
+  if !acf
+    plt.plot(sol.t[1:N], sol[k,1:N], label = label, color = color)
   else
     plt.plot(sol[k, : ], label = label, color = color)
   end
   if id == L96M_DNS && fast
     if !acf
-      plt.plot(sol.t, sol[p.K + (k-1)*p.J + j, : ],
+      plt.plot(sol.t[1:N], sol[p.K + (k-1)*p.J + j,1:N],
                lw = 0.6, alpha = 0.6, color = l96m_color(L96M_FST))
     else
       plt.plot(sol[p.K + (k-1)*p.J + j, : ],

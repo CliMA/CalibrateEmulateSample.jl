@@ -113,8 +113,12 @@ function run_l96(rhs, ic, T; converging = false, stiff = false, acf = false)
   return DE.solve(pb, solver; kwargs...)
 end
 
-function autocorr_l96(sol)
-  return ( SB.autocor(sol'[1:end,1:end], 0 : size(sol, 2) - 1) )'
+function autocorr_l96(sol::DE.ODESolution, T_acf::Real = Inf)
+  N = findfirst(sol.t .>= T_acf) # findfirst may return nothing
+  if N == nothing
+    N = length(sol.t)
+  end
+  return ( SB.autocor(sol'[1:end,1:end], 0 : N-1) )'
 end
 
 ################################################################################
@@ -194,16 +198,20 @@ const DTMAX  = get_cfg_value(config, "solver", "DTMAX",  1e-3)
 
 # integration parameters #######################################################
 # T              integration time
+# T_acf          time used to compute autocorrelation
 # T_conv         converging integration time
 # T_lrnreg       time for gathering training data for regressed GP closure
 # T_compile      force JIT compilation
-push!(parameters, "T", "T_conv", "T_lrnreg", "T_compile")
+push!(parameters, "T", "T_acf", "T_conv", "T_lrnreg", "T_compile")
 
-const T = get_cfg_value(config, "integration", "T", 4.0)
-const T_conv = get_cfg_value(config, "integration", "T_conv", 100.0)
+const T        = get_cfg_value(config, "integration", "T", 100.0)
+const T_acf    = get_cfg_value(config, "integration", "T_acf", 8.0)
+const T_conv   = get_cfg_value(config, "integration", "T_conv", 100.0)
 const T_lrnreg = get_cfg_value(config, "integration", "T_lrnreg", 15.0)
 const T_compile = 1e-10
 #const T_hist = 10000 # time to gather histogram statistics
+
+T = max(T, T_acf) # usually T > T_acf, but if not, set T to (at least) T_acf
 
 # online parameters (if online is requested) ###################################
 # N_flt          number of filtering iterations (learning online closure)
@@ -218,15 +226,18 @@ if run_onl || run_acf_onl
 end
 
 # save/plot parameters #########################################################
+# T_plot           time used for trajectory plotting
 # plot_GPR_reg     boolean; run `GPR.plot_fit` for regressed
 # plot_GPR_flt     boolean; run `GPR.plot_fit` for filtered on each iteration
 # k                index of a slow variable to plot/save
 # j                index of a fast variable to plot/save
-push!(parameters, "plot_GPR_reg", "plot_GPR_flt", "k", "j")
+push!(parameters, "T_plot", "plot_GPR_reg", "plot_GPR_flt", "k", "j")
+
+const T_plot       = get_cfg_value(config, "plotting", "T_plot", 4.0)
 const plot_GPR_reg = get_cfg_value(config, "plotting", "plot_GPR_reg", false)
 const plot_GPR_flt = get_cfg_value(config, "plotting", "plot_GPR_flt", false)
-const k = get_cfg_value(config, "plotting", "k", 1)
-const j = get_cfg_value(config, "plotting", "j", 1)
+const k            = get_cfg_value(config, "plotting", "k", 1)
+const j            = get_cfg_value(config, "plotting", "j", 1)
 
 # L96 parameters ###############################################################
 # K            number of slow variables
@@ -459,22 +470,23 @@ if run_dns || run_bal || run_reg || run_onl
 end
 # plot DNS
 if run_dns
-  plot_solution(l96, plt, sol_dns; k = k, j = j, fast = true, label = "DNS")
+  plot_solution(l96, plt, sol_dns, T_plot;
+                k = k, j = j, fast = true, label = "DNS")
 end
 
 # plot balanced
 if run_bal
-  plot_solution(l96, plt, sol_bal; k = k, label = "balanced")
+  plot_solution(l96, plt, sol_bal, T_plot; k = k, label = "balanced")
 end
 
 # plot regressed
 if run_reg
-  plot_solution(l96, plt, sol_reg; k = k, label = "regressed")
+  plot_solution(l96, plt, sol_reg, T_plot; k = k, label = "regressed")
 end
 
 # plot online
 if run_onl
-  plot_solution(l96, plt, sol_onl; k = k, label = "online")
+  plot_solution(l96, plt, sol_onl, T_plot; k = k, label = "online")
 end
 
 plt.legend()
@@ -487,25 +499,25 @@ end
 
 # plot DNS ACF
 if run_acf_dns
-  plot_solution(l96, plt, autocorr_l96(sol_dns);
+  plot_solution(l96, plt, autocorr_l96(sol_dns, T_acf);
                 k = k, label = "DNS ACF", acf = true)
 end
 
 # plot balanced ACF
 if run_acf_bal
-  plot_solution(l96, plt, autocorr_l96(sol_bal);
+  plot_solution(l96, plt, autocorr_l96(sol_bal, T_acf);
                 k = k, label = "balanced ACF", acf = true)
 end
 
 # plot regressed ACF
 if run_acf_reg
-  plot_solution(l96, plt, autocorr_l96(sol_reg);
+  plot_solution(l96, plt, autocorr_l96(sol_reg, T_acf);
                 k = k, label = "regressed ACF", acf = true)
 end
 
 # plot online ACF
 if run_acf_onl
-  plot_solution(l96, plt, autocorr_l96(sol_onl);
+  plot_solution(l96, plt, autocorr_l96(sol_onl; T_acf);
                 k = k, label = "online ACF", acf = true)
 end
 
