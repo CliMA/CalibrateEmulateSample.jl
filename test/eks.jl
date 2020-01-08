@@ -1,8 +1,8 @@
 using Test
-using Solus
+using CalibrateEmulateSample
 using LinearAlgebra, Distributions
 
-@testset "NEKI" begin
+@testset "EKS" begin
 
     Σ = 100.0^2*Matrix{Float64}(I,2,2)
     μ = [3.0,5.0]
@@ -16,14 +16,14 @@ using LinearAlgebra, Distributions
     
     Γ = 0.1*Matrix{Float64}(I,10,10)
     
-    prob = Solus.SolusProblem(prior, f, y_obs, Solus.CovarianceSpace(Γ))
+    prob = CalibrateEmulateSample.CESProblem(prior, f, y_obs, CalibrateEmulateSample.CovarianceSpace(Γ))
 
     J = 50
     θs = [rand(2) for i in 1:J]
 
     for i = 1:20
         fθs = map(f, θs)
-        θs = Solus.neki_iter(prob, θs, fθs)
+        θs = CalibrateEmulateSample.eks_iter(prob, θs, fθs)
     end
 
     postΣ = inv(inv(Σ) + A'*inv(Γ)*A)

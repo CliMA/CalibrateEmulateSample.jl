@@ -4,9 +4,9 @@ import NPZ
 import PyPlot
 const plt = PyPlot
 
-include("../../src/GPR.jl")
+include(joinpath("..","..","src","GPR.jl"))
 
-const gpr_data = NPZ.npzread("../../test/GPR/data/data_points.npy")
+const gpr_data = NPZ.npzread(joinpath("..","..","test","GPR","data","data_points.npy"))
 
 ################################################################################
 # main section #################################################################

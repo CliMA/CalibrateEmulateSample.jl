@@ -1,8 +1,8 @@
 using Test
-using Solus
+using CalibrateEmulateSample
 ENV["JULIA_LOG_LEVEL"] = "WARN"
 
-include("neki.jl")
+include("eks.jl")
 
 for submodule in ["L96m",
                   "GPR",

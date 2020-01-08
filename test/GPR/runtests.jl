@@ -2,7 +2,7 @@ using Test
 import NPZ
 import LinearAlgebra
 
-include("../../src/GPR.jl")
+include(joinpath("..","..","src","GPR.jl"))
 
 const data_dir = joinpath(@__DIR__, "data")
 const gpr_data = NPZ.npzread(joinpath(data_dir, "data_points.npy"))

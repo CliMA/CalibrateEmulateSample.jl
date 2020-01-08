@@ -1,6 +1,6 @@
 using Test
 
-include("../../src/ConvenienceFunctions.jl")
+include(joinpath("..","..","src","ConvenienceFunctions.jl"))
 
 ################################################################################
 # unit testing #################################################################

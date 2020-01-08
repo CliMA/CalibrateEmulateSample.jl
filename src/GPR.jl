@@ -1,8 +1,10 @@
-module GPR
 """
-For the time being, please use `include("src/GPR.jl")` and not `using Solus.GPR`
+    GPR
+
+For the time being, please use `include(joinpath("src","GPR.jl"))` and not `using CalibrateEmulateSample.GPR`
 since there are precompile issues with the backend (scikit-learn)
 """
+module GPR
 
 using Parameters # lets you have defaults for fields
 

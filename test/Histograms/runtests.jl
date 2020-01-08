@@ -1,7 +1,7 @@
 using Test
 import NPZ
 
-include("../../src/Histograms.jl")
+include(joinpath("..","..","src","Histograms.jl"))
 const Hgm = Histograms
 
 const data_dir = joinpath(@__DIR__, "data")
