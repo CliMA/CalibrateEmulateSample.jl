@@ -160,7 +160,7 @@ function log_prior(mcmc::MCMCObj)
     priors = mcmc.prior
     for (param, prior_dist) in zip(mcmc.param, priors)
         if mcmc.standardized
-            aram_std = std(prior_dist)
+            param_std = std(prior_dist)
             param_mean = mean(prior_dist)
             log_rho[1] += logpdf(prior_dist, param*param_std + param_mean) # get density at current parameter value
         else
