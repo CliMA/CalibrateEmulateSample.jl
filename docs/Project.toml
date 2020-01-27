@@ -1,14 +1,10 @@
-name = "CalibrateEmulateSample"
-uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
-authors = ["Charles Kawczynski <kawczynski.charles@gmail.com>"]
-version = "0.1.0"
-
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 ConfParser = "88353bc9-fd38-507d-a820-d3b43837d6b9"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"

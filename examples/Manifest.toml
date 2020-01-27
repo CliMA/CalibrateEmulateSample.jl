@@ -538,7 +538,7 @@ git-tree-sha1 = "012661b70364840fcd380912d878d96f7bf95ff3"
 uuid = "b85f4697-e234-5449-a836-ec8e2f98b302"
 version = "1.0.10"
 
-[[Solus]]
+[[CalibrateEmulateSample]]
 deps = ["Distributions", "DocStringExtensions", "LinearAlgebra", "Statistics", "Test"]
 path = ".."
 uuid = "16b9c28e-565c-11e9-13a9-53e2645fa95d"

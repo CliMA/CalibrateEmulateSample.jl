@@ -4,7 +4,7 @@ import NPZ
 
 const DE = DifferentialEquations
 
-include("../../examples/L96m/L96m.jl")
+include(joinpath("..","..","examples","L96m","L96m.jl"))
 
 const RPAD = 25
 const LPAD_INTEGER = 7
