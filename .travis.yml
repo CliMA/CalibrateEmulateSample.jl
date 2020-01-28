@@ -1,16 +1,65 @@
-# Documentation: http://docs.travis-ci.com/user/languages/julia/
+branches:
+  only:
+    # This is where pull requests from "bors r+" are built.
+    - staging
+    # This is where pull requests from "bors try" are built.
+    - trying
+    # Enable building pull requests.
+    # - master
+
+## Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
-
-env:
-  global:
-    - PYTHON=Conda
-
+sudo: false
+dist: trusty
 os:
   - linux
   - osx
 julia:
-  - 1.0
-  - 1.1
+  - 1.2
+  - 1.3
   - nightly
 notifications:
   email: false
+
+matrix:
+  allow_failures:
+  - julia: nightly
+
+env:
+    global:
+    - PYTHON=conda
+
+before_install:
+ - julia -e 'using Pkg; Pkg.add("Conda")'
+ - julia -e 'using Conda; Conda.add("scikit-learn")'
+
+before_script:
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew update
+      brew upgrade cmake
+    fi
+  - pip install --user -U numpy scipy scikit-learn
+  - julia -e 'using Pkg; Pkg.build("PyCall"); Pkg.update()'
+
+after_success:
+  # push coverage results to Codecov
+  - julia -e 'import Pkg;
+                     cd(Pkg.dir("CalibrateEmulateSample.jl"));
+                     Pkg.add("Coverage");
+                     using Coverage;
+                     Codecov.submit(Codecov.process_folder())'
+
+jobs:
+  include:
+    - stage: "Documentation"
+      julia: 1.0
+      os: linux
+      script:
+        - export DOCUMENTER_DEBUG="true"
+        - julia --color=yes --project=docs/ -e 'using Pkg;
+                                                      Pkg.develop(PackageSpec(path=pwd()));
+                                                      Pkg.instantiate();
+                                                      Pkg.build("CalibrateEmulateSample.jl")'
+        - julia --color=yes --project=docs/ docs/make.jl
+      after_success: skip

@@ -1,7 +1,17 @@
 # ignore the following patterns
-
-Manifest.toml
-
-# vim swap files
+*.jl.cov
+*.vtk
+*.dat
+*.csv
+*.vtu
+*.pvtu
 *.swp
-
+*.png
+!docs/src/assets/*.png
+*.DS_Store
+docs/build/
+data/
+docs/site/
+*.jl.*.cov
+*.jl.mem
+deps/deps.jl
