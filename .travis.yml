@@ -45,7 +45,7 @@ before_script:
 after_success:
   # push coverage results to Codecov
   - julia -e 'import Pkg;
-                     cd(Pkg.dir("CalibrateEmulateSample.jl"));
+                     cd(Pkg.dir("CalibrateEmulateSample"));
                      Pkg.add("Coverage");
                      using Coverage;
                      Codecov.submit(Codecov.process_folder())'
@@ -60,6 +60,6 @@ jobs:
         - julia --color=yes --project=docs/ -e 'using Pkg;
                                                       Pkg.develop(PackageSpec(path=pwd()));
                                                       Pkg.instantiate();
-                                                      Pkg.build("CalibrateEmulateSample.jl")'
+                                                      Pkg.build("CalibrateEmulateSample")'
         - julia --color=yes --project=docs/ docs/make.jl
       after_success: skip
