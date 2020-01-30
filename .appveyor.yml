@@ -5,7 +5,7 @@ branches:
     # This is where pull requests from "bors try" are built.
     - trying
     # Enable building pull requests.
-    # - master
+    - master
 
 environment:
   matrix:
