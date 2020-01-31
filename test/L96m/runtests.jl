@@ -1,12 +1,12 @@
 using Test
-import DifferentialEquations
-import NPZ
+using DifferentialEquations
+using NPZ
+using CalibrateEmulateSample.Utilities
 
 const DE = DifferentialEquations
 
 include(joinpath("..","..","examples","L96m","L96m.jl"))
 
-const RPAD = 25
 const LPAD_INTEGER = 7
 const LPAD_FLOAT = 13
 l96 = L96m()
@@ -22,10 +22,7 @@ const dp5_test = NPZ.npzread(joinpath(data_dir, "dp5_full.npy"))
 const tp8_test = NPZ.npzread(joinpath(data_dir, "tsitpap8_full.npy"))
 const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
 
-################################################################################
-# unit testing #################################################################
-################################################################################
-@testset "unit testing" begin
+@testset "L96: unit tests" begin
   Yk_comp = compute_Yk(l96, z0)
   @test isapprox(Yk_test, Yk_comp, atol=1e-15)
 
@@ -45,7 +42,7 @@ const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
   regressed(regressed_comp, z0[1:l96.K], l96, 0.0)
   @test isapprox(regressed_test, regressed_comp, atol=1e-15)
 
-  @testset "G0 testing" begin
+  @testset "L96: G0 tests" begin
     v1 = Vector(1.0:20.0)
     v2 = Vector(1:3:21)
     set_G0(l96)
@@ -82,7 +79,6 @@ const bal_test = NPZ.npzread(joinpath(data_dir, "dp5_bal.npy"))
 
   @test isapprox(gather_pairs(l96, dp5_test), dp5_pairs)
 end
-println("")
 
 ################################################################################
 # integration testing ##########################################################
@@ -127,11 +123,10 @@ end
 println("steps:", lpad(length(sol_reg.t), LPAD_INTEGER),
         "\telapsed:", lpad(elapsed_reg, LPAD_FLOAT))
 
-@testset "integration testing" begin
+@testset "L96: integration tests" begin
   @test isapprox(sol_dp5[:,1:end], dp5_test, atol=1e-3)
   @test isapprox(sol_tp8[:,1:end], tp8_test, atol=1e-3)
   @test isapprox(sol_bal[:,1:end], bal_test, atol=1e-5)
   @test isapprox(sol_reg[:,1:end], bal_test, atol=1e-5) # reg + G0 == bal
 end
-println("")
 

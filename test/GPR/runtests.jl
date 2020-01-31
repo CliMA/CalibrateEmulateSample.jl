@@ -1,6 +1,6 @@
 using Test
-import NPZ
-import LinearAlgebra
+using NPZ
+using LinearAlgebra
 
 include(joinpath("..","..","src","GPR.jl"))
 
@@ -17,25 +17,21 @@ const matern_05_std = NPZ.npzread(joinpath(data_dir, "matern_05_std.npy"))
 
 const inf_norm = x -> LinearAlgebra.norm(x, Inf)
 
-################################################################################
-# unit testing #################################################################
-################################################################################
 X = 0:0.1:1
 y = X.^2
 xmesh = 0:0.01:1
 gprw = GPR.Wrap()
 
-@testset "struct testing" begin
+@testset "GPR: structs" begin
   @test !gprw.__data_set
   @test !gprw.__subsample_set
   @test gprw.data == nothing
   @test gprw.subsample == nothing
   @test gprw.GPR == nothing
 end
-println("")
 
 thrsh = gprw.thrsh
-@testset "methods testing" begin
+@testset "GPR: methods" begin
   ex_thrown1 = false
   try
     GPR.subsample!(gprw)
@@ -105,14 +101,10 @@ thrsh = gprw.thrsh
 
   @test gprw.thrsh == thrsh
 end
-println("")
 
-################################################################################
-# tests w/ non-synthetic data ##################################################
-################################################################################
 GPR.set_data!(gprw, gpr_data)
 gprw.thrsh = -1
-@testset "non-synthetic testing" begin
+@testset "GPR: non-synthetic data" begin
   GPR.learn!(gprw)
   mesh, mean, std = GPR.mmstd(gprw)
   @test size(gprw.data,1) == 800
@@ -131,6 +123,3 @@ gprw.thrsh = -1
   @test isapprox(mean, matern_05_mean, atol=1e-3, norm=inf_norm)
   @test isapprox(std, matern_05_std, atol=1e-3, norm=inf_norm)
 end
-println("")
-
-

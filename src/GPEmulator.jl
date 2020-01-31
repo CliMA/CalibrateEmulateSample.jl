@@ -1,35 +1,20 @@
+"""
+    GPEmulator
+
+To create an emulator (GP).
+Include functions to optimize the emulator
+and to make predictions of mean and variance
+uses ScikitLearn (or GaussianProcesses.jl
+"""
 module GPEmulator
 
-"""
-Module: GP
--------------------------------------
-Packages required: Statistics,
-                   Distributions,
-                   LinearAlgebra,
-                   GaussianProcesses,
-                   (Optim)
-                   ScikitLearn,
--------------------------------------
-Idea: To create an emulator (GP). 
-      Include functions to optimize the emulator
-      and to make predictions of mean and variance
-      uses ScikitLearn (or GaussianProcesses.jl 
--------------------------------------
-Exports: GPObj
-         optimize_hyperparameters
-         predict
-         emulate
-         extract
--------------------------------------
-"""
-# import CES modules
-include("EKI.jl")
-const S = Main.EKI.EKIObj
-include("Truth.jl")
-const T = Main.Truth.TruthObj
+using ..EKI
+using ..Truth
+const S = EKI.EKIObj
+const T = Truth.TruthObj
 
 # packages
-using Statistics 
+using Statistics
 using Distributions
 using LinearAlgebra
 using GaussianProcesses
@@ -54,25 +39,26 @@ export extract
 #####
 
 #structure to hold inputs/ouputs kernel type and whether we do sparse GP
-struct GPObj
-    inputs::Matrix{Float64}
-    data::Matrix{Float64}
+struct GPObj{FT<:AbstractFloat}
+    inputs::Matrix{FT}
+    data::Matrix{FT}
     models::Vector
     package::String
 end
 
 function GPObj(inputs, data, package)
+    FT = eltype(data)
     if package == "gp_jl"
         models = Any[]
-        outputs = convert(Matrix{Float64}, data')
-        inputs = convert(Matrix{Float64}, inputs')
+        outputs = convert(Matrix{FT}, data')
+        inputs = convert(Matrix{FT}, inputs')
 
         for i in 1:size(outputs, 1)
             # Zero mean function
-            kmean = MeanZero() 
+            kmean = MeanZero()
             # Construct kernel:
-            # Sum kernel consisting of Matern 5/2 ARD kernel and Squared 
-            # Exponential kernel 
+            # Sum kernel consisting of Matern 5/2 ARD kernel and Squared
+            # Exponential kernel
             len2 = 1.0
             var2 = 1.0
             kern1 = SE(len2, var2)
@@ -89,28 +75,26 @@ function GPObj(inputs, data, package)
             optimize!(m)
             push!(models, m)
         end
-        
-        GPObj(inputs, outputs, models, package)
-        
+
     elseif package == "sk_jl"
-        
+
         len2 = ones(size(inputs, 2))
         var2 = 1.0
 
         varkern = ConstantKernel(constant_value=var2,
                                  constant_value_bounds=(1e-05, 1000.0))
         rbf = RBF(length_scale=len2, length_scale_bounds=(1.0, 1000.0))
-                 
+
         white = WhiteKernel(noise_level=1.0, noise_level_bounds=(1e-05, 10.0))
         kern = varkern * rbf + white
         models = Any[]
 
-        outputs = convert(Matrix{Float64}, data')
-        inputs = convert(Matrix{Float64}, inputs)
-        
+        outputs = convert(Matrix{FT}, data')
+        inputs = convert(Matrix{FT}, inputs)
+
         for i in 1:size(outputs,1)
             out = reshape(outputs[i,:], (size(outputs, 2), 1))
-            
+
             m = GaussianProcessRegressor(kernel=kern,
                                          n_restarts_optimizer=10,
                                          alpha=0.0, normalize_y=true)
@@ -123,48 +107,47 @@ function GPObj(inputs, data, package)
             push!(models, m)
         end
 
-        GPObj(inputs, outputs, models, package)
-
-    else 
-        println("use package sk_jl or gp_jl")
+    else
+        error("use package sk_jl or gp_jl")
     end
-end # function GPObj
+    return GPObj{FT}(inputs, outputs, models, package)
+end
 
-function predict(gp::GPObj, new_inputs::Array{Float64}; 
-                 prediction_type="y")
-    
+function predict(gp::GPObj{FT}, new_inputs::Array{FT};
+                 prediction_type="y") where {FT}
+
     # predict data (type "y") or latent function (type "f")
     # column of new_inputs gives new parameter set to evaluate gp at
     M = length(gp.models)
-    mean = Array{Float64}[]
-    var = Array{Float64}[]
+    mean = Array{FT}[]
+    var = Array{FT}[]
     # predicts columns of inputs so must be transposed
     if gp.package == "gp_jl"
-        new_inputs = convert(Matrix{Float64}, new_inputs')
-    end    
+        new_inputs = convert(Matrix{FT}, new_inputs')
+    end
     for i=1:M
         if gp.package == "gp_jl"
             if prediction_type == "y"
                 mu, sig2 = predict_y(gp.models[i], new_inputs)
                 push!(mean, mu)
-                push!(var, sig2) 
+                push!(var, sig2)
 
             elseif prediction_type == "f"
                 mu, sig2 = predict_f(gp.models[i], new_inputs')
                 push!(mean, mu)
-                push!(var, sig2) 
+                push!(var, sig2)
 
-            else 
+            else
                 println("prediction_type must be string: y or f")
                 exit()
             end
 
         elseif gp.package == "sk_jl"
-            
+
             mu, sig = gp.models[i].predict(new_inputs, return_std=true)
             sig2 = sig .* sig
             push!(mean, mu)
-            push!(var, sig2) 
+            push!(var, sig2)
 
         end
     end
@@ -174,8 +157,8 @@ function predict(gp::GPObj, new_inputs::Array{Float64};
 end # function predict
 
 
-function emulate(u_tp::Array{Float64, 2}, g_tp::Array{Float64, 2}, 
-                 gppackage::String)
+function emulate(u_tp::Array{FT, 2}, g_tp::Array{FT, 2},
+                 gppackage::String) where {FT<:AbstractFloat}
 
     gpobj = GPObj(u_tp, g_tp, gppackage) # construct the GP based on data
 
@@ -183,27 +166,27 @@ function emulate(u_tp::Array{Float64, 2}, g_tp::Array{Float64, 2},
 end
 
 
-function extract(truthobj::T, ekiobj::S, N_eki_it::Int64)
-    
+function extract(truthobj::T, ekiobj::EKIObj{FT}, N_eki_it::I) where {T,FT, I<:Int}
+
     yt = truthobj.y_t
     yt_cov = truthobj.cov
     yt_covinv = inv(yt_cov)
-    
+
     # Note u[end] does not have an equivalent g
     u_tp = ekiobj.u[end-N_eki_it:end-1] # N_eki_it x [N_ens x N_param]
     g_tp = ekiobj.g[end-N_eki_it+1:end] # N_eki_it x [N_ens x N_data]
 
     # u does not require reduction, g does:
-    # g_tp[j] is jth iteration of ensembles 
+    # g_tp[j] is jth iteration of ensembles
     u_tp = cat(u_tp..., dims=1) # [(N_eki_it x N_ens) x N_param]
     g_tp = cat(g_tp..., dims=1) # [(N_eki_it x N_ens) x N_data]
 
     return yt, yt_cov, yt_covinv, u_tp, g_tp
 end
 
-function orig2zscore(X::AbstractVector, mean::AbstractVector, 
+function orig2zscore(X::AbstractVector, mean::AbstractVector,
                      std::AbstractVector)
-    # Compute the z scores of a vector X using the given mean 
+    # Compute the z scores of a vector X using the given mean
     # and std
     Z = zeros(size(X))
     for i in 1:length(X)
@@ -212,7 +195,7 @@ function orig2zscore(X::AbstractVector, mean::AbstractVector,
     return Z
 end
 
-function orig2zscore(X::AbstractMatrix, mean::AbstractVector, 
+function orig2zscore(X::AbstractMatrix, mean::AbstractVector,
                      std::AbstractVector)
     # Compute the z scores of matrix X using the given mean and
     # std. Transformation is applied column-wise.
@@ -224,9 +207,9 @@ function orig2zscore(X::AbstractMatrix, mean::AbstractVector,
     return Z
 end
 
-function zscore2orig(Z::AbstractVector, mean::AbstractVector, 
+function zscore2orig(Z::AbstractVector, mean::AbstractVector,
                      std::AbstractVector)
-    # Transform X (a vector of z scores) back to the original 
+    # Transform X (a vector of z scores) back to the original
     # values
     X = zeros(size(Z))
     for i in 1:length(X)
@@ -235,7 +218,7 @@ function zscore2orig(Z::AbstractVector, mean::AbstractVector,
     return X
 end
 
-function zscore2orig(Z::AbstractMatrix, mean::AbstractVector, 
+function zscore2orig(Z::AbstractMatrix, mean::AbstractVector,
                      std::AbstractVector)
     X = zeros(size(Z))
     # Transform X (a matrix of z scores) back to the original

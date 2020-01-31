@@ -5,7 +5,7 @@ Perform an iteration of the ensemble Kalman sampler (EKS), returning a new set o
 
 See eqs. (5.4a-b) from https://arxiv.org/abs/1903.08866.
 """
-function eks_iter(prob::CESProblem, θs, fθs)
+function eks_iter(prob::CESProblem, θs::Vector{Vector{FT}}, fθs::Vector{Vector{FT}}) where {FT}
     covθ = cov(θs)
     meanθ = mean(θs)
 
@@ -14,7 +14,7 @@ function eks_iter(prob::CESProblem, θs, fθs)
     J = length(θs)
     CG = [dot(fθk - m, fθj - prob.obs, prob.space)/J for fθj in fθs, fθk in fθs]
 
-    Δt = 1.0 / (norm(CG) + sqrt(eps(Float64)))
+    Δt = 1.0 / (norm(CG) + sqrt(eps(FT)))
 
     implicit = lu( I + Δt .* (covθ * inv(cov(prob.prior))) ) # todo: incorporate means
     Z = covθ * (cov(prob.prior) \ mean(prob.prior))

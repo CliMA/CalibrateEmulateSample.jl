@@ -9,9 +9,9 @@ module GPR
 using Parameters # lets you have defaults for fields
 
 using EllipsisNotation # adds '..' to refer to the rest of array
-import ScikitLearn
-import StatsBase
-include("ConvenienceFunctions.jl")
+using ScikitLearn
+using StatsBase
+using ..Utilities
 
 const sklearn = ScikitLearn
 
@@ -41,9 +41,6 @@ Do *not* set Wrap's variables except for `thrsh`; use setter functions!
   __subsample_set::Bool = false
 end
 
-################################################################################
-# GRPWrap-related functions ####################################################
-################################################################################
 """
 Set `gprw.data` and reset `gprw.subsample` and `gprw.GPR` -- very important!
 
@@ -61,7 +58,7 @@ function set_data!(gprw::Wrap, data::Array{<:Real})
     idx = fill(1, ndims(data) - 2)
     data = data[:,:,idx...]
   elseif ndims(data) < 2
-    throw(error("set_data!: ndims(data) < 2; cannot proceed"))
+    error("set_data!: ndims(data) < 2; cannot proceed")
   end
   gprw.data = data
   gprw.subsample = nothing
@@ -104,10 +101,10 @@ This function ignores `gprw.thrsh`
 """
 function subsample!(gprw::Wrap, thrsh::Int)
   if !gprw.__data_set
-    throw(error("subsample!: 'data' is not set, cannot sample"))
+    error("subsample!: 'data' is not set, cannot sample")
   end
   if thrsh == 0
-    throw(error("subsample!: 'thrsh' == 0, cannot sample"))
+    error("subsample!: 'thrsh' == 0, cannot sample")
   end
 
   N = size(gprw.data,1)
