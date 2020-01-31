@@ -21,9 +21,9 @@ Exports: MCMCObj
 -------------------------------------
 """
 # import Cloudy modules
-include("EKI.jl")
-include("Truth.jl")
-include("GPEmulator.jl")
+include("EKI_mb.jl")
+include("Truth_mb.jl")
+include("GPEmulator_mb.jl")
 const T = Main.GPEmulator.GPObj
 const pred = Main.GPEmulator.predict
 

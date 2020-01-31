@@ -23,9 +23,9 @@ Exports: GPObj
 -------------------------------------
 """
 # import CES modules
-include("EKI.jl")
+include("EKI_mb.jl")
 const S = Main.EKI.EKIObj
-include("Truth.jl")
+include("Truth_mb.jl")
 const T = Main.Truth.TruthObj
 
 # packages

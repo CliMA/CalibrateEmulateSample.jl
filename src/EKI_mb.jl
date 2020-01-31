@@ -159,7 +159,7 @@ function run_cloudy(params::Array{Float64, 1}, kernel::KernelTensor{Float64},
     end
 
     # Set up ODE problem: dM/dt = f(M,p,t)
-    rhs(M, p, t) = get_src_coalescence(M, dist, kernel)
+    rhs(M, p, t) = get_int_coalescence(M, dist, kernel)
     prob = ODEProblem(rhs, moments_init, tspan)
     # Solve the ODE
     sol = solve(prob, CVODE_BDF(), alg_hints=[:stiff], reltol=tol, abstol=tol)
