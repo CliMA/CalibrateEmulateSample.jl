@@ -1,7 +1,7 @@
-module EKI
+module GModel
 
 """
-Module: EKI
+Module: GModel
 -------------------------------------
 Packages required: LinearAlgebra, 
                    Statistics,
@@ -11,15 +11,12 @@ Packages required: LinearAlgebra,
                    Random
                    Sundials
 -------------------------------------
-Idea: To construct an object to perform Ensemble Kalman updates
-      It also measures errors to the truth to assess convergence
+Idea: Run the forward model G that maps the parameters u to G(u),
+      where u ∈ ℝ ^p and G(u) ∈ ℝ ^d
+      In this example, the model G is Cloudy.
 -------------------------------------
-Exports: EKIObject
-         update_ensemble!
-         compute_error
-         construct_initial_ensemble
-         run_cloudy
-         run_cloudy_ensemble
+Exports: run_G
+         run_G_ensemble
 -------------------------------------
 """
 
@@ -37,12 +34,8 @@ using LinearAlgebra
 using DifferentialEquations
 
 # exports
-export EKIObj
-export construct_initial_ensemble
-export compute_error
 export run_cloudy
 export run_cloudy_ensemble
-export update_ensemble!
 
 
 #####
@@ -50,7 +43,7 @@ export update_ensemble!
 #####
 
 # structure to organize data
-struct EKIObj
+struct GModel
      u::Vector{Array{Float64, 2}}
      unames::Vector{String}
      g_t::Vector{Float64}
