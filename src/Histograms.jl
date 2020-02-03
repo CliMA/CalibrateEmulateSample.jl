@@ -11,15 +11,14 @@ Functions in this module:
 """
 module Histograms
 
-import PyCall
-import NPZ
-include("ConvenienceFunctions.jl")
+using PyCall
+using NPZ
+using ..Utilities
 
-scsta = PyCall.pyimport("scipy.stats")
+using Conda
+Conda.add("scipy")
+scsta = pyimport_conda("scipy.stats","")
 
-################################################################################
-# HistData struct ##############################################################
-################################################################################
 """
 A simple struct to store samples for empirical PDFs (histograms, distances etc.)
 
@@ -28,12 +27,14 @@ Functions that operate on HistData struct:
  - `load!` (3 methods)
  - `plot` (2 methods)
  - `plot_raw` (1 method)
+
+TODO: fix type restriction for Array, make sensible constructors
 """
-mutable struct HistData
-  samples::Dict{Symbol, AbstractVecOrMat}
+mutable struct HistData{FT<:AbstractFloat}
+  samples::Dict{Symbol, Array}
 end
 
-HistData() = HistData(Dict())
+HistData(FT) = HistData{FT}(Dict())
 
 """
 Load samples into a HistData object under a specific key from a vector
@@ -277,8 +278,8 @@ Examples:
   println(k2a_combined[:bal])
 ```
 """
-function W1(hd::HistData, key::Symbol, k::Union{Int,UnitRange})
-  key2all_combined = Dict{Symbol, Float64}()
+function W1(hd::HistData{FT}, key::Symbol, k::Union{I,UnitRange}) where {FT,I<:Int}
+  key2all_combined = Dict{Symbol, FT}()
   for ki in keys(hd.samples)
     if ki == key
       continue
@@ -352,8 +353,8 @@ Examples:
   println(k2a_vectorized[:onl] .> 0.01)
 ```
 """
-function W1(hd::HistData, key::Symbol)
-  key2all_vectorized = Dict{Symbol, Union{Vector{Float64}, Float64}}()
+function W1(hd::HistData{FT}, key::Symbol) where {FT}
+  key2all_vectorized = Dict{Symbol, Union{Vector{FT}, FT}}()
   for ki in keys(hd.samples)
     if ki == key
       continue

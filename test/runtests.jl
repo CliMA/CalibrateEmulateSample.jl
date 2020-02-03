@@ -1,13 +1,15 @@
 using Test
 using CalibrateEmulateSample
 ENV["JULIA_LOG_LEVEL"] = "WARN"
+ENV["PYTHON"] = ""
 
-include("eks.jl")
-
-for submodule in ["L96m",
+for submodule in [
+                  "Utilities",
+                  "L96m",
                   "GPR",
+                  "EKS",
                   "Histograms",
-                  "ConvenienceFunctions",
+                  "Cloudy",
                  ]
 
   println("Starting tests for $submodule")

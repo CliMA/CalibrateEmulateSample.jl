@@ -1,5 +1,5 @@
 using Test
-import NPZ
+using NPZ
 
 include(joinpath("..","..","src","Histograms.jl"))
 const Hgm = Histograms
@@ -20,10 +20,7 @@ const w1_dns_bal_comb   = 0.818516185308166
 const w1_bal_onl_x2     = 0.8781673689588835
 const w1_bal_onl_comb   = 0.8529846357976019
 
-################################################################################
-# unit testing #################################################################
-################################################################################
-@testset "W1 testing" begin
+@testset "Histograms: W1" begin
   arr1 = [1, 1, 1, 2, 3, 4, 4, 4]
   arr2 = [1, 1, 2, 2, 3, 3, 4, 4, 4]
   @test Hgm.W1(arr1, arr2; normalize = false) == 0.25
@@ -40,8 +37,9 @@ const w1_bal_onl_comb   = 0.8529846357976019
   @test size(Hgm.W1(rand(9,100), rand(3,100))) == (3,)
 end
 
-@testset "HistData testing" begin
-  hd = Hgm.HistData()
+@testset "Histograms: HistData" begin
+  FT = typeof(1.0)
+  hd = Hgm.HistData(FT)
   Hgm.load!(hd, :unif,  rand(3,100000))
   Hgm.load!(hd, :norm, randn(3,100000))
   w1_rand = Hgm.W1(hd, :unif, :norm)
@@ -73,7 +71,5 @@ end
   @test isapprox(Hgm.W1(hd, :bal, :onl, 1:2), w1_bal_onl_comb)
   @test isapprox(Hgm.W1(hd, :dns, :bal, 1:2), w1_dns_bal_comb)
 end
-
-println("")
 
 

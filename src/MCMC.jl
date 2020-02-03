@@ -1,41 +1,28 @@
+"""
+    MCMC
+
+To construct a simple MCMC object which, given a prior distribution,
+will update in a Metropolis-Hastings fashion with respect to a quadratic
+likelihood. It also computes acceptance ratios
+"""
 module MCMC
-"""
-Module: MCMC
--------------------------------------
-Packages required: LinearAlgebra, 
-                   Statistics,
-                   Distributions
--------------------------------------
-Idea: To construct a simple MCMC object which, given a prior distribution,
-      will update in a Metropolis-Hastings fashion with respect to a quadratic
-      likelihood. It also computes acceptance ratios
--------------------------------------
-Exports: MCMCObj
-         mcmc_sample
-         accept_ratio
-         mcmc_sample
-         reset_with_step!
-         get_posterior
-         find_mcmc_step!
-         sample_posterior!
--------------------------------------
-"""
-# import Cloudy modules
-include("EKI.jl")
-include("Truth.jl")
-include("GPEmulator.jl")
-const T = Main.GPEmulator.GPObj
-const pred = Main.GPEmulator.predict
+
+using ..EKI
+using ..Truth
+using ..GPEmulator
+
+const T = GPEmulator.GPObj
+const pred = GPEmulator.predict
 
 # packages
-using Statistics 
+using Statistics
 using Distributions
 using LinearAlgebra
 
 # exports
 export MCMCObj
-export mcmc_sample! 
-export accept_ratio 
+export mcmc_sample!
+export accept_ratio
 export reset_with_step!
 export get_posterior
 export find_mcmc_step!
@@ -47,18 +34,18 @@ export sample_posterior!
 #####
 
 # structure to organize MCMC parameters and data
-struct MCMCObj
-    truth_sample::Vector{Float64}
-    truth_cov::Array{Float64, 2}
-    truth_covinv::Array{Float64, 2}
+struct MCMCObj{FT<:AbstractFloat,I<:Int}
+    truth_sample::Vector{FT}
+    truth_cov::Array{FT, 2}
+    truth_covinv::Array{FT, 2}
     prior::Array
-    step::Array{Float64}
-    burnin::Int64
-    param::Vector{Float64}
-    posterior::Array{Float64, 2}
-    log_posterior::Array{Union{Float64,Nothing}}
-    iter::Array{Int64}
-    accept::Array{Int64}
+    step::Array{FT}
+    burnin::I
+    param::Vector{FT}
+    posterior::Array{FT, 2}
+    log_posterior::Array{Union{FT,Nothing}}
+    iter::Array{I}
+    accept::Array{I}
     algtype::String
     standardized::Bool
 end
@@ -69,12 +56,12 @@ end
 #####
 
 #outer constructors
-function MCMCObj(truth_sample::Vector{Float64}, truth_cov::Array{Float64, 2}, 
-                 priors::Array, step::Float64, param_init::Vector{Float64}, 
-                 max_iter::Int64, algtype::String, burnin::Int64, 
-                 standardized::Bool)
-    
-    # first row is param_init 
+function MCMCObj(truth_sample::Vector{FT}, truth_cov::Array{FT, 2},
+                 priors::Array, step::FT, param_init::Vector{FT},
+                 max_iter::I, algtype::String, burnin::I,
+                 standardized::Bool) where {FT<:AbstractFloat,I<:Int}
+
+    # first row is param_init
     posterior = zeros(max_iter + 1, length(param_init))
     posterior[1, :] = param_init
     param = param_init
@@ -86,13 +73,13 @@ function MCMCObj(truth_sample::Vector{Float64}, truth_cov::Array{Float64, 2},
         println("only random walk metropolis 'rwm' is implemented so far")
         sys.exit()
     end
-    MCMCObj(truth_sample, truth_cov, truth_covinv, priors, [step], burnin, 
+    MCMCObj{FT,I}(truth_sample, truth_cov, truth_covinv, priors, [step], burnin,
             param, posterior, log_posterior, iter, accept, algtype,
             standardized)
 
 end
 
-function reset_with_step!(mcmc::MCMCObj, step::Float64)
+function reset_with_step!(mcmc::MCMCObj{FT}, step::FT) where {FT}
     # reset to beginning with new stepsize
     mcmc.step[1] = step
     mcmc.log_posterior[1] = nothing
@@ -103,43 +90,43 @@ function reset_with_step!(mcmc::MCMCObj, step::Float64)
 end
 
 
-# exported functions
 function get_posterior(mcmc::MCMCObj)
     return mcmc.posterior[mcmc.burnin+1:end, :]
 end
 
-function mcmc_sample!(mcmc::MCMCObj, g::Vector{Float64}, gvar::Vector{Float64})
+function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
     if mcmc.algtype == "rwm"
         log_posterior = log_likelihood(mcmc, g, gvar) + log_prior(mcmc)
     end
 
     if mcmc.log_posterior[1] isa Nothing #do an accept step.
         mcmc.log_posterior[1] = log_posterior - log(0.5) #this makes p_accept = 0.5
-    end    
+    end
     p_accept = exp(log_posterior - mcmc.log_posterior[1])
 
     if p_accept > rand(Distributions.Uniform(0, 1))
         mcmc.posterior[1 + mcmc.iter[1], :] = mcmc.param
         mcmc.log_posterior[1] = log_posterior
         mcmc.accept[1] = mcmc.accept[1] + 1
-    else 
+    else
         mcmc.posterior[1 + mcmc.iter[1], :] = mcmc.posterior[mcmc.iter[1], :]
     end
     # get new parameters by comparing likelihood_current * prior_current to
     # likelihood_proposal * prior_proposal - either we accept the proposed
     # parameter or we stay where we are.
-    mcmc.param[:] = proposal(mcmc)[:] 
+    mcmc.param[:] = proposal(mcmc)[:]
     mcmc.iter[1] = mcmc.iter[1] + 1
-  
-end # function mcmc_sample!
 
-function accept_ratio(mcmc::MCMCObj)
-    return convert(Float64, mcmc.accept[1]) / mcmc.iter[1]
+end
+
+function accept_ratio(mcmc::MCMCObj{FT}) where {FT}
+    return convert(FT, mcmc.accept[1]) / mcmc.iter[1]
 end
 
 
-function log_likelihood(mcmc::MCMCObj, g::Vector{Float64}, 
-                        gvar::Vector{Float64})
+function log_likelihood(mcmc::MCMCObj{FT},
+                        g::Vector{FT},
+                        gvar::Vector{FT}) where {FT}
     log_rho = [0.0]
     if gvar == nothing
         diff = g - mcmc.truth_sample
@@ -160,7 +147,7 @@ function log_prior(mcmc::MCMCObj)
     priors = mcmc.prior
     for (param, prior_dist) in zip(mcmc.param, priors)
         if mcmc.standardized
-            aram_std = std(prior_dist)
+            param_std = std(prior_dist)
             param_mean = mean(prior_dist)
             log_rho[1] += logpdf(prior_dist, param*param_std + param_mean) # get density at current parameter value
         else
@@ -191,40 +178,41 @@ function proposal(mcmc::MCMCObj)
 #            sample[:] = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
 #        end
 #    end
-            
+
     return sample
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMCObj, gpobj::T)
+function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::T) where {FT}
     step = mcmc_test.step[1]
     mcmc_accept = false
     doubled = false
     halved = false
     countmcmc = 0
-    
-    println("Begin step size search")  
+
+    println("Begin step size search")
     println("iteration 0; current parameters ", mcmc_test.param')
     flush(stdout)
     it = 0
-    while mcmc_accept == false 
-        
-        param = convert(Array{Float64, 2}, mcmc_test.param')
+    local acc_ratio
+    while mcmc_accept == false
+
+        param = convert(Array{FT, 2}, mcmc_test.param')
         # test predictions param' is 1xN_params
         gp_pred, gp_predvar = pred(gpobj, param)
         gp_pred = cat(gp_pred..., dims=2)
         gp_predvar = cat(gp_predvar..., dims=2)
-        
+
         mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
         it += 1
         if it % 2000 == 0
             countmcmc += 1
             acc_ratio = accept_ratio(mcmc_test)
-            println("iteration ", it, "; acceptance rate = ", acc_ratio, 
+            println("iteration ", it, "; acceptance rate = ", acc_ratio,
                     ", current parameters ", param)
             flush(stdout)
-            if countmcmc == 20 
-                println("failed to choose suitable stepsize in ", countmcmc, 
+            if countmcmc == 20
+                println("failed to choose suitable stepsize in ", countmcmc,
                         "iterations")
                 exit()
             end
@@ -250,35 +238,36 @@ function find_mcmc_step!(mcmc_test::MCMCObj, gpobj::T)
                 flush(stdout)
             end
         end
-           
+
     end
 
-    return mcmc_test.step[1]
-end # function find_mcmc_step!
+    return mcmc_test.step[1], acc_ratio
+end
 
 
-function sample_posterior!(mcmc::MCMCObj, gpobj::T, max_iter::Int64)
+function sample_posterior!(mcmc::MCMCObj{FT}, gpobj::T, max_iter::I) where {FT,I,T}
 
     println("iteration 0; current parameters ", mcmc.param')
     flush(stdout)
-   
+
     for mcmcit in 1:max_iter
-        param = convert(Array{Float64, 2}, mcmc.param')
+        param = convert(Array{FT, 2}, mcmc.param')
         # test predictions param' is 1xN_params
         gp_pred, gp_predvar = pred(gpobj, param)
         gp_pred = cat(gp_pred..., dims=2)
         gp_predvar = cat(gp_predvar..., dims=2)
-        
+
         mcmc_sample!(mcmc, vec(gp_pred), vec(gp_predvar))
-   
+
         if mcmcit % 1000 == 0
             acc_ratio = accept_ratio(mcmc)
-            println("iteration ", mcmcit ," of ", max_iter, 
-                    "; acceptance rate = ", acc_ratio, 
+            # TODO: Add callbacks, remove print statements
+            println("iteration ", mcmcit ," of ", max_iter,
+                    "; acceptance rate = ", acc_ratio,
                     ", current parameters ", param)
             flush(stdout)
         end
     end
-end # function sample_posterior! 
+end
 
 end # module MCMC

@@ -14,13 +14,13 @@ Parameters:
 Other:
  - `G` : functional closure for slow variables (usually a GPR-closure)
 """
-@with_kw mutable struct L96m
-  K::Int = 9
-  J::Int = 8
-  hx::Float64 = -0.8
-  hy::Float64 = 1.0
-  F::Float64 = 10.0
-  eps::Float64 = 2^(-7)
+@with_kw mutable struct L96m{FT<:AbstractFloat,I<:Int}
+  K::I = 9
+  J::I = 8
+  hx::FT = -0.8
+  hy::FT = 1.0
+  F::FT = 10.0
+  eps::FT = 2^(-7)
   G = nothing
 end
 
@@ -38,7 +38,7 @@ Output:
  - `rhs` : RHS computed at `z`
 
 """
-function full(rhs::Array{<:Real,1}, z::Array{<:Real,1}, p::L96m, t)
+function full(rhs::Array{FT,1}, z::Array{FT,1}, p::L96m{FT,I}, t) where {FT,I}
   K = p.K
   J = p.J
   x = @view(z[1:K])
@@ -96,7 +96,7 @@ Output:
  - `rhs` : balanced RHS computed at `x`
 
 """
-function balanced(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
+function balanced(rhs::Array{FT,1}, x::Array{FT,1}, p::L96m{FT,I}, t) where {FT,I}
   K = p.K
 
   # three boundary cases
@@ -128,7 +128,7 @@ Output:
  - `rhs` : regressed RHS computed at `x`
 
 """
-function regressed(rhs::Array{<:Real,1}, x::Array{<:Real,1}, p::L96m, t)
+function regressed(rhs::Array{FT,1}, x::Array{FT,1}, p::L96m{FT,I}, t) where {FT,I}
   K = p.K
 
   # three boundary cases
@@ -152,7 +152,7 @@ end
 Reshape a vector of y_{j,k} into a matrix, then sum along one dim and divide
 by J to get averages
 """
-function compute_Yk(p::L96m, z::Array{<:Real,1})
+function compute_Yk(p::L96m{FT,I}, z::Array{FT,1}) where {FT,I}
   return dropdims(
       sum( reshape(z[p.K+1:end], p.J, p.K), dims = 1 ),
       dims = 1
@@ -163,8 +163,8 @@ end
 Set the closure `p.G` to a linear one with slope `slope`.
 If unspecified, slope is equal to `p.hy`.
 """
-function set_G0(p::L96m; slope = nothing)
-  if (slope == nothing) || (!isa(slope, Real))
+function set_G0(p::L96m{FT,I}; slope = nothing) where {FT,I}
+  if (slope == nothing) || (!isa(slope, FT))
     slope = p.hy
   end
   p.G = x -> slope * x
@@ -173,7 +173,7 @@ end
 """
 Wrapper for set_G0(p::L96m; slope = nothing).
 """
-function set_G0(p::L96m, slope::Real)
+function set_G0(p::L96m{FT,I}, slope::FT) where {FT,I}
   set_G0(p, slope = slope)
 end
 
@@ -190,9 +190,9 @@ Output:
              the 2nd dimension in `sol` (number of time steps)
 
 """
-function gather_pairs(p::L96m, sol)
+function gather_pairs(p::L96m{FT,I}, sol) where {FT,I}
   N = size(sol, 2)
-  pairs = Array{Float64, 2}(undef, p.K * N, 2)
+  pairs = Array{FT, 2}(undef, p.K * N, 2)
   for n in 1:N
     pairs[p.K * (n-1) + 1 : p.K * n, 1] = sol[1:p.K, n]
     pairs[p.K * (n-1) + 1 : p.K * n, 2] = compute_Yk(p, sol[:,n])
@@ -217,8 +217,8 @@ Input:
 Output:
  - `z00`   : array of size `p.K + p.K * p.J` with random values
 """
-function random_init(p::L96m)
-  z00 = Array{Float64}(undef, p.K + p.K * p.J)
+function random_init(p::L96m{FT,I}) where {FT,I}
+  z00 = Array{FT}(undef, p.K + p.K * p.J)
 
   z00[1:p.K] .= rand(p.K) * 15 .- 5
   for k_ in 1:p.K
