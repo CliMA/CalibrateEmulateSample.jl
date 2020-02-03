@@ -15,7 +15,9 @@ using PyCall
 using NPZ
 using ..Utilities
 
-scsta = PyCall.pyimport("scipy.stats")
+using Conda
+Conda.add("scipy")
+scsta = pyimport_conda("scipy.stats","")
 
 """
 A simple struct to store samples for empirical PDFs (histograms, distances etc.)
