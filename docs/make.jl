@@ -17,6 +17,12 @@ makedocs(
   modules = [Documenter, CalibrateEmulateSample],
   pages = Any[
     "Home" => "index.md",
+    "Ensemble Kalman Inversion" => "EKI.md",
+    "Gaussian Process Emulator" => "GPEmulator.md",
+    "Markov chain Monte-Carlo"  => "MCMC.md",
+    "G-Model"                   => "GModel.md",
+    "Observations"              => "Observations.md",
+    "Utilities"                 => "Utilities.md",
   ],
 )
 

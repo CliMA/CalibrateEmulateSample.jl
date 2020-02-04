@@ -14,7 +14,7 @@ function eks_iter(prob::CESProblem, θs::Vector{Vector{FT}}, fθs::Vector{Vector
     J = length(θs)
     CG = [dot(fθk - m, fθj - prob.obs, prob.space)/J for fθj in fθs, fθk in fθs]
 
-    Δt = 1.0 / (norm(CG) + sqrt(eps(FT)))
+    Δt = FT(1) / (norm(CG) + sqrt(eps(FT)))
 
     implicit = lu( I + Δt .* (covθ * inv(cov(prob.prior))) ) # todo: incorporate means
     Z = covθ * (cov(prob.prior) \ mean(prob.prior))

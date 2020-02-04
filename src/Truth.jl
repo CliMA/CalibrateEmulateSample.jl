@@ -1,6 +1,7 @@
 module Truth
 
 # packages
+using DocStringExtensions
 using LinearAlgebra
 using DifferentialEquations
 using Sundials # CVODE_BDF() solver for ODE
@@ -15,12 +16,25 @@ export run_model_truth
 ##### Structure definitions
 #####
 
-# Structure to organize the "truth"
+"""
+    TruthObj{FT,D}
+
+Structure to organize the "truth
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
+"""
 struct TruthObj{FT,D}
+    "Initial distribution"
     distr_init::D
-    solution::ODESolution # full solution of the model run
-    y_t::Array{FT, 1} # true data (="observations")
-    cov::Array{FT, 2} # covariance of the obs noise
+    "full solution of the model run"
+    solution::ODESolution
+    "true data (=observations)"
+    y_t::Array{FT, 1}
+    "covariance of the obs noise"
+    cov::Array{FT, 2}
+    "Names of data"
     data_names::Vector{String}
 end
 
@@ -42,14 +56,14 @@ end
 
 """
     run_model_truth(kernel::KT,
-                     dist::D,
-                     moments::Array{Float64},
-                     tspan::Tuple{Float64, Float64},
-                     data_names::Vector{String},
-                     obs_noise::Union{Array{Float64, 2}, Nothing}
-                     moment,
-                     get_src;
-                     rng_seed=1234) where {D,KT}
+                    dist::D,
+                    moments::Array{FT},
+                    tspan::Tuple{FT, FT},
+                    data_names::Vector{String},
+                    obs_noise::Union{Array{FT, 2}, Nothing},
+                    moment,
+                    get_src;
+                    rng_seed=1234) where {D,KT, FT<:AbstractFloat}
 
 - `kernel` - Model KernelTensor defining particle interactions
 - `dist` - Distribution defining the initial particle mass distribution
@@ -66,22 +80,22 @@ end
 Returns a TruthObj.
 """
 function run_model_truth(kernel::KT,
-                          dist::D,
-                          moments::Array{Float64},
-                          tspan::Tuple{Float64, Float64},
-                          data_names::Vector{String},
-                          obs_noise::Union{Array{Float64, 2}, Nothing},
-                          moment,
-                          get_src;
-                          rng_seed=1234) where {D,KT}
+                         dist::D,
+                         moments::Array{FT},
+                         tspan::Tuple{FT, FT},
+                         data_names::Vector{String},
+                         obs_noise::Union{Array{FT, 2}, Nothing},
+                         moment,
+                         get_src;
+                         rng_seed=1234) where {D,KT, FT<:AbstractFloat}
     # Numerical parameters
-    tol = 1e-7
+    tol = FT(1e-7)
 
     # moments_init is the initial condition for the ODE problem
     n_moments = length(moments)
     moments_init = fill(NaN, length(moments))
     for (i, mom) in enumerate(moments)
-        moments_init[i] = moment(dist, convert(Float64, mom))
+        moments_init[i] = moment(dist, convert(FT, mom))
     end
 
     # Set up ODE problem: dM/dt = f(M,p,t)
@@ -95,7 +109,7 @@ function run_model_truth(kernel::KT,
         # Define observational noise
         # TODO: Write function to generate random SPD matrix
         Random.seed!(rng_seed)
-        A = rand(Distributions.Normal(0, 2.0), n_moments, n_moments)
+        A = rand(Distributions.Normal(FT(0), FT(2.0)), n_moments, n_moments)
         obs_noise = A * A'
     end
 

@@ -13,6 +13,7 @@ using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
 using DifferentialEquations
+using DocStringExtensions
 
 # exports
 export EKIObj
@@ -27,7 +28,15 @@ export update_ensemble!
 #####  Structure definitions
 #####
 
-# structure to organize data
+"""
+    EKIObj{FT<:AbstractFloat,I<:Int}
+
+structure to organize data
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
+"""
 struct EKIObj{FT<:AbstractFloat,I<:Int}
      u::Vector{Array{FT, 2}}
      unames::Vector{String}
@@ -35,7 +44,7 @@ struct EKIObj{FT<:AbstractFloat,I<:Int}
      cov::Array{FT, 2}
      N_ens::I
      g::Vector{Array{FT, 2}}
-     error::Vector{FT}
+     err::Vector{FT}
 end
 
 
@@ -44,8 +53,10 @@ end
 #####
 
 # outer constructors
-function EKIObj(parameters::Array{FT, 2}, parameter_names::Vector{String},
-                t_mean, t_cov::Array{FT, 2}) where {FT<:AbstractFloat}
+function EKIObj(parameters::Array{FT, 2},
+                parameter_names::Vector{String},
+                t_mean::Vector{FT},
+                t_cov::Array{FT, 2}) where {FT<:AbstractFloat}
 
     # ensemble size
     N_ens = size(parameters)[1]
@@ -56,9 +67,9 @@ function EKIObj(parameters::Array{FT, 2}, parameter_names::Vector{String},
     # observations
     g = Vector{FT}[]
     # error store
-    error = []
+    err = []
 
-    EKIObj{FT,I}(u, parameter_names, t_mean, t_cov, N_ens, g, error)
+    EKIObj{FT,I}(u, parameter_names, t_mean, t_cov, N_ens, g, err)
 end
 
 
@@ -81,12 +92,12 @@ function construct_initial_ensemble(N_ens::I, priors; rng_seed=42) where {I<:Int
     return params
 end
 
-function compute_error(eki)
+function compute_error(eki::EKIObj)
     meang = dropdims(mean(eki.g[end], dims=1), dims=1)
     diff = eki.g_t - meang
     X = eki.cov \ diff # diff: column vector
     newerr = dot(diff, X)
-    push!(eki.error, newerr)
+    push!(eki.err, newerr)
 end
 
 
@@ -158,16 +169,17 @@ function run_model(params::Array{FT, 1},
 end
 
 
-function update_ensemble!(eki, g)
+function update_ensemble!(eki::EKIObj{FT},
+                          g::Array{FT,2}) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
 
-    u_bar = fill(0.0, size(u)[2])
+    u_bar = fill(FT(0), size(u,2))
     # g: N_ens x N_data
-    g_bar = fill(0.0, size(g)[2])
+    g_bar = fill(FT(0), size(g,2))
 
-    cov_ug = fill(0.0, size(u)[2], size(g)[2])
-    cov_gg = fill(0.0, size(g)[2], size(g)[2])
+    cov_ug = fill(FT(0), size(u,2), size(g,2))
+    cov_gg = fill(FT(0), size(g,2), size(g,2))
 
     # update means/covs with new param/observation pairs u, g
     for j = 1:eki.N_ens
@@ -190,7 +202,7 @@ function update_ensemble!(eki, g)
     cov_gg = cov_gg / eki.N_ens - g_bar * g_bar'
 
     # update the parameters (with additive noise too)
-    noise = rand(MvNormal(zeros(size(g)[2]), eki.cov), eki.N_ens) # N_data * N_ens
+    noise = rand(MvNormal(zeros(size(g,2)), eki.cov), eki.N_ens) # N_data * N_ens
     y = (eki.g_t .+ noise)' # add g_t (N_data) to each column of noise (N_data x N_ens), then transp. into N_ens x N_data
     tmp = (cov_gg + eki.cov) \ (y - g)' # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' --> tmp is N_data x N_ens
     u += (cov_ug * tmp)' # N_ens x N_params

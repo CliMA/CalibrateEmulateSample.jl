@@ -20,7 +20,8 @@ const inf_norm = x -> LinearAlgebra.norm(x, Inf)
 X = 0:0.1:1
 y = X.^2
 xmesh = 0:0.01:1
-gprw = GPR.Wrap()
+FT = Float64
+gprw = GPR.Wrap{FT,Int}()
 
 @testset "GPR: structs" begin
   @test !gprw.__data_set
@@ -32,21 +33,8 @@ end
 
 thrsh = gprw.thrsh
 @testset "GPR: methods" begin
-  ex_thrown1 = false
-  try
-    GPR.subsample!(gprw)
-  catch
-    ex_thrown1 = true
-  end
-  @test ex_thrown1
-
-  ex_thrown2 = false
-  try
-    GPR.set_data!(gprw, rand(20))
-  catch
-    ex_thrown2 = true
-  end
-  @test ex_thrown2
+  @test_throws ErrorException GPR.subsample!(gprw)
+  @test_throws ArgumentError GPR.set_data!(gprw, rand(20))
 
   GPR.set_data!(gprw, rand(20,2,2))
   @test gprw.__data_set

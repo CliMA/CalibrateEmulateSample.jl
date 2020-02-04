@@ -59,13 +59,13 @@ function GPObj(inputs, data, package)
             # Construct kernel:
             # Sum kernel consisting of Matern 5/2 ARD kernel and Squared
             # Exponential kernel
-            len2 = 1.0
-            var2 = 1.0
+            len2 = FT(1)
+            var2 = FT(1)
             kern1 = SE(len2, var2)
-            kern2 = Matern(5/2, [0.0, 0.0, 0.0], 0.0)
-            lognoise = 0.5
+            kern2 = Matern(5/2, FT[0.0, 0.0, 0.0], FT(0.0))
+            lognoise = FT(0.5)
             # regularize with white noise
-            white = Noise(log(2.0))
+            white = Noise(log(FT(2.0)))
             # construct kernel
             kern = kern1 + kern2 + white
 
@@ -79,13 +79,13 @@ function GPObj(inputs, data, package)
     elseif package == "sk_jl"
 
         len2 = ones(size(inputs, 2))
-        var2 = 1.0
+        var2 = FT(1)
 
         varkern = ConstantKernel(constant_value=var2,
-                                 constant_value_bounds=(1e-05, 1000.0))
-        rbf = RBF(length_scale=len2, length_scale_bounds=(1.0, 1000.0))
+                                 constant_value_bounds=(FT(1e-05), FT(1000.0)))
+        rbf = RBF(length_scale=len2, length_scale_bounds=(FT(1), FT(1000.0)))
 
-        white = WhiteKernel(noise_level=1.0, noise_level_bounds=(1e-05, 10.0))
+        white = WhiteKernel(noise_level=1.0, noise_level_bounds=(FT(1e-05), FT(10.0)))
         kern = varkern * rbf + white
         models = Any[]
 
@@ -97,7 +97,7 @@ function GPObj(inputs, data, package)
 
             m = GaussianProcessRegressor(kernel=kern,
                                          n_restarts_optimizer=10,
-                                         alpha=0.0, normalize_y=true)
+                                         alpha=FT(0.0), normalize_y=true)
             ScikitLearn.fit!(m, inputs, out)
             if i==1
                 println(m.kernel.hyperparameters)
@@ -184,8 +184,9 @@ function extract(truthobj::T, ekiobj::EKIObj{FT}, N_eki_it::I) where {T,FT, I<:I
     return yt, yt_cov, yt_covinv, u_tp, g_tp
 end
 
-function orig2zscore(X::AbstractVector, mean::AbstractVector,
-                     std::AbstractVector)
+function orig2zscore(X::AbstractVector{FT},
+                     mean::AbstractVector{FT},
+                     std::AbstractVector{FT}) where {FT}
     # Compute the z scores of a vector X using the given mean
     # and std
     Z = zeros(size(X))
@@ -195,20 +196,23 @@ function orig2zscore(X::AbstractVector, mean::AbstractVector,
     return Z
 end
 
-function orig2zscore(X::AbstractMatrix, mean::AbstractVector,
-                     std::AbstractVector)
+function orig2zscore(X::AbstractMatrix{FT},
+                     mean::AbstractVector{FT},
+                     std::AbstractVector{FT}) where {FT}
     # Compute the z scores of matrix X using the given mean and
     # std. Transformation is applied column-wise.
-    Z = zeros(size(X))
-    n_cols = size(X)[2]
+    s = size(X)
+    Z = zeros(s)
+    n_cols = s[2]
     for i in 1:n_cols
         Z[:,i] = (X[:,i] .- mean[i]) ./ std[i]
     end
     return Z
 end
 
-function zscore2orig(Z::AbstractVector, mean::AbstractVector,
-                     std::AbstractVector)
+function zscore2orig(Z::AbstractVector{FT},
+                     mean::AbstractVector{FT},
+                     std::AbstractVector{FT}) where {FT}
     # Transform X (a vector of z scores) back to the original
     # values
     X = zeros(size(Z))
@@ -218,12 +222,14 @@ function zscore2orig(Z::AbstractVector, mean::AbstractVector,
     return X
 end
 
-function zscore2orig(Z::AbstractMatrix, mean::AbstractVector,
-                     std::AbstractVector)
-    X = zeros(size(Z))
+function zscore2orig(Z::AbstractMatrix{FT},
+                     mean::AbstractVector{FT},
+                     std::AbstractVector{FT}) where {FT}
+    s = size(Z)
+    X = zeros(s)
     # Transform X (a matrix of z scores) back to the original
     # values. Transformation is applied column-wise.
-    n_cols = size(Z)[2]
+    n_cols = s[2]
     for i in 1:n_cols
         X[:,i] = Z[:,i] .* std[i] .+ mean[i]
     end

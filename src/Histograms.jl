@@ -48,7 +48,7 @@ If the `key` group already exists, the samples are appended. If, in addition,
 the samples were in a matrix, they are flattened first, and then the new ones
 are added.
 """
-function load!(hd::HistData, key::Symbol, samples::AbstractVector)
+function load!(hd::HistData{FT}, key::Symbol, samples::AbstractVector{FT}) where {FT}
   if haskey(hd.samples, key)
     if isa(hd.samples[key], Matrix)
       println(warn("load!"),
@@ -73,7 +73,7 @@ the samples were in a vector, the new ones are flattened first, and then added
 to the old ones. If the samples were in a matrix and row dimensions don't match,
 the minimum of the two dimensions is chosen, the rest is discarded.
 """
-function load!(hd::HistData, key::Symbol, samples::AbstractMatrix)
+function load!(hd::HistData{FT}, key::Symbol, samples::AbstractMatrix{FT}) where {FT}
   if haskey(hd.samples, key)
     if isa(hd.samples[key], Vector)
       println(warn("load!"),
@@ -107,7 +107,7 @@ function load!(hd::HistData, key::Symbol, filename::String)
   if isa(samples, Array) && ndims(samples) <= 2
     load!(hd, key, samples)
   else
-    throw(error("load!: ", filename, " is not a 1- or 2-d Array; abort"))
+    error("load!: $filename is not a 1- or 2-d Array; abort")
   end
 end
 
@@ -194,16 +194,19 @@ Parameters:
 Returns:
   - `w1_uv`:         number; the Wasserstein-1 distance
 """
-function W1(u_samples::AbstractVector, v_samples::AbstractVector;
-                     normalize = false)
-  return if !normalize
-    scsta.wasserstein_distance(u_samples, v_samples)
+function W1(u_samples::AbstractVector{FT},
+            v_samples::AbstractVector{FT};
+            normalize = false) where {FT}
+  d = scsta.wasserstein_distance(u_samples, v_samples)
+  if !normalize
+    return d
   else
     u_m, u_M = extrema(u_samples)
     v_m, v_M = extrema(v_samples)
     L = max(u_M, v_M) - min(u_m, v_m)
-    scsta.wasserstein_distance(u_samples, v_samples) / L
+    return d / L
   end
+
 end
 
 """
@@ -229,8 +232,9 @@ of the two (minimum number of rows) will be taken.
 `normalize` induces *pairwise* normalization, i.e. it max's and min's are
 computed for each pair (u_j, v_j) individually.
 """
-function W1(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
-                     normalize = false)
+function W1(U_samples::AbstractMatrix{FT},
+            V_samples::AbstractMatrix{FT};
+            normalize = false) where {FT}
   if size(U_samples, 1) != size(V_samples, 1)
     println(warn("W1"), "sizes of U_samples & V_samples don't match; ",
             "will use the minimum of the two")
@@ -245,10 +249,10 @@ function W1(U_samples::AbstractMatrix, V_samples::AbstractMatrix;
   return w1_UV
 end
 
-W1(U_samples::AbstractMatrix, v_samples::AbstractVector; normalize = false) =
+W1(U_samples::AbstractMatrix{FT}, v_samples::AbstractVector{FT}; normalize = false) where {FT} =
   W1(vec(U_samples), v_samples; normalize = normalize)
 
-W1(u_samples::AbstractVector, V_samples::AbstractMatrix; normalize = false) =
+W1(u_samples::AbstractVector{FT}, V_samples::AbstractMatrix{FT}; normalize = false) where {FT} =
   W1(u_samples, vec(V_samples); normalize = normalize)
 
 """
@@ -260,7 +264,7 @@ Parameters:
   - `k`:      Int or UnitRange; if samples are in a matrix, which rows to use
 
 Returns:
-  - key2all_combined:     Dict{Symbol, Float64}; pairs of W1 distances
+  - key2all_combined:     Dict{Symbol, FT}; pairs of W1 distances
 
 Compute the W1-distances between `hd.samples[key]` and all other `hd.samples`.
 If any of the `hd.samples` is a matrix (not a vector) then `k` is used to access
@@ -299,7 +303,7 @@ Parameters:
   - `k`:      Int or UnitRange; if samples are in a matrix, which rows to use
 
 Returns:
-  - w1_key1key2:     Float64; W1 distance
+  - w1_key1key2:     FT; W1 distance
 
 Compute the W1-distance between `hd.samples[key1]` and `hd.samples[key2]`.
 If either of them is a matrix (not a vector) then `k` is used to access rows of
@@ -335,14 +339,14 @@ Parameters:
   - `key`:    Symbol; key of the samples group to compare everything else against
 
 Returns:
-  - `key2all_vectorized`: `Dict{Symbol, Union{Vector{Float64}, Float64}}`;
+  - `key2all_vectorized`: `Dict{Symbol, Union{Vector{FT}, FT}}`;
                           either vectors or pairs of W1 distances
 
 Compute the W1-distances between `hd.samples[key]` and all other `hd.samples`.
 For each pair of samples (`key` and something else) where both groups of samples
 are in a matrix, the returned value will be a vector (corresponding to rows of
 the matrices); for each pair where at least one of the groups is a vector, the
-returned value will be a `Float64`, and all samples from a matrix are combined.
+returned value will be a `FT`, and all samples from a matrix are combined.
 
 This function is useful when you have one reference (empirical) distribution and
 want to compare the rest against that "ground truth" distribution.
@@ -373,13 +377,13 @@ Parameters:
   - `key2`:   Symbol; key of the second samples group
 
 Returns:
-  - `w1_key1key2`:   `Union{Vector{Float64}, Float64}`; W1 distance
+  - `w1_key1key2`:   `Union{Vector{FT}, FT}`; W1 distance
 
 Compute the W1-distance between `hd.samples[key1]` and `hd.samples[key2]`.
 
 If both are matrices, the returned value will be a vector (corresponding to rows
 of the matrices); if at least one of them is a vector, the returned value will
-be a `Float64`, and all samples from a matrix are combined.
+be a `FT`, and all samples from a matrix are combined.
 
 Examples:
 ```

@@ -18,8 +18,9 @@ const gpr_data = NPZ.npzread(joinpath("..","..","test","GPR","data","data_points
 
 # create an instance of GPR.Wrap with threshold set to -1
 # by convention, negative threshold means use all data, i.e. do not subsample
-gprw = GPR.Wrap(thrsh = -1)
-#gprw = GPR.Wrap()
+FT = Float64
+gprw = GPR.Wrap{FT}(thrsh = -1)
+#gprw = GPR.Wrap{FT}()
 
 GPR.set_data!(gprw, gpr_data)
 

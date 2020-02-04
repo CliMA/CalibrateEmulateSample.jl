@@ -7,6 +7,7 @@ likelihood. It also computes acceptance ratios
 """
 module MCMC
 
+using DocStringExtensions
 using ..EKI
 using ..Truth
 using ..GPEmulator
@@ -33,19 +34,27 @@ export sample_posterior!
 ##### Structure definitions
 #####
 
-# structure to organize MCMC parameters and data
+"""
+    MCMCObj{FT<:AbstractFloat,I<:Int}
+
+structure to organize MCMC parameters and data
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
+"""
 struct MCMCObj{FT<:AbstractFloat,I<:Int}
     truth_sample::Vector{FT}
     truth_cov::Array{FT, 2}
     truth_covinv::Array{FT, 2}
     prior::Array
-    step::Array{FT}
+    step::Array{FT,1}
     burnin::I
     param::Vector{FT}
     posterior::Array{FT, 2}
     log_posterior::Array{Union{FT,Nothing}}
-    iter::Array{I}
-    accept::Array{I}
+    iter::Array{I,1}
+    accept::Array{I,1}
     algtype::String
     standardized::Bool
 end
@@ -55,10 +64,14 @@ end
 ##### Function definitions
 #####
 
-#outer constructors
-function MCMCObj(truth_sample::Vector{FT}, truth_cov::Array{FT, 2},
-                 priors::Array, step::FT, param_init::Vector{FT},
-                 max_iter::I, algtype::String, burnin::I,
+function MCMCObj(truth_sample::Vector{FT},
+                 truth_cov::Array{FT, 2},
+                 priors::Array,
+                 step::FT,
+                 param_init::Vector{FT},
+                 max_iter::I,
+                 algtype::String,
+                 burnin::I,
                  standardized::Bool) where {FT<:AbstractFloat,I<:Int}
 
     # first row is param_init
@@ -100,7 +113,7 @@ function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where 
     end
 
     if mcmc.log_posterior[1] isa Nothing #do an accept step.
-        mcmc.log_posterior[1] = log_posterior - log(0.5) #this makes p_accept = 0.5
+        mcmc.log_posterior[1] = log_posterior - log(FT(0.5)) #this makes p_accept = 0.5
     end
     p_accept = exp(log_posterior - mcmc.log_posterior[1])
 
@@ -130,19 +143,19 @@ function log_likelihood(mcmc::MCMCObj{FT},
     log_rho = [0.0]
     if gvar == nothing
         diff = g - mcmc.truth_sample
-        log_rho[1] = -0.5 * diff' * mcmc.truth_covinv * diff
+        log_rho[1] = -FT(0.5) * diff' * mcmc.truth_covinv * diff
     else
       total_cov = Diagonal(gvar) .+ mcmc.truth_cov
       total_cov_inv = inv(total_cov)
       diff = g - mcmc.truth_sample
-      log_rho[1] = -0.5 * diff' * total_cov_inv * diff - 0.5 * log(det(total_cov))
+      log_rho[1] = -FT(0.5) * diff' * total_cov_inv * diff - FT(0.5) * log(det(total_cov))
     end
     return log_rho[1]
 end
 
 
-function log_prior(mcmc::MCMCObj)
-    log_rho = [0.0]
+function log_prior(mcmc::MCMCObj{FT}) where {FT}
+    log_rho = FT[0]
     # Assume independent priors for each parameter
     priors = mcmc.prior
     for (param, prior_dist) in zip(mcmc.param, priors)
@@ -218,16 +231,16 @@ function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::T) where {FT}
             end
             it = 0
             if doubled && halved
-                step *= 0.75
+                step *= FT(0.75)
                 reset_with_step!(mcmc_test, step)
                 doubled = false
                 halved = false
             elseif acc_ratio < 0.15
-                step *= 0.5
+                step *= FT(0.5)
                 reset_with_step!(mcmc_test, step)
                 halved = true
             elseif acc_ratio>0.35
-                step *= 2.0
+                step *= FT(2.0)
                 reset_with_step!(mcmc_test, step)
                 doubled = true
             else

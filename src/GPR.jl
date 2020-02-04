@@ -32,9 +32,9 @@ Functions that operate on GPR.Wrap struct:
 
 Do *not* set Wrap's variables except for `thrsh`; use setter functions!
 """
-@with_kw mutable struct Wrap
-  thrsh::Int = 500
-  data = nothing
+@with_kw mutable struct Wrap{FT<:AbstractFloat,I<:Int}
+  thrsh::I = 500
+  data::Union{Nothing,Array{FT}} = nothing
   subsample = nothing
   GPR = nothing
   __data_set::Bool = false
@@ -52,13 +52,13 @@ Parameters:
   last column: values/labels/y values
   first column(s): locations/x values
 """
-function set_data!(gprw::Wrap, data::Array{<:Real})
+function set_data!(gprw::Wrap{FT}, data::Array{FT}) where {FT}
   if ndims(data) > 2
     println(warn("set_data!"), "ndims(data) > 2; will use the first two dims")
     idx = fill(1, ndims(data) - 2)
     data = data[:,:,idx...]
   elseif ndims(data) < 2
-    error("set_data!: ndims(data) < 2; cannot proceed")
+    throw(ArgumentError("set_data!: ndims(data) < 2; cannot proceed"))
   end
   gprw.data = data
   gprw.subsample = nothing
@@ -99,12 +99,12 @@ If `thrsh` < 0:
 
 This function ignores `gprw.thrsh`
 """
-function subsample!(gprw::Wrap, thrsh::Int)
+function subsample!(gprw::Wrap{FT,I}, thrsh::I) where {FT,I}
   if !gprw.__data_set
-    error("subsample!: 'data' is not set, cannot sample")
+    throw(ErrorException("subsample!: 'data' is not set, cannot sample"))
   end
   if thrsh == 0
-    error("subsample!: 'thrsh' == 0, cannot sample")
+    throw(ValueError("subsample!: 'thrsh' == 0, cannot sample"))
   end
 
   N = size(gprw.data,1)
@@ -138,7 +138,7 @@ Parameters:
                  (in addition to the optimized one)
   - nu:          Matern's nu parameter (smoothness of functions)
 """
-function learn!(gprw::Wrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
+function learn!(gprw::Wrap{FT}; kernel::String = "rbf", noise::FT = FT(0.5), nu::FT = FT(1.5)) where {FT}
   if !gprw.__subsample_set
     println(warn("learn!"), "'subsample' is not set; attempting to set...")
     subsample!(gprw)
@@ -152,7 +152,7 @@ function learn!(gprw::Wrap; kernel::String = "rbf", noise = 0.5, nu = 1.5)
       println(warn("learn!"), "Kernel '", kernel, "' is not supported; ",
               "falling back to RBF")
     end
-    GPR_kernel = 1.0 * RBF(1.0, (1e-10, 1e+6)) + WK
+    GPR_kernel = FT(1) * RBF(1.0, (1e-10, 1e+6)) + WK
   end
 
   gprw.GPR = GaussianProcessRegressor(
