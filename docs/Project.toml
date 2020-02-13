@@ -1,5 +1,6 @@
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
 Conda = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 ConfParser = "88353bc9-fd38-507d-a820-d3b43837d6b9"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
