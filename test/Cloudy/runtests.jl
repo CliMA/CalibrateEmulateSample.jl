@@ -1,9 +1,10 @@
 
 # Import Cloudy modules
 using Pkg; Pkg.add(PackageSpec(url="https://github.com/climate-machine/Cloudy.jl"))
+# using Pkg; Pkg.add("Cloudy"))
 using Cloudy
 using Cloudy.KernelTensors
-PDistributions = Cloudy.Distributions
+PDistributions = Cloudy.ParticleDistributions
 Pkg.add("Plots")
 
 # Import modules
