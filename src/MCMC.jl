@@ -1,25 +1,12 @@
-"""
-    MCMC
-
-To construct a simple MCMC object which, given a prior distribution,
-will update in a Metropolis-Hastings fashion with respect to a quadratic
-likelihood. It also computes acceptance ratios
-"""
 module MCMC
 
-using ..EKI
-using ..Truth
 using ..GPEmulator
 
-const T = GPEmulator.GPObj
-const pred = GPEmulator.predict
-
-# packages
 using Statistics
 using Distributions
 using LinearAlgebra
+using DocStringExtensions
 
-# exports
 export MCMCObj
 export mcmc_sample!
 export accept_ratio
@@ -29,37 +16,78 @@ export find_mcmc_step!
 export sample_posterior!
 
 
-#####
-##### Structure definitions
-#####
+abstract type AbstractMCMCAlgo end
+struct RandomWalkMetropolis <: AbstractMCMCAlgo end
 
-# structure to organize MCMC parameters and data
-struct MCMCObj{FT<:AbstractFloat,I<:Int}
-    truth_sample::Vector{FT}
-    truth_cov::Array{FT, 2}
-    truth_covinv::Array{FT, 2}
+"""
+    MCMCObj{FT<:AbstractFloat, IT<:Int}
+
+Structure to organize MCMC parameters and data
+
+# Fields
+$(DocStringExtensions.FIELDS)
+"""
+struct MCMCObj{FT<:AbstractFloat, IT<:Int}
+    "a single sample from the observations. Can e.g. be picked from an Obs struct using get_obs_sample"
+    obs_sample::Vector{FT}
+    "covariance of the observational noise"
+    obs_cov::Array{FT, 2}
+    "inverse of obs_cov"
+    obs_covinv::Array{FT, 2}
+    "array of length N_parameters with the parameters' prior
+              distributions (Julia Distributions objects), e.g.,
+              [Normal(5.0, 2.0), Uniform(2.0, 4.0)]"
     prior::Array
+    "MCMC step size"
     step::Array{FT}
-    burnin::I
+    "Number of MCMC steps that are considered burnin"
+    burnin::IT
+    "the current parameters"
     param::Vector{FT}
+    "Array of accepted MCMC parameter samples. The histogram of these samples gives an approximation of the posterior distribution of the parameters."
     posterior::Array{FT, 2}
-    log_posterior::Array{Union{FT,Nothing}}
-    iter::Array{I}
-    accept::Array{I}
+    "the (current) value of the logarithm of the posterior (= log_likelihood + log_prior of the current parameters)"
+    log_posterior::Array{Union{FT, Nothing}}
+    "iteration/step of the MCMC"
+    iter::Array{IT}
+    "number of accepted proposals"
+    accept::Array{IT}
+    "MCMC algorithm to use - currently implemented: 'rmw' (random walk Metropolis)"
     algtype::String
+    "whether or not the GP Emulator has been trained on
+     standardized (i.e., z scores of) parameters - if true,
+     the evaluation of the prior at the current parameter value
+     is done after transforming the parameters back to their
+     original value (i.e., multiply by standard deviation and
+     add mean).
+     TODO: Hopefully FreeParams will be able to deal with
+     standardized parameters in a more elegant way."
     standardized::Bool
 end
 
+"""
+    MCMCObj(obs_sample::Vector{FT},
+            obs_cov::Array{FT, 2},
+            priors::Array,
+            step::FT,
+            param_init::Vector{FT},
+            max_iter::IT,
+            algtype::String,
+            burnin::IT,
+            standardized::Bool) where {FT<:AbstractFloat, IT<:Int}
 
-#####
-##### Function definitions
-#####
+where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 
-#outer constructors
-function MCMCObj(truth_sample::Vector{FT}, truth_cov::Array{FT, 2},
-                 priors::Array, step::FT, param_init::Vector{FT},
-                 max_iter::I, algtype::String, burnin::I,
-                 standardized::Bool) where {FT<:AbstractFloat,I<:Int}
+"""
+function MCMCObj(obs_sample::Vector{FT},
+                 obs_cov::Array{FT, 2},
+                 priors::Array,
+                 step::FT,
+                 param_init::Vector{FT},
+                 max_iter::IT,
+                 algtype::String,
+                 burnin::IT,
+                 standardized::Bool) where {FT<:AbstractFloat, IT<:Int}
 
     # first row is param_init
     posterior = zeros(max_iter + 1, length(param_init))
@@ -67,15 +95,15 @@ function MCMCObj(truth_sample::Vector{FT}, truth_cov::Array{FT, 2},
     param = param_init
     log_posterior = [nothing]
     iter = [1]
-    truth_covinv = inv(truth_cov)
+    obs_covinv = inv(obs_cov)
     accept = [0]
     if algtype != "rwm"
         println("only random walk metropolis 'rwm' is implemented so far")
         sys.exit()
     end
-    MCMCObj{FT,I}(truth_sample, truth_cov, truth_covinv, priors, [step], burnin,
-            param, posterior, log_posterior, iter, accept, algtype,
-            standardized)
+    MCMCObj{FT,IT}(obs_sample, obs_cov, obs_covinv, priors, [step], burnin,
+                  param, posterior, log_posterior, iter, accept, algtype,
+                  standardized)
 
 end
 
@@ -99,9 +127,12 @@ function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where 
         log_posterior = log_likelihood(mcmc, g, gvar) + log_prior(mcmc)
     end
 
-    if mcmc.log_posterior[1] isa Nothing #do an accept step.
-        mcmc.log_posterior[1] = log_posterior - log(0.5) #this makes p_accept = 0.5
+    if mcmc.log_posterior[1] isa Nothing # do an accept step.
+        mcmc.log_posterior[1] = log_posterior - log(FT(0.5)) # this makes p_accept = 0.5
     end
+    # Get new parameters by comparing likelihood_current * prior_current to
+    # likelihood_proposal * prior_proposal - either we accept the proposed
+    # parameter or we stay where we are.
     p_accept = exp(log_posterior - mcmc.log_posterior[1])
 
     if p_accept > rand(Distributions.Uniform(0, 1))
@@ -111,9 +142,6 @@ function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where 
     else
         mcmc.posterior[1 + mcmc.iter[1], :] = mcmc.posterior[mcmc.iter[1], :]
     end
-    # get new parameters by comparing likelihood_current * prior_current to
-    # likelihood_proposal * prior_proposal - either we accept the proposed
-    # parameter or we stay where we are.
     mcmc.param[:] = proposal(mcmc)[:]
     mcmc.iter[1] = mcmc.iter[1] + 1
 
@@ -127,31 +155,33 @@ end
 function log_likelihood(mcmc::MCMCObj{FT},
                         g::Vector{FT},
                         gvar::Vector{FT}) where {FT}
-    log_rho = [0.0]
+    log_rho = FT[0]
     if gvar == nothing
-        diff = g - mcmc.truth_sample
-        log_rho[1] = -0.5 * diff' * mcmc.truth_covinv * diff
+        diff = g - mcmc.obs_sample
+        log_rho[1] = -FT(0.5) * diff' * mcmc.obs_covinv * diff
     else
-      total_cov = Diagonal(gvar) .+ mcmc.truth_cov
-      total_cov_inv = inv(total_cov)
-      diff = g - mcmc.truth_sample
-      log_rho[1] = -0.5 * diff' * total_cov_inv * diff - 0.5 * log(det(total_cov))
+        gcov_inv = inv(Diagonal(gvar))
+        log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
+        diff = g - mcmc.obs_sample
+        log_rho[1] = -FT(0.5) * diff' * gcov_inv * diff + log_gpfidelity
     end
     return log_rho[1]
 end
 
 
-function log_prior(mcmc::MCMCObj)
-    log_rho = [0.0]
+function log_prior(mcmc::MCMCObj{FT}) where {FT}
+    log_rho = FT[0]
     # Assume independent priors for each parameter
     priors = mcmc.prior
     for (param, prior_dist) in zip(mcmc.param, priors)
         if mcmc.standardized
             param_std = std(prior_dist)
             param_mean = mean(prior_dist)
-            log_rho[1] += logpdf(prior_dist, param*param_std + param_mean) # get density at current parameter value
+            # get density at current parameter value
+            log_rho[1] += logpdf(prior_dist, param*param_std + param_mean)
         else
-            log_rho[1] += logpdf(prior_dist, param) # get density at current parameter value
+            # get density at current parameter value
+            log_rho[1] += logpdf(prior_dist, param)
         end
     end
 
@@ -161,10 +191,10 @@ end
 
 function proposal(mcmc::MCMCObj)
 
-    variances = ones(length(mcmc.param))
-#    for (idx, prior) in enumerate(mcmc.prior)
-#        variances[idx] = var(prior)
-#    end
+    variances = zeros(length(mcmc.param))
+    for (idx, prior) in enumerate(mcmc.prior)
+        variances[idx] = var(prior)
+    end
 
     if mcmc.algtype == "rwm"
         #prop_dist = MvNormal(mcmc.posterior[1 + mcmc.iter[1], :], (mcmc.step[1]) * Diagonal(variances))
@@ -172,6 +202,7 @@ function proposal(mcmc::MCMCObj)
     end
     sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
 
+    # TODO: The hope is that FreeParams will be able to do domain checks for the parameters
 #    for (idx, prior) in enumerate(mcmc.prior)
 #        while !insupport(prior, sample[idx])
 #            println("not in support - resampling")
@@ -183,7 +214,7 @@ function proposal(mcmc::MCMCObj)
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::T) where {FT}
+function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::GPObj{FT}) where {FT}
     step = mcmc_test.step[1]
     mcmc_accept = false
     doubled = false
@@ -199,7 +230,7 @@ function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::T) where {FT}
 
         param = convert(Array{FT, 2}, mcmc_test.param')
         # test predictions param' is 1xN_params
-        gp_pred, gp_predvar = pred(gpobj, param)
+        gp_pred, gp_predvar = predict(gpobj, param)
         gp_pred = cat(gp_pred..., dims=2)
         gp_predvar = cat(gp_predvar..., dims=2)
 
@@ -241,11 +272,13 @@ function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::T) where {FT}
 
     end
 
-    return mcmc_test.step[1], acc_ratio
+    return mcmc_test.step[1]
 end
 
 
-function sample_posterior!(mcmc::MCMCObj{FT}, gpobj::T, max_iter::I) where {FT,I,T}
+function sample_posterior!(mcmc::MCMCObj{FT,IT},
+                           gpobj::GPObj{FT},
+                           max_iter::IT) where {FT,IT<:Int}
 
     println("iteration 0; current parameters ", mcmc.param')
     flush(stdout)
@@ -253,7 +286,7 @@ function sample_posterior!(mcmc::MCMCObj{FT}, gpobj::T, max_iter::I) where {FT,I
     for mcmcit in 1:max_iter
         param = convert(Array{FT, 2}, mcmc.param')
         # test predictions param' is 1xN_params
-        gp_pred, gp_predvar = pred(gpobj, param)
+        gp_pred, gp_predvar = predict(gpobj, param)
         gp_pred = cat(gp_pred..., dims=2)
         gp_predvar = cat(gp_predvar..., dims=2)
 

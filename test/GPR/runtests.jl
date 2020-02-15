@@ -2,7 +2,8 @@ using Test
 using NPZ
 using LinearAlgebra
 
-include(joinpath("..","..","src","GPR.jl"))
+using CalibrateEmulateSample
+using CalibrateEmulateSample.GPR
 
 const data_dir = joinpath(@__DIR__, "data")
 const gpr_data = NPZ.npzread(joinpath(data_dir, "data_points.npy"))

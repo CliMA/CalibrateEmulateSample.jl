@@ -1,7 +1,8 @@
 using Test
 using NPZ
 
-include(joinpath("..","..","src","Histograms.jl"))
+using CalibrateEmulateSample
+using CalibrateEmulateSample.Histograms
 const Hgm = Histograms
 
 const data_dir = joinpath(@__DIR__, "data")
