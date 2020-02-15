@@ -1,74 +1,72 @@
-"""
-    EKI
-
-To construct an object to perform Ensemble Kalman updates
-It also measures errors to the truth to assess convergence
-"""
 module EKI
 
-# packages
 using Random
 using Statistics
 using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
 using DifferentialEquations
+using DocStringExtensions
 
-# exports
 export EKIObj
 export construct_initial_ensemble
 export compute_error
-export run_model
-export run_model_ensemble
 export update_ensemble!
 
 
-#####
-#####  Structure definitions
-#####
+"""
+    EKIObj{FT<:AbstractFloat, IT<:Int}
 
-# structure to organize data
-struct EKIObj{FT<:AbstractFloat,I<:Int}
+Structure that is used in Ensemble Kalman Inversion (EKI)
+
+#Fields
+$(DocStringExtensions.FIELDS)
+"""
+struct EKIObj{FT<:AbstractFloat, IT<:Int}
+    "a vector of arrays of size N_ensemble x N_parameters containing the parameters (in each EKI iteration a new array of parameters is added)"
      u::Vector{Array{FT, 2}}
+     "vector of parameter names"
      unames::Vector{String}
+     "vector of observations (length: N_data); mean of all observation samples"
      g_t::Vector{FT}
+     "covariance of the observational noise, which is assumed to be normally distributed"
      cov::Array{FT, 2}
-     N_ens::I
+     "ensemble size"
+     N_ens::IT
+     "vector of arrays of size N_ensemble x N_data containing the data G(u) (in each EKI iteration a new array of data is added)"
      g::Vector{Array{FT, 2}}
-     error::Vector{FT}
+     "vector of errors"
+     err::Vector{FT}
 end
 
-
-#####
-##### Function definitions
-#####
-
 # outer constructors
-function EKIObj(parameters::Array{FT, 2}, parameter_names::Vector{String},
-                t_mean, t_cov::Array{FT, 2}) where {FT<:AbstractFloat}
+function EKIObj(parameters::Array{FT, 2},
+                parameter_names::Vector{String},
+                t_mean,
+                t_cov::Array{FT, 2}) where {FT<:AbstractFloat}
 
     # ensemble size
     N_ens = size(parameters)[1]
-    I = typeof(N_ens)
+    IT = typeof(N_ens)
     # parameters
-    u = Array{FT, 2}[] # array of Matrix{FT}'s
+    u = Array{FT, 2}[] # array of Array{FT, 2}'s
     push!(u, parameters) # insert parameters at end of array (in this case just 1st entry)
     # observations
     g = Vector{FT}[]
     # error store
-    error = []
+    err = []
 
-    EKIObj{FT,I}(u, parameter_names, t_mean, t_cov, N_ens, g, error)
+    EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err)
 end
 
 
 """
-    construct_initial_ensemble(priors, N_ens)
+    construct_initial_ensemble(N_ens::IT, priors; rng_seed=42) where {IT<:Int}
 
-Constructs the initial parameters, by sampling N_ens samples from specified
+Construct the initial parameters, by sampling N_ens samples from specified
 prior distributions.
 """
-function construct_initial_ensemble(N_ens::I, priors; rng_seed=42) where {I<:Int}
+function construct_initial_ensemble(N_ens::IT, priors; rng_seed=42) where {IT<:Int}
     N_params = length(priors)
     params = zeros(N_ens, N_params)
     # Ensuring reproducibility of the sampled parameter values
@@ -86,88 +84,20 @@ function compute_error(eki)
     diff = eki.g_t - meang
     X = eki.cov \ diff # diff: column vector
     newerr = dot(diff, X)
-    push!(eki.error, newerr)
+    push!(eki.err, newerr)
 end
 
 
-function run_model_ensemble(kernel::KT,
-                            dist::D,
-                            params::Array{FT, 2},
-                            moments::Array{FT, 1},
-                            tspan::Tuple{FT, FT},
-                            moment,
-                            update_params,
-                            get_src;
-                            rng_seed=42) where {D,KT, FT<:AbstractFloat}
-
-    N_ens = size(params, 1) # params is N_ens x N_params
-    n_moments = length(moments)
-    g_ens = zeros(N_ens, n_moments)
-
-    Random.seed!(rng_seed)
-    for i in 1:N_ens
-        # run model with the current parameters, i.e., map θ to G(θ)
-        g_ens[i, :] = run_model(params[i, :], kernel, dist, moments, moment, update_params, get_src, tspan)
-    end
-    return g_ens
-end
-
-
-"""
-run_model(kernel, dist, moments, tspan)
-
-- `kernel` - is the collision-coalescence kernel that determines the evolution
-           of the droplet size distribution
-- `dist` - is a mass distribution function
-- `moments` - is an array defining the moments of dist model will compute
-              over time (e.g, [0.0, 1.0, 2.0])
-- `tspan` - is a tuple definint the time interval over which the model is run
-"""
-function run_model(params::Array{FT, 1},
-                    kernel::KT,
-                    dist::D,
-                    moments::Array{FT, 1},
-                    moment,
-                    update_params,
-                    get_src,
-                    tspan=Tuple{FT, FT}) where {D,KT,FT<:AbstractFloat}
-
-    # generate the initial distribution
-    dist = update_params(dist, params)
-
-    # Numerical parameters
-    tol = 1e-7
-
-    # Make sure moments are up to date. mom0 is the initial condition for the
-    # ODE problem
-    moments_init = fill(NaN, length(moments))
-    for (i, mom) in enumerate(moments)
-        moments_init[i] = moment(dist, convert(FT, mom))
-    end
-
-    # Set up ODE problem: dM/dt = f(M,p,t)
-    rhs(M, p, t) = get_src(M, dist, kernel)
-    prob = ODEProblem(rhs, moments_init, tspan)
-    # Solve the ODE
-    sol = solve(prob, CVODE_BDF(), alg_hints=[:stiff], reltol=tol, abstol=tol)
-    # Return moments at last time step
-    moments_final = vcat(sol.u'...)[end, :]
-    time = tspan[2]
-
-    return moments_final
-end
-
-
-function update_ensemble!(eki, g)
+function update_ensemble!(eki::EKIObj{FT}, g) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
 
-    u_bar = fill(0.0, size(u)[2])
+    u_bar = fill(FT(0), size(u)[2])
     # g: N_ens x N_data
-    g_bar = fill(0.0, size(g)[2])
+    g_bar = fill(FT(0), size(g)[2])
 
-    cov_ug = fill(0.0, size(u)[2], size(g)[2])
-    cov_gg = fill(0.0, size(g)[2], size(g)[2])
+    cov_ug = fill(FT(0), size(u)[2], size(g)[2])
+    cov_gg = fill(FT(0), size(g)[2], size(g)[2])
 
     # update means/covs with new param/observation pairs u, g
     for j = 1:eki.N_ens

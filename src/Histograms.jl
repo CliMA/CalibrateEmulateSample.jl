@@ -196,13 +196,14 @@ Returns:
 """
 function W1(u_samples::AbstractVector, v_samples::AbstractVector;
                      normalize = false)
-  return if !normalize
-    scsta.wasserstein_distance(u_samples, v_samples)
+  d = scsta.wasserstein_distance(u_samples, v_samples)
+  if !normalize
+    return d
   else
     u_m, u_M = extrema(u_samples)
     v_m, v_M = extrema(v_samples)
     L = max(u_M, v_M) - min(u_m, v_m)
-    scsta.wasserstein_distance(u_samples, v_samples) / L
+    return d / L
   end
 end
 
