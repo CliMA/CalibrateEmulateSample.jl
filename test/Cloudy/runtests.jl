@@ -23,7 +23,7 @@ using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.GModel
 using CalibrateEmulateSample.Utilities
 
-
+get_src = Cloudy.Sources.get_int_coalescence
 # Define the data from which we want to learn
 data_names = ["M0", "M1", "M2"]
 moments = [0.0, 1.0, 2.0]
@@ -62,7 +62,8 @@ tspan = (0., 0.5)
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
 yt = GModel.run_G(u_true, g_settings_true,
                   PDistributions.update_params,
-                  PDistributions.moment)
+                  PDistributions.moment,
+                  get_src)
 n_samples = 100
 samples = zeros(n_samples, length(yt))
 noise_level = 0.05
@@ -106,8 +107,8 @@ for i in 1:N_iter
     g_ens = GModel.run_G_ensemble(exp_transform(ekiobj.u[end]),
                                   g_settings,
                                   PDistributions.update_params,
-                                  PDistributions.moment
-                                  )
+                                  PDistributions.moment,
+                                  get_src)
     EKI.update_ensemble!(ekiobj, g_ens)
 end
 
