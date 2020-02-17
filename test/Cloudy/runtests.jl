@@ -54,7 +54,7 @@ tspan = (0., 0.5)
 
 
 ###
-###  Generate (artifical) truth samples
+###  Generate (artificial) truth samples
 ###
 
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
@@ -122,7 +122,7 @@ println(mean(exp_transform(ekiobj.u[end]), dims=1))
 ###  Emulate: Gaussian Process Regression
 ###
 
-gppackage = "gp_jl" # use the GaussianProcesses.jl package
+gppackage = GPJL() # use the GaussianProcesses.jl package
 
 # Construct kernel:
 # Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso
