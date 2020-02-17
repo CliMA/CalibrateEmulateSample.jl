@@ -4,9 +4,10 @@ import NPZ
 import PyPlot
 const plt = PyPlot
 
-include(joinpath("..","..","src","GPR.jl"))
+using CalibrateEmulateSample.GPR
 
-const gpr_data = NPZ.npzread(joinpath("..","..","test","GPR","data","data_points.npy"))
+const data_dir = joinpath(@__DIR__,"..","..","test","GPR","data")
+const gpr_data = NPZ.npzread(joinpath(data_dir,"data_points.npy"))
 
 ################################################################################
 # main section #################################################################
