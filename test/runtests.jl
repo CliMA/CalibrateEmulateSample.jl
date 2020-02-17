@@ -6,9 +6,9 @@ ENV["PYTHON"] = ""
 for submodule in [
                   "Utilities",
                   "L96m",
-                  "GPR",
+                  # "GPR",
                   "EKS",
-                  "Histograms",
+                  # "Histograms",
                   "Cloudy",
                  ]
 
