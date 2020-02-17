@@ -2,8 +2,6 @@
 # Import Cloudy modules
 using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
 using Cloudy
-using Cloudy.KernelTensors
-using Cloudy.ParticleDistributions
 const PDistributions = Cloudy.ParticleDistributions
 Pkg.add("Plots")
 
@@ -49,7 +47,7 @@ dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 # Collision-coalescence kernel to be used in Cloudy
 coalescence_coeff = 1/3.14/4
 kernel_func = x -> coalescence_coeff
-kernel = CoalescenceTensor(kernel_func, 0, 100.0)
+kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
 
 # Time period over which to run Cloudy
 tspan = (0., 0.5)
@@ -62,7 +60,8 @@ tspan = (0., 0.5)
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
 yt = GModel.run_G(u_true, g_settings_true,
                   PDistributions.update_params,
-                  PDistributions.moment)
+                  PDistributions.moment,
+                  Cloudy.Sources.get_int_coalescence)
 n_samples = 100
 samples = zeros(n_samples, length(yt))
 noise_level = 0.05
@@ -106,7 +105,8 @@ for i in 1:N_iter
     g_ens = GModel.run_G_ensemble(exp_transform(ekiobj.u[end]),
                                   g_settings,
                                   PDistributions.update_params,
-                                  PDistributions.moment
+                                  PDistributions.moment,
+                                  Cloudy.Sources.get_int_coalescence
                                   )
     EKI.update_ensemble!(ekiobj, g_ens)
 end
