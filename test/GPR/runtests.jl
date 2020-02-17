@@ -2,7 +2,7 @@ using Test
 using NPZ
 using LinearAlgebra
 
-using CalibrateEmulateSample
+# using CalibrateEmulateSample
 using CalibrateEmulateSample.GPR
 
 const data_dir = joinpath(@__DIR__, "data")

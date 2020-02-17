@@ -1,18 +1,13 @@
 module GModel
 
 using DocStringExtensions
-# using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
-# using Cloudy.ParticleDistributions
-# using Cloudy.Sources
 
-# packages
 using Random
 using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
 using DifferentialEquations
 
-# exports
 export run_G
 export run_G_ensemble
 
@@ -122,4 +117,4 @@ function run_G(u::Array{FT, 1},
     return moments_final
 end
 
-end # module GModel
+end # module

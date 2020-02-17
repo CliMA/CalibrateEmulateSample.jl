@@ -11,13 +11,10 @@ Functions in this module:
 """
 module Histograms
 
-using PyCall
 using NPZ
 using ..Utilities
 
-using Conda
-Conda.add("scipy")
-scsta = pyimport_conda("scipy.stats","")
+include("wasserstein.jl")
 
 """
 A simple struct to store samples for empirical PDFs (histograms, distances etc.)
@@ -196,7 +193,7 @@ Returns:
 """
 function W1(u_samples::AbstractVector, v_samples::AbstractVector;
                      normalize = false)
-  d = scsta.wasserstein_distance(u_samples, v_samples)
+  d = wasserstein(u_samples, v_samples)
   if !normalize
     return d
   else
