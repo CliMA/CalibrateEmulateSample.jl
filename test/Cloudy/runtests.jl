@@ -6,6 +6,7 @@ const PDistributions = Cloudy.ParticleDistributions
 Pkg.add("Plots")
 
 # Import modules
+using Plots
 using JLD2 # saving and loading Julia arrays
 using Distributions  # probability distributions and associated functions
 using StatsBase
