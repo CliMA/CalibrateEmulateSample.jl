@@ -25,7 +25,7 @@ using LinearAlgebra, Distributions
 
         for i = 1:20
             fθs = map(f, θs)
-            θs = CES.eks_iter(prob, θs, fθs)
+            θs = CES.EKS.eks_iter(prob, θs, fθs)
         end
 
         postΣ = inv(inv(Σ) + A'*inv(Γ)*A)

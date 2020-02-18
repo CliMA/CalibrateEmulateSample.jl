@@ -13,27 +13,28 @@ export construct_initial_ensemble
 export compute_error
 export update_ensemble!
 
+include("EKS_bkp.jl")
 
 """
     EKSObj{FT<:AbstractFloat, IT<:Int}
 
 Structure that is used in Ensemble Kalman Inversion (eks)
 
-#Fields
+# Fields
 $(DocStringExtensions.FIELDS)
 """
 struct EKSObj{FT<:AbstractFloat, IT<:Int}
-    "a vector of arrays of size N_ensemble x N_parameters containing the parameters (in each eks iteration a new array of parameters is added)"
+    "a vector of arrays of size `N_ensemble x N_parameters` containing the parameters (in each eks iteration a new array of parameters is added)"
      u::Vector{Array{FT, 2}}
      "vector of parameter names"
      unames::Vector{String}
-     "vector of observations (length: N_data); mean of all observation samples"
+     "vector of observations (`length: N_data`); mean of all observation samples"
      g_t::Vector{FT}
      "covariance of the observational noise, which is assumed to be normally distributed"
      cov::Array{FT, 2}
      "ensemble size"
      N_ens::IT
-     "vector of arrays of size N_ensemble x N_data containing the data G(u) (in each eks iteration a new array of data is added)"
+     "vector of arrays of size `N_ensemble x N_data` containing the data ``G(u)`` (in each eks iteration a new array of data is added)"
      g::Vector{Array{FT, 2}}
      "vector of errors"
      err::Vector{FT}
@@ -120,7 +121,7 @@ function update_ensemble!(eks::EKSObj{FT}, g) where {FT}
     Δt = 1/maximum(real(eigvals(D)))
     noise = MvNormal(u_cov)
 
-    implicit = (1.0 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (eks.prior_cov \ u_cov')') \
+    implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (eks.prior_cov \ u_cov')') \
                 ( u' -
                     Δt * ( u' .- u_mean ) * D +
                     Δt * u_cov * (eks.prior_sigma \ eks.prior_mean)
@@ -136,4 +137,4 @@ function update_ensemble!(eks::EKSObj{FT}, g) where {FT}
 
 end
 
-end # module eks
+end # module
