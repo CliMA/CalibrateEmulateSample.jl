@@ -118,7 +118,7 @@ function update_ensemble!(eks::EKSObj{FT}, g) where {FT}
     R = g' .- y
     D = 1/J * (E' * (eks.cov \ R))
 
-    Δt = 1/maximum(real(eigvals(D)))
+    Δt = 1/(norm(D) + 1e-8)
     noise = MvNormal(u_cov)
 
     implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (eks.prior_cov \ u_cov')') \
