@@ -13,8 +13,6 @@ export construct_initial_ensemble
 export compute_error
 export update_ensemble!
 
-include("EKS_bkp.jl")
-
 """
     EKSObj{FT<:AbstractFloat, IT<:Int}
 

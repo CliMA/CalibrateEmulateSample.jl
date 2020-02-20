@@ -12,6 +12,7 @@ include("spaces.jl")
 include("problems.jl")
 include("Histograms.jl")
 include("EKS.jl")
+include("EKS_bkp.jl")
 include("GPR.jl")
 
 end # module
