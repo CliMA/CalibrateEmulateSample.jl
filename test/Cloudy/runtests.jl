@@ -3,7 +3,7 @@
 using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
 using Cloudy
 const PDistributions = Cloudy.ParticleDistributions
-Pkg.add("Plots")
+using Plots
 
 # Import modules
 using JLD2 # saving and loading Julia arrays
