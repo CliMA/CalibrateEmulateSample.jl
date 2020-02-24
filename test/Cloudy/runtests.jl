@@ -3,7 +3,6 @@
 using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
 using Cloudy
 const PDistributions = Cloudy.ParticleDistributions
-Pkg.add("Plots")
 using Plots
 
 # Import modules
