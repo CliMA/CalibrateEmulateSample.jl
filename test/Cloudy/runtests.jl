@@ -14,7 +14,7 @@ using StatsPlots
 using GaussianProcesses
 
 # Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EKI
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.GPEmulator
 using CalibrateEmulateSample.MCMC
 using CalibrateEmulateSample.Observations
@@ -83,14 +83,14 @@ exp_transform(a::AbstractArray) = exp.(a)
 N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_param
-initial_param = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=5)
+initial_param = construct_initial_ensemble(N_ens, priors; rng_seed=5)
 # Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ and
 # k need to be positive. The EKI update can result in violations of these
 # constraints - therefore, we log-transform the initial ensemble, perform all
 # EKI operations in log space and run G with the exponentiated parameters,
 # which ensures positivity.
-ekiobj = EKI.EKIObj(log_transform(initial_param),
-                    param_names, truth.mean, truth.cov)
+eki = EnsembleKalmanProcess(log_transform(initial_param),
+                    param_names, truth.mean, truth.cov, Inversion())
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters will
 # then be set in run_model_ensemble
@@ -102,20 +102,20 @@ g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
 for i in 1:N_iter
     # Note the exp-transform to ensure positivity of the
     # parameters
-    g_ens = GModel.run_G_ensemble(exp_transform(ekiobj.u[end]),
+    g_ens = GModel.run_G_ensemble(exp_transform(eki.u[end]),
                                   g_settings,
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence
                                   )
-    EKI.update_ensemble!(ekiobj, g_ens)
+    update_ensemble!(eki, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
 println("True parameters: ")
 println(u_true)
 println("\nEKI results:")
-println(mean(exp_transform(ekiobj.u[end]), dims=1))
+println(mean(exp_transform(eki.u[end]), dims=1))
 
 
 ###
@@ -137,7 +137,7 @@ white = Noise(log(2.0))
 # construct kernel
 GPkernel =  kern1 + kern2 + white
 # Extract training points {u_i, G(u_i)}
-log_u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 5)
+log_u_tp, g_tp = Utilities.extract_GP_tp(eki, 5)
 u_tp = exp_transform(log_u_tp)
 
 # Standardize the parameters

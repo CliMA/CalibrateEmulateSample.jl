@@ -4,7 +4,7 @@ using LinearAlgebra
 using Statistics
 using Random
 using ..Observations
-using ..EKI
+using ..EnsembleKalmanProcesses
 
 export extract_GP_tp
 export extract_obs_data
@@ -14,20 +14,20 @@ export RPAD, name, warn
 
 
 """
-    extract_GP_tp(ekiobj::EKIObj{FT,IT}, N_eki_it::IT) where {FT,IT}
+    extract_GP_tp(eki::EKI{FT,IT}, N_eki_it::IT) where {FT,IT}
 
 Extract the training points needed to train the Gaussian Process Regression.
 
- - `ekiobj` - EKIObj holding the parameters and the data that were produced
+ - `eki` - EKI holding the parameters and the data that were produced
               during EKI
  - `N_eki_iter` - Number of EKI layers/iterations to train on
 
 """
-function extract_GP_tp(ekiobj::EKIObj{FT,IT}, N_eki_it::IT) where {FT,IT}
+function extract_GP_tp(eki::EnsembleKalmanProcess{FT,IT,Inversion}, N_eki_it::IT) where {FT,IT}
 
     # Note u[end] does not have an equivalent g
-    u_tp = ekiobj.u[end-N_eki_it:end-1] # N_eki_it x [N_ensemble x N_parameters]
-    g_tp = ekiobj.g[end-N_eki_it+1:end] # N_eki_it x [N_ensemble x N_data]
+    u_tp = eki.u[end-N_eki_it:end-1] # N_eki_it x [N_ensemble x N_parameters]
+    g_tp = eki.g[end-N_eki_it+1:end] # N_eki_it x [N_ensemble x N_data]
 
     # u does not require reduction, g does:
     # g_tp[j] is jth iteration of ensembles
@@ -55,8 +55,6 @@ function get_obs_sample(obs::Obs; rng_seed=42)
 
     return yt_sample
 end
-
-
 
 function orig2zscore(X::AbstractVector{FT},
                      mean::AbstractVector{FT},
