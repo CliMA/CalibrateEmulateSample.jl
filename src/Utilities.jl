@@ -14,7 +14,7 @@ export RPAD, name, warn
 
 
 """
-    extract_GP_tp(eki::EKI{FT,IT}, N_eki_it::IT) where {FT,IT}
+    extract_GP_tp(eki::EnsembleKalmanProcess{FT,IT,Inversion}, N_eki_it::IT) where {FT,IT}
 
 Extract the training points needed to train the Gaussian Process Regression.
 
@@ -114,4 +114,4 @@ name(name::AbstractString) = rpad(name * ":", RPAD)
 
 warn(name::AbstractString) = rpad("WARNING (" * name * "):", RPAD)
 
-end # module ConvenienceFunctions
+end # module
