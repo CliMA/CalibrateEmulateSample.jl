@@ -35,9 +35,9 @@ N0_true = 360.
 θ_true = 4.1
 k_true = 2.0
 u_true = [N0_true, θ_true, k_true]
-priors = [Distributions.Normal(300., 50.),   # prior on N0
-          Distributions.Normal(6.0, 2.0),    # prior on θ
-          Distributions.Normal(3.0, 1.5)]    # prior on k
+priors = [Distributions.Uniform(100.0, 600.0), # prior on N0
+          Distributions.Uniform(0.0, 12.0),    # prior on θ
+          Distributions.Uniform(0.0, 6.0)]     # prior on k 
 
 # We assume that the true particle mass distribution is a Gamma distribution
 # with parameters N0_true, θ_true, k_true. Note that dist_true has to be a
@@ -106,8 +106,7 @@ for i in 1:N_iter
                                   g_settings,
                                   PDistributions.update_params,
                                   PDistributions.moment,
-                                  Cloudy.Sources.get_int_coalescence
-                                  )
+                                  Cloudy.Sources.get_int_coalescence)
     update_ensemble!(eki, g_ens)
 end
 
@@ -123,6 +122,7 @@ println(mean(exp_transform(eki.u[end]), dims=1))
 ###
 
 gppackage = GPJL() # use the GaussianProcesses.jl package
+pred_type = YType() # predict the data, not the latent function
 
 # Construct kernel:
 # Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso
@@ -140,26 +140,15 @@ GPkernel =  kern1 + kern2 + white
 log_u_tp, g_tp = Utilities.extract_GP_tp(eki, 5)
 u_tp = exp_transform(log_u_tp)
 
-# Standardize the parameters
-param_mean = [mean(prior) for prior in priors]
-param_std = [std(prior) for prior in priors]
-u_tp_zscore = Utilities.orig2zscore(u_tp, param_mean, param_std)
-# Standardize the data
-data_mean = vec(mean(g_tp, dims=1))
-data_std = vec(std(g_tp, dims=1))
-g_tp_zscore = Utilities.orig2zscore(g_tp, data_mean, data_std)
-
 # Fit a Gaussian Process regression to the training points
-gpobj = GPEmulator.GPObj(u_tp_zscore, g_tp_zscore, gppackage, GPkernel)
+gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
+                         normalized=true, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # (standardized) true parameters
-u_true_zscore = Utilities.orig2zscore(u_true, param_mean, param_std)
-y_mean, y_var = GPEmulator.predict(gpobj, reshape(u_true_zscore, 1, :))
-y_mean = cat(y_mean..., dims=2)
-y_var = cat(y_var..., dims=2)
+y_mean, y_var = GPEmulator.predict(gpobj, reshape(u_true, 1, :))
 println("GP prediction on true parameters: ")
-println(vec(y_mean) .* data_std + data_mean)
+println(y_mean)
 println("true data: ")
 println(truth.mean)
 
@@ -176,15 +165,9 @@ mcmc_alg = "rwm" # random walk Metropolis
 burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
-standardized = true # we are using z scores
 yt_sample = Utilities.get_obs_sample(truth)
-yt_sample_zscore = Utilities.orig2zscore(yt_sample, data_mean, data_std)
-# Normalize covariance of obs noise to determinant 1
-truth_cov_norm = (1.0/(det(truth.cov)))^(1.0/n_param) * truth.cov
-
-mcmc_test = MCMC.MCMCObj(yt_sample_zscore, truth_cov_norm,
-                         priors, step, u0,
-                         max_iter, mcmc_alg, burnin, standardized)
+mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, priors, step, u0, max_iter, 
+                         mcmc_alg, burnin)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
@@ -192,10 +175,9 @@ println("Begin MCMC - with step size ", new_step)
 u0 = vec(mean(u_tp, dims=1))
 # reset parameters
 burnin = 1000
-max_iter = 100000
-mcmc = MCMC.MCMCObj(yt_sample_zscore, truth_cov_norm, priors,
-                    new_step, u0, max_iter, mcmc_alg, burnin,
-                    standardized)
+max_iter = 500_000
+mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, new_step, u0, max_iter, 
+                        mcmc_alg, burnin)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
 posterior = MCMC.get_posterior(mcmc)
@@ -211,7 +193,7 @@ println("post_cov")
 for idx in 1:n_param
     if idx == 1
         param = "N0"
-        xs = collect(100:1:500)
+        xs = collect(100:1:600)
     elseif idx == 2
         param = "Theta"
         xs = collect(0:0.01:12.0)
@@ -223,8 +205,8 @@ for idx in 1:n_param
     end
 
     label = "true " * param
-    histogram(posterior[:, idx] .* param_std[idx] .+ param_mean[idx],
-              bins=100, normed=true, fill=:slategray, lab="posterior")
+    histogram(posterior[:, idx], bins=100, normed=true, fill=:slategray, 
+              lab="posterior")
     plot!(xs, mcmc.prior[idx], w=2.6, color=:blue, lab="prior")
     plot!([u_true[idx]], seriestype="vline", w=2.6, lab=label)
 
