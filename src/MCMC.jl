@@ -54,15 +54,6 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     accept::Array{IT}
     "MCMC algorithm to use - currently implemented: 'rmw' (random walk Metropolis)"
     algtype::String
-    "whether or not the GP Emulator has been trained on
-     standardized (i.e., z scores of) parameters - if true,
-     the evaluation of the prior at the current parameter value
-     is done after transforming the parameters back to their
-     original value (i.e., multiply by standard deviation and
-     add mean).
-     TODO: Hopefully FreeParams will be able to deal with
-     standardized parameters in a more elegant way."
-    standardized::Bool
 end
 
 """
@@ -74,7 +65,6 @@ end
             max_iter::IT,
             algtype::String,
             burnin::IT,
-            standardized::Bool) where {FT<:AbstractFloat, IT<:Int}
 
 where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 
@@ -86,8 +76,7 @@ function MCMCObj(obs_sample::Vector{FT},
                  param_init::Vector{FT},
                  max_iter::IT,
                  algtype::String,
-                 burnin::IT,
-                 standardized::Bool) where {FT<:AbstractFloat, IT<:Int}
+                 burnin::IT) where {FT<:AbstractFloat, IT<:Int}
 
     # first row is param_init
     posterior = zeros(max_iter + 1, length(param_init))
@@ -102,10 +91,9 @@ function MCMCObj(obs_sample::Vector{FT},
         sys.exit()
     end
     MCMCObj{FT,IT}(obs_sample, obs_cov, obs_covinv, priors, [step], burnin,
-                  param, posterior, log_posterior, iter, accept, algtype,
-                  standardized)
-
+                   param, posterior, log_posterior, iter, accept, algtype)
 end
+
 
 function reset_with_step!(mcmc::MCMCObj{FT}, step::FT) where {FT}
     # reset to beginning with new stepsize
@@ -174,15 +162,8 @@ function log_prior(mcmc::MCMCObj{FT}) where {FT}
     # Assume independent priors for each parameter
     priors = mcmc.prior
     for (param, prior_dist) in zip(mcmc.param, priors)
-        if mcmc.standardized
-            param_std = std(prior_dist)
-            param_mean = mean(prior_dist)
-            # get density at current parameter value
-            log_rho[1] += logpdf(prior_dist, param*param_std + param_mean)
-        else
-            # get density at current parameter value
-            log_rho[1] += logpdf(prior_dist, param)
-        end
+        # get density at current parameter value
+        log_rho[1] += logpdf(prior_dist, param)
     end
 
     return log_rho[1]
@@ -229,10 +210,7 @@ function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::GPObj{FT}) where {FT}
     while mcmc_accept == false
 
         param = convert(Array{FT, 2}, mcmc_test.param')
-        # test predictions param' is 1xN_params
         gp_pred, gp_predvar = predict(gpobj, param)
-        gp_pred = cat(gp_pred..., dims=2)
-        gp_predvar = cat(gp_predvar..., dims=2)
 
         mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
         it += 1
