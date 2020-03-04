@@ -12,6 +12,7 @@ using GaussianProcesses
 using Plots
 
 # Import Calibrate-Emulate-Sample modules
+using CalibrateEmulateSample.Priors
 using CalibrateEmulateSample.EKI
 using CalibrateEmulateSample.GPEmulator
 using CalibrateEmulateSample.MCMC
@@ -50,13 +51,13 @@ function logmean_and_logstd(μ, σ)
     return μ_log, σ_log
 end
 
-logmean_N0, logstd_N0 = logmean_and_logstd(280., 40.)
+logmean_N0, logstd_N0 = logmean_and_logstd(260., 40.)
 logmean_θ, logstd_θ = logmean_and_logstd(3.0, 1.5)
 logmean_k, logstd_k = logmean_and_logstd(0.5, 0.5)
 
-priors = [Distributions.Normal(logmean_N0, logstd_N0),  # prior on N0
-          Distributions.Normal(logmean_θ, logstd_θ),    # prior on θ
-          Distributions.Normal(logmean_k, logstd_k)]    # prior on k 
+priors = [Priors.Prior(Normal(logmean_N0, logstd_N0), "N0"),    # prior on N0
+          Priors.Prior(Normal(logmean_θ, logstd_θ), "θ"),       # prior on θ
+          Priors.Prior(Normal(logmean_k, logstd_k), "k")]       # prior on k
 
 
 ###
@@ -161,7 +162,7 @@ white = Noise(log(2.0))
 # construct kernel
 GPkernel =  kern1 + kern2 + white
 # Get training points    
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter-1)
 normalized = true
 gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
                          normalized=normalized, prediction_type=pred_type)
@@ -192,9 +193,8 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
-mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, 
-                         priors, step, u0, 
-                         max_iter, mcmc_alg, burnin)
+mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, priors, step, u0, max_iter, 
+                         mcmc_alg, burnin)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
@@ -205,8 +205,8 @@ u0 = vec(mean(u_tp, dims=1))
 burnin = 1000
 max_iter = 500000
 
-mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, 
-                    new_step, u0, max_iter, mcmc_alg, burnin)
+mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, new_step, u0, max_iter, 
+                    mcmc_alg, burnin)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
 posterior = MCMC.get_posterior(mcmc)      
@@ -244,7 +244,7 @@ for idx in 1:n_params
     label = "true " * param
     histogram(posterior[:, idx], bins=100, normed=true, fill=:slategray, 
               lab="posterior")
-    plot!(xs, mcmc.prior[idx], w=2.6, color=:blue, lab="prior")
+    plot!(xs, mcmc.prior[idx].dist, w=2.6, color=:blue, lab="prior")
     plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
 
     title!(param)

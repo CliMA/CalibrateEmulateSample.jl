@@ -3,6 +3,7 @@ module Utilities
 using LinearAlgebra
 using Statistics
 using Random
+using DocStringExtensions
 using ..Observations
 using ..EKI
 
@@ -116,4 +117,5 @@ name(name::AbstractString) = rpad(name * ":", RPAD)
 
 warn(name::AbstractString) = rpad("WARNING (" * name * "):", RPAD)
 
-end # module ConvenienceFunctions
+
+end # module

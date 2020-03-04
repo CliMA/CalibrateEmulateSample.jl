@@ -2,6 +2,7 @@ module CalibrateEmulateSample
 
 using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
+include("Priors.jl")
 include("EKI.jl")
 include("GPEmulator.jl")
 include("MCMC.jl")
