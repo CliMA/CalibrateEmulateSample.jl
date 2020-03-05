@@ -173,14 +173,26 @@ function proposal(mcmc::MCMCObj)
 
     variances = zeros(length(mcmc.param))
     priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
+    param_names = [mcmc.prior[i].param_name for i in 1:length(mcmc.prior)]
     for (idx, prior) in enumerate(priors)
         variances[idx] = var(prior)
     end
 
     if mcmc.algtype == "rwm"
-        prop_dist = MvNormal(zeros(length(mcmc.param)), (mcmc.step[1]^2) * Diagonal(variances))
+        prop_dist = MvNormal(zeros(length(mcmc.param)), 
+                             (mcmc.step[1]^2) * Diagonal(variances))
     end
     sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
+
+    # Check if we have jumped outside the support of the prior
+    for (idx, prior) in enumerate(priors)
+        while !insupport(prior, sample[idx])
+            @warn """MCMC proposal is leaving the support of the prior for parameter $(param_names[idx]) 
+                  \nAlgorithm is continuing to run by resampling until proposal is in support. 
+                  \nHowever, consider using a transform or a prior with wider support""" maxlog=1
+            sample[:] = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
+        end
+    end
 
     return sample
 end
