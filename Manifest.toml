@@ -1053,9 +1053,3 @@ deps = ["MacroTools"]
 git-tree-sha1 = "b3b4882cc9accf6731a08cc39543fbc6b669dca8"
 uuid = "700de1a5-db45-46bc-99cf-38207098b444"
 version = "0.2.0"
-
-[[src]]
-deps = ["LinearAlgebra", "Pkg", "Random", "Statistics"]
-path = "src"
-uuid = "14ec9285-ff7d-5059-98f8-97676e6c56e6"
-version = "0.0.0"
