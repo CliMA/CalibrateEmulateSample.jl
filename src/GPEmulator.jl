@@ -1,11 +1,14 @@
 module GPEmulator
 
-using Statistics
-using Distributions
-using LinearAlgebra
-using GaussianProcesses
-using ScikitLearn
-using Optim
+# There are compiler warnings regarding broken incremental compilation,
+# so let's only use what we need, see ScikitLearn as an example.
+
+# using Statistics
+# using Distributions
+# using LinearAlgebra
+# using GaussianProcesses
+# using Optim
+using ScikitLearn: @sk_import
 using DocStringExtensions
 
 using PyCall
@@ -77,7 +80,7 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
                 kernel is used. The default kernel is the sum of a Squared
                 Exponential kernel and white noise.
 """
-function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, prediction_type::PredictionType=YType()) where {K, KPy}
     FT = eltype(data)
     models = Any[]
 
@@ -90,7 +93,7 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
     if normalized
         inputs = (inputs .- input_mean) * sqrt_inv_input_cov
     end
-        
+
     # Use a default kernel unless a kernel was supplied to GPObj
     if GPkernel==nothing
         # Construct kernel:
@@ -115,12 +118,12 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         logstd_obs_noise = log(sqrt(0.5)) # log standard dev of obs noise
         # Zero mean function
         kmean = MeanZero()
-        m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
+        m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i,
                 logstd_obs_noise)
         optimize!(m, noise=false)
         push!(models, m)
     end
-    return GPObj{FT, typeof(package)}(inputs, data, input_mean, 
+    return GPObj{FT, typeof(package)}(inputs, data, input_mean,
                                       sqrt_inv_input_cov, models, normalized,
                                       prediction_type)
 end
@@ -131,11 +134,11 @@ end
 
 Inputs and data of size N_samples x N_parameters (both arrays will be transposed in the construction of the GPObj)
 
- - `GPkernel` - GaussianProcesses or ScikitLearn kernel object. If not supplied, 
-                a default kernel is used. The default kernel is the sum of a 
+ - `GPkernel` - GaussianProcesses or ScikitLearn kernel object. If not supplied,
+                a default kernel is used. The default kernel is the sum of a
                 Squared Exponential kernel and white noise.
 """
-function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true) where {K<:Kernel, KPy<:PyObject}
+function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true) where {K, KPy}
     FT = eltype(data)
     models = Any[]
 
@@ -172,7 +175,7 @@ function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=no
         print(i,", ")
         push!(models, m)
     end
-    return GPObj{FT, typeof(package)}(inputs, data, input_mean, sqrt_inv_input_cov, 
+    return GPObj{FT, typeof(package)}(inputs, data, input_mean, sqrt_inv_input_cov,
                                       models, normalized, YType())
 end
 

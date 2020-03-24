@@ -25,25 +25,25 @@ using CalibrateEmulateSample.Utilities
 ###
 
 # Define the parameters that we want to learn
-# We assume that the true particle mass distribution is a Gamma distribution 
+# We assume that the true particle mass distribution is a Gamma distribution
 # with parameters N0_true, θ_true, k_true
 param_names = ["N0", "θ", "k"]
 n_param = length(param_names)
 
-N0_true = 300.0 
-θ_true = 1.5597  
-k_true = 0.0817                  
+N0_true = 300.0
+θ_true = 1.5597
+k_true = 0.0817
 params_true = [N0_true, θ_true, k_true]
-# Note that dist_true is a Cloudy distribution, not a Distributions.jl 
+# Note that dist_true is a Cloudy distribution, not a Distributions.jl
 # distribution
 dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 
 # Assume lognormal priors for all three parameters
-# Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ 
-# and k need to be positive. The EKI update can result in violations of 
-# these constraints - therefore, we perform CES in log space, i.e., we try 
+# Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ
+# and k need to be positive. The EKI update can result in violations of
+# these constraints - therefore, we perform CES in log space, i.e., we try
 # to find the logarithms of the true parameters (and of course, the actual
-# parameters can then simply be obtained by exponentiating the final results). 
+# parameters can then simply be obtained by exponentiating the final results).
 function logmean_and_logstd(μ, σ)
     σ_log = sqrt(log(1.0 + σ^2/μ^2))
     μ_log = log(μ / (sqrt(1.0 + σ^2/μ^2)))
@@ -56,7 +56,7 @@ logmean_k, logstd_k = logmean_and_logstd(0.5, 0.5)
 
 priors = [Distributions.Normal(logmean_N0, logstd_N0),  # prior on N0
           Distributions.Normal(logmean_θ, logstd_θ),    # prior on θ
-          Distributions.Normal(logmean_k, logstd_k)]    # prior on k 
+          Distributions.Normal(logmean_k, logstd_k)]    # prior on k
 
 
 ###
@@ -78,7 +78,7 @@ kernel_func = x -> coalescence_coeff
 kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
 
 # Time period over which to run Cloudy
-tspan = (0., 0.5)  
+tspan = (0., 0.5)
 
 
 ###
@@ -86,7 +86,7 @@ tspan = (0., 0.5)
 ###
 
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
-yt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
+yt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params,
                   PDistributions.moment, Cloudy.Sources.get_int_coalescence)
 n_samples = 100
 samples = zeros(n_samples, length(yt))
@@ -115,7 +115,7 @@ N_iter = 5 # number of EKI iterations
 initial_params = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=6)
 ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
 
-# Initialize a ParticleDistribution with dummy parameters. The parameters 
+# Initialize a ParticleDistribution with dummy parameters. The parameters
 # will then be set in run_G_ensemble
 dummy = 1.0
 dist_type = PDistributions.Gamma(dummy, dummy, dummy)
@@ -130,7 +130,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EKI.update_ensemble!(ekiobj, g_ens) 
+    EKI.update_ensemble!(ekiobj, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -149,8 +149,8 @@ gppackage = GPEmulator.GPJL()
 pred_type = GPEmulator.YType()
 
 # Construct kernel:
-# Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
-# kernel and white noise. Note that the kernels take the signal standard 
+# Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso
+# kernel and white noise. Note that the kernels take the signal standard
 # deviations on a log scale as input.
 len1 = 1.0
 kern1 = SE(len1, 1.0)
@@ -160,10 +160,10 @@ kern2 = Mat52Ard(len2, 0.0)
 white = Noise(log(2.0))
 # construct kernel
 GPkernel =  kern1 + kern2 + white
-# Get training points    
+# Get training points
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
+gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel,
                          normalized=normalized, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
@@ -184,7 +184,7 @@ println(truth.mean)
 u0 = vec(mean(u_tp, dims=1))
 println("initial parameters: ", u0)
 
-# MCMC parameters    
+# MCMC parameters
 mcmc_alg = "rwm" # random walk Metropolis
 
 # First let's run a short chain to determine a good step size
@@ -192,8 +192,8 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
-mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, 
-                         priors, step, u0, 
+mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov,
+                         priors, step, u0,
                          max_iter, mcmc_alg, burnin)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
@@ -201,15 +201,15 @@ new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 println("Begin MCMC - with step size ", new_step)
 u0 = vec(mean(u_tp, dims=1))
 
-# reset parameters 
+# reset parameters
 burnin = 1000
 max_iter = 500000
 
-mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, 
+mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors,
                     new_step, u0, max_iter, mcmc_alg, burnin)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
-posterior = MCMC.get_posterior(mcmc)      
+posterior = MCMC.get_posterior(mcmc)
 
 post_mean = mean(posterior, dims=1)
 post_cov = cov(posterior, dims=1)
@@ -222,7 +222,7 @@ println(det(inv(post_cov)))
 println(" ")
 
 # Plot the posteriors together with the priors and the true parameter values
-using StatsPlots; 
+using StatsPlots;
 
 true_values = [log(N0_true) log(θ_true) log(k_true)]
 n_params = length(true_values)
@@ -242,7 +242,7 @@ for idx in 1:n_params
     end
 
     label = "true " * param
-    histogram(posterior[:, idx], bins=100, normed=true, fill=:slategray, 
+    histogram(posterior[:, idx], bins=100, normed=true, fill=:slategray,
               lab="posterior")
     plot!(xs, mcmc.prior[idx], w=2.6, color=:blue, lab="prior")
     plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
