@@ -5,6 +5,7 @@
 | **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]          |
 | **Travis Build**     | [![travis][travis-img]][travis-url]           |
 | **AppVeyor Build**   | [![appveyor][appveyor-img]][appveyor-url]     |
+| **Docker-based CI**  | [![Docker-CI][docker-ci-img]][docker-ci-url]  |
 | **Code Coverage**    | [![codecov][codecov-img]][codecov-url]        |
 | **Bors**             | [![Bors enabled][bors-img]][bors-url]         |
 
@@ -16,6 +17,9 @@
 
 [appveyor-img]: https://ci.appveyor.com/api/projects/status/c6eykd0w94pmyjt8/branch/master?svg=true
 [appveyor-url]: https://ci.appveyor.com/project/climate-machine/calibrateemulatesample-jl/branch/master
+
+[docker-ci-img]: https://github.com/climate-machine/CalibrateEmulateSample.jl/workflows/DockerCI/badge.svg
+[docker-ci-url]: https://github.com/climate-machine/CalibrateEmulateSample.jl/actions
 
 [codecov-img]: https://codecov.io/gh/climate-machine/CalibrateEmulateSample.jl/branch/master/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/climate-machine/CalibrateEmulateSample.jl

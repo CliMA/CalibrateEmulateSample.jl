@@ -1,6 +1,5 @@
 status = [
-  "continuous-integration/travis-ci/push",
-  "continuous-integration/appveyor/branch"
+  "dockerci (1.4, ubuntu-latest)",
 ]
 delete_merged_branches = true
 timeout_sec = 86400
