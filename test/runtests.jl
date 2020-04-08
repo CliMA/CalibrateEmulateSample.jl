@@ -9,7 +9,7 @@ for submodule in [
                   "GPR",
                   "EKS",
                   "Histograms",
-                  "Cloudy",
+                  # "Cloudy",
                  ]
 
   println("Starting tests for $submodule")
