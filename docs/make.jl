@@ -21,6 +21,6 @@ makedocs(
 )
 
 deploydocs(
-           repo = "github.com/climate-machine/CalibrateEmulateSample.jl.git",
+           repo = "github.com/CliMA/CalibrateEmulateSample.jl.git",
            target = "build",
           )
