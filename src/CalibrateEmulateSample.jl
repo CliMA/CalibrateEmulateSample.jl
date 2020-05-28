@@ -2,16 +2,24 @@ module CalibrateEmulateSample
 
 using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
-include("EKI.jl")
-include("GPEmulator.jl")
-include("MCMC.jl")
+# No internal deps, light external deps
 include("Observations.jl")
-include("GModel.jl")
-include("Utilities.jl")
 include("spaces.jl")
 include("problems.jl")
-include("Histograms.jl")
 include("EKS.jl")
-include("GPR.jl")
+
+# No internal deps, heavy external deps
+include("EKI.jl")
+# include("GModel.jl")
+# include("GPEmulator.jl")
+
+# Internal deps, light external deps
+include("Utilities.jl")
+
+# Internal deps, light external deps
+# include("MCMC.jl")
+# include("Histograms.jl")
+# include("GPR.jl")
+
 
 end # module

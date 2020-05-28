@@ -20,27 +20,6 @@ julia:
 notifications:
   email: false
 
-env:
-    global:
-    - PYTHON=python3
-before_install:
- - |
-   if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
-     sudo apt-get update && sudo apt-get install -qq -y python3-pip
-   fi
- - julia -e 'using Pkg; Pkg.add("Conda")'
- - python3 -m pip install --user -U numpy scipy scikit-learn
- - julia -e 'using Conda; Conda.add("scikit-learn")'
- - julia -e 'using Pkg; Pkg.add("PyCall")'
-
-before_script:
-  - |
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      brew update
-      brew upgrade cmake
-    fi
-  - julia -e 'using Pkg; Pkg.build("PyCall"); Pkg.update()'
-
 after_success:
   # push coverage results to Codecov
   - julia -e 'import Pkg;

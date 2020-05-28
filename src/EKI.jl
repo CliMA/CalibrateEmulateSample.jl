@@ -2,10 +2,8 @@ module EKI
 
 using Random
 using Statistics
-using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
-using DifferentialEquations
 using DocStringExtensions
 
 export EKIObj
