@@ -1,6 +1,8 @@
 status = [
-  "dockerci (1.4, ubuntu-latest)",
+  "test (ubuntu-latest)',
+  'test (windows-latest)',
+  'test (macos-latest'),
 ]
 delete_merged_branches = true
-timeout_sec = 86400
+timeout_sec = 3600
 block_labels = [ "do-not-merge-yet" ]
