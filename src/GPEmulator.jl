@@ -49,16 +49,17 @@ models.
 
 # Fields
 $(DocStringExtensions.FIELDS)
+
 """
 struct GPObj{FT<:AbstractFloat, GPM}
     "training inputs/parameters; N_samples x N_parameters"
-    inputs::Array{FT, 2}
+    inputs::Array{FT}
     "training data/targets; N_samples x N_data"
-    data::Array{FT, 2}
+    data::Array{FT}
     "mean of input; 1 x N_parameters"
-    input_mean::Array{FT, 2}
+    input_mean::Array{FT}
     "square root of the inverse of the input covariance matrix; N_parameters x N_parameters"
-    sqrt_inv_input_cov::Array{FT, 2}
+    sqrt_inv_input_cov::Union{Nothing, Array{FT, 2}}
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
     models::Vector
     "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
@@ -86,8 +87,12 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
     data = convert(Array{FT}, data)
 
     input_mean = reshape(mean(inputs, dims=1), 1, :)
-    sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
+    sqrt_inv_input_cov = nothing
     if normalized
+        if ndims(inputs) == 1
+            error("Cov not defined for 1d input; can't normalize")
+        end
+        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
         inputs = (inputs .- input_mean) * sqrt_inv_input_cov
     end
         
@@ -144,8 +149,12 @@ function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=no
     data = convert(Array{FT}, data)
 
     input_mean = reshape(mean(inputs, dims=1), 1, :)
-    sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
+    sqrt_inv_input_cov = nothing
     if normalized
+        if ndims(inputs) == 1
+            error("Cov not defined for 1d input; can't normalize")
+        end
+        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
         inputs = (inputs .- input_mean) * sqrt_inv_input_cov
     end
 

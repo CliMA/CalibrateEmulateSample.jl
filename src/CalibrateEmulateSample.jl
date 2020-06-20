@@ -10,14 +10,14 @@ include("EKS.jl")
 
 # No internal deps, heavy external deps
 include("EKI.jl")
-# include("GModel.jl")
-# include("GPEmulator.jl")
+include("GModel.jl")
+include("GPEmulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
 
 # Internal deps, light external deps
-# include("MCMC.jl")
+include("MCMC.jl")
 # include("Histograms.jl")
 # include("GPR.jl")
 

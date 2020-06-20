@@ -87,8 +87,7 @@ function MCMCObj(obs_sample::Vector{FT},
     obs_covinv = inv(obs_cov)
     accept = [0]
     if algtype != "rwm"
-        println("only random walk metropolis 'rwm' is implemented so far")
-        sys.exit()
+        error("only random walk metropolis 'rwm' is implemented so far")
     end
     MCMCObj{FT,IT}(obs_sample, obs_cov, obs_covinv, priors, [step], burnin,
                    param, posterior, log_posterior, iter, accept, algtype)
@@ -258,9 +257,6 @@ function sample_posterior!(mcmc::MCMCObj{FT,IT},
                            gpobj::GPObj{FT},
                            max_iter::IT) where {FT,IT<:Int}
 
-    println("iteration 0; current parameters ", mcmc.param')
-    flush(stdout)
-
     for mcmcit in 1:max_iter
         param = convert(Array{FT, 2}, mcmc.param')
         # test predictions param' is 1xN_params
@@ -270,14 +266,6 @@ function sample_posterior!(mcmc::MCMCObj{FT,IT},
 
         mcmc_sample!(mcmc, vec(gp_pred), vec(gp_predvar))
 
-        if mcmcit % 1000 == 0
-            acc_ratio = accept_ratio(mcmc)
-            # TODO: Add callbacks, remove print statements
-            println("iteration ", mcmcit ," of ", max_iter,
-                    "; acceptance rate = ", acc_ratio,
-                    ", current parameters ", param)
-            flush(stdout)
-        end
     end
 end
 

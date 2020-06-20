@@ -4,12 +4,16 @@ ENV["JULIA_LOG_LEVEL"] = "WARN"
 ENV["PYTHON"] = ""
 
 for submodule in [
+                  "EKI",
+                  "GPEmulator",
+                  "MCMC",
+                  "Observations",
                   "Utilities",
-                  # "L96m",
-                  # "GPR",
-                  "EKS",
-                  # "Histograms",
-                  # "Cloudy",
+                  #"L96m",
+                  #"GPR",
+                  #"EKS",
+                  #"Histograms",
+                  #"Cloudy",
                  ]
 
   println("Starting tests for $submodule")

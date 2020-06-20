@@ -7,7 +7,7 @@ using ..Observations
 using ..EKI
 
 export extract_GP_tp
-export extract_obs_data
+export get_obs_sample
 export orig2zscore
 export zscore2orig
 export RPAD, name, warn

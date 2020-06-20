@@ -10,6 +10,7 @@ using LinearAlgebra
 using StatsPlots
 using GaussianProcesses
 using Plots
+using StatsPlots
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.EKI
@@ -203,7 +204,7 @@ u0 = vec(mean(u_tp, dims=1))
 
 # reset parameters 
 burnin = 1000
-max_iter = 500000
+max_iter = 100000
 
 mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, 
                     new_step, u0, max_iter, mcmc_alg, burnin)
@@ -222,8 +223,6 @@ println(det(inv(post_cov)))
 println(" ")
 
 # Plot the posteriors together with the priors and the true parameter values
-using StatsPlots; 
-
 true_values = [log(N0_true) log(θ_true) log(k_true)]
 n_params = length(true_values)
 
