@@ -3,9 +3,6 @@
 |||
 |---------------------:|:----------------------------------------------|
 | **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]          |
-| **Travis Build**     | [![travis][travis-img]][travis-url]           |
-| **AppVeyor Build**   | [![appveyor][appveyor-img]][appveyor-url]     |
-| **Docker-based CI**  | [![Docker-CI][docker-ci-img]][docker-ci-url]  |
 | **Code Coverage**    | [![codecov][codecov-img]][codecov-url]        |
 | **Bors**             | [![Bors enabled][bors-img]][bors-url]         |
 
