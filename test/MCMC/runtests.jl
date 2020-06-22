@@ -4,8 +4,9 @@ using Distributions
 using GaussianProcesses
 using Test
 
-using CalibrateEmulateSample.GPEmulator
 using CalibrateEmulateSample.MCMC
+using CalibrateEmulateSample.Priors
+using CalibrateEmulateSample.GPEmulator
 
 @testset "MCMC" begin
 
@@ -13,8 +14,8 @@ using CalibrateEmulateSample.MCMC
     rng_seed = 41
     Random.seed!(rng_seed)
 
-    # We need a GPObj to run MCMC, so let's reconstruct the one that's tested in 
-    # runtets.jl in test/GPEmulator/
+    # We need a GPObj to run MCMC, so let's reconstruct the one that's tested
+    # in test/GPEmulator/runtests.jl
     # Training data
     n = 10                            # number of training points
     x = 2.0 * π * rand(n)             # predictors/features
@@ -38,7 +39,7 @@ using CalibrateEmulateSample.MCMC
     ### Define prior
     umin = -1.0
     umax = 6.0
-    prior = [Uniform(umin, umax)]
+    prior = [Priors.Prior(Uniform(umin, umax), "u")]  # prior on u
     obs_sample = [1.0]
     cov = convert(Array, Diagonal([1.0]))
 
@@ -70,7 +71,7 @@ using CalibrateEmulateSample.MCMC
     @test mcmc.obs_covinv == inv(cov)
     @test mcmc.burnin == burnin
     @test mcmc.algtype == mcmc_alg
-    @test mcmc.iter[1] == max_iter+ 1
+    @test mcmc.iter[1] == max_iter + 1
     @test size(posterior) == (max_iter - burnin + 1, length(param_init))
     @test_throws Exception MCMCObj(obs_sample, cov, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)

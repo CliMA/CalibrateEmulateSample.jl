@@ -7,6 +7,7 @@ include("Observations.jl")
 include("spaces.jl")
 include("problems.jl")
 include("EKS.jl")
+include("Priors.jl")
 
 # No internal deps, heavy external deps
 include("EKI.jl")
