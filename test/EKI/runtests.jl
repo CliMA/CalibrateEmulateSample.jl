@@ -4,6 +4,7 @@ using Random
 using Test
 
 using CalibrateEmulateSample.EKI
+using CalibrateEmulateSample.Priors
 
 @testset "EKI" begin
 
@@ -14,8 +15,8 @@ using CalibrateEmulateSample.EKI
     ### Define priors on the parameters u
     umin = 0.0
     umax = 20.0
-    priors = [Uniform(umin, umax),  # prior on u1
-              Uniform(umin, umax)]  # prior on u2
+    priors = [Priors.Prior(Uniform(umin, umax), "u1"),  # prior on u1
+              Priors.Prior(Uniform(umin, umax), "u2")]  # prior on u2
 
     ### Define forward model G
     function G(u)
@@ -24,7 +25,7 @@ using CalibrateEmulateSample.EKI
 
     ###  Generate (artificial) truth samples
     npar = 2 # number of parameters
-    ut = rand(Uniform(umin, umax), npar)
+    ut = Distributions.rand(Uniform(umin, umax), npar)
     param_names = ["u1", "u2"]
     yt = G(ut)
     n_samples = 100
@@ -33,7 +34,7 @@ using CalibrateEmulateSample.EKI
     Γy = noise_level^2 * convert(Array, Diagonal(yt))
     μ = zeros(length(yt))
     for i in 1:n_samples
-        truth_samples[i, :] = yt + noise_level^2 * rand(MvNormal(μ, Γy))
+        truth_samples[i, :] = yt + noise_level^2 * Distributions.rand(MvNormal(μ, Γy))
     end
 
     ###  Calibrate: Ensemble Kalman Inversion

@@ -1,6 +1,7 @@
 module MCMC
 
 using ..GPEmulator
+using ..Priors
 
 using Statistics
 using Distributions
@@ -34,10 +35,8 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     obs_cov::Array{FT, 2}
     "inverse of obs_cov"
     obs_covinv::Array{FT, 2}
-    "array of length N_parameters with the parameters' prior
-              distributions (Julia Distributions objects), e.g.,
-              [Normal(5.0, 2.0), Uniform(2.0, 4.0)]"
-    prior::Array
+    "array of length N_parameters with the parameters' prior distributions"
+    prior::Array{Prior, 1}
     "MCMC step size"
     step::Array{FT}
     "Number of MCMC steps that are considered burnin"
@@ -59,7 +58,7 @@ end
 """
     MCMCObj(obs_sample::Vector{FT},
             obs_cov::Array{FT, 2},
-            priors::Array,
+            priors::Array{Prior, 1},
             step::FT,
             param_init::Vector{FT},
             max_iter::IT,
@@ -71,7 +70,7 @@ where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 """
 function MCMCObj(obs_sample::Vector{FT},
                  obs_cov::Array{FT, 2},
-                 priors::Array,
+                 priors::Array{Prior, 1},
                  step::FT,
                  param_init::Vector{FT},
                  max_iter::IT,
@@ -159,7 +158,7 @@ end
 function log_prior(mcmc::MCMCObj{FT}) where {FT}
     log_rho = FT[0]
     # Assume independent priors for each parameter
-    priors = mcmc.prior
+    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
     for (param, prior_dist) in zip(mcmc.param, priors)
         # get density at current parameter value
         log_rho[1] += logpdf(prior_dist, param)
@@ -172,23 +171,17 @@ end
 function proposal(mcmc::MCMCObj)
 
     variances = zeros(length(mcmc.param))
-    for (idx, prior) in enumerate(mcmc.prior)
+    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
+    param_names = [mcmc.prior[i].param_name for i in 1:length(mcmc.prior)]
+    for (idx, prior) in enumerate(priors)
         variances[idx] = var(prior)
     end
 
     if mcmc.algtype == "rwm"
-        #prop_dist = MvNormal(mcmc.posterior[1 + mcmc.iter[1], :], (mcmc.step[1]) * Diagonal(variances))
-        prop_dist = MvNormal(zeros(length(mcmc.param)), (mcmc.step[1]^2) * Diagonal(variances))
+        prop_dist = MvNormal(zeros(length(mcmc.param)), 
+                             (mcmc.step[1]^2) * Diagonal(variances))
     end
     sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
-
-    # TODO: The hope is that FreeParams will be able to do domain checks for the parameters
-#    for (idx, prior) in enumerate(mcmc.prior)
-#        while !insupport(prior, sample[idx])
-#            println("not in support - resampling")
-#            sample[:] = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
-#        end
-#    end
 
     return sample
 end
@@ -259,7 +252,7 @@ function sample_posterior!(mcmc::MCMCObj{FT,IT},
 
     for mcmcit in 1:max_iter
         param = convert(Array{FT, 2}, mcmc.param')
-        # test predictions param' is 1xN_params
+        # test predictions (param' is 1 x N_parameters)
         gp_pred, gp_predvar = predict(gpobj, param)
         gp_pred = cat(gp_pred..., dims=2)
         gp_predvar = cat(gp_predvar..., dims=2)
