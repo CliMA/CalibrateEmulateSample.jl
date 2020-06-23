@@ -8,9 +8,9 @@ version = "0.4.0"
 
 [[Arpack_jll]]
 deps = ["Libdl", "OpenBLAS_jll", "Pkg"]
-git-tree-sha1 = "68a90a692ddc0eb72d69a6993ca26e2a923bf195"
+git-tree-sha1 = "e214a9b9bd1b4e1b4f15b22c0994862b66af7ff7"
 uuid = "68821587-b530-5797-8361-c406ea357684"
-version = "3.5.0+2"
+version = "3.5.0+3"
 
 [[Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
@@ -86,10 +86,10 @@ uuid = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 version = "0.4.3"
 
 [[OpenBLAS_jll]]
-deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "72163ef83570d258af87ed91f301c5b51a5e08e9"
+deps = ["CompilerSupportLibraries_jll", "Libdl", "Pkg"]
+git-tree-sha1 = "1887096f6897306a4662f7c5af936da7d5d1a062"
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.9+0"
+version = "0.3.9+4"
 
 [[OpenSpecFun_jll]]
 deps = ["CompilerSupportLibraries_jll", "Libdl", "Pkg"]
@@ -139,9 +139,9 @@ version = "0.6.1"
 
 [[Rmath_jll]]
 deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "1660f8fefbf5ab9c67560513131d4e933012fc4b"
+git-tree-sha1 = "d76185aa1f421306dec73c057aa384bad74188f0"
 uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
-version = "0.2.2+0"
+version = "0.2.2+1"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
