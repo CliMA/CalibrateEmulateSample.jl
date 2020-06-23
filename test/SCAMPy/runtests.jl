@@ -94,9 +94,10 @@ truth = Observations.Obs(samples, Γy, data_names)
 ###
 
 N_ens = 100 # number of ensemble members
-N_iter = 40 # number of EKI iterations
+N_iter = 5 # number of EKI iterations. It should not be large to allow for some ensemble variance
+
 # initial parameters: N_ens x N_params
-initial_params = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=6)
+initial_params = EKI.construct_initial_ensemble(N_ens, priors)
 ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
 
 # Define linear model dynamic update G(θ) = Aθ
@@ -126,6 +127,9 @@ println(params_true)
 println("\nEKI results:")
 println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
 
+println("\nEnsemble covariance from last stage of EKI")
+println(cov(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
+
 
 ###
 ###  Emulate: Gaussian Process Regression
@@ -134,24 +138,12 @@ println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
 gppackage = GPEmulator.GPJL()
 pred_type = GPEmulator.YType()
 
-# Construct kernel:
-# Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
-# kernel and white noise. Note that the kernels take the signal standard 
-# deviations on a log scale as input.
-len1 = 1.0
-kern1 = SE(len1, 1.0)
-len2 = zeros(2)
-kern2 = Mat52Ard(len2, 0.0)
-# regularize with white noise
-white = Noise(log(2.0))
-# construct kernel
-GPkernel =  kern1 + kern2 + white
 # Get training points: Use ensemble at last step
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 1)
-# Note this option for output
+u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
 gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage;
                          normalized=normalized, prediction_type=pred_type)
+
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
 y_mean, y_var = GPEmulator.predict(gpobj, reshape(log.(params_true), 1, :))
@@ -165,8 +157,8 @@ println(truth.mean)
 ###  Sample: Markov Chain Monte Carlo
 ###
 
-# initial values
-u0 = vec(mean(u_tp, dims=1))
+# initial values: use ensemble mean of last EKI iteration
+u0 = vec(mean(ekiobj.u[end], dims=1))
 println("initial parameters (log-transformed): ", u0)
 
 # MCMC parameters    
@@ -174,7 +166,7 @@ mcmc_alg = "rwm" # random walk Metropolis
 
 # First let's run a short chain to determine a good step size
 burnin = 0
-step = 1.0e-3 # first guess
+step = 1.0e-1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
 mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, 
@@ -184,11 +176,13 @@ new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-u0 = vec(mean(u_tp, dims=1))
 
 # reset parameters
 burnin = 1000
 max_iter = 500000
+
+# u0 has been modified by MCMCObj in the test, resetting.
+u0 = vec(mean(ekiobj.u[end], dims=1))
 
 mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, 
                     new_step, u0, max_iter, mcmc_alg, burnin)
@@ -209,9 +203,13 @@ println(" ")
 
 # Plot the posteriors together with the priors and the true parameter values
 using StatsPlots; 
+using Plots;
 
 true_values = [log(params_true[1]) log(params_true[2])]
 n_params = length(true_values)
+
+plot(posterior[:, 1], posterior[:, 2], seriestype = :scatter)
+savefig("MCMC_chain.png")
 
 for idx in 1:n_params
     if idx == 1
