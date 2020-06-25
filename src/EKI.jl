@@ -86,7 +86,7 @@ function compute_error(eki)
 end
 
 
-function update_ensemble!(eki::EKIObj{FT}, g) where {FT}
+function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
 
@@ -118,7 +118,7 @@ function update_ensemble!(eki::EKIObj{FT}, g) where {FT}
     cov_gg = cov_gg / eki.N_ens - g_bar * g_bar'
 
     # update the parameters (with additive noise too)
-    noise = rand(MvNormal(zeros(size(g)[2]), eki.cov), eki.N_ens) # N_data * N_ens
+    noise = rand(MvNormal(zeros(size(g)[2]), eki.cov/Δt), eki.N_ens) # N_data * N_ens
     y = (eki.g_t .+ noise)' # add g_t (N_data) to each column of noise (N_data x N_ens), then transp. into N_ens x N_data
     tmp = (cov_gg + eki.cov) \ (y - g)' # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' --> tmp is N_data x N_ens
     u += (cov_ug * tmp)' # N_ens x N_params
