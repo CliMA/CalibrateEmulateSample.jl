@@ -10,7 +10,7 @@ export EKIObj
 export construct_initial_ensemble
 export compute_error
 export update_ensemble!
-
+export find_eki_step
 
 """
     EKIObj{FT<:AbstractFloat, IT<:Int}
@@ -89,6 +89,7 @@ end
 function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
+    cov_init = cov(eki.u[end], dims=1)
 
     u_bar = fill(FT(0), size(u)[2])
     # g: N_ens x N_data
@@ -129,6 +130,39 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
 
     compute_error(eki)
 
+    cov_new = cov(eki.u[end], dims=1)
+    cov_threshold = 0.01
+    if det(cov_new) < cov_threshold*det(cov_init)
+        println("Warning: Ensemble covariance after the last EKI stage decreased significantly. 
+            Consider adjusting the EKI time step.")
+    end
 end
+
+"""
+    find_eki_step(eki::EKIObj{FT}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
+
+Find largest step for the EKI solver that leads to a reduction of the determinant of the sample  
+covariance matrix no greater than cov_threshold.
+"""
+function find_eki_step(eki::EKIObj{FT}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
+    accept_step = false
+    Δt = 1.0
+    # u: N_ens x N_params
+    cov_init = cov(eki.u[end], dims=1)
+    while accept_step == false
+        eki_copy = deepcopy(eki)
+        update_ensemble!(eki_copy, g, Δt=Δt)
+        cov_new = cov(eki_copy.u[end], dims=1)
+        if det(cov_new) > cov_threshold*det(cov_init)
+            accept_step = true
+        else
+            Δt = Δt/2.0
+        end
+    end
+
+    return Δt
+
+end
+
 
 end # module EKI
