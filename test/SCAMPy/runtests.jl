@@ -69,8 +69,8 @@ n_param = length(param_names)
 # (the parameters can then simply be obtained by exponentiating the final results). 
 
 # Prior option 1: Log-normal in original space defined by mean and std
-logmean_c_m, logstd_c_m = logmean_and_logstd(0.5, 0.3)
-logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd(0.5, 0.3)
+logmean_c_m, logstd_c_m = logmean_and_logstd(0.4, 0.3)
+logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd(0.6, 0.3)
 println("Lognmean and logstd of the prior: ", logmean_c_m, " ", logstd_c_m)
 priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
           Distributions.Normal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
@@ -91,9 +91,6 @@ priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
 ###  Retrieve true LES samples
 ###
 
-# Define linear model dynamic update G(θ) = Aθ
-A = [1.0 1.0; 4.0 -2.0; 9.0/2.0 0.0]
-g(x) = A*x
 
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
 n_observables = 3
@@ -114,6 +111,10 @@ for i in 1:n_samples
     samples[i, :] = yt + rand(MvNormal(μ_noise, Γy))
 end
 
+# Define linear model dynamic update G(θ) = Aθ
+A = [1.0 1.0; 4.0 -2.0; 9.0/2.0 0.0]
+g(x) = A*x
+
 # We construct the observations object with the samples and the cov.
 truth = Observations.Obs(samples, Γy, data_names)
 
@@ -121,9 +122,9 @@ truth = Observations.Obs(samples, Γy, data_names)
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-N_ens = 80 # number of ensemble members
-# Using EKI, more than 1-2 iterations results in a poorly trained GP for this problem!
-N_iter = 2 # number of EKI iterations. 
+N_ens = 50 # number of ensemble members
+# With EKI, using more iterations may result in a poorly trained GP for this problem!
+N_iter = 4 # number of EKI iterations.
 
 
 # initial parameters: N_ens x N_params
@@ -141,7 +142,7 @@ for i in 1:N_iter
     end
     # run_SCAMPy(params_i, ...)  ### This is not yet implemented, 
             ### it returns the predicted output y_scm = G(θ)
-    EKI.update_ensemble!(ekiobj, g_ens)
+    EKI.update_ensemble!(ekiobj, g_ens; Δt=0.1)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -156,7 +157,6 @@ println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
 println("\nEnsemble covariance from last stage of EKI, in transformed space.")
 println(cov(deepcopy((ekiobj.u[end])), dims=1))
 
-
 ###
 ###  Emulate: Gaussian Process Regression
 ###
@@ -167,8 +167,18 @@ pred_type = GPEmulator.YType()
 # Get training points: Use ensemble at last step, or all stages?
 # For EKI, better to use all stages
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+
+# Construct kernel:
+rbf_len = log.(ones(size(u_tp, 2)))
+rbf_logstd = log(1.0)
+rbf = SEArd(rbf_len, rbf_logstd)
+# white noise for regularization. Right now it leads to convergence problems.
+white = Noise(log(1.0e-4))
+# construct kernel
+GPkernel =  rbf
+
 normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage;
+gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel,
                          normalized=normalized, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
@@ -208,8 +218,8 @@ new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 println("Begin MCMC - with step size ", new_step)
 
 # reset parameters
-burnin = 10000
-max_iter = 500000
+max_iter = 1000000
+burnin = 25000
 
 # u0 has been modified by MCMCObj in the test, resetting.
 u0 = vec(mean(ekiobj.u[end], dims=1))
