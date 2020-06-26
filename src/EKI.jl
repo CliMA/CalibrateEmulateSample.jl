@@ -36,6 +36,8 @@ struct EKIObj{FT<:AbstractFloat, IT<:Int}
      g::Vector{Array{FT, 2}}
      "vector of errors"
      err::Vector{FT}
+     "vector of timesteps used in each EKI iteration"
+     Δt::Vector{FT}
 end
 
 # outer constructors
@@ -54,8 +56,10 @@ function EKIObj(parameters::Array{FT, 2},
     g = Vector{FT}[]
     # error store
     err = []
+    # timestep store
+    Δt = []
 
-    EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err)
+    EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err, Δt)
 end
 
 
@@ -91,7 +95,7 @@ function compute_error(eki)
 end
 
 
-function update_ensemble!(eki::EKIObj{FT}, g; Δt=FT(1.0)) where {FT}
+function update_ensemble!(eki::EKIObj{FT}, g; Δt_new = nothing) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
     cov_init = cov(eki.u[end], dims=1)
@@ -102,6 +106,14 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=FT(1.0)) where {FT}
 
     cov_ug = fill(FT(0), size(u)[2], size(g)[2])
     cov_gg = fill(FT(0), size(g)[2], size(g)[2])
+
+    if !isnothing(Δt_new)
+        push!(eki.Δt, Δt_new)
+    elseif isnothing(Δt_new) && isempty(eki.Δt)
+        push!(eki.Δt, FT(1))
+    else
+        push!(eki.Δt, eki.Δt[end])
+    end
 
     # update means/covs with new param/observation pairs u, g
     for j = 1:eki.N_ens
@@ -124,7 +136,7 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=FT(1.0)) where {FT}
     cov_gg = cov_gg / eki.N_ens - g_bar * g_bar'
 
     # update the parameters (with additive noise too)
-    noise = rand(MvNormal(zeros(size(g)[2]), eki.cov/Δt), eki.N_ens) # N_data * N_ens
+    noise = rand(MvNormal(zeros(size(g)[2]), eki.cov/eki.Δt[end]), eki.N_ens) # N_data * N_ens
     y = (eki.g_t .+ noise)' # add g_t (N_data) to each column of noise (N_data x N_ens), then transp. into N_ens x N_data
     tmp = (cov_gg + eki.cov) \ (y - g)' # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' --> tmp is N_data x N_ens
     u += (cov_ug * tmp)' # N_ens x N_params
@@ -139,8 +151,8 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=FT(1.0)) where {FT}
     cov_new = cov(eki.u[end], dims=1)
     cov_threshold = 0.01
     if det(cov_new) < cov_threshold*det(cov_init)
-        println("Warning: Ensemble covariance after the last EKI stage decreased significantly. 
-            Consider adjusting the EKI time step.")
+        @warn "Ensemble covariance after the last EKI stage decreased significantly. 
+            Consider adjusting the EKI time step."
     end
 end
 
@@ -152,12 +164,16 @@ covariance matrix no greater than cov_threshold.
 """
 function find_eki_step(eki::EKIObj{FT}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
     accept_step = false
-    Δt = FT(1.0)
+    if !isempty(eki.Δt)
+        Δt = deepcopy(eki.Δt[end])
+    else
+        Δt = FT(1)
+    end
     # u: N_ens x N_params
     cov_init = cov(eki.u[end], dims=1)
     while accept_step == false
         eki_copy = deepcopy(eki)
-        update_ensemble!(eki_copy, g, Δt=Δt)
+        update_ensemble!(eki_copy, g, Δt_new=Δt)
         cov_new = cov(eki_copy.u[end], dims=1)
         if det(cov_new) > cov_threshold*det(cov_init)
             accept_step = true
