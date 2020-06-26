@@ -55,9 +55,9 @@ function EKIObj(parameters::Array{FT, 2},
     # observations
     g = Vector{FT}[]
     # error store
-    err = []
+    err = FT[]
     # timestep store
-    Δt = []
+    Δt = FT[]
 
     EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err, Δt)
 end
