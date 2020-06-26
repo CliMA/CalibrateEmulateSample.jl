@@ -91,7 +91,7 @@ function compute_error(eki)
 end
 
 
-function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
+function update_ensemble!(eki::EKIObj{FT}, g; Δt=FT(1.0)) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
     cov_init = cov(eki.u[end], dims=1)
@@ -152,7 +152,7 @@ covariance matrix no greater than cov_threshold.
 """
 function find_eki_step(eki::EKIObj{FT}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
     accept_step = false
-    Δt = 1.0
+    Δt = FT(1.0)
     # u: N_ens x N_params
     cov_init = cov(eki.u[end], dims=1)
     while accept_step == false
@@ -162,7 +162,7 @@ function find_eki_step(eki::EKIObj{FT}, g::Array{FT, 2}; cov_threshold::FT=0.01)
         if det(cov_new) > cov_threshold*det(cov_init)
             accept_step = true
         else
-            Δt = Δt/2.0
+            Δt = Δt/2
         end
     end
 
