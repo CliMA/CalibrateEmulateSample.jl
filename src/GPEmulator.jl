@@ -77,7 +77,7 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
                 kernel is used. The default kernel is the sum of a Squared
                 Exponential kernel and white noise.
 """
-function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, prediction_type::PredictionType=YType(), noise_factor=0.01) where {K<:Kernel, KPy<:PyObject}
     FT = eltype(data)
     models = Any[]
 
@@ -112,7 +112,7 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         GPkernel_i = deepcopy(GPkernel)
         # inputs: N_samples x N_parameters
         # data: N_samples x N_data
-        logstd_obs_noise = log(sqrt(0.5)) # log standard dev of obs noise
+        logstd_obs_noise = log(sqrt(noise_factor*minimum(diag(cov(inputs, dims=1))))) # prop to log standard dev of obs noise
         # Zero mean function
         kmean = MeanZero()
         m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
