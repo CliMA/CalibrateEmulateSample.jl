@@ -95,7 +95,7 @@ function compute_error(eki)
 end
 
 
-function update_ensemble!(eki::EKIObj{FT}, g; Δt_new = nothing) where {FT}
+function update_ensemble!(eki::EKIObj{FT}, g; cov_threshold::FT=0.01, Δt_new = nothing) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
     cov_init = cov(eki.u[end], dims=1)
@@ -149,10 +149,10 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt_new = nothing) where {FT}
 
     # Check convergence
     cov_new = cov(eki.u[end], dims=1)
-    cov_threshold = 0.01
-    if det(cov_new) < cov_threshold*det(cov_init)
-        @warn "Ensemble covariance after the last EKI stage decreased significantly. 
-            Consider adjusting the EKI time step."
+    cov_ratio = det(cov_new)/det(cov_init)
+    if cov_ratio < cov_threshold
+        @warn string("New ensemble covariance determinant is less than ",cov_threshold," times its former value.
+            Consider reducing the EKI time step.")
     end
 end
 

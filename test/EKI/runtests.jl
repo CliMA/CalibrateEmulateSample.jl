@@ -52,11 +52,11 @@ using CalibrateEmulateSample.Priors
     @test ekiobj.cov ≈ [30.29 0.0; 0.0 12.29] atol=1e-1
     @test ekiobj.N_ens == N_ens
 
-    # test convegence warning during update
+    # test convergence warning during update
     params_i = ekiobj.u[end]
     g_ens = G(params_i)
-    @test_logs (:warn,"Ensemble covariance after the last EKI stage decreased significantly. 
-            Consider adjusting the EKI time step.") EKI.update_ensemble!(ekiobj, g_ens)
+    @test_logs (:warn, string("New ensemble covariance determinant is less than ",0.01," times its former value.
+            Consider reducing the EKI time step.")) EKI.update_ensemble!(ekiobj, g_ens)
 
     # restart EKIObj and test step
     ekiobj = EKI.EKIObj(initial_params, param_names, 
