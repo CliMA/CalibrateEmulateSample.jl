@@ -130,8 +130,16 @@ N_iter = 4 # number of EKI iterations.
 # initial parameters: N_ens x N_params
 initial_params = EKI.construct_initial_ensemble(N_ens, priors)
 ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
-
 g_ens = zeros(N_ens, n_observables)
+
+# Estimate EKI step to ensure covariance is not negligible
+params_i = deepcopy(exp_transform(ekiobj.u[end]))
+for j in 1:N_ens
+      g_ens[j, :] = g(params_i[j, :])
+    end
+Δt = EKI.find_eki_step(ekiobj, g_ens, cov_threshold=0.1)
+println("EKI timestep set to: ", Δt)
+
 # EKI iterations
 for i in 1:N_iter
     # Note that the parameters are exp-transformed for use as input
@@ -142,7 +150,7 @@ for i in 1:N_iter
     end
     # run_SCAMPy(params_i, ...)  ### This is not yet implemented, 
             ### it returns the predicted output y_scm = G(θ)
-    EKI.update_ensemble!(ekiobj, g_ens; Δt=0.1)
+    EKI.update_ensemble!(ekiobj, g_ens; Δt=Δt)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -218,7 +226,7 @@ new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 println("Begin MCMC - with step size ", new_step)
 
 # reset parameters
-max_iter = 1000000
+max_iter = 200000
 burnin = 25000
 
 # u0 has been modified by MCMCObj in the test, resetting.
