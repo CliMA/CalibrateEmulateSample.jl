@@ -117,12 +117,12 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         GPkernel_i = deepcopy(GPkernel)
         # inputs: N_samples x N_parameters
         # data: N_samples x N_data
-        logstd_obs_noise = log(sqrt(0.5)) # log standard dev of obs noise
+        logstd_obs_noise = log(sqrt(0.01)) # log standard dev of obs noise
         # Zero mean function
         kmean = MeanZero()
         m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
                 logstd_obs_noise)
-        optimize!(m, noise=false)
+        optimize!(m, noise=true)
         push!(models, m)
     end
     return GPObj{FT, typeof(package)}(inputs, data, input_mean, 
@@ -174,11 +174,6 @@ function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=no
                                      n_restarts_optimizer=10,
                                      alpha=0.0, normalize_y=true)
         ScikitLearn.fit!(m, inputs, data[:, i])
-        if i==1
-            println(m.kernel.hyperparameters)
-            print("Completed training of: ")
-        end
-        print(i,", ")
         push!(models, m)
     end
     return GPObj{FT, typeof(package)}(inputs, data, input_mean, sqrt_inv_input_cov, 
