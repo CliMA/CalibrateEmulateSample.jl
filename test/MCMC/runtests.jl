@@ -24,13 +24,15 @@ using CalibrateEmulateSample.GPEmulator
     gppackage = GPJL()
     pred_type = YType()
 
+    # observational noise 
+    obs_noise = 0.1
+
     # Construct kernel:
     # Squared exponential kernel (note that hyperparameters are on log scale)
-    kern = SE(0.0, 0.0) 
-    # log standard deviation of observational noise 
-    logObsNoise = -1.0 
-    white = Noise(logObsNoise)
-    GPkernel = kern + white
+    # with observational noise
+    se = SE(log(1.0), log(1.0))
+    white = Noise(log(sqrt(obs_noise)))
+    GPkernel = se + white
 
     # Fit Gaussian Process Regression model
     gpobj = GPObj(x, y, gppackage; GPkernel=GPkernel, normalized=false, 
@@ -75,6 +77,6 @@ using CalibrateEmulateSample.GPEmulator
     @test size(posterior) == (max_iter - burnin + 1, length(param_init))
     @test_throws Exception MCMCObj(obs_sample, cov, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)
-    @test post_mean ≈ π/2 atol=3e-1
+    @test post_mean ≈ π/2 atol=4e-1
 
 end
