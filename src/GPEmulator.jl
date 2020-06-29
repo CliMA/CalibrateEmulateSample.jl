@@ -65,9 +65,9 @@ struct GPObj{FT<:AbstractFloat, GPM}
     "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
     normalized::Bool
     "the singular value decomposition matrix"
-    decomposition
-    "the normalization in the svd transformed space"
-    sqrt_singular_values
+    decomposition::SVD
+    "the normalization matrix in the svd transformed space"
+    sqrt_singular_values::Array{FT,2}
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
     prediction_type::Union{Nothing, PredictionType}
 end
@@ -118,7 +118,7 @@ function GPObj(
     end
 
     # Transform the outputs
-    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD.S)) 
+    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
     transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
 
     # Use a default kernel unless a kernel was supplied to GPObj
@@ -232,7 +232,7 @@ function GPObj(
     end
 
     # Transform the outputs
-    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD.S)) 
+    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
     transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
     
     if GPkernel==nothing
