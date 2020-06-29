@@ -12,7 +12,7 @@ using PyCall
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
-export GPObj
+export GPObj, NormalizedSVDGPObj
 export predict
 
 export GPJL, SKLJL
@@ -78,7 +78,15 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
                 kernel is used. The default kernel is the sum of a Squared
                 Exponential kernel and white noise.
 """
-function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+function GPObj(
+    inputs,
+    data,
+    package::GPJL;
+    GPkernel::Union{K, KPy, Nothing}=nothing,
+    normalized::Bool=true,
+    prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+   
+
     FT = eltype(data)
     models = Any[]
 
@@ -117,11 +125,11 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         GPkernel_i = deepcopy(GPkernel)
         # inputs: N_samples x N_parameters
         # data: N_samples x N_data
-        logstd_obs_noise = log(sqrt(0.5)) # log standard dev of obs noise
+        logstd_regularization_noise = log(sqrt(0.5)) # log standard dev of obs noise
         # Zero mean function
         kmean = MeanZero()
         m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
-                logstd_obs_noise)
+                logstd_regularization_noise)
         optimize!(m, noise=false)
         push!(models, m)
     end
@@ -140,7 +148,13 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
                 a default kernel is used. The default kernel is the sum of a 
                 Squared Exponential kernel and white noise.
 """
-function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true) where {K<:Kernel, KPy<:PyObject}
+function GPObj(
+    inputs,
+    data,
+    package::SKLJL;
+    GPkernel::Union{K, KPy, Nothing}=nothing,
+    normalized::Bool=true) where {K<:Kernel, KPy<:PyObject}
+
     FT = eltype(data)
     models = Any[]
 
@@ -184,6 +198,7 @@ function GPObj(inputs, data, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=no
     return GPObj{FT, typeof(package)}(inputs, data, input_mean, sqrt_inv_input_cov, 
                                       models, normalized, YType())
 end
+
 
 
 """
@@ -234,4 +249,215 @@ function predict(gp::GPObj{FT, SKLJL},
     return vcat(first.(μσ)...), vcat(last.(μσ)...).^2
 end
 
-end # module
+
+"""
+    NormalizedSVDGPObj{FT<:AbstractFloat}
+
+Structure holding training input and the fitted Gaussian Process Regression
+models.
+
+# Fields
+$(DocStringExtensions.FIELDS)
+
+"""
+struct NormalizedSVDGPObj{FT<:AbstractFloat, GPM}
+    "training inputs/parameters; N_samples x N_parameters"
+    inputs::Array{FT}
+    "training data/targets; N_samples x N_data"
+    data::Array{FT}
+    "mean of input; 1 x N_parameters"
+    input_mean::Array{FT}
+    "square root of the inverse of the input covariance matrix; N_parameters x N_parameters"
+    sqrt_inv_input_cov::Union{Nothing, Array{FT, 2}}
+    "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
+    models::Vector
+    "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
+    normalized::Bool
+    "the singular value decomposition matrix"
+    decomposition
+    "the normalization in the svd transformed space"
+    sqrt_singular_values
+    "prediction type (`y` to predict the data, `f` to predict the latent function)"
+    prediction_type::Union{Nothing, PredictionType}
+end
+
+
+"""
+    GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, normalized::Bool=true, svdflag=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+
+Inputs and data of size N_samples x N_parameters (both arrays will be transposed in the construction of the GPObj)
+
+ - `GPkernel` - GaussianProcesses kernel object. If not supplied, a default
+                kernel is used. The default kernel is the sum of a Squared
+                Exponential kernel and white noise.
+"""
+
+function NormalizedSVDGPObj(
+    inputs,
+    data,
+    truth_cov::Array{AbstractFloat,2},
+    package::GPJL;
+    GPkernel::Union{K, KPy, Nothing}=nothing,
+    normalized::Bool=true,
+    prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+
+    # create an SVD decomposition of the covariance:
+    # NB: svdfact() may be more efficient / provide positive definiteness information
+    # stored as:  svd.U * svd.S *svd.Vt 
+    decomposition = svd(truth_cov)
+
+    FT = eltype(data)
+    models = Any[]
+
+    # Make sure inputs and data are arrays of type FT
+    inputs = convert(Array{FT}, inputs)
+    data = convert(Array{FT}, data)
+
+    input_mean = reshape(mean(inputs, dims=1), 1, :)
+    sqrt_inv_input_cov = nothing
+    if normalized
+        if ndims(inputs) == 1
+            error("Cov not defined for 1d input; can't normalize")
+        end
+        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
+        inputs = (inputs .- input_mean) * sqrt_inv_input_cov
+    end
+
+    
+    sqrt_singular_values_inv=Diagonal(1.0 ./ sqrt.(SVD.S)) 
+    transformed_data=sqrt_singular_values_inv * decomposition.Vt * data
+
+    # Use a default kernel unless a kernel was supplied to GPObj
+    if GPkernel==nothing
+        # Construct kernel:
+        # Note that the kernels take the signal standard deviations on a
+        # log scale as input.
+        rbf_len = log.(ones(size(inputs, 2)))
+        rbf_logstd = log(1.0)
+        rbf = SEArd(rbf_len, rbf_logstd)
+        # regularize with white noise
+        white_logstd = log(1.0)
+        white = Noise(white_logstd)
+        # construct kernel
+        GPkernel = rbf + white
+    end
+
+    for i in 1:size(transformed_data, 2)
+        # Make a copy of GPkernel (because the kernel gets altered in
+        # every iteration)
+        GPkernel_i = deepcopy(GPkernel)
+        # inputs:           N_samples x N_parameters
+        # transformed_data: N_samples x N_data
+
+        magic_number = 1e-3 # magic_number << 1
+        logstd_regularization_noise = log(sqrt(magic_number)) # log standard dev of obs noise
+
+        # Zero mean function
+        kmean = MeanZero()
+        m = GPE(inputs',
+                dropdims(transformed_data[:, i]', dims=1),
+                kmean,
+                GPkernel_i, 
+                logstd_regularization_noise)
+
+        # we choose above to explicitly learn the WhiteKernel as opposed to using this
+        # in built functionality.
+        optimize!(m, noise=false)
+        push!(models, m)
+    end
+    return NormalizedSVDGPObj{FT, typeof(package)}(inputs,
+                                                   transformed_data,
+                                                   input_mean, 
+                                                   sqrt_inv_input_cov,
+                                                   models,
+                                                   normalized,
+                                                   decomposition,
+                                                   inv(sqrt_singular_values_inv),
+                                                   prediction_type)
+
+end
+
+"""
+  predict(gp::NormalizedSVDGPObj{FT,GPJL}, new_inputs::Array{FT}) where {FT} = predict(gp, new_inputs, gp.prediction_type)
+
+Evaluate the GP model(s) at new inputs.
+  - `gp` - a NormalizedSVDGPObj
+  - `new_inputs` - inputs for which GP model(s) is/are evaluated; N_new_inputs x N_parameters
+
+Note: If gp.normalized == true, the new inputs are normalized prior to the prediction
+"""
+predict(
+    gp::NormalizedSVDGPObj{FT, GPJL},
+    new_inputs::Array{FT};
+    transform_to_real=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
+
+function predict(
+    gp::NormalizedSVDGPObj{FT, GPJL},
+    new_inputs::Array{FT},
+    transform_to_real,
+    ::FType) where {FT}
+
+    if gp.normalized
+        new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
+    end
+    M = length(gp.models)
+    μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
+    # Return mean(s) and standard deviation(s)
+    μ  = vcat(first.(μσ2)...)
+    σ2 = vcat(last.(μσ2)...)
+    if transform_to_real
+        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        μ = gp.decomposition.V * gp.sqrt_singular_values * μ
+        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+    end
+    return μ, σ2
+end
+
+function predict(
+    gp::NormalizedSVDGPObj{FT, GPJL},
+    new_inputs::Array{FT},
+    transform_to_real,
+    ::YType) where {FT}
+
+    if gp.normalized
+        new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
+    end
+    M = length(gp.models)
+    # predicts columns of inputs so must be transposed
+    new_inputs = convert(Array{FT}, new_inputs')
+    μσ2 = [predict_y(gp.models[i], new_inputs) for i in 1:M]
+    # Return mean(s) and standard deviation(s)
+    μ  = vcat(first.(μσ2)...)
+    σ2 = vcat(last.(μσ2)...)
+    if transform_to_real
+        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        μ = gp.decomposition.V * gp.sqrt_singular_values * μ
+        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+    end
+    return μ, σ2
+
+end
+
+function predict(
+    gp::NormalizedSVDGPObj{FT, SKLJL},
+    new_inputs::Array{FT}
+    transform_to_real) where {FT}
+
+    if gp.normalized
+        new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
+    end
+    M = length(gp.models)
+    μσ = [gp.models[i].predict(new_inputs, return_std=true) for i in 1:M]
+    # Return mean(s) and standard deviation(s)
+    μ  = vcat(first.(μσ2)...)
+    σ2 = vcat(last.(μσ2)...).^2
+    if transform_to_real
+        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        μ = gp.decomposition.V * gp.sqrt_singular_values * μ
+        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+    end
+    return μ, σ2
+
+end
+
+end
