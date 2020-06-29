@@ -84,8 +84,8 @@ function GPObj(
     package::GPJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
     normalized::Bool=true,
-    prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
-   
+    noise_learn=true,
+    prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}   
 
     FT = eltype(data)
     models = Any[]
@@ -106,35 +106,58 @@ function GPObj(
         
     # Use a default kernel unless a kernel was supplied to GPObj
     if GPkernel==nothing
+        println("Using default squared exponential kernel, learning lengthscale and variance parameters")
         # Construct kernel:
         # Note that the kernels take the signal standard deviations on a
         # log scale as input.
         rbf_len = log.(ones(size(inputs, 2)))
         rbf_logstd = log(1.0)
         rbf = SEArd(rbf_len, rbf_logstd)
+        kern=rbf
+        println("Using default squared exponential kernel:", kern)
+        
+    else
+        kern=deepcopy(GPkernel)
+        println("Using user-defined kernel",kern)
+    end
+
+    
+    if noise_learn
         # regularize with white noise
         white_logstd = log(1.0)
         white = Noise(white_logstd)
         # construct kernel
-        GPkernel = rbf + white
+        kern = kern + white
+        println("Learning additive white noise")
+
+        logstd_regularization_noise = log(sqrt(0.5)) # log standard dev of obs noise
+    else
+        logstd_regularization_noise = log(sqrt(1.0)) # log standard dev of obs noise
     end
 
     for i in 1:size(data, 2)
         # Make a copy of GPkernel (because the kernel gets altered in
         # every iteration)
-        GPkernel_i = deepcopy(GPkernel)
+        GPkernel_i = deepcopy(kern)
         # inputs: N_samples x N_parameters
         # data: N_samples x N_data
-        logstd_regularization_noise = log(sqrt(0.5)) # log standard dev of obs noise
         # Zero mean function
         kmean = MeanZero()
-        m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
+        m = GPE(inputs',
+                dropdims(data[:, i]', dims=1),
+                kmean,
+                GPkernel_i, 
                 logstd_regularization_noise)
+        
         optimize!(m, noise=false)
         push!(models, m)
     end
-    return GPObj{FT, typeof(package)}(inputs, data, input_mean, 
-                                      sqrt_inv_input_cov, models, normalized,
+    return GPObj{FT, typeof(package)}(inputs,
+                                      data,
+                                      input_mean, 
+                                      sqrt_inv_input_cov,
+                                      models,
+                                      normalized,
                                       prediction_type)
 end
 
@@ -299,6 +322,7 @@ function NormalizedSVDGPObj(
     package::GPJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
     normalized::Bool=true,
+    noise_learn=true,
     prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
 
     # create an SVD decomposition of the covariance:
@@ -329,28 +353,46 @@ function NormalizedSVDGPObj(
 
     # Use a default kernel unless a kernel was supplied to GPObj
     if GPkernel==nothing
+        println("Using default squared exponential kernel, learning lengthscale and variance parameters")
         # Construct kernel:
         # Note that the kernels take the signal standard deviations on a
         # log scale as input.
         rbf_len = log.(ones(size(inputs, 2)))
         rbf_logstd = log(1.0)
         rbf = SEArd(rbf_len, rbf_logstd)
+
+        kern=rbf
+        println("Using default squared exponential kernel:", kern)
+    else
+        kern=deepcopy(GPkernel)
+        println("Using user-defined kernel",kern)
+    end
+
+    
+    if noise_learn
         # regularize with white noise
         white_logstd = log(1.0)
         white = Noise(white_logstd)
-        # construct kernel
-        GPkernel = rbf + white
-    end
 
+        # add to kernel construct kernel
+        kern = kern + white
+        println("Learning additive white noise")
+
+        #make the regularization small. We actually learn 
+        # total_noise = white_logstd + logstd_regularization_noise)
+        magic_number = 1e-3 # magic_number << 1
+        logstd_regularization_noise = log(sqrt(1e-3)) 
+    else
+        # when not learning noise, our SVD transformation implies the observational noise is the identity.
+        logstd_regularization_noise = log(sqrt(1.0)) 
+    end
+    
     for i in 1:size(transformed_data, 2)
         # Make a copy of GPkernel (because the kernel gets altered in
         # every iteration)
-        GPkernel_i = deepcopy(GPkernel)
+        GPkernel_i = deepcopy(kern)
         # inputs:           N_samples x N_parameters
         # transformed_data: N_samples x N_data
-
-        magic_number = 1e-3 # magic_number << 1
-        logstd_regularization_noise = log(sqrt(magic_number)) # log standard dev of obs noise
 
         # Zero mean function
         kmean = MeanZero()
