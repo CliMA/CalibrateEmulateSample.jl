@@ -68,19 +68,34 @@ end
 where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 
 """
-function MCMCObj(obs_sample::Vector{FT},
-                 obs_cov::Array{FT, 2},
-                 priors::Array{Prior, 1},
-                 step::FT,
-                 param_init::Vector{FT},
-                 max_iter::IT,
-                 algtype::String,
-                 burnin::IT) where {FT<:AbstractFloat, IT<:Int}
+function MCMCObj(
+    obs_sample::Vector{FT},
+    obs_cov::Array{FT, 2},
+    priors::Array{Prior, 1},
+    step::FT,
+    param_init::Vector{FT},
+    max_iter::IT,
+    algtype::String,
+    burnin::IT;
+    svdflag=true) where {FT<:AbstractFloat, IT<:Int}
 
+    
+    param_init_copy = deepcopy(param_init)
+    
+    #We need to transform obs_sample into the correct space (
+    if svdflag
+        println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
+        decomposition=svd(truth_cov)#svd.U * svd.S * svd.Vt (can also get V)
+        sqrt_singular_values_inv=Diagonal(1.0 ./ sqrt.(decomposition.S)) #diagonal matrix of 1/eigenvalues                     
+        obs_sample=sqrt_singular_values_inv*decomposition.Vt*obs_sample
+    else
+        println("Assuming independent outputs."
+    end
+    
     # first row is param_init
-    posterior = zeros(max_iter + 1, length(param_init))
-    posterior[1, :] = param_init
-    param = param_init
+    posterior = zeros(max_iter + 1, length(param_init_copy))
+    posterior[1, :] = param_init_copy
+    param = param_init_copy
     log_posterior = [nothing]
     iter = [1]
     obs_covinv = inv(obs_cov)
@@ -88,8 +103,18 @@ function MCMCObj(obs_sample::Vector{FT},
     if algtype != "rwm"
         error("only random walk metropolis 'rwm' is implemented so far")
     end
-    MCMCObj{FT,IT}(obs_sample, obs_cov, obs_covinv, priors, [step], burnin,
-                   param, posterior, log_posterior, iter, accept, algtype)
+    MCMCObj{FT,IT}(obs_sample,
+                   obs_cov,
+                   obs_covinv,
+                   priors,
+                   [step],
+                   burnin,
+                   param,
+                   posterior,
+                   log_posterior,
+                   iter,
+                   accept,
+                   algtype)
 end
 
 
