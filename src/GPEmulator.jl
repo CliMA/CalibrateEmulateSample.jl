@@ -84,17 +84,17 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
 """
 
 function GPObj(
-    inputs,
-    data,
-    truth_cov::Array{AbstractFloat,2},
+    inputs::Array{FT, 2},
+    data::Array{FT, 2},
+    truth_cov::Array{FT, 2},
     package::GPJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
     normalized::Bool=true,
-    noise_learn=true,
-    prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+    noise_learn::Bool=true,
+    prediction_type::PredictionType=YType()) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
 
    
-    FT = eltype(data)
+    #FT = eltype(data)
     models = Any[]
 
     # create an SVD decomposition of the covariance:
@@ -119,7 +119,7 @@ function GPObj(
 
     # Transform the outputs
     sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-    transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+    transformed_data = Array((sqrt_singular_values_inv * decomposition.Vt * data')')
 
     # Use a default kernel unless a kernel was supplied to GPObj
     if GPkernel==nothing
@@ -138,7 +138,6 @@ function GPObj(
         println("Using user-defined kernel",kern)
     end
 
-    
     if noise_learn
         # regularize with white noise
         white_logstd = log(1.0)
@@ -177,6 +176,7 @@ function GPObj(
         optimize!(m, noise=false)
         push!(models, m)
     end
+
     return GPObj{FT, typeof(package)}(inputs,
                                       transformed_data,
                                       input_mean, 
@@ -186,7 +186,6 @@ function GPObj(
                                       decomposition,
                                       inv(sqrt_singular_values_inv),
                                       prediction_type)
-
 end
 
 
@@ -201,14 +200,16 @@ Inputs and data of size N_samples x N_parameters (both arrays will be transposed
                 Squared Exponential kernel and white noise.
 """
 function GPObj(
-    inputs,
-    data,
-    truth_cov::Array{AbstractFloat,2},
+    inputs::Array{FT, 2},
+    data::Array{FT, 2},
+    truth_cov::Array{FT, 2},
     package::SKLJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
-    normalized::Bool=true) where {K<:Kernel, KPy<:PyObject}
+    normalized::Bool=true,
+    noise_learn::Bool=true,
+    prediction_type::PredictionType=YType()) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
 
-    FT = eltype(data)
+    #FT = eltype(data)
     models = Any[]
 
     # create an SVD decomposition of the covariance:
@@ -233,7 +234,8 @@ function GPObj(
 
     # Transform the outputs
     sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-    transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+    #transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+    transformed_data = Array((sqrt_singular_values_inv * decomposition.Vt * data')')
     
     if GPkernel==nothing
         println("Using default squared exponential kernel, learning lengthscale and variance parameters")
@@ -292,6 +294,8 @@ function GPObj(
                                       sqrt_inv_input_cov,
                                       models,
                                       normalized,
+                                      decomposition,
+                                      inv(sqrt_singular_values_inv),
                                       YType())
 end
 
@@ -306,16 +310,10 @@ Evaluate the GP model(s) at new inputs.
 
 Note: If gp.normalized == true, the new inputs are normalized prior to the prediction
 """
-predict(
-    gp::GPObj{FT, GPJL},
-    new_inputs::Array{FT};
-    transform_to_real=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
+predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}; transform_to_real=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
 
-function predict(
-    gp::GPObj{FT, GPJL},
-    new_inputs::Array{FT},
-    transform_to_real,
-    ::FType) where {FT}
+function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real,
+                 ::FType) where {FT}
 
     if gp.normalized
         new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
@@ -323,22 +321,31 @@ function predict(
     M = length(gp.models)
     μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
     # Return mean(s) and standard deviation(s)
-    μ  = vcat(first.(μσ2)...)
-    σ2 = vcat(last.(μσ2)...)
+    μ  = reshape(vcat(first.(μσ2)...), 
+                 size(new_inputs)[1], size(new_inputs)[2])
+    σ2 = reshape(vcat(last.(μσ2)...),
+                 size(new_inputs)[1], size(new_inputs)[2])
     if transform_to_real
-        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        # Revert back to the original (correlated) coordinate system
+        # We created meanvGP = Dinv*Vt*meanv, so meanv = V*D*meanvGP
         μ = gp.decomposition.V * gp.sqrt_singular_values * μ
-        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+        temp = zeros(size(new_inputs))
+        # Back transformation of covariance
+        for j in 1:size(new_inputs, 2)
+            σ2_j = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2[:,j]) * gp.sqrt_singular_values * gp.decomposition.Vt
+            # Extract diagonal elements from σ2_j and add them to σ2 as column 
+            # vectors
+            # TODO: Should we have an optional input argument `full_cov` - if
+            # set to true, the full covariance matrix is returned instead of 
+            # only variances (default: false)?
+            temp[:, j] = diag(σ2_j)
+        end
+        σ2 = temp 
     end
     return μ, σ2
 end
 
-function predict(
-    gp::GPObj{FT, GPJL},
-    new_inputs::Array{FT},
-    transform_to_real,
-    ::YType) where {FT}
-
+function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real, ::YType) where {FT}
     if gp.normalized
         new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
     end
@@ -346,22 +353,34 @@ function predict(
     # predicts columns of inputs so must be transposed
     new_inputs = convert(Array{FT}, new_inputs')
     μσ2 = [predict_y(gp.models[i], new_inputs) for i in 1:M]
+    
     # Return mean(s) and standard deviation(s)
-    μ  = vcat(first.(μσ2)...)
-    σ2 = vcat(last.(μσ2)...)
+    μ  = reshape(vcat(first.(μσ2)...), 
+                 size(new_inputs)[1], size(new_inputs)[2])
+    σ2 = reshape(vcat(last.(μσ2)...),
+                 size(new_inputs)[1], size(new_inputs)[2])
     if transform_to_real
-        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        # Revert back to the original (correlated) coordinate system
+        # We created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
         μ = gp.decomposition.V * gp.sqrt_singular_values * μ
-        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+        temp = zeros(size(σ2))
+        # Back transformation of covariance
+        for j in 1:size(σ2, 2)
+            σ2_j = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2[:, j]) * gp.sqrt_singular_values * gp.decomposition.Vt
+            # Extract diagonal elements from σ2_j and add them to σ2 as column 
+            # vectors
+            # TODO: Should we have an optional input argument `full_cov` - if
+            # set to true, the full covariance matrix is returned instead of 
+            # only variances (default: false)?
+            temp[:, j] = diag(σ2_j)
+        end
+        σ2 = temp 
     end
     return μ, σ2
 
 end
 
-function predict(
-    gp::GPObj{FT, SKLJL},
-    new_inputs::Array{FT}
-    transform_to_real) where {FT}
+function predict(gp::GPObj{FT, SKLJL}, new_inputs::Array{FT}, transform_to_real) where {FT}
 
     if gp.normalized
         new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
@@ -369,12 +388,27 @@ function predict(
     M = length(gp.models)
     μσ = [gp.models[i].predict(new_inputs, return_std=true) for i in 1:M]
     # Return mean(s) and standard deviation(s)
-    μ  = vcat(first.(μσ2)...)
-    σ2 = vcat(last.(μσ2)...).^2
+    μ  = reshape(vcat(first.(μσ2)...), 
+                 size(new_inputs)[1], size(new_inputs)[2])
+    σ2 = reshape(vcat(last.(μσ2)...),
+                 size(new_inputs)[1], size(new_inputs)[2])
+
     if transform_to_real
-        #we created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
+        # Revert back to the original (correlated) coordinate system
+        # We created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
         μ = gp.decomposition.V * gp.sqrt_singular_values * μ
-        σ2  = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2) * gp.sqrt_singular_values * gp.decomposition.Vt
+        temp = zeros(size(σ2))
+        # Back transformation of covariance
+        for j in 1:size(σ2, 2)
+            σ2_j = gp.decomposition.V * gp.sqrt_singular_values * Diagonal(σ2[:, j]) * gp.sqrt_singular_values * gp.decomposition.Vt
+            # Extract diagonal elements from σ2_j and add them to σ2 as column 
+            # vectors
+            # TODO: Should we have an optional input argument `full_cov` - if
+            # set to true, the full covariance matrix is returned instead of 
+            # only variances (default: false)?
+            temp[:, j] = diag(σ2_j)
+        end
+        σ2 = temp 
     end
     return μ, σ2
 
