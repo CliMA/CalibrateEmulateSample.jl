@@ -85,7 +85,7 @@ g1_true = sin.(inputs[:, 1]) .+ cos.(inputs[:, 2])
 g1_grid = reshape(g1_true, n_pts, n_pts)
 p3 = plot(x1, x2, g1_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + 0.5*x2")
-savefig("/home/melanie/Desktop/GP_test_true_g1.png")
+savefig("GP_test_true_g1.png")
 
 g2_true = sin.(inputs[:, 1]) .- cos.(inputs[:, 2])
 g2_grid = reshape(g2_true, n_pts, n_pts)
