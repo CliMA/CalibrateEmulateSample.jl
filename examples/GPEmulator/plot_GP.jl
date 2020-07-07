@@ -4,7 +4,7 @@ using GaussianProcesses
 using Distributions
 using Statistics
 using Plots; pyplot(size = (1000, 400))
-
+using LinearAlgebra
 using CalibrateEmulateSample.GPEmulator
 
 ###############################################################################
@@ -39,20 +39,31 @@ Random.seed!(rng_seed)
 n = 100 # number of training points
 p = 2   # input dim 
 d = 2   # output dim
-X = 2.0 * π * rand(n, p)                        
-μ = zeros(d) 
-Σ = 0.1 * [[0.5, 0.2] [0.2, 0.8]] # d x d
+#X = 2.0 * π * rand(n, p)
+x1 = range(0.0, stop=2*π, length=convert(Int64,sqrt(n)))
+x2 = range(0.0, stop=2*π, length=convert(Int64,sqrt(n)))
+X1, X2 = meshgrid(x1, x2)
 
-g1 = sin.(X[:, 1]) .+ cos.(X[:, 2])
-g2 = sin.(X[:, 1]) .- cos.(X[:, 2])
-Y = [g1 g2] .+ rand(MvNormal(μ, Σ), n)' 
-truth_cov = cov(Y, dims=1)
+# Input for predict needs to be N_samples x N_parameters
+X = hcat(X1[:], X2[:]) 
+μ = zeros(d) 
+Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
+
+g1x = sin.(X[:, 1]) .+ cos.(X[:, 2])
+g2x = sin.(X[:, 1]) .- cos.(X[:, 2])
+noise_samples = rand(MvNormal(μ, Σ), n)' 
+gx = [g1x g2x]
+Y = gx .+ noise_samples
+
+truth_cov = Σ
+sample_truth_cov = cov(noise_samples, dims=1) 
+
 
 # Fit 2D Gaussian Process regression model
 # (To be precise, we fit two models, one that predicts y1 from x1 and x2, 
 # and one that predicts y2 from x1 and x2)
 gpobj = GPObj(X, Y, truth_cov, gppackage, GPkernel=nothing, 
-              normalized=true, noise_learn=true, prediction_type=pred_type)
+              normalized=false, noise_learn=false, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2
 # For this, we generate test points on a x1-x2 grid
@@ -77,7 +88,7 @@ for y_i in 1:d
               xlabel="x1", ylabel="x2", zlabel="var of y"*string(y_i))
 
     plot(p1, p2, layout=(1, 2), legend=false)
-    savefig("/home/melanie/Desktop/GP_test_y"*string(y_i)*".png")
+    savefig("GP_test_y"*string(y_i)*".png")
 end
 
 # Make plots of the true components of G(x1, x2)

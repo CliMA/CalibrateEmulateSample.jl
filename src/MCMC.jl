@@ -89,7 +89,7 @@ function MCMCObj(
         sqrt_singular_values_inv=Diagonal(1.0 ./ sqrt.(decomposition.S)) #diagonal matrix of 1/eigenvalues                     
         obs_sample=sqrt_singular_values_inv*decomposition.Vt*obs_sample
     else
-        println("Assuming independent outputs."
+        println("Assuming independent outputs.")
     end
     
     # first row is param_init

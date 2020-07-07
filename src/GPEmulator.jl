@@ -12,7 +12,7 @@ using PyCall
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
-export GPObj, NormalizedSVDGPObj
+export GPObj
 export predict
 
 export GPJL, SKLJL
@@ -114,10 +114,13 @@ function GPObj(
             error("Cov not defined for 1d input; can't normalize")
         end
         sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
-        inputs = (inputs .- input_mean) * sqrt_inv_input_cov
+        new_inputs = (inputs .- input_mean) * sqrt_inv_input_cov
+    else
+        new_inputs = inputs
     end
-
+    
     # Transform the outputs
+    #data = convert(Matrix{Float64},data') 
     sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
     transformed_data = Array((sqrt_singular_values_inv * decomposition.Vt * data')')
 
@@ -127,12 +130,12 @@ function GPObj(
         # Construct kernel:
         # Note that the kernels take the signal standard deviations on a
         # log scale as input.
-        rbf_len = log.(ones(size(inputs, 2)))
+        rbf_len = log.(ones(size(new_inputs, 2)))
         rbf_logstd = log(1.0)
         rbf = SEArd(rbf_len, rbf_logstd)
 
         kern=rbf
-        println("Using default squared exponential kernel:", kern)
+        println("Using default squared exponential kernel: ", kern)
     else
         kern=deepcopy(GPkernel)
         println("Using user-defined kernel",kern)
@@ -162,23 +165,28 @@ function GPObj(
         GPkernel_i = deepcopy(kern)
         # inputs:           N_samples x N_parameters
         # transformed_data: N_samples x N_data
-
+        dat =  dropdims(transformed_data[:, i]', dims=1)
+        #3dat = transformed_data[i,:]
+       
         # Zero mean function
         kmean = MeanZero()
-        m = GPE(inputs',
-                dropdims(transformed_data[:, i]', dims=1),
+        m = GPE(new_inputs',
+                dat,
                 kmean,
                 GPkernel_i, 
                 logstd_regularization_noise)
 
-        # we choose above to explicitly learn the WhiteKernel as opposed to using this
-        # in built functionality.
+        # we choose above to explicitly learn the WhiteKernel as opposed to using the
+        # in built noise=true functionality.
+        println("created GP", i)
         optimize!(m, noise=false)
+        println("optimized GP", i)
         push!(models, m)
+        print(m)
     end
 
     return GPObj{FT, typeof(package)}(inputs,
-                                      transformed_data,
+                                      data,
                                       input_mean, 
                                       sqrt_inv_input_cov,
                                       models,
@@ -216,7 +224,6 @@ function GPObj(
     # NB: svdfact() may be more efficient / provide positive definiteness information
     # stored as:  svd.U * svd.S *svd.Vt 
     decomposition = svd(truth_cov)
-    
     # Make sure inputs and data are arrays of type FT
     inputs = convert(Array{FT}, inputs)
     data = convert(Array{FT}, data)
@@ -229,7 +236,9 @@ function GPObj(
             error("Cov not defined for 1d input; can't normalize")
         end
         sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
-        inputs = (inputs .- input_mean) * sqrt_inv_input_cov
+        new_inputs = (inputs .- input_mean) * sqrt_inv_input_cov
+    else
+        new_inputs = inputs
     end
 
     # Transform the outputs
@@ -243,7 +252,7 @@ function GPObj(
         const_value = 1.0
         var_kern = ConstantKernel(constant_value=const_value,
                                  constant_value_bounds=(1e-05, 10000.0))
-        rbf_len = ones(size(inputs, 2))
+        rbf_len = ones(size(new_inputs, 2))
         rbf = RBF(length_scale=rbf_len, length_scale_bounds=(1e-05, 10000.0))
 
         
@@ -266,7 +275,7 @@ function GPObj(
         #make the regularization small. We actually learn 
         # total_noise = white_noise_level + regularization_noise
         magic_number = 1e-3 # magic_number << 1
-        regularization_noise = 1e-3 
+        regularization_noise = 1e-3
     else
         # when not learning noise, our SVD transformation implies the observational noise is the identity.
         regularization_noise = 1.0
@@ -275,18 +284,21 @@ function GPObj(
     
     for i in 1:size(data, 2)
         GPkernel_i = deepcopy(kern)
-        
+        # (previously) data= convert(Matrix{Float64},data')
+        # data=reshape(data[i,:],(size(data,2),1))
         m = GaussianProcessRegressor(kernel=GPkernel_i,
                                      n_restarts_optimizer=10,
                                      alpha=regularization_noise)
-        
-        ScikitLearn.fit!(m, inputs, data[:, i])
+
+        println(m.kernel_)
+        ScikitLearn.fit!(m, new_inputs, transformed_data[:, i])
         if i==1
             println(m.kernel.hyperparameters)
             print("Completed training of: ")
         end
         print(i,", ")
         push!(models, m)
+        println(m.kernel_)
     end
     return GPObj{FT, typeof(package)}(inputs,
                                       data,
@@ -320,7 +332,7 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real,
     end
     M = length(gp.models)
     μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
-    # Return mean(s) and standard deviation(s)
+    # Return mean(s) and variance(s)
     μ  = reshape(vcat(first.(μσ2)...), 
                  size(new_inputs)[1], size(new_inputs)[2])
     σ2 = reshape(vcat(last.(μσ2)...),
@@ -354,11 +366,13 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real, 
     new_inputs = convert(Array{FT}, new_inputs')
     μσ2 = [predict_y(gp.models[i], new_inputs) for i in 1:M]
     
-    # Return mean(s) and standard deviation(s)
+    # Return mean(s) and variance(s)
     μ  = reshape(vcat(first.(μσ2)...), 
                  size(new_inputs)[1], size(new_inputs)[2])
     σ2 = reshape(vcat(last.(μσ2)...),
                  size(new_inputs)[1], size(new_inputs)[2])
+
+    
     if transform_to_real
         # Revert back to the original (correlated) coordinate system
         # We created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
@@ -387,12 +401,13 @@ function predict(gp::GPObj{FT, SKLJL}, new_inputs::Array{FT}, transform_to_real)
     end
     M = length(gp.models)
     μσ = [gp.models[i].predict(new_inputs, return_std=true) for i in 1:M]
-    # Return mean(s) and standard deviation(s)
-    μ  = reshape(vcat(first.(μσ2)...), 
+    # Return mean(s) and standard deviations(s)
+    μ  = reshape(vcat(first.(μσ)...), 
                  size(new_inputs)[1], size(new_inputs)[2])
-    σ2 = reshape(vcat(last.(μσ2)...),
+    σ = reshape(vcat(last.(μσ)...),
                  size(new_inputs)[1], size(new_inputs)[2])
-
+    σ2 = σ*σ
+    
     if transform_to_real
         # Revert back to the original (correlated) coordinate system
         # We created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
