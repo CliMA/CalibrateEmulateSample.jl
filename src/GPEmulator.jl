@@ -18,6 +18,8 @@ export predict
 export GPJL, SKLJL
 export YType, FType
 
+using Plots
+
 """
     GaussianProcessesPackage
 
@@ -163,26 +165,35 @@ function GPObj(
         # Make a copy of GPkernel (because the kernel gets altered in
         # every iteration)
         GPkernel_i = deepcopy(kern)
-        # inputs:           N_samples x N_parameters
+        # new_inputs:       N_samples x N_parameters
         # transformed_data: N_samples x N_data
-        dat =  dropdims(transformed_data[:, i]', dims=1)
-        #3dat = transformed_data[i,:]
+        GPinputs = new_inputs'
+        GPdata_i =  dropdims(transformed_data[:, i]', dims=1)
+
+        # for i=1:size(transformed_data,1)
+        #     println(GPinputs[:,i],"  ",GPdata_i[i])
+        # end
+        
+        #dat = transformed_data[i,:]
        
         # Zero mean function
         kmean = MeanZero()
-        m = GPE(new_inputs',
-                dat,
+        m = GPE(GPinputs,
+                GPdata_i,
                 kmean,
                 GPkernel_i, 
                 logstd_regularization_noise)
-
+       
         # we choose above to explicitly learn the WhiteKernel as opposed to using the
         # in built noise=true functionality.
         println("created GP", i)
         optimize!(m, noise=false)
+        # if i==1
+        #     plot(m, show = true)
+        # end
         println("optimized GP", i)
         push!(models, m)
-        print(m)
+        println(m.kernel)
     end
 
     return GPObj{FT, typeof(package)}(inputs,
@@ -327,6 +338,7 @@ predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}; transform_to_real=false) whe
 function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real,
                  ::FType) where {FT}
 
+    
     if gp.normalized
         new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
     end
@@ -358,6 +370,9 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real,
 end
 
 function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real, ::YType) where {FT}
+
+    #This just 
+    new_inputs = convert(Array{FT}, new_inputs')
     if gp.normalized
         new_inputs = (new_inputs .- gp.input_mean) * gp.sqrt_inv_input_cov
     end
@@ -365,14 +380,13 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT}, transform_to_real, 
     # predicts columns of inputs so must be transposed
     new_inputs = convert(Array{FT}, new_inputs')
     μσ2 = [predict_y(gp.models[i], new_inputs) for i in 1:M]
-    
+
     # Return mean(s) and variance(s)
     μ  = reshape(vcat(first.(μσ2)...), 
-                 size(new_inputs)[1], size(new_inputs)[2])
+                size(new_inputs)[1], size(new_inputs)[2])
     σ2 = reshape(vcat(last.(μσ2)...),
                  size(new_inputs)[1], size(new_inputs)[2])
 
-    
     if transform_to_real
         # Revert back to the original (correlated) coordinate system
         # We created meanvGP = Dinv*Vt*meanv so meanv = V*D*meanvGP
