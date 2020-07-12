@@ -14,6 +14,7 @@ using PyCall
 
 export GPObj
 export predict
+export gp_sqbias
 
 export GPJL, SKLJL
 export YType, FType
@@ -117,7 +118,7 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         kmean = MeanZero()
         m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
                 logstd_obs_noise)
-        optimize!(m, noise=false)
+        optimize!(m, noise=true)
         push!(models, m)
     end
     return GPObj{FT, typeof(package)}(inputs, data, input_mean, 
@@ -223,6 +224,28 @@ function predict(gp::GPObj{FT, SKLJL},
     μσ = [gp.models[i].predict(new_inputs, return_std=true) for i in 1:M]
     # Return mean(s) and standard deviation(s)
     return vcat(first.(μσ)...), vcat(last.(μσ)...).^2
+end
+
+"""
+  gp_sqbias(gp::GPObj{FT,GPJL}, inputs::Array{FT,2}, exp_outputs::Array{FT,2}) where {FT}
+
+Evaluate the GP model(s) mean squared bias over a range of data points.
+  - `gp` - a GPObj
+  - `inputs` - inputs for which GP model(s) is/are evaluated; N_new_inputs x N_parameters
+  - `exp_outputs` - outputs from the true model for the given inputs; N_new_inputs x N_outputs
+"""
+function gp_sqbias(gp::GPObj{FT, GPJL},
+                  inputs::Array{FT,2},
+                  exp_outputs::Array{FT,2}) where {FT}
+
+    y_sqbias = zeros(length(exp_outputs[1,:]))
+    N_data = length(inputs[:,1])
+    for i in 1:N_data
+        y_gp_mean, y_gp_var = predict(gp, reshape(inputs[i,:], 1, :) )
+        y_sqbias = y_sqbias + (y_gp_mean-exp_outputs[i,:]).*(y_gp_mean-exp_outputs[i,:])
+    end
+
+    return y_sqbias./FT(N_data)
 end
 
 end # module

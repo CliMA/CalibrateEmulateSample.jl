@@ -7,6 +7,7 @@ using ..Observations
 using ..EKI
 
 export extract_GP_tp
+export extract_GP_train_test
 export extract_obs_data
 export orig2zscore
 export zscore2orig
@@ -37,6 +38,31 @@ function extract_GP_tp(ekiobj::EKIObj{FT,IT}, N_eki_it::IT) where {FT,IT}
     return u_tp, g_tp
 end
 
+function extract_GP_train_test(ekiobj::EKIObj{FT,IT},
+        N_eki_it::IT,
+        test_frac::FT) where {FT,IT}
+
+    # Note u[end] does not have an equivalent g
+    u_tp = ekiobj.u[end-N_eki_it:end-1] # N_eki_it x [N_ensemble x N_parameters]
+    g_tp = ekiobj.g[end-N_eki_it+1:end] # N_eki_it x [N_ensemble x N_data]
+
+    # u does not require reduction, g does:
+    # g_tp[j] is jth iteration of ensembles
+    u_tp = cat(u_tp..., dims=1) # [(N_eki_it x N_ensemble) x N_parameters]
+    g_tp = cat(g_tp..., dims=1) # [(N_eki_it x N_ensemble) x N_data]
+
+    N_tp = length(u_tp[:,1])
+    N_test = floor(test_frac*N_tp)
+    N_train = Int(N_tp - N_test)
+    rand_ind = randperm!(collect(1:N_tp))
+    u_train = u_tp[ rand_ind[1:N_train], :]
+    u_test = u_tp[ rand_ind[N_train+1:N_tp], :]
+
+    g_train = g_tp[ rand_ind[1:N_train], :]
+    g_test = g_tp[ rand_ind[N_train+1:N_tp], :]
+
+    return u_train, g_train, u_test, g_test
+end
 
 """
     get_obs_sample(obs::Obs; rng_seed=42)
