@@ -1,66 +1,32 @@
 # Import modules
-using Distributions  # probability distributions and associated functions
-using StatsBase
-using LinearAlgebra
-using StatsPlots
+@everywhere using Pkg
+@everywhere Pkg.activate(".")
+@everywhere using Distributions  # probability distributions and associated functions
+@everywhere using StatsBase
+@everywhere using LinearAlgebra
+# Import Calibrate-Emulate-Sample modules
+@everywhere using CalibrateEmulateSample.EKI
+@everywhere using CalibrateEmulateSample.GPEmulator
+@everywhere using CalibrateEmulateSample.MCMC
+@everywhere using CalibrateEmulateSample.Observations
+@everywhere using CalibrateEmulateSample.Utilities
+@everywhere using CalibrateEmulateSample.Transformations
+@everywhere using CalibrateEmulateSample.SCModel
+
 using GaussianProcesses
 using Plots
-
-# Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EKI
-using CalibrateEmulateSample.GPEmulator
-using CalibrateEmulateSample.MCMC
-using CalibrateEmulateSample.Observations
-using CalibrateEmulateSample.Utilities
-
-
-"""
-    logmean_and_logstd(μ, σ)
-
-Returns the lognormal parameters μ and σ from the mean μ and std σ of the 
-lognormal distribution.
-"""
-function logmean_and_logstd(μ, σ)
-    σ_log = sqrt(log(1.0 + σ^2/μ^2))
-    μ_log = log(μ / (sqrt(1.0 + σ^2/μ^2)))
-    return μ_log, σ_log
-end
-
-"""
-    logmean_and_logstd_from_mode_std(μ, σ)
-
-Returns the lognormal parameters μ and σ from the mode and the std σ of the 
-lognormal distribution.
-"""
-function logmean_and_logstd_from_mode_std(mode, σ)
-    σ_log = sqrt( log(mode)*(log(σ^2)-1.0)/(2.0-log(σ^2)*3.0/2.0) )
-    μ_log = log(mode) * (1.0-log(σ^2)/2.0)/(2.0-log(σ^2)*3.0/2.0)
-    return μ_log, σ_log
-end
-
-"""
-    mean_and_std_from_ln(μ, σ)
-
-Returns the mean and variance of the lognormal distribution
-from the lognormal parameters μ and σ.
-"""
-function mean_and_std_from_ln(μ_log, σ_log)
-    μ = exp(μ_log + σ_log^2/2)
-    σ = sqrt( (exp(σ_log^2) - 1)* exp(2*μ_log + σ_log^2) )
-    return μ, σ
-end
-
-log_transform(a::AbstractArray) = log.(a)
-exp_transform(a::AbstractArray) = exp.(a)
-
+using StatsPlots
+using JLD
 
 ###
 ###  Define the parameters and their priors
 ###
 
 # Define the parameters that we want to learn
-param_names = ["c_m", "c_ϵ"]
-n_param = length(param_names)
+
+@everywhere param_names = ["entrainment_factor", "detrainment_factor", "sorting_power"]
+@everywhere param_names_symb = ["ϵ", "δ", "sort_pow"]
+@everywhere n_param = length(param_names)
 
 # Assume lognormal priors for all three parameters
 # Note: For the EDMF model to run, all parameters need to be nonnegative. 
@@ -69,12 +35,14 @@ n_param = length(param_names)
 # (the parameters can then simply be obtained by exponentiating the final results). 
 
 # Prior option 1: Log-normal in original space defined by mean and std
-logmean_c_m, logstd_c_m = logmean_and_logstd(0.4, 0.3)
-logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd(0.6, 0.3)
-println("Lognmean and logstd of the prior: ", logmean_c_m, " ", logstd_c_m)
-priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
-          Distributions.Normal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
-
+@everywhere logmeans = zeros(n_param)
+@everywhere log_stds = zeros(n_param)
+@everywhere logmeans[1], log_stds[1] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[2], log_stds[2] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[3], log_stds[3] = logmean_and_logstd(2.0, 1.0)
+@everywhere priors = [Distributions.Normal(logmeans[1], log_stds[1]),
+                        Distributions.Normal(logmeans[2], log_stds[2]),
+                        Distributions.Normal(logmeans[3], log_stds[3])]
 # # Prior option 2: Log-normal in original space defined by mode and std
 # logmean_c_m, logstd_c_m = logmean_and_logstd_from_mode_std(0.5, 0.3)
 # logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd_from_mode_std(0.5, 0.3)
@@ -83,7 +51,8 @@ priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
 #           Distributions.Normal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
 
 # Prior option 3: Uniform in transformed space
-# priors = [Distributions.Uniform(-5.0, 1.0),    # prior on c_m
+# @everywhere priors = [Distributions.Uniform(-5.0, 1.0),    # prior on c_m
+#           Distributions.Uniform(-5.0, 1.0),
 #           Distributions.Uniform(-5.0, 1.0)]    # prior on c_ϵ
 
 
@@ -91,79 +60,79 @@ priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
 ###  Retrieve true LES samples
 ###
 
-
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
-n_observables = 3
-data_names = ["Obs_1", "Obs_2", "Obs_3"]
-yt = ones(n_observables)
-yt[2] = 2.0
-yt[3] = 3.0
-# This is how many noisy samples of the true data we have
-n_samples = 100
-samples = zeros(n_samples, length(yt))
-# Noise level of the samples
-noise_level = 0.1
-Γy = noise_level^2 * convert(Array, Diagonal(ones(3)))
-μ_noise = zeros(length(yt))
+@everywhere ti = 25200.0
+@everywhere tf = 28800.0
+@everywhere y_names = ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]
+@everywhere les_dir = "Output.DYCOMS_RF01.00les"
+@everywhere sim_dir = "Output.DYCOMS_RF01.00000"
+@everywhere z_scm = get_profile(sim_dir, ["z_half"])
+@everywhere yt, yt_var = obs_LES(y_names, les_dir, ti, tf, z_scm = z_scm)
+@everywhere n_observables = length(yt)
 
+# This is how many samples of the true data we have
+@everywhere n_samples = 1
+@everywhere samples = zeros(n_samples, length(yt))
+@everywhere samples[1,:] = yt
+# Noise level of the samples, which scales the time variance of each output.
+@everywhere noise_level = 10.0
+@everywhere Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
+@everywhere μ_noise = zeros(length(yt))
 # Create artificial samples by sampling noise
-for i in 1:n_samples
-    samples[i, :] = yt + rand(MvNormal(μ_noise, Γy))
-end
-
-# Define linear model dynamic update G(θ) = Aθ
-A = [1.0 1.0; 4.0 -2.0; 9.0/2.0 0.0]
-g(x) = A*x
+# for i in 1:n_samples
+#     samples[i, :] = yt + rand(MvNormal(μ_noise, Γy))
+# end
 
 # We construct the observations object with the samples and the cov.
-truth = Observations.Obs(samples, Γy, data_names)
+@everywhere truth = Observations.Obs(samples, Γy, y_names)
 
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-N_ens = 50 # number of ensemble members
-# With EKI, using more iterations may result in a poorly trained GP for this problem!
-N_iter = 4 # number of EKI iterations.
+@everywhere N_ens = 10 # number of ensemble members
+@everywhere N_iter = 20 # number of EKI iterations.
 
 
-# initial parameters: N_ens x N_params
-initial_params = EKI.construct_initial_ensemble(N_ens, priors)
-ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
-g_ens = zeros(N_ens, n_observables)
+# initial parameters: N_ens x N_param
+@everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
+@everywhere ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
+@everywhere g_ens = zeros(N_ens, n_observables)
 
-# Estimate EKI step to ensure covariance is not negligible
-params_i = deepcopy(exp_transform(ekiobj.u[end]))
-for j in 1:N_ens
-      g_ens[j, :] = g(params_i[j, :])
-    end
-Δt = EKI.find_eki_step(ekiobj, g_ens, cov_threshold=0.1)
-println("EKI timestep set to: ", Δt)
+@everywhere scm_dir = "/Users/ilopezgo/SCAMPy/SCAMPy/"
+@everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))
+
+
+@everywhere g_(x::Array{Float64,1}) = run_SCAMPy(x, param_names,
+   y_names, scm_dir, ti, tf)
 
 # EKI iterations
+@everywhere Δt = 1.0
 for i in 1:N_iter
-    # Note that the parameters are exp-transformed for use as input
+    # Note that the parameters are exp-transformed when used as input
     # to SCAMPy
-    params_i = deepcopy(exp_transform(ekiobj.u[end]))
+    @everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))
+    @everywhere params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
+    g_ens_arr = pmap(g_, params_i)
     for j in 1:N_ens
-      g_ens[j, :] = g(params_i[j, :])
+      g_ens[j, :] = g_ens_arr[j]
     end
-    # run_SCAMPy(params_i, ...)  ### This is not yet implemented, 
-            ### it returns the predicted output y_scm = G(θ)
     EKI.update_ensemble!(ekiobj, g_ens; Δt=Δt)
 end
 
-# EKI results: Has the ensemble collapsed toward the truth?
-# The true value of the parameters for this problem is
-params_true = [2.0/3.0 1.0/3.0]
-println("True parameters: ")
-println(params_true)
-
+# EKI results: Has the ensemble collapsed toward the truth? Store and analyze.
 println("\nEKI ensemble mean at last stage:")
 println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
 
-println("\nEnsemble covariance from last stage of EKI, in transformed space.")
-println(cov(deepcopy((ekiobj.u[end])), dims=1))
+println("\nEnsemble covariance det. 1st EKI, transformed space.")
+println(det(cov(deepcopy((ekiobj.u[1])), dims=1)))
+
+println("\nEnsemble covariance det. last EKI, transformed space.")
+println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))
+
+# Save EKI information to file
+save("eki.jld", "eki_u", ekiobj.u, "eki_g", eki.g,
+        "truth_mean", ekiobj.g_t, "truth_cov", ekiobj.cov, "eki_err", ekiobj.err)
 
 ###
 ###  Emulate: Gaussian Process Regression
@@ -172,34 +141,37 @@ println(cov(deepcopy((ekiobj.u[end])), dims=1))
 gppackage = GPEmulator.GPJL()
 pred_type = GPEmulator.YType()
 
-# Get training points: Use ensemble at last step, or all stages?
-# For EKI, better to use all stages
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+mean_train_error = []
+mean_test_error = []
+for i in 1:N_iter
+    # Get training and testing points:
+    u_train, g_train, u_test, g_test = Utilities.extract_GP_train_test(ekiobj, i, 0.33)
 
-# Construct kernel:
-rbf_len = log.(ones(size(u_tp, 2)))
-rbf_logstd = log(1.0)
-rbf = SEArd(rbf_len, rbf_logstd)
-# white noise for regularization. Right now it leads to convergence problems.
-white = Noise(log(1.0e-4))
-# construct kernel
-GPkernel =  rbf
+    # Construct kernel:
+    rbf_len = log.(ones(size(u_train, 2)))
+    rbf_logstd = log(1.0)
+    rbf = SEArd(rbf_len, rbf_logstd)
+    # white noise for regularization. Right now it leads to convergence problems.
+    # white = Noise(log(1.0e-4))
+    # construct kernel
+    GPkernel =  rbf
 
-normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel,
-                         normalized=normalized, prediction_type=pred_type)
+    normalized = true
+    global gpobj = GPEmulator.GPObj(u_train, g_train, gppackage; GPkernel=GPkernel,
+                             normalized=normalized, prediction_type=pred_type)
 
-# Check how well the Gaussian Process regression predicts on the
-# true parameters
-y_mean, y_var = GPEmulator.predict(gpobj, reshape(log.(params_true), 1, :))
-# other parameters to check variance of GP
-y_other, y_var_other = GPEmulator.predict(gpobj, reshape(([1.0/3.0 2.0/3.0]), 1, :))
-println("true data: ")
-println(truth.mean)
-println("GP prediction on true parameters: ")
-println(vec(y_mean))
-println("GP prediction on suboptimal parameters: ")
-println(vec(y_other))
+    # Check how well the Gaussian Process regression predicts on the
+    # training and testing sets
+    y_train_sqbias = GPEmulator.gp_sqbias(gpobj, u_train, g_train)
+    println("Normalized mean training error:", mean(y_train_sqbias./yt_var) )
+    append!(mean_train_error, mean(y_train_sqbias./yt_var))
+    y_test_sqbias = GPEmulator.gp_sqbias(gpobj, u_test, g_test)
+    println("Normalized mean testing error:", mean(y_test_sqbias./yt_var) )
+    append!(mean_test_error, mean(y_test_sqbias./yt_var))
+
+end
+save("GP_errors.jld", "train_error", mean_train_error, "test_error", mean_test_error)
+
 
 ###
 ###  Sample: Markov Chain Monte Carlo
@@ -227,7 +199,7 @@ println("Begin MCMC - with step size ", new_step)
 
 # reset parameters
 max_iter = 200000
-burnin = 25000
+burnin = 50000
 
 # u0 has been modified by MCMCObj in the test, resetting.
 u0 = vec(mean(ekiobj.u[end], dims=1))
@@ -240,41 +212,28 @@ posterior = MCMC.get_posterior(mcmc)
 
 post_mean = mean(posterior, dims=1)
 post_cov = cov(posterior, dims=1)
-println("posterior mean and variance")
+println("posterior mean and variance for each parameter:")
 println(mean_and_std_from_ln(post_mean[1], post_cov[1,1]))
 println(mean_and_std_from_ln(post_mean[2], post_cov[2,2]))
-println("post_cov")
-println(post_cov)
-println("D util")
-println(det(inv(post_cov)))
-println(" ")
+println(mean_and_std_from_ln(post_mean[3], post_cov[3,3]))
 
-
-using StatsPlots; 
-using Plots;
+# Save posterior to file
+save("posterior.jld", "posterior", posterior)
 
 # Plot the posteriors together with the priors and the 
 #   true parameter values in transformed space
-true_values = [log(params_true[1]) log(params_true[2])]
-n_params = length(true_values)
 
 plot(posterior[:, 1], posterior[:, 2], seriestype = :scatter)
 savefig("MCMC_chain_transformed.png")
 
-for idx in 1:n_params
-    if idx == 1
-        param = "c_m"
-        xs = collect(-5.0:0.05:1.0)
-    elseif idx == 2
-        param = "c_ϵ"
-        xs = collect(-5.0:0.05:1.0)
-    end
-
+for idx in 1:n_param
+    param = param_names_symb[idx]
+    
     label = "true " * param
     histogram(posterior[:, idx], bins=100, normed=true, fill=:slategray, 
-              lab="posterior")
+              lab="posterior", xlabel = param)
+    xs = collect(logmeans[idx]-3.0*log_stds[idx]:log_stds[idx]/20.0:logmeans[idx]+3.0*log_stds[idx])
     plot!(xs, mcmc.prior[idx], w=2.6, color=:blue, lab="prior")
-    plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
 
     title!(param)
     StatsPlots.savefig("posterior_"*param*".png")
@@ -282,28 +241,39 @@ end
 
 # Plot the posteriors together with the priors and the 
 #   true parameter values in the original space
-true_values = [(params_true[1]) (params_true[2])]
 
-plot(exp.(posterior[:, 1]), exp.(posterior[:, 2]), seriestype = :scatter)
+plot(exp.(posterior[:, 1]), exp.(posterior[:, 2]), seriestype = :scatter, 
+    xlabel = param_names_symb[1], ylabel=param_names_symb[2])
 savefig("MCMC_chain_original.png")
 
-for idx in 1:n_params
-    if idx == 1
-        param = "c_m"
-        xs = collect(-5.0:0.05:1.0)
-    elseif idx == 2
-        param = "c_ϵ"
-        xs = collect(-5.0:0.05:1.0)
-    end
+histogram2d(exp.(posterior[:, 1]), exp.(posterior[:, 2]), 
+    xlim = [0.0, 2.0], ylim = [0.0, 2.0], nbins=60, normed=true, 
+    xlabel = param_names_symb[1], ylabel=param_names_symb[2], c= :bilbao)
+savefig("Emulator_posterior_original.png")
+
+cornerplot(exp.(posterior), compact = true, label = param_names_symb, histpct = 0.5, color = :rainbow)
+savefig("cornerplot_original.png")
+
+corrplot(exp.(posterior), label = param_names_symb)
+savefig("corrplot_original.png")
+
+marginalhist(exp.(posterior[:, 1]), exp.(posterior[:, 2]), 
+    xlim = [0.0, 2.0], ylim = [0.0, 2.0], nbins=40, normed=true, 
+    xguide = param_names_symb[1], yguide=param_names_symb[2], c= :bilbao)
+savefig("marginalhist_original.png")
+
+for idx in 1:n_param
+    param = param_names_symb[idx]
 
     label = "true " * param
     histogram(exp.(posterior[:, idx]), bins=100, normed=true, fill=:slategray, 
-              lab="posterior")
-    priors_ln = [Distributions.LogNormal(logmean_c_m, logstd_c_m),    # prior on c_m
-          Distributions.LogNormal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
+              lab="posterior", xlabel = param)
+    priors_ln = [Distributions.LogNormal(logmeans[1], log_stds[1]),
+                        Distributions.LogNormal(logmeans[2], log_stds[2]),
+                        Distributions.LogNormal(logmeans[3], log_stds[3])]
 
+    xs = collect(logmeans[idx]-3.0*log_stds[idx]:log_stds[idx]/20.0:logmeans[idx]+3.0*log_stds[idx])
     plot!(exp.(xs), priors_ln[idx], w=2.6, color=:blue, lab="prior")
-    plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
 
     title!(param)
     StatsPlots.savefig("posterior_orig_space_"*param*".png")
