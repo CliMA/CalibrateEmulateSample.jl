@@ -90,8 +90,8 @@ using JLD
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 10 # number of ensemble members
-@everywhere N_iter = 20 # number of EKI iterations.
+@everywhere N_ens = 5 # number of ensemble members
+@everywhere N_iter = 4 # number of EKI iterations.
 
 
 # initial parameters: N_ens x N_param
@@ -131,7 +131,7 @@ println("\nEnsemble covariance det. last EKI, transformed space.")
 println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))
 
 # Save EKI information to file
-save("eki.jld", "eki_u", ekiobj.u, "eki_g", eki.g,
+save("eki.jld", "eki_u", ekiobj.u, "eki_g", ekiobj.g,
         "truth_mean", ekiobj.g_t, "truth_cov", ekiobj.cov, "eki_err", ekiobj.err)
 
 ###
