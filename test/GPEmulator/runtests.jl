@@ -28,8 +28,8 @@ using CalibrateEmulateSample.GPEmulator
     GPkernel = kern + white
 
     # Fit Gaussian Process Regression model
-    gpobj = GPObj(x, y, gppackage; GPkernel=GPkernel, normalized=false, 
-                  prediction_type=pred_type)
+    gpobj = GPObj(x, y, input_cov, gppackage; GPkernel=GPkernel, normalized=true, 
+                  noise_learn=true, prediction_type=pred_type)
     new_inputs = [0.0, π/2, π, 3*π/2, 2*π]
     μ, σ² = GPEmulator.predict(gpobj, new_inputs)
 

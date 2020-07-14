@@ -22,8 +22,9 @@ using CalibrateEmulateSample.GPEmulator
 #   and one that predicts y_i[2] from x_i. Fitting separate models for        #
 #   y_i[1] and y_i[2] requires the outputs to be independent - since this     #
 #   cannot be assumed to be the case a priori, the training data are          #
-#   decorrelated by perfoming an SVD decomposition on the noise               # 
-#   covariance Σ, and each model is then trained in the decorrelated space.   #
+#   decorrelated by perfoming an Singulat Value Decomposition (SVD) on the    #
+#   noise covariance Σ, and each model is then trained in the decorrelated    #
+#   space.                                                                    #
 #                                                                             #
 #   The decorrelation is done automatically when instantiating a `GPObj`,     #
 #   but the user can choose to have the `predict` function return its         #
@@ -77,7 +78,7 @@ noise_samples = rand(MvNormal(μ, Σ), n)'
 
 # y = G(x) + η
 Y = gx .+ noise_samples
-input_cov = cov(noise_samples, dims=1) 
+data_cov = cov(noise_samples, dims=1) 
 
 # Fit 2D Gaussian Process regression model
 # (To be precise: We fit two models, one that predicts y1 from x1 and x2, 
@@ -86,7 +87,7 @@ input_cov = cov(noise_samples, dims=1)
 # exponential kernel. 
 # Setting noise_learn=true leads to the addition of white noise to the
 # kernel
-gpobj = GPObj(X, Y, input_cov, gppackage, GPkernel=nothing, 
+gpobj = GPObj(X, Y, data_cov, gppackage, GPkernel=nothing, 
               normalized=true, noise_learn=true, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2

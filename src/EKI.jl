@@ -44,7 +44,8 @@ end
 function EKIObj(parameters::Array{FT, 2},
                 parameter_names::Vector{String},
                 t_mean,
-                t_cov::Array{FT, 2}) where {FT<:AbstractFloat}
+                t_cov::Array{FT, 2};
+                Δt=FT(1)) where {FT<:AbstractFloat}
 
     # ensemble size
     N_ens = size(parameters)[1]
@@ -57,7 +58,7 @@ function EKIObj(parameters::Array{FT, 2},
     # error store
     err = FT[]
     # timestep store
-    Δt = FT[]
+    Δt = Array([Δt])
 
     EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err, Δt)
 end
@@ -95,7 +96,7 @@ function compute_error(eki)
 end
 
 
-function update_ensemble!(eki::EKIObj{FT}, g; cov_threshold::FT=0.01, Δt_new = nothing) where {FT}
+function update_ensemble!(eki::EKIObj{FT}, g; cov_threshold::FT=0.01, Δt_new=nothing) where {FT}
     # u: N_ens x N_params
     u = eki.u[end]
     cov_init = cov(eki.u[end], dims=1)

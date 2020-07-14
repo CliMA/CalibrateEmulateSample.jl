@@ -124,7 +124,7 @@ function GPObj(
         GPinputs = convert(Array, inputs')
     end
     
-    # Transform the outputs (transformed_data will also come out transposed from
+    # Transform the outputs (transformed_data will come out transposed from
     # this transformation, i.e., with size output_dim x N_samples. This is also 
     # the size that will be required when passing the data to GPE(), so we leave 
     # transformed_data in that size. 
@@ -152,7 +152,7 @@ function GPObj(
     end
 
     if noise_learn
-        # Add  white noise to kernel
+        # Add white noise to kernel
         white_logstd = log(1.0)
         white = Noise(white_logstd)
         kern = kern + white
@@ -172,7 +172,9 @@ function GPObj(
     for i in 1:N_models
         # Make a copy of the kernel (because it gets altered in every 
         # iteration)
+        println("kernel in GPObj")
         GPkernel_i = deepcopy(kern)
+        println(GPkernel_i)
         GPdata_i = transformed_data[i, :]
         # GPE() arguments:
         # GPinputs:    (input_dim x N_samples)

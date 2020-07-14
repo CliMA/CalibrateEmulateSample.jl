@@ -82,12 +82,12 @@ function MCMCObj(
     
     param_init_copy = deepcopy(param_init)
     
-    #We need to transform obs_sample into the correct space (
+    # We need to transform obs_sample into the correct space 
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        decomposition=svd(truth_cov)#svd.U * svd.S * svd.Vt (can also get V)
-        sqrt_singular_values_inv=Diagonal(1.0 ./ sqrt.(decomposition.S)) #diagonal matrix of 1/eigenvalues                     
-        obs_sample=sqrt_singular_values_inv*decomposition.Vt*obs_sample
+        decomposition = svd(obs_cov) # svd.U * svd.S * svd.Vt (can also get V)
+        sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) # diagonal matrix of 1/eigenvalues                     
+        obs_sample = sqrt_singular_values_inv * decomposition.Vt * obs_sample
     else
         println("Assuming independent outputs.")
     end

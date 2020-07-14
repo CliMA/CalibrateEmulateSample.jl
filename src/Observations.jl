@@ -42,7 +42,7 @@ function Obs(samples::Vector{Vector{FT}},
     else
         temp = convert(Array, reshape(hcat(samples...)', N_samples, :))
         samplemean = vec(mean(temp, dims=1))
-        cov = Statistics.cov(temp)
+        cov = Statistics.cov(temp .- samplemean)
     end
     Obs(samples, cov, samplemean, data_names)
 end
@@ -57,10 +57,10 @@ function Obs(samples::Array{FT},
         samplemean = vec(samples)
         samples = vec([vec(samples)])
     else
-        cov = Statistics.cov(samples)
         # convert matrix of samples to a vector of vectors
         N_samples = size(samples, 1)
         samplemean = vec(mean(samples, dims=1))
+        cov = Statistics.cov(samples .- samplemean)
         samples = [samples[i, :] for i in 1:N_samples]
     end
     Obs(samples, cov, samplemean, data_names)
