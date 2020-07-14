@@ -118,7 +118,7 @@ function GPObj(inputs, data, package::GPJL; GPkernel::Union{K, KPy, Nothing}=not
         kmean = MeanZero()
         m = GPE(inputs', dropdims(data[:, i]', dims=1), kmean, GPkernel_i, 
                 logstd_obs_noise)
-        optimize!(m, noise=true)
+        optimize!(m, noise=false)
         push!(models, m)
     end
     return GPObj{FT, typeof(package)}(inputs, data, input_mean, 
