@@ -12,8 +12,8 @@ function run_SCAMPy(u::Array{FT, 1},
                     u_names::Array{String, 1},
                     y_names::Array{String, 1},
                     scm_dir::String,
-                    ti::Float64,
-                    tf::Float64,
+                    ti::Union{FT, Array{FT,1}},
+                    tf::Union{FT, Array{FT,1}},
                     ) where {FT<:AbstractFloat}
     
     exe_path = string(scm_dir, "call_SCAMPy.sh")
@@ -26,16 +26,26 @@ function run_SCAMPy(u::Array{FT, 1},
 
     # SCAMPy file descriptor
     sim_uuid = string(sim_uuid, ".txt")
-    sim_dir = readlines(sim_uuid)[1]
+    sim_dirs = readlines(sim_uuid)
     run(`rm $sim_uuid`)
 
-    y_scm = get_profile(sim_dir, y_names, ti = ti, tf = tf)
+    y_scm = zeros(0)
+    for i in 1:length(sim_dirs)
+        sim_dir = sim_dirs[i]
+        if length(ti) > 1
+            append!( y_scm, get_profile(sim_dir, y_names, ti = ti, tf = tf))
+        else
+            append!( y_scm, get_profile(sim_dir, y_names, ti = ti[i], tf = tf[i]))
+        end
+        run(`rm -r $sim_dir`)
+    end
+
     for i in eachindex(y_scm)
         if isnan(y_scm[i])
             y_scm[i] = 1.0e9
         end
     end
-    run(`rm -r $sim_dir`)
+
     return y_scm
 end
 
