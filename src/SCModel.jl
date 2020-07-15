@@ -10,7 +10,7 @@ export get_profile
 
 function run_SCAMPy(u::Array{FT, 1},
                     u_names::Array{String, 1},
-                    y_names::Array{String, 1},
+                    y_names::Union{Array{String, 1}, Array{Array{String,1},1}},
                     scm_dir::String,
                     ti::Union{FT, Array{FT,1}},
                     tf::Union{FT, Array{FT,1}},
@@ -33,10 +33,19 @@ function run_SCAMPy(u::Array{FT, 1},
     for i in 1:length(sim_dirs)
         sim_dir = sim_dirs[i]
         if length(ti) > 1
-            append!( y_scm, get_profile(sim_dir, y_names, ti = ti, tf = tf))
+            ti_ = ti[i]
+            tf_ = tf[i]
         else
-            append!( y_scm, get_profile(sim_dir, y_names, ti = ti[i], tf = tf[i]))
+            ti_ = ti
+            tf_ = tf
         end
+
+        if typeof(y_names)==Array{Array{String,1},1}
+            y_names_ = y_names[i]
+        else
+            y_names_ = y_names
+        end
+        append!(y_scm, get_profile(sim_dir, y_names_, ti = ti_, tf = tf_))
         run(`rm -r $sim_dir`)
     end
 
