@@ -166,6 +166,15 @@ function get_les_names(scm_y_names::Array{String,1})
     if "total_flux_h" in y_names
         y_names[findall(x->x=="total_flux_h", y_names)] .= "resolved_z_flux_thetali"
     end
+    if "u_mean" in y_names
+        y_names[findall(x->x=="u_mean", y_names)] .= "u_translational_mean"
+    end
+    if "v_mean" in y_names
+        y_names[findall(x->x=="v_mean", y_names)] .= "v_translational_mean"
+    end
+    if "tke_mean" in y_names
+        y_names[findall(x->x=="tke_mean", y_names)] .= "tke_nd_mean"
+    end
     return y_names
 end
 
