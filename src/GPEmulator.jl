@@ -161,7 +161,7 @@ function GPObj(
         # observational noise is the identity.
         logstd_regularization_noise = log(sqrt(1.0)) 
     end
-    
+
     for i in 1:N_models
         # Make a copy of the kernel (because it gets altered in every 
         # iteration)

@@ -24,6 +24,9 @@ using CalibrateEmulateSample.GPEmulator
     gppackage = GPJL()
     pred_type = YType()
 
+    # observational noise 
+    obs_noise = 0.1
+
     # Construct kernel:
     # Squared exponential kernel (note that hyperparameters are on log scale)
     # with observational noise
@@ -73,6 +76,6 @@ using CalibrateEmulateSample.GPEmulator
     @test size(posterior) == (max_iter - burnin + 1, length(param_init))
     @test_throws Exception MCMCObj(obs_sample, σ2_y, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)
-    @test post_mean ≈ π/2 atol=3e-1
+    @test post_mean ≈ π/2 atol=4e-1
 
 end

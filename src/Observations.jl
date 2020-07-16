@@ -37,6 +37,7 @@ function Obs(samples::Vector{Vector{FT}},
 
     N_samples = length(samples)
     # convert to N_samples x sample_dim to determine sample covariance
+
     if N_samples == 1
         # only one sample - this requires a bit more data massaging
         temp1 = convert(Array, reshape(hcat(samples...)', N_samples, :))
@@ -92,11 +93,12 @@ function Obs(samples::Vector{Vector{FT}},
     N_samples = length(samples)
     sample_dim = length(samples[1])
     # convert to N_samples x sample_dim to determine sample covariance
+
     if N_samples == 1
         # only one sample - this requires a bit more data massaging
         temp1 = convert(Array, reshape(hcat(samples...)', N_samples, :))
         temp = dropdims(temp1, dims=1)
-        samplemean = mean(temp, dims=2)
+        samplemean = vec(mean(temp, dims=2))
     else
         if sample_dim == 1
             # We have 1D samples, so the sample mean and covariance (which in

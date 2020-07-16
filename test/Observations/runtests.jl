@@ -17,6 +17,7 @@ using CalibrateEmulateSample.Observations
     @test obs.obs_noise_cov == 2.5 * ones(3, 3)
 
     # Generate samples as vector of vectors, pass a covariance to Obs
+
     covar = ones(sample_dim, sample_dim)
     obs = Obs(samples, covar, data_names)
     @test obs.obs_noise_cov == covar
@@ -35,6 +36,7 @@ using CalibrateEmulateSample.Observations
     @test obs.obs_noise_cov == covar
     @test_throws AssertionError Obs(samples, covar_wrong_dims, data_names)
 
+
     # Generate a single sample (a row vector)
     sample = reshape([1.0, 2.0, 3.0], 1, 3)
     obs = Obs(sample, data_names)
@@ -51,3 +53,4 @@ using CalibrateEmulateSample.Observations
 end
 
 
+end

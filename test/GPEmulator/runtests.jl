@@ -3,7 +3,9 @@ using Random
 using Test
 using GaussianProcesses
 using ScikitLearn
+
 using Statistics 
+
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
@@ -66,7 +68,6 @@ using CalibrateEmulateSample.GPEmulator
 
     # GPObj 2: GPJL, predict_f
     pred_type = FType()
-
     gpobj2 = GPObj(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
                    prediction_type=pred_type)

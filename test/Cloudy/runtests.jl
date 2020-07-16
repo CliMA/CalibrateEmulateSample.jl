@@ -162,7 +162,6 @@ len1 = 1.0
 kern1 = SE(len1, 1.0)
 len2 = zeros(3)
 kern2 = Mat52Ard(len2, 0.0)
-# regularize with white noise
 white = Noise(log(2.0))
 # # construct kernel
 GPkernel =  kern1 + kern2 + white
