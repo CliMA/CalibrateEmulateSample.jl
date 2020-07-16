@@ -3,7 +3,7 @@ using Random
 using GaussianProcesses
 using Distributions
 using Statistics
-using Plots; pyplot(size = (1500, 700))
+using Plots; pyplot(size=(1500, 700))
 Plots.scalefontsizes(1.3)
 using LinearAlgebra
 using CalibrateEmulateSample.GPEmulator
@@ -98,10 +98,20 @@ X1, X2 = meshgrid(x1, x2)
 # Input for predict has to be of size N_samples x input_dim
 inputs = hcat(X1[:], X2[:])
 
+font = Plots.font("Helvetica", 18)
+fontdict = Dict(:guidefont=>font, :xtickfont=>font, :ytickfont=>font, 
+                :legendfont=>font)
 for y_i in 1:d
-    gp_mean, gp_var = GPEmulator.predict(gpobj, 
+    # Predict on the grid points (note that `predict` returns the full
+    # covariance matrices, not just the variance -- gp_cov is a vector
+    # of covariance matrices)
+    gp_mean, gp_cov = GPEmulator.predict(gpobj, 
                                          inputs, 
                                          transform_to_real=true)
+    # Reshape gp_cov to size N_samples x output_dim
+    gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
+    gp_var = vcat([x' for x in gp_var_temp]...) # 40000 x 2
+
     mean_grid = reshape(gp_mean[:, y_i], n_pts, n_pts)
     p1 = plot(x1, x2, mean_grid, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2", zlabel="mean of y"*string(y_i),
