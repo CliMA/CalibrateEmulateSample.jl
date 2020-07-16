@@ -34,7 +34,7 @@ using CalibrateEmulateSample.Priors
     Γy = noise_level^2 * convert(Array, Diagonal(yt))
     μ = zeros(length(yt))
     for i in 1:n_samples
-        truth_samples[i, :] = yt + noise_level^2 * Distributions.rand(MvNormal(μ, Γy))
+        truth_samples[i, :] = yt .+ Distributions.rand(MvNormal(μ, Γy))
     end
 
     ###  Calibrate: Ensemble Kalman Inversion

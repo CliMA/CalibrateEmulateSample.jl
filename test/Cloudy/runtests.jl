@@ -10,7 +10,7 @@ using LinearAlgebra
 using StatsPlots
 using GaussianProcesses
 using Plots
-using StatsPlots
+using Random
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.EKI
@@ -21,6 +21,8 @@ using CalibrateEmulateSample.GModel
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Priors
 
+rng_seed = 41
+Random.seed!(rng_seed)
 
 ###
 ###  Define the (true) parameters and their priors
@@ -117,7 +119,7 @@ N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
 initial_params = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=6)
-ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov, Δt=1.0)
+ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.obs_noise_cov, Δt=1.0)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
@@ -167,9 +169,9 @@ GPkernel =  kern1 + kern2 + white
 # Get training points    
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, Γy, gppackage; GPkernel=GPkernel, 
-                         normalized=normalized, noise_learn=false, 
-                         prediction_type=pred_type)
+gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
+                         obs_noise_cov=Γy, normalized=normalized, 
+                         noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters

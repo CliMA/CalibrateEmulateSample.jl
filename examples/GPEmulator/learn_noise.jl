@@ -72,7 +72,6 @@ noise_samples = rand(MvNormal(μ, Σ), n)'
 
 # y = G(x) + η
 Y = gx .+ noise_samples
-input_cov = cov(noise_samples, dims=1) 
 
 # Fit 2D Gaussian Process regression model
 # (To be precise: We fit two models, one that predicts y1 from x1 and x2, and 
@@ -84,7 +83,7 @@ input_cov = cov(noise_samples, dims=1)
 # in the training phase via an optimization procedure.
 # Because of the SVD transformation applied to the output, we expect the 
 # learned noise to be close to 1.
-gpobj1 = GPObj(X, Y, input_cov, gppackage, GPkernel=nothing, 
+gpobj1 = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
                normalized=true, noise_learn=true, prediction_type=pred_type)
 
 println("\n-----------")

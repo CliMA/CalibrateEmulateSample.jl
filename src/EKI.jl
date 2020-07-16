@@ -44,7 +44,7 @@ end
 function EKIObj(parameters::Array{FT, 2},
                 parameter_names::Vector{String},
                 t_mean,
-                t_cov::Array{FT, 2};
+                obs_noise_cov::Array{FT, 2};
                 Δt=FT(1)) where {FT<:AbstractFloat}
 
     # ensemble size
@@ -60,7 +60,7 @@ function EKIObj(parameters::Array{FT, 2},
     # timestep store
     Δt = Array([Δt])
 
-    EKIObj{FT,IT}(u, parameter_names, t_mean, t_cov, N_ens, g, err, Δt)
+    EKIObj{FT,IT}(u, parameter_names, t_mean, obs_noise_cov, N_ens, g, err, Δt)
 end
 
 

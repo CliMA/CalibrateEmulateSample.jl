@@ -32,9 +32,9 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     "a single sample from the observations. Can e.g. be picked from an Obs struct using get_obs_sample"
     obs_sample::Vector{FT}
     "covariance of the observational noise"
-    obs_cov::Array{FT, 2}
-    "inverse of obs_cov"
-    obs_covinv::Array{FT, 2}
+    obs_noise_cov::Array{FT, 2}
+    "inverse of obs_noise_cov"
+    obs_noise_covinv::Array{FT, 2}
     "array of length N_parameters with the parameters' prior distributions"
     prior::Array{Prior, 1}
     "MCMC step size"
@@ -57,7 +57,7 @@ end
 
 """
     MCMCObj(obs_sample::Vector{FT},
-            obs_cov::Array{FT, 2},
+            obs_noise_cov::Array{FT, 2},
             priors::Array{Prior, 1},
             step::FT,
             param_init::Vector{FT},
@@ -70,7 +70,7 @@ where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 """
 function MCMCObj(
     obs_sample::Vector{FT},
-    obs_cov::Array{FT, 2},
+    obs_noise_cov::Array{FT, 2},
     priors::Array{Prior, 1},
     step::FT,
     param_init::Vector{FT},
@@ -85,9 +85,7 @@ function MCMCObj(
     # We need to transform obs_sample into the correct space 
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        decomposition = svd(obs_cov) # svd.U * svd.S * svd.Vt (can also get V)
-        sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) # diagonal matrix of 1/eigenvalues                     
-        obs_sample = sqrt_singular_values_inv * decomposition.Vt * obs_sample
+        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov)
     else
         println("Assuming independent outputs.")
     end
@@ -98,14 +96,14 @@ function MCMCObj(
     param = param_init_copy
     log_posterior = [nothing]
     iter = [1]
-    obs_covinv = inv(obs_cov)
+    obs_noise_covinv = inv(obs_noise_cov)
     accept = [0]
     if algtype != "rwm"
         error("only random walk metropolis 'rwm' is implemented so far")
     end
     MCMCObj{FT,IT}(obs_sample,
-                   obs_cov,
-                   obs_covinv,
+                   obs_noise_cov,
+                   obs_noise_covinv,
                    priors,
                    [step],
                    burnin,
@@ -169,7 +167,7 @@ function log_likelihood(mcmc::MCMCObj{FT},
     log_rho = FT[0]
     if gvar == nothing
         diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * mcmc.obs_covinv * diff
+        log_rho[1] = -FT(0.5) * diff' * mcmc.obs_noise_covinv * diff
     else
         gcov_inv = inv(Diagonal(gvar))
         log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
@@ -226,10 +224,13 @@ function find_mcmc_step!(mcmc_test::MCMCObj{FT}, gpobj::GPObj{FT}) where {FT}
     local acc_ratio
     while mcmc_accept == false
 
-        param = convert(Array{FT, 2}, mcmc_test.param')
+        param = reshape(mcmc_test.param, 1, :)
         gp_pred, gp_predvar = predict(gpobj, param)
-
-        mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
+        if ndims(gp_predvar[1]) != 0
+            mcmc_sample!(mcmc_test, vec(gp_pred), diag(gp_predvar[1]))
+        else
+            mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
+        end
         it += 1
         if it % 2000 == 0
             countmcmc += 1
@@ -276,13 +277,15 @@ function sample_posterior!(mcmc::MCMCObj{FT,IT},
                            max_iter::IT) where {FT,IT<:Int}
 
     for mcmcit in 1:max_iter
-        param = convert(Array{FT, 2}, mcmc.param')
-        # test predictions (param' is 1 x N_parameters)
+        param = reshape(mcmc.param, 1, :)
+        # test predictions (param is 1 x N_parameters)
         gp_pred, gp_predvar = predict(gpobj, param)
-        gp_pred = cat(gp_pred..., dims=2)
-        gp_predvar = cat(gp_predvar..., dims=2)
 
-        mcmc_sample!(mcmc, vec(gp_pred), vec(gp_predvar))
+        if ndims(gp_predvar[1]) != 0
+            mcmc_sample!(mcmc, vec(gp_pred), diag(gp_predvar[1]))
+        else
+            mcmc_sample!(mcmc, vec(gp_pred), vec(gp_predvar))
+        end
 
     end
 end

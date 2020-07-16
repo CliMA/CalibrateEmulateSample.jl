@@ -78,7 +78,6 @@ noise_samples = rand(MvNormal(μ, Σ), n)'
 
 # y = G(x) + η
 Y = gx .+ noise_samples
-data_cov = cov(noise_samples, dims=1) 
 
 # Fit 2D Gaussian Process regression model
 # (To be precise: We fit two models, one that predicts y1 from x1 and x2, 
@@ -87,7 +86,7 @@ data_cov = cov(noise_samples, dims=1)
 # exponential kernel. 
 # Setting noise_learn=true leads to the addition of white noise to the
 # kernel
-gpobj = GPObj(X, Y, data_cov, gppackage, GPkernel=nothing, 
+gpobj = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
               normalized=true, noise_learn=true, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2
