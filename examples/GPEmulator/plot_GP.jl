@@ -1,6 +1,5 @@
 # Import modules
 using Random
-using GaussianProcesses
 using Distributions
 using Statistics
 using Plots; pyplot(size=(1500, 700))
@@ -22,7 +21,7 @@ using CalibrateEmulateSample.GPEmulator
 #   and one that predicts y_i[2] from x_i. Fitting separate models for        #
 #   y_i[1] and y_i[2] requires the outputs to be independent - since this     #
 #   cannot be assumed to be the case a priori, the training data are          #
-#   decorrelated by perfoming an Singulat Value Decomposition (SVD) on the    #
+#   decorrelated by perfoming a Singular Value Decomposition (SVD) on the     #
 #   noise covariance Σ, and each model is then trained in the decorrelated    #
 #   space.                                                                    #
 #                                                                             #
@@ -73,7 +72,7 @@ gx = [g1x g2x]
 
 # Add noise η
 μ = zeros(d) 
-Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
+Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
 noise_samples = rand(MvNormal(μ, Σ), n)' 
 
 # y = G(x) + η
@@ -90,7 +89,7 @@ gpobj = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
               normalized=true, noise_learn=true, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2
-# For this, we generate test points on a x1-x2 grid
+# For this, we generate test points on a x1-x2 grid.
 n_pts = 200
 x1 = range(0.0, stop=2*π, length=n_pts)
 x2 = range(0.0, stop=2*π, length=n_pts) 
@@ -126,18 +125,46 @@ for y_i in 1:d
     savefig("GP_test_y"*string(y_i)*"_predictions.png")
 end
 
-# Make plots of the true components of G(x1, x2)
+# Plot the true components of G(x1, x2)
 g1_true = sin.(inputs[:, 1]) .+ cos.(inputs[:, 2])
-g1_grid = reshape(g1_true, n_pts, n_pts)
-p3 = plot(x1, x2, g1_grid, st=:surface, camera=(-30, 30), c=:cividis, 
+g1_true_grid = reshape(g1_true, n_pts, n_pts)
+p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
           zguidefontrotation=90)
 savefig("GP_test_true_g1.png")
 
 g2_true = sin.(inputs[:, 1]) .- cos.(inputs[:, 2])
-g2_grid = reshape(g2_true, n_pts, n_pts)
-p4 = plot(x1, x2, g2_grid, st=:surface, camera=(-30, 30), c=:cividis, 
+g2_true_grid = reshape(g2_true, n_pts, n_pts)
+p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
           zguidefontrotation=90)
+g_true_grids = [g1_true_grid, g2_true_grid]
 savefig("GP_test_true_g2.png")
+
+
+# Plot the difference between the truth and the mean of the predictions
+for y_i in 1:d
+    # Predict on the grid points (note that `predict` returns the full
+    # covariance matrices, not just the variance -- gp_cov is a vector
+    # of covariance matrices)
+    gp_mean, gp_cov = GPEmulator.predict(gpobj, 
+                                         inputs, 
+                                         transform_to_real=true)
+    # Reshape gp_cov to size N_samples x output_dim
+    gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
+    gp_var = vcat([x' for x in gp_var_temp]...) # 40000 x 2
+
+    mean_grid = reshape(gp_mean[:, y_i], n_pts, n_pts)
+    var_grid = reshape(gp_var[:, y_i], n_pts, n_pts)
+    # Compute and plot 1/variance * (truth - prediction)^2
+    zlabel = "1/var * (true_y"*string(y_i)*" - predicted_y"*string(y_i)*")^2"
+    p5 = plot(x1, x2, 1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid).^2, 
+              st=:surface, camera=(-30, 30), c=:magma, zlabel=zlabel,
+              xlabel="x1", ylabel="x2", 
+              zguidefontrotation=90)
+
+    savefig("GP_test_y"*string(y_i)*"_difference_truth_prediction.png")
+end
+
+
 Plots.scalefontsizes(1/1.3)
