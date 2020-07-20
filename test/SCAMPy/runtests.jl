@@ -91,14 +91,14 @@ using JLD
 @everywhere les_dir = string("Output.", sim_names[1],".may20")
 @everywhere sim_dir = string("Output.", sim_names[1],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti, tf, z_scm = z_scm)
+@everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
 @everywhere append!(yt, yt_)
 @everywhere append!(yt_var, yt_var_)
 
 @everywhere les_dir = string("Output.", sim_names[2],".iles128wCov")
 @everywhere sim_dir = string("Output.", sim_names[2],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti, tf, z_scm = z_scm)
+@everywhere yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti[2], tf[2], z_scm = z_scm)
 @everywhere append!(yt, yt_)
 @everywhere append!(yt_var, yt_var_)
 
