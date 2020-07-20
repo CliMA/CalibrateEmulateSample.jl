@@ -1,6 +1,5 @@
 # Import modules
 using Random
-using GaussianProcesses
 using Distributions
 using Statistics
 using LinearAlgebra
