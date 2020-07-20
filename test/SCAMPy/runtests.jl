@@ -5,6 +5,7 @@
 @everywhere using StatsBase
 @everywhere using LinearAlgebra
 # Import Calibrate-Emulate-Sample modules
+@everywhere using CalibrateEmulateSample
 @everywhere using CalibrateEmulateSample.EKI
 @everywhere using CalibrateEmulateSample.GPEmulator
 @everywhere using CalibrateEmulateSample.MCMC
@@ -24,8 +25,10 @@ using JLD
 
 # Define the parameters that we want to learn
 
-@everywhere param_names = ["entrainment_factor", "detrainment_factor", "sorting_power"]
-@everywhere param_names_symb = ["ϵ", "δ", "sort_pow"]
+@everywhere param_names = ["entrainment_factor", "detrainment_factor", "sorting_power", 
+	"tke_ed_coeff", "tke_diss_coeff", "pressure_normalmode_adv_coeff", 
+         "pressure_normalmode_buoy_coeff1", "pressure_normalmode_drag_coeff", "static_stab_coeff"]
+@everywhere param_names_symb = param_names
 @everywhere n_param = length(param_names)
 
 # Assume lognormal priors for all three parameters
@@ -40,13 +43,26 @@ using JLD
 @everywhere logmeans[1], log_stds[1] = logmean_and_logstd(0.5, 0.3)
 @everywhere logmeans[2], log_stds[2] = logmean_and_logstd(0.5, 0.3)
 @everywhere logmeans[3], log_stds[3] = logmean_and_logstd(2.0, 1.0)
+@everywhere logmeans[4], log_stds[4] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[5], log_stds[5] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[6], log_stds[6] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[7], log_stds[7] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[8], log_stds[8] = logmean_and_logstd(2.0, 1.0)
+@everywhere logmeans[9], log_stds[9] = logmean_and_logstd(0.5, 0.3)
 @everywhere priors = [Distributions.Normal(logmeans[1], log_stds[1]),
                         Distributions.Normal(logmeans[2], log_stds[2]),
-                        Distributions.Normal(logmeans[3], log_stds[3])]
+                        Distributions.Normal(logmeans[3], log_stds[3]),
+                        Distributions.Normal(logmeans[4], log_stds[4]),
+                        Distributions.Normal(logmeans[5], log_stds[5]),
+                        Distributions.Normal(logmeans[6], log_stds[6]),
+                        Distributions.Normal(logmeans[7], log_stds[7]),
+                        Distributions.Normal(logmeans[8], log_stds[8]),
+                        Distributions.Normal(logmeans[9], log_stds[9])]
+
 # # Prior option 2: Log-normal in original space defined by mode and std
 # logmean_c_m, logstd_c_m = logmean_and_logstd_from_mode_std(0.5, 0.3)
 # logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd_from_mode_std(0.5, 0.3)
-# println("Lognmean and logstd of the prior: ", logmean_c_m, " ", logstd_c_m)
+# println("Logmean and logstd of the prior: ", logmean_c_m, " ", logstd_c_m)
 # priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
 #           Distributions.Normal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
 
@@ -63,11 +79,30 @@ using JLD
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
 @everywhere ti = 25200.0
 @everywhere tf = 28800.0
-@everywhere y_names = ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]
-@everywhere les_dir = "Output.DYCOMS_RF01.00les"
-@everywhere sim_dir = "Output.DYCOMS_RF01.00000"
+# @everywhere y_names = ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]
+@everywhere y_names = Array{String, 1}[]
+@everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"])
+@everywhere push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"])
+
+# Get observations
+@everywhere yt = zeros(0)
+@everywhere yt_var = zeros(0)
+@everywhere sim_names = ["DYCOMS_RF01", "GABLS"]
+
+@everywhere les_dir = string("Output.", sim_names[1],".may20")
+@everywhere sim_dir = string("Output.", sim_names[1],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt, yt_var = obs_LES(y_names, les_dir, ti, tf, z_scm = z_scm)
+@everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti, tf, z_scm = z_scm)
+@everywhere append!(yt, yt_)
+@everywhere append!(yt_var, yt_var_)
+
+@everywhere les_dir = string("Output.", sim_names[2],".iles128wCov")
+@everywhere sim_dir = string("Output.", sim_names[2],".00000")
+@everywhere z_scm = get_profile(sim_dir, ["z_half"])
+@everywhere yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti, tf, z_scm = z_scm)
+@everywhere append!(yt, yt_)
+@everywhere append!(yt_var, yt_var_)
+
 @everywhere n_observables = length(yt)
 
 # This is how many samples of the true data we have
@@ -84,14 +119,14 @@ using JLD
 # end
 
 # We construct the observations object with the samples and the cov.
-@everywhere truth = Observations.Obs(samples, Γy, y_names)
+@everywhere truth = Observations.Obs(samples, Γy, y_names[1])
 
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 5 # number of ensemble members
-@everywhere N_iter = 4 # number of EKI iterations.
+@everywhere N_ens = 10 # number of ensemble members
+@everywhere N_iter = 20 # number of EKI iterations.
 
 
 # initial parameters: N_ens x N_param
@@ -99,10 +134,10 @@ using JLD
 @everywhere ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
 @everywhere g_ens = zeros(N_ens, n_observables)
 
-@everywhere scm_dir = "/Users/ilopezgo/SCAMPy/SCAMPy/"
+@everywhere scm_dir = "/home/ilopezgo/SCAMPy/"
 @everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))
 
-
+@everywhere println(y_names)
 @everywhere g_(x::Array{Float64,1}) = run_SCAMPy(x, param_names,
    y_names, scm_dir, ti, tf)
 
@@ -114,10 +149,14 @@ for i in 1:N_iter
     @everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))
     @everywhere params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
     g_ens_arr = pmap(g_, params_i)
+    println("EKI iteration finished.")
     for j in 1:N_ens
       g_ens[j, :] = g_ens_arr[j]
     end
     EKI.update_ensemble!(ekiobj, g_ens; Δt=Δt)
+    # Save EKI information to file
+    save("eki.jld", "eki_u", ekiobj.u, "eki_g", ekiobj.g,
+        "truth_mean", ekiobj.g_t, "truth_cov", ekiobj.cov, "eki_err", ekiobj.err)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth? Store and analyze.
@@ -145,7 +184,7 @@ mean_train_error = []
 mean_test_error = []
 for i in 1:N_iter
     # Get training and testing points:
-    u_train, g_train, u_test, g_test = Utilities.extract_GP_train_test(ekiobj, i, 0.33)
+    u_train, g_train, u_test, g_test = Utilities.extract_GP_train_test(ekiobj, i, 0.9)
 
     # Construct kernel:
     rbf_len = log.(ones(size(u_train, 2)))
