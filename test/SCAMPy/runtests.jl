@@ -77,12 +77,11 @@ using JLD
 ###
 
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
-@everywhere ti = 25200.0
-@everywhere tf = 28800.0
-# @everywhere y_names = ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]
+@everywhere ti = [10800.0, 28800.0]
+@everywhere tf = [14400.0, 32400.0]
 @everywhere y_names = Array{String, 1}[]
-@everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"])
-@everywhere push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"])
+@everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #DYCOMS_RF01
+@everywhere push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"]) #GABLS
 
 # Get observations
 @everywhere yt = zeros(0)
@@ -113,10 +112,6 @@ using JLD
 @everywhere noise_level = 10.0
 @everywhere Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
 @everywhere μ_noise = zeros(length(yt))
-# Create artificial samples by sampling noise
-# for i in 1:n_samples
-#     samples[i, :] = yt + rand(MvNormal(μ_noise, Γy))
-# end
 
 # We construct the observations object with the samples and the cov.
 @everywhere truth = Observations.Obs(samples, Γy, y_names[1])
@@ -137,7 +132,6 @@ using JLD
 @everywhere scm_dir = "/home/ilopezgo/SCAMPy/"
 @everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))
 
-@everywhere println(y_names)
 @everywhere g_(x::Array{Float64,1}) = run_SCAMPy(x, param_names,
    y_names, scm_dir, ti, tf)
 
@@ -153,6 +147,8 @@ for i in 1:N_iter
     for j in 1:N_ens
       g_ens[j, :] = g_ens_arr[j]
     end
+    println("\nEnsemble covariance det. for iteration ", size(ekiobj.u)[1])
+    println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))
     EKI.update_ensemble!(ekiobj, g_ens; Δt=Δt)
     # Save EKI information to file
     save("eki.jld", "eki_u", ekiobj.u, "eki_g", ekiobj.g,
