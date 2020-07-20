@@ -65,7 +65,7 @@ function obs_LES(y_names::Array{String, 1},
                     z_scm::Union{Array{Float64, 1}, Nothing} = nothing,
                     ) where {FT<:AbstractFloat}
     
-    y_names_les = get_les_names(y_names)
+    y_names_les = get_les_names(y_names, sim_dir)
     y_highres = get_profile(sim_dir, y_names_les, ti = ti, tf = tf)
     y_tvar_highres = get_timevar_profile(sim_dir, y_names_les, ti = ti, tf = tf)
     if !isnothing(z_scm)
@@ -155,10 +155,14 @@ function get_timevar_profile(sim_dir::String,
     return prof_vec
 end
 
-function get_les_names(scm_y_names::Array{String,1})
+function get_les_names(scm_y_names::Array{String,1}, sim_dir::String)
     y_names = deepcopy(scm_y_names)
     if "thetal_mean" in y_names
-        y_names[findall(x->x=="thetal_mean", y_names)] .= "thetali_mean"
+        if occursin("GABLS",sim_dir)
+            y_names[findall(x->x=="thetal_mean", y_names)] .= "theta_mean"
+        else
+            y_names[findall(x->x=="thetal_mean", y_names)] .= "thetali_mean"
+        end
     end
     if "total_flux_qt" in y_names
         y_names[findall(x->x=="total_flux_qt", y_names)] .= "resolved_z_flux_qt"
