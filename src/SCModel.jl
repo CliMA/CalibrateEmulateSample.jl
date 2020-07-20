@@ -158,7 +158,7 @@ end
 function get_les_names(scm_y_names::Array{String,1}, sim_dir::String)
     y_names = deepcopy(scm_y_names)
     if "thetal_mean" in y_names
-        if occursin("GABLS",sim_dir)
+        if occursin("GABLS",sim_dir) || occursin("Soares",sim_dir)
             y_names[findall(x->x=="thetal_mean", y_names)] .= "theta_mean"
         else
             y_names[findall(x->x=="thetal_mean", y_names)] .= "thetali_mean"
@@ -167,7 +167,9 @@ function get_les_names(scm_y_names::Array{String,1}, sim_dir::String)
     if "total_flux_qt" in y_names
         y_names[findall(x->x=="total_flux_qt", y_names)] .= "resolved_z_flux_qt"
     end
-    if "total_flux_h" in y_names
+    if "total_flux_h" in y_names && (occursin("GABLS",sim_dir) || occursin("Soares",sim_dir))
+        y_names[findall(x->x=="total_flux_h", y_names)] .= "resolved_z_flux_theta"
+    elseif "total_flux_h" in y_names
         y_names[findall(x->x=="total_flux_h", y_names)] .= "resolved_z_flux_thetali"
     end
     if "u_mean" in y_names
