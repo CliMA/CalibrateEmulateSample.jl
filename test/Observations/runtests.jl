@@ -52,5 +52,3 @@ using CalibrateEmulateSample.Observations
     @test obs.obs_noise_cov == 1.0
 end
 
-
-end
