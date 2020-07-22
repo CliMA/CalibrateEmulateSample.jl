@@ -10,7 +10,7 @@ using LinearAlgebra
 using StatsPlots
 using GaussianProcesses
 using Plots
-using StatsPlots
+using Random
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.EKI
@@ -21,6 +21,8 @@ using CalibrateEmulateSample.GModel
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Priors
 
+rng_seed = 41
+Random.seed!(rng_seed)
 
 ###
 ###  Define the (true) parameters and their priors
@@ -85,23 +87,25 @@ tspan = (0., 0.5)
 
 ###
 ###  Generate (artificial) truth samples
+###  Note: The observables y are related to the parameters θ by:
+###        y = G(x1, x2) + η
 ###
 
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
-yt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
+gt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
                   PDistributions.moment, Cloudy.Sources.get_int_coalescence)
 n_samples = 100
-samples = zeros(n_samples, length(yt))
+yt = zeros(n_samples, length(gt))
 noise_level = 0.05
-Γy = noise_level^2 * convert(Array, Diagonal(yt))
-μ = zeros(length(yt))
+Γy = noise_level * convert(Array, Diagonal(gt))
+μ = zeros(length(gt))
 
 # Add noise
 for i in 1:n_samples
-    samples[i, :] = yt + noise_level^2 * rand(MvNormal(μ, Γy))
+    yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
 end
 
-truth = Observations.Obs(samples, Γy, data_names)
+truth = Observations.Obs(yt, Γy, data_names)
 
 
 ###
@@ -115,7 +119,7 @@ N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
 initial_params = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=6)
-ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
+ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.obs_noise_cov, Δt=1.0)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
@@ -159,17 +163,19 @@ kern1 = SE(len1, 1.0)
 len2 = zeros(3)
 kern2 = Mat52Ard(len2, 0.0)
 white = Noise(log(2.0))
-# construct kernel
+# # construct kernel
 GPkernel =  kern1 + kern2 + white
 # Get training points    
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
 gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
-                         normalized=normalized, prediction_type=pred_type)
+                         obs_noise_cov=Γy, normalized=normalized, 
+                         noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = GPEmulator.predict(gpobj, reshape(log.(params_true), 1, :))
+y_mean, y_var = GPEmulator.predict(gpobj, reshape(log.(params_true), 1, :), 
+                                   transform_to_real=true)
 
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
@@ -193,8 +199,8 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
-mcmc_test = MCMC.MCMCObj(yt_sample, truth.cov, priors, step, u0, max_iter, 
-                         mcmc_alg, burnin)
+mcmc_test = MCMC.MCMCObj(yt_sample, Γy, priors, step, u0, max_iter, 
+                         mcmc_alg, burnin, svdflag=true)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
@@ -205,8 +211,8 @@ u0 = vec(mean(u_tp, dims=1))
 burnin = 1000
 max_iter = 100000
 
-mcmc = MCMC.MCMCObj(yt_sample, truth.cov, priors, 
-                    new_step, u0, max_iter, mcmc_alg, burnin)
+mcmc = MCMC.MCMCObj(yt_sample, Γy, priors, new_step, u0, max_iter, 
+                    mcmc_alg, burnin, svdflag=true)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
 posterior = MCMC.get_posterior(mcmc)      
