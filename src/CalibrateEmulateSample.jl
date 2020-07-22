@@ -17,6 +17,7 @@ include("GPEmulator.jl")
 # Internal deps, light external deps
 include("Utilities.jl")
 include("Transformations.jl")
+include("PlottingUtils.jl")
 
 # Internal deps, light external deps
 include("MCMC.jl")
