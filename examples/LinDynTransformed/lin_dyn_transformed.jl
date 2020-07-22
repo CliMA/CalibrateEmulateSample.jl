@@ -276,3 +276,4 @@ for idx in 1:n_params
     title!(param)
     StatsPlots.savefig("posterior_orig_space_"*param*".png")
 end
+
