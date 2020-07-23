@@ -10,13 +10,6 @@ using CalibrateEmulateSample.Observations
     rng_seed = 41
     Random.seed!(rng_seed)
 
-    @test length(name("a"))        == RPAD
-    @test length(name("a" ^ RPAD)) == (RPAD + 1)
-    @test length(warn("a"))        == RPAD
-    @test length(warn("a" ^ RPAD)) == (RPAD + 11)
-    @test isa(name("a"), String)
-    @test isa(warn("a"), String)
-
     arr = vcat([i*ones(3)' for i in 1:5]...)
     data_names = ["d1", "d2", "d3"]
     obs = Obs(arr, data_names)

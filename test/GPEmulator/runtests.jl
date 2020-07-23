@@ -2,10 +2,8 @@
 using Random
 using Test
 using GaussianProcesses
-using ScikitLearn
-
 using Statistics 
-
+using ScikitLearn
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 

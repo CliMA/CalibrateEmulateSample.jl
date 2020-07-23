@@ -4,13 +4,16 @@ using Statistics
 using Distributions
 using LinearAlgebra
 using GaussianProcesses
-using ScikitLearn
-using Optim
 using DocStringExtensions
 
 using PyCall
-@sk_import gaussian_process : GaussianProcessRegressor
-@sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
+using ScikitLearn
+const pykernels = PyNULL()
+const pyGP = PyNULL()
+function __init__()
+    copy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
+    copy!(pyGP, pyimport("sklearn.gaussian_process"))
+end
 
 export GPObj
 export predict
@@ -18,8 +21,6 @@ export predict
 export GPJL, SKLJL
 export YType, FType
 export svd_transform, svd_reverse_transform_mean_cov
-
-using Plots
 
 """
     GaussianProcessesPackage
@@ -260,10 +261,11 @@ function GPObj(
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Create default squared exponential kernel
         const_value = 1.0
-        var_kern = ConstantKernel(constant_value=const_value,
-                                  constant_value_bounds=(1e-05, 10000.0))
+        var_kern = pykernels.ConstantKernel(constant_value=const_value,
+                                            constant_value_bounds=(1e-5, 1e4))
         rbf_len = ones(size(GPinputs, 2))
-        rbf = RBF(length_scale=rbf_len, length_scale_bounds=(1e-05, 10000.0))
+        rbf = pykernels.RBF(length_scale=rbf_len, 
+                            length_scale_bounds=(1e-5, 1e4))
         kern = var_kern * rbf
         println("Using default squared exponential kernel:", kern)
     else
@@ -274,8 +276,8 @@ function GPObj(
     if noise_learn
         # Add white noise to kernel
         white_noise_level = 1.0
-        white = WhiteKernel(noise_level=white_noise_level,
-                            noise_level_bounds=(1e-05, 10.0))
+        white = pykernels.WhiteKernel(noise_level=white_noise_level,
+                                      noise_level_bounds=(1e-05, 10.0))
         kern = kern + white
         println("Learning additive white noise")
 
@@ -292,9 +294,9 @@ function GPObj(
     for i in 1:N_models
         GPkernel_i = deepcopy(kern)
         GPdata_i = transformed_data[:, i]
-        m = GaussianProcessRegressor(kernel=GPkernel_i,
-                                     n_restarts_optimizer=10,
-                                     alpha=regularization_noise)
+        m = pyGP.GaussianProcessRegressor(kernel=GPkernel_i,
+                                          n_restarts_optimizer=10,
+                                          alpha=regularization_noise)
 
         # ScikitLearn.fit! arguments:
         # GPinputs:    (N_samples x input_dim)

@@ -10,11 +10,6 @@ for submodule in [
                   "MCMC",
                   "Observations",
                   "Utilities",
-                  #"L96m",
-                  #"GPR",
-                  #"EKS",
-                  #"Histograms",
-                  "Cloudy",
                  ]
 
   println("Starting tests for $submodule")

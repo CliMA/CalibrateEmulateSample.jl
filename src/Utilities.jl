@@ -10,8 +10,6 @@ export extract_GP_tp
 export get_obs_sample
 export orig2zscore
 export zscore2orig
-export RPAD, name, warn
-
 
 """
     extract_GP_tp(ekiobj::EKIObj{FT,IT}, N_eki_it::IT) where {FT,IT}
@@ -55,7 +53,6 @@ function get_obs_sample(obs::Obs; rng_seed=42)
 
     return yt_sample
 end
-
 
 
 function orig2zscore(X::AbstractVector{FT},
@@ -107,13 +104,5 @@ function zscore2orig(Z::AbstractMatrix{FT},
     end
     return X
 end
-
-# COMMENT (MB, 02/01/2020): Not sure if the below functions are needed.
-# They were already in ConvenienceFunctions before the major CES update.
-const RPAD = 25
-
-name(name::AbstractString) = rpad(name * ":", RPAD)
-
-warn(name::AbstractString) = rpad("WARNING (" * name * "):", RPAD)
 
 end # module
