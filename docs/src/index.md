@@ -27,7 +27,6 @@ Module                  | Purpose
 EKI.jl                  | Calibrate – Ensemble Kalman inversion
 GPEmulator.jl           | Emulate – Gaussian process regression
 MCMC.jl                 | Sample – Markov chain Monte Carlo
-GModel.jl               | Forward model G – to be supplied/modified by the user!
 Observations.jl         | Structure to hold observations
 Utilities.jl            | Helper functions
 
