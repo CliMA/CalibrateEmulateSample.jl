@@ -119,7 +119,8 @@ N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
 initial_params = EKP.construct_initial_ensemble(N_ens, priors; rng_seed=6)
-ekiobj = EKP.EKObj(initial_params, param_names, truth.mean, truth.obs_noise_cov, Δt=1.0)
+ekiobj = EKP.EKObj(initial_params, param_names, truth.mean, 
+                   truth.obs_noise_cov, Inversion(), Δt=1.0)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
