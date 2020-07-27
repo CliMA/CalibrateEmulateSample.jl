@@ -64,7 +64,8 @@ end
 Construct the initial parameters, by sampling N_ens samples from specified
 prior distributions.
 """
-function construct_initial_ensemble(N_ens::IT, priors; rng_seed=42) where {IT<:Int}
+function construct_initial_ensemble(N_ens::IT, priors; 
+               rng_seed=42, log_transform=false) where {IT<:Int}
     N_params = length(priors)
     params = zeros(N_ens, N_params)
     # Ensuring reproducibility of the sampled parameter values
@@ -72,6 +73,9 @@ function construct_initial_ensemble(N_ens::IT, priors; rng_seed=42) where {IT<:I
     for i in 1:N_params
         prior_i = priors[i]
         params[:, i] = rand(prior_i, N_ens)
+        if log_transform
+            params[:, i] = log.(params[:, i])
+        end
     end
 
     return params

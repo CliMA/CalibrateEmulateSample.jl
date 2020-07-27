@@ -51,7 +51,7 @@ function run_SCAMPy(u::Array{FT, 1},
 
     for i in eachindex(y_scm)
         if isnan(y_scm[i])
-            y_scm[i] = 1.0e9
+            y_scm[i] = 1.0e4
         end
     end
 
@@ -110,7 +110,7 @@ function get_profile(sim_dir::String,
         if ti_diff > dt || tf_diff > dt
             for i in 1:length(var_name)
                 var_ = nc_fetch(sim_dir, "profiles", var_name[i])
-                append!(prof_vec, 1.0e9*ones(length(var_[:, 1])))
+                append!(prof_vec, 1.0e4*ones(length(var_[:, 1])))
             end
         else
             for i in 1:length(var_name)
