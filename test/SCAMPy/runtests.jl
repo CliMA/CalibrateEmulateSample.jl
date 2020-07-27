@@ -91,6 +91,7 @@ using JLD
 @everywhere sim_names = ["DYCOMS_RF01", "GABLS", "Nieuwstadt", "Bomex"]
 
 @everywhere les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[1],".may20")
+# sim_dir only needed for z_half interpolation
 @everywhere sim_dir = string("Output.", sim_names[1],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
 @everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
