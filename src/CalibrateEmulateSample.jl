@@ -8,12 +8,15 @@ include("Priors.jl")
 
 # No internal deps, heavy external deps
 include("EKI.jl")
+include("SCModel.jl")
 include("GPEmulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
+include("Transformations.jl")
 
 # Internal deps, light external deps
 include("MCMC.jl")
+
 
 end # module

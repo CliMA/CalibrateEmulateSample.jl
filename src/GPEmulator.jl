@@ -17,6 +17,7 @@ end
 
 export GPObj
 export predict
+export gp_sqbias
 
 export GPJL, SKLJL
 export YType, FType
@@ -553,6 +554,27 @@ function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, dec
     end
 
     return transformed_μ, transformed_σ2
+end
+
+"""
+  gp_sqbias(gp::GPObj{FT,GPJL}, inputs::Array{FT,2}, exp_outputs::Array{FT,2}) where {FT}
+Evaluate the GP model(s) mean squared bias over a range of data points.
+  - `gp` - a GPObj
+  - `inputs` - inputs for which GP model(s) is/are evaluated; N_new_inputs x N_parameters
+  - `exp_outputs` - outputs from the true model for the given inputs; N_new_inputs x N_outputs
+"""
+function gp_sqbias(gp::GPObj{FT, GPJL},
+                  inputs::Array{FT,2},
+                  exp_outputs::Array{FT,2}) where {FT}
+
+    y_sqbias = zeros(length(exp_outputs[1,:]))
+    N_data = length(inputs[:,1])
+    for i in 1:N_data
+        y_gp_mean, y_gp_var = predict(gp, reshape(inputs[i,:], 1, :) )
+        y_sqbias = y_sqbias + (y_gp_mean-exp_outputs[i,:]).*(y_gp_mean-exp_outputs[i,:])
+    end
+
+    return y_sqbias./FT(N_data)
 end
 
 end 

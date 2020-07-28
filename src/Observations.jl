@@ -129,7 +129,6 @@ function Obs(samples::Array{FT, 2},
     if N_samples == 1
         # Only one sample, so there is no covariance to be computed and the 
         # sample mean equals the sample itself
-        obs_noise_cov = nothing
         samplemean = vec(samples)
         samples_vec = vec([vec(samples)])
     else
