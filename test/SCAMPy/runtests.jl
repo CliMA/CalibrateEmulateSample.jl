@@ -40,15 +40,15 @@ using JLD
 # Prior option 1: Log-normal in original space defined by mean and std
 @everywhere logmeans = zeros(n_param)
 @everywhere log_stds = zeros(n_param)
-@everywhere logmeans[1], log_stds[1] = logmean_and_logstd(0.5, 0.3)
-@everywhere logmeans[2], log_stds[2] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[1], log_stds[1] = logmean_and_logstd(0.4, 0.4)
+@everywhere logmeans[2], log_stds[2] = logmean_and_logstd(0.4, 0.4)
 @everywhere logmeans[3], log_stds[3] = logmean_and_logstd(2.0, 1.0)
-@everywhere logmeans[4], log_stds[4] = logmean_and_logstd(0.5, 0.3)
-@everywhere logmeans[5], log_stds[5] = logmean_and_logstd(0.5, 0.3)
-@everywhere logmeans[6], log_stds[6] = logmean_and_logstd(0.5, 0.3)
-@everywhere logmeans[7], log_stds[7] = logmean_and_logstd(0.5, 0.3)
-@everywhere logmeans[8], log_stds[8] = logmean_and_logstd(2.0, 1.0)
-@everywhere logmeans[9], log_stds[9] = logmean_and_logstd(0.5, 0.3)
+@everywhere logmeans[4], log_stds[4] = logmean_and_logstd(0.4, 0.4)
+@everywhere logmeans[5], log_stds[5] = logmean_and_logstd(0.4, 0.4)
+@everywhere logmeans[6], log_stds[6] = logmean_and_logstd(0.4, 0.4)
+@everywhere logmeans[7], log_stds[7] = logmean_and_logstd(0.4, 0.4)
+@everywhere logmeans[8], log_stds[8] = logmean_and_logstd(6.0, 2.0)
+@everywhere logmeans[9], log_stds[9] = logmean_and_logstd(0.4, 0.4)
 @everywhere priors = [Distributions.Normal(logmeans[1], log_stds[1]),
                         Distributions.Normal(logmeans[2], log_stds[2]),
                         Distributions.Normal(logmeans[3], log_stds[3]),
@@ -59,6 +59,18 @@ using JLD
                         Distributions.Normal(logmeans[8], log_stds[8]),
                         Distributions.Normal(logmeans[9], log_stds[9])]
 
+# Second option: Uniform distributions
+#@everywhere priors = [Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(0, 4),
+#                        Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(0, 1),
+#                        Distributions.Uniform(3, 10),
+#                        Distributions.Uniform(0, 1) ]
+
+
 # # Prior option 2: Log-normal in original space defined by mode and std
 # logmean_c_m, logstd_c_m = logmean_and_logstd_from_mode_std(0.5, 0.3)
 # logmean_c_ϵ, logstd_c_ϵ = logmean_and_logstd_from_mode_std(0.5, 0.3)
@@ -66,19 +78,13 @@ using JLD
 # priors = [Distributions.Normal(logmean_c_m, logstd_c_m),    # prior on c_m
 #           Distributions.Normal(logmean_c_ϵ, logstd_c_ϵ)]    # prior on c_ϵ
 
-# Prior option 3: Uniform in transformed space
-# @everywhere priors = [Distributions.Uniform(-5.0, 1.0),    # prior on c_m
-#           Distributions.Uniform(-5.0, 1.0),
-#           Distributions.Uniform(-5.0, 1.0)]    # prior on c_ϵ
-
-
 ###
 ###  Retrieve true LES samples
 ###
 
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
 @everywhere ti = [10800.0, 28800.0, 10800.0, 18000.0]
-@everywhere tf = [14400.0, 32400.0, 10800.0, 21600.0]
+@everywhere tf = [14400.0, 32400.0, 14400.0, 21600.0]
 @everywhere y_names = Array{String, 1}[]
 @everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #DYCOMS_RF01
 @everywhere push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"]) #GABLS
@@ -91,14 +97,13 @@ using JLD
 @everywhere sim_names = ["DYCOMS_RF01", "GABLS", "Nieuwstadt", "Bomex"]
 
 @everywhere les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[1],".may20")
-# sim_dir only needed for z_half interpolation
 @everywhere sim_dir = string("Output.", sim_names[1],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
 @everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
 @everywhere append!(yt, yt_)
 @everywhere append!(yt_var, yt_var_)
 
-@everywhere les_dir = string("Output.", sim_names[2],".iles128wCov")
+@everywhere les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[2],".iles128wCov")
 @everywhere sim_dir = string("Output.", sim_names[2],".00000")
 @everywhere z_scm = get_profile(sim_dir, ["z_half"])
 @everywhere yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti[2], tf[2], z_scm = z_scm)
@@ -126,7 +131,7 @@ using JLD
 @everywhere samples = zeros(n_samples, length(yt))
 @everywhere samples[1,:] = yt
 # Noise level of the samples, which scales the time variance of each output.
-@everywhere noise_level = 10.0
+@everywhere noise_level = 1.0
 @everywhere Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
 @everywhere μ_noise = zeros(length(yt))
 
@@ -137,11 +142,10 @@ using JLD
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 10 # number of ensemble members
+@everywhere N_ens = 30 # number of ensemble members
 @everywhere N_iter = 20 # number of EKI iterations.
+@everywhere N_yt = length(yt) # Length of data array
 
-
-# initial parameters: N_ens x N_param
 @everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
 @everywhere ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.cov)
 @everywhere g_ens = zeros(N_ens, n_observables)
@@ -151,6 +155,14 @@ using JLD
 
 @everywhere g_(x::Array{Float64,1}) = run_SCAMPy(x, param_names,
    y_names, scm_dir, ti, tf)
+
+outdir_path = string("results_p", n_param,"_n", noise_level,"_e", N_ens, "_i", N_iter, "_d", N_yt)
+command = `mkdir $outdir_path`
+try
+    run(command)
+catch e
+    println("Output directory already exists. Output may be overwritten.")
+end
 
 # EKI iterations
 @everywhere Δt = 1.0
@@ -168,7 +180,7 @@ for i in 1:N_iter
     println("\nEnsemble covariance det. for iteration ", size(ekiobj.u)[1])
     println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))
     # Save EKI information to file
-    save("eki.jld", "eki_u", ekiobj.u, "eki_g", ekiobj.g,
+    save( string(outdir_path,"/eki.jld"), "eki_u", ekiobj.u, "eki_g", ekiobj.g,
         "truth_mean", ekiobj.g_t, "truth_cov", ekiobj.cov, "eki_err", ekiobj.err)
 end
 
