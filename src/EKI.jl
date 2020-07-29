@@ -5,12 +5,14 @@ using Statistics
 using Distributions
 using LinearAlgebra
 using DocStringExtensions
+using SCModel
 
 export EKIObj
 export construct_initial_ensemble
 export compute_error
 export update_ensemble!
 export find_eki_step
+export precondition_initial_ensemble
 
 """
     EKIObj{FT<:AbstractFloat, IT<:Int}
@@ -79,6 +81,37 @@ function construct_initial_ensemble(N_ens::IT, priors;
     end
 
     return params
+end
+
+function precondition_initial_ensemble(params, priors, param_names, 
+               obs_mean, obs_cov, y_names, ti, tf; 
+               rng_seed=42,) where {IT<:Int}
+    N_ens = size(params)[0]
+    N_obs = length(obs_mean)
+    # Ensuring reproducibility of the sampled parameter values
+    Random.seed!(rng_seed)
+    ekiobj = EKI.EKIObj(params, param_names, obs_mean, obs_cov)
+    g_err = zeros(N_ens)
+    scm_dir = "/home/ilopezgo/SCAMPy/"
+    params_i = deepcopy(exp_transform(ekiobj.u[end]))
+
+    g_(x::Array{Float64,1}) = run_SCAMPy(x, param_names,
+       y_names, scm_dir, ti, tf)
+
+    params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
+    g_ens_arr = pmap(g_, params_i)
+    println(string("\n\nEKI evaluation ",i," finished. Updating ensemble ...\n"))
+    for j in 1:N_ens
+        g_diff = (g_ens_arr[j] .- ekiobj.g_t)
+        # This should be a scalar
+        g_err[j] = dot( g_diff, eki.cov \ g_diff)
+    end
+
+    g_err_min = minimum(g_err)
+    err_gap = 1.0e3
+    large_err_vals = g_err[ isless.(-g_err, err_gap*maximum(-g_err))]
+    large_err_inds = findall(>(err_gap*g_err_min), g_err)
+    return large_err_inds, large_err_vals
 end
 
 function compute_error(eki)
