@@ -100,7 +100,6 @@ function precondition_initial_ensemble(params, priors, param_names,
 
     params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
     g_ens_arr = pmap(g_, params_i)
-    println(string("\n\nEKI evaluation ",i," finished. Updating ensemble ...\n"))
     for j in 1:N_ens
         g_diff = (g_ens_arr[j] .- ekiobj.g_t)
         # This should be a scalar
