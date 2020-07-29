@@ -5,7 +5,7 @@ using Statistics
 using Distributions
 using LinearAlgebra
 using DocStringExtensions
-using SCModel
+using CalibrateEmulateSample.SCModel
 
 export EKIObj
 export construct_initial_ensemble

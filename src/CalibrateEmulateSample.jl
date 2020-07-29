@@ -7,8 +7,8 @@ include("Observations.jl")
 include("Priors.jl")
 
 # No internal deps, heavy external deps
-include("EKI.jl")
 include("SCModel.jl")
+include("EKI.jl")
 include("GPEmulator.jl")
 
 # Internal deps, light external deps

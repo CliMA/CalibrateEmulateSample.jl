@@ -5,7 +5,6 @@
 @everywhere using StatsBase
 @everywhere using LinearAlgebra
 # Import Calibrate-Emulate-Sample modules
-@everywhere using CalibrateEmulateSample
 @everywhere using CalibrateEmulateSample.EKI
 @everywhere using CalibrateEmulateSample.Observations
 @everywhere using CalibrateEmulateSample.Utilities
@@ -32,18 +31,18 @@ using JLD
 # (the parameters can then simply be obtained by exponentiating the final results). 
 
 # Prior option 1: Log-normal in original space defined by mean and std
-@everywhere logmeans = zeros(n_param)
-@everywhere log_stds = zeros(n_param)
-@everywhere logmeans[1], log_stds[1] = logmean_and_logstd(0.2, 0.2)
-@everywhere logmeans[2], log_stds[2] = logmean_and_logstd(0.4, 0.2)
-@everywhere logmeans[3], log_stds[3] = logmean_and_logstd(2.0, 1.0)
-@everywhere logmeans[4], log_stds[4] = logmean_and_logstd(0.2, 0.2)
-@everywhere logmeans[5], log_stds[5] = logmean_and_logstd(0.2, 0.2)
-@everywhere logmeans[6], log_stds[6] = logmean_and_logstd(0.2, 0.2)
-@everywhere logmeans[7], log_stds[7] = logmean_and_logstd(0.2, 0.2)
-@everywhere logmeans[8], log_stds[8] = logmean_and_logstd(8.0, 1.0)
-@everywhere logmeans[9], log_stds[9] = logmean_and_logstd(0.2, 0.2)
-@everywhere priors = [Distributions.Normal(logmeans[1], log_stds[1]),
+logmeans = zeros(n_param)
+log_stds = zeros(n_param)
+logmeans[1], log_stds[1] = logmean_and_logstd(0.2, 0.2)
+logmeans[2], log_stds[2] = logmean_and_logstd(0.4, 0.2)
+logmeans[3], log_stds[3] = logmean_and_logstd(2.0, 1.0)
+logmeans[4], log_stds[4] = logmean_and_logstd(0.2, 0.2)
+logmeans[5], log_stds[5] = logmean_and_logstd(0.2, 0.2)
+logmeans[6], log_stds[6] = logmean_and_logstd(0.2, 0.2)
+logmeans[7], log_stds[7] = logmean_and_logstd(0.2, 0.2)
+logmeans[8], log_stds[8] = logmean_and_logstd(8.0, 1.0)
+logmeans[9], log_stds[9] = logmean_and_logstd(0.2, 0.2)
+priors = [Distributions.Normal(logmeans[1], log_stds[1]),
                         Distributions.Normal(logmeans[2], log_stds[2]),
                         Distributions.Normal(logmeans[3], log_stds[3]),
                         Distributions.Normal(logmeans[4], log_stds[4]),
@@ -52,7 +51,7 @@ using JLD
                         Distributions.Normal(logmeans[7], log_stds[7]),
                         Distributions.Normal(logmeans[8], log_stds[8]),
                         Distributions.Normal(logmeans[9], log_stds[9])]
-
+@everywhere priors = $priors
 # Second option: Uniform distributions
 #@everywhere priors = [Distributions.Uniform(0, 1),
 #                        Distributions.Uniform(0, 1),
@@ -79,70 +78,74 @@ using JLD
 # This is the true value of the observables (e.g. LES ensemble mean for EDMF)
 @everywhere ti = [10800.0, 28800.0, 10800.0, 18000.0]
 @everywhere tf = [14400.0, 32400.0, 14400.0, 21600.0]
-@everywhere y_names = Array{String, 1}[]
-@everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #DYCOMS_RF01
-@everywhere push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"]) #GABLS
-@everywhere push!(y_names, ["thetal_mean", "total_flux_h"]) #Nieuwstadt
-@everywhere push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #Bomex
+y_names = Array{String, 1}[]
+push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #DYCOMS_RF01
+push!(y_names, ["thetal_mean", "u_mean", "v_mean", "tke_mean"]) #GABLS
+push!(y_names, ["thetal_mean", "total_flux_h"]) #Nieuwstadt
+push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux_qt"]) #Bomex
+@everywhere y_names=$y_names
 
 # Get observations
 @everywhere yt = zeros(0)
 @everywhere yt_var = zeros(0)
 @everywhere sim_names = ["DYCOMS_RF01", "GABLS", "Nieuwstadt", "Bomex"]
 
-@everywhere les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[1],".may20")
-@everywhere sim_dir = string("Output.", sim_names[1],".00000")
-@everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
-@everywhere append!(yt, yt_)
-@everywhere append!(yt_var, yt_var_)
+les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[1],".may20")
+sim_dir = string("Output.", sim_names[1],".00000")
+z_scm = get_profile(sim_dir, ["z_half"])
+yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
+append!(yt, yt_)
+append!(yt_var, yt_var_)
 
-@everywhere les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[2],".iles128wCov")
-@everywhere sim_dir = string("Output.", sim_names[2],".00000")
-@everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti[2], tf[2], z_scm = z_scm)
-@everywhere append!(yt, yt_)
-@everywhere append!(yt_var, yt_var_)
+les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[2],".iles128wCov")
+sim_dir = string("Output.", sim_names[2],".00000")
+z_scm = get_profile(sim_dir, ["z_half"])
+yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti[2], tf[2], z_scm = z_scm)
+append!(yt, yt_)
+append!(yt_var, yt_var_)
 
-@everywhere les_dir = string("/groups/esm/ilopezgo/Output.Soares.dry11")
-@everywhere sim_dir = string("Output.", sim_names[3],".00000")
-@everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[3], les_dir, ti[3], tf[3], z_scm = z_scm)
-@everywhere append!(yt, yt_)
-@everywhere append!(yt_var, yt_var_)
+les_dir = string("/groups/esm/ilopezgo/Output.Soares.dry11")
+sim_dir = string("Output.", sim_names[3],".00000")
+z_scm = get_profile(sim_dir, ["z_half"])
+yt_, yt_var_ = obs_LES(y_names[3], les_dir, ti[3], tf[3], z_scm = z_scm)
+append!(yt, yt_)
+append!(yt_var, yt_var_)
 
-@everywhere les_dir = string("/groups/esm/ilopezgo/Output.Bomex.may18")
-@everywhere sim_dir = string("Output.", sim_names[4],".00000")
-@everywhere z_scm = get_profile(sim_dir, ["z_half"])
-@everywhere yt_, yt_var_ = obs_LES(y_names[4], les_dir, ti[4], tf[4], z_scm = z_scm)
-@everywhere append!(yt, yt_)
-@everywhere append!(yt_var, yt_var_)
+les_dir = string("/groups/esm/ilopezgo/Output.Bomex.may18")
+sim_dir = string("Output.", sim_names[4],".00000")
+z_scm = get_profile(sim_dir, ["z_half"])
+yt_, yt_var_ = obs_LES(y_names[4], les_dir, ti[4], tf[4], z_scm = z_scm)
+append!(yt, yt_)
+append!(yt_var, yt_var_)
 
+@everywhere yt = $yt
+@everywhere yt_var = $yt_var
 @everywhere n_observables = length(yt)
 
 # This is how many samples of the true data we have
-@everywhere n_samples = 1
-@everywhere samples = zeros(n_samples, length(yt))
-@everywhere samples[1,:] = yt
+n_samples = 1
+samples = zeros(n_samples, length(yt))
+samples[1,:] = yt
 # Noise level of the samples, which scales the time variance of each output.
-@everywhere noise_level = 1.0
-@everywhere Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
-@everywhere μ_noise = zeros(length(yt))
+noise_level = 1.0
+Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
+μ_noise = zeros(length(yt))
 
 # We construct the observations object with the samples and the cov.
-@everywhere truth = Observations.Obs(samples, Γy, y_names[1])
+truth = Observations.Obs(samples, Γy, y_names[1])
+@everywhere truth = $truth
 
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 40 # number of ensemble members
-@everywhere N_iter =20 # number of EKI iterations.
+@everywhere N_ens = 45 # number of ensemble members
+@everywhere N_iter = 20 # number of EKI iterations.
 @everywhere N_yt = length(yt) # Length of data array
 
 @everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
 @everywhere ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.obs_noise_cov)
-@everywhere g_ens = zeros(N_ens, n_observables)
+g_ens = zeros(N_ens, n_observables)
 
 @everywhere scm_dir = "/home/ilopezgo/SCAMPy/"
 @everywhere params_i = deepcopy(exp_transform(ekiobj.u[end]))

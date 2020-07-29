@@ -188,8 +188,11 @@ function nc_fetch(dir, nc_group, var_name)
     find_prev_to_name(x) = occursin("Output", x)
     split_dir = split(dir, ".")
     sim_name = split_dir[findall(find_prev_to_name, split_dir)[1]+1]
-    ds_group = NCDataset(string(dir, "/stats/Stats.", sim_name, ".nc")).group[nc_group]
-    return Array(ds_group[var_name])
+    ds = NCDataset(string(dir, "/stats/Stats.", sim_name, ".nc"))
+    ds_group = ds.group[nc_group]
+    ds_var = deepcopy( Array(ds_group[var_name]) )
+    close(ds)
+    return Array(ds_var)
 end
 
 end #module
