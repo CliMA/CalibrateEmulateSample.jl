@@ -8,6 +8,7 @@ include("Priors.jl")
 
 # No internal deps, heavy external deps
 include("EKI.jl")
+include("UKI.jl")
 include("GPEmulator.jl")
 
 # Internal deps, light external deps
