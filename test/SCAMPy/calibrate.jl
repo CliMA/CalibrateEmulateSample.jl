@@ -139,11 +139,14 @@ truth = Observations.Obs(samples, Γy, y_names[1])
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 45 # number of ensemble members
-@everywhere N_iter = 20 # number of EKI iterations.
+@everywhere N_ens = 199 # number of ensemble members
+@everywhere N_iter = 1 # number of EKI iterations.
 @everywhere N_yt = length(yt) # Length of data array
 
 @everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
+par_precondition_ensemble!(initial_params, priors, param_names, y_names, ti, tf)
+@everywhere initial_params = $initial_params
+
 @everywhere ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.obs_noise_cov)
 g_ens = zeros(N_ens, n_observables)
 

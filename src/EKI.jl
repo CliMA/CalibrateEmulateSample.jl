@@ -5,6 +5,7 @@ using Statistics
 using Distributions
 using LinearAlgebra
 using DocStringExtensions
+using Distributed
 using CalibrateEmulateSample.SCModel
 
 export EKIObj
@@ -13,6 +14,7 @@ export compute_error
 export update_ensemble!
 export find_eki_step
 export precondition_ensemble!
+export par_precondition_ensemble!
 
 """
     EKIObj{FT<:AbstractFloat, IT<:Int}
@@ -85,7 +87,7 @@ end
 
 """
     precondition_ensemble!(params::Array{FT, 2}, priors, 
-        unames::Vector{String}, y_names::Vector{String}, 
+        unames::Vector{String}, ::Union{Array{String, 1}, Array{Array{String,1},1}}, 
         ti::Union{FT, Array{FT,1}}, tf::Union{FT, Array{FT,1}};
         lim::FT=1.0e3,) where {IT<:Int, FT}
 
@@ -93,28 +95,59 @@ Substitute all unstable parameters by stable parameters drawn from
 the same prior.
 """
 function precondition_ensemble!(params::Array{FT, 2}, priors, 
-    unames::Vector{String}, y_names::Vector{String}, 
+    unames::Vector{String}, y_names::Union{Array{String, 1}, Array{Array{String,1},1}}, 
     ti::Union{FT, Array{FT,1}}, tf::Union{FT, Array{FT,1}};
     lim::FT=1.0e3,) where {IT<:Int, FT}
 
-    N_ens = size(params)[0]
+    N_ens = size(params)[1]
     scm_dir = "/home/ilopezgo/SCAMPy/"
-    params_i = deepcopy(exp_transform(params))
+    params_i = deepcopy(exp.(params))
     params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
 
-    g_(x::Array{Float64,1}) = run_SCAMPy(x, unames,
-       y_names, scm_dir, ti, tf)
-
-    g_ens_arr = pmap(g_, params_i)
+    g_ens_arr = []
+    for i in 1:N_ens
+        #run_SCAMPy(params_i[i], unames,y_names, scm_dir, ti, tf)
+        push!(g_ens_arr, run_SCAMPy(params_i[i], unames,y_names, scm_dir, ti, tf))
+    end
     N_obs = length(g_ens_arr[1])
     unstable_param_inds = findall(x->x==N_obs, count.(x->x>lim, g_ens_arr))
     # Recursively eliminate all unstable parameters
     if !isempty(unstable_param_inds)
+        println(string(length(unstable_param_inds), "unstable parameters found.
+            Sampling new parameters from prior." ))
         new_params = construct_initial_ensemble(length(unstable_param_inds), priors)
         params[unstable_param_inds] = new_params
         precondition_ensemble!(params, priors, unames, 
             y_names, ti, tf, lim=lim)
     end
+    return
+end
+
+function par_precondition_ensemble!(params::Array{FT, 2}, priors,
+    unames::Vector{String}, y_names::Union{Array{String, 1}, Array{Array{String,1},1}},
+    ti::Union{FT, Array{FT,1}}, tf::Union{FT, Array{FT,1}};
+    lim::FT=1.0e3,) where {IT<:Int, FT}
+
+    N_ens = size(params)[1]
+    scm_dir = "/home/ilopezgo/SCAMPy/"
+    params_i = deepcopy(exp.(params))
+    params_i = [params_i[i, :] for i in 1:size(params_i, 1)]
+    g_(x::Array{Float64,1}) = run_SCAMPy(x, unames,
+       y_names, scm_dir, ti, tf)
+    g_ens_arr = pmap(g_, params_i)
+    N_obs = length(g_ens_arr[1])
+    unstable_param_inds = findall(x->x>50, count.(x->x>lim, g_ens_arr))
+    println(string("Unstable parameter indices: ", unstable_param_inds))
+    # Recursively eliminate all unstable parameters
+    if !isempty(unstable_param_inds)
+        println(string(length(unstable_param_inds), " unstable parameters found.
+            Sampling new parameters from prior." ))
+        new_params = construct_initial_ensemble(length(unstable_param_inds), priors)
+        params[unstable_param_inds] = new_params
+        par_precondition_ensemble!(params, priors, unames,
+            y_names, ti, tf, lim=lim)
+    end
+    println("\nPreconditioning finished.")
     return
 end
 
