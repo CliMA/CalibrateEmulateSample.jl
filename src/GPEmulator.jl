@@ -571,6 +571,7 @@ function gp_sqbias(gp::GPObj{FT, GPJL},
     N_data = length(inputs[:,1])
     for i in 1:N_data
         y_gp_mean, y_gp_var = predict(gp, reshape(inputs[i,:], 1, :) )
+        y_gp_mean = dropdims(y_gp_mean, dims=1)
         y_sqbias = y_sqbias + (y_gp_mean-exp_outputs[i,:]).*(y_gp_mean-exp_outputs[i,:])
     end
 
