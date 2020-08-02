@@ -92,6 +92,7 @@ function GPObj(
     obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing,
     normalized::Bool=true,
     noise_learn::Bool=true,
+    non_gaussian::Bool=false,
     prediction_type::PredictionType=YType()) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
 
     # Consistency checks
@@ -179,17 +180,36 @@ function GPObj(
         kmean = MeanZero()
 
         # Instantiate GP model
-        m = GPE(GPinputs,
-                GPdata_i,
-                kmean,
-                GPkernel_i, 
-                logstd_regularization_noise)
+        if non_gaussian
+            l = StuTLik(3,0.1)
+            m = GPA(GPinputs,
+                    GPdata_i,
+                    kmean,
+                    GPkernel_i, 
+                    l)
+            println("created GPA", i)
+            set_priors!(m.lik,[Normal(-2.0,4.0)])
+            set_priors!(m.kernel,[Normal(-2.0,4.0),Normal(-2.0,4.0)])
+
+            samples = mcmc(m;nIter=10000,burn=1000,thin=2);
+            for i in 1:size(samples,2)
+                GaussianProcesses.set_params!(gpa,samples[:,i])
+                update_target!(gpa)
+            end
+            println("optimized GPA", i)
+        else
+            m = GPE(GPinputs,
+                    GPdata_i,
+                    kmean,
+                    GPkernel_i, 
+                    logstd_regularization_noise)
        
-        # We choose above to explicitly learn the WhiteKernel as opposed to 
-        # using the in built noise=true functionality.
-        println("created GP", i)
-        optimize!(m, noise=false)
-        println("optimized GP", i)
+            # We choose above to explicitly learn the WhiteKernel as opposed to 
+            # using the in built noise=true functionality.
+            println("created GP", i)
+            optimize!(m, noise=false)
+            println("optimized GP", i)
+        end
         push!(models, m)
         println(m.kernel)
     end
