@@ -43,7 +43,7 @@ println(size(g_train))
 println(size(true_g))
 outputs_to_learn = findall(true_g .!= g_train[1,:])
 # outputs_to_learn = outputs_to_learn[155:157]
-outputs_to_learn = [151, 152, 153, 154, 155]
+outputs_to_learn = [151]
 g_train = g_train[:,outputs_to_learn]
 true_g = true_g[outputs_to_learn]
 yt_var = yt_var[outputs_to_learn, outputs_to_learn]
@@ -57,18 +57,23 @@ gppackage = GPEmulator.GPJL()
 pred_type = GPEmulator.YType()
 
 # Construct kernel:
+# rbf kernel
 rbf_len = log.(ones(size(u_train, 2)))
 rbf_logstd = log(1.0)
 rbf = SEArd(rbf_len, rbf_logstd)
-# white noise for regularization. Right now it leads to convergence problems.
-white = Noise(log(1.0))
+
+# Matern ARD
+matkern = Matern(3/2, zeros(9), 0.0)
 # construct kernel
-GPkernel =  rbf
+GPkernel =  matkern
 
 normalized = false
-gpobj = GPEmulator.GPObj(u_train, g_train, gppackage;
-              normalized=normalized, prediction_type=pred_type, non_gaussian=true)
+gpobj = GPEmulator.GPObj(u_train, g_train, gppackage; GPkernel=GPkernel,
+              normalized=normalized, prediction_type=pred_type, 
+              non_gaussian=false, noise_learn=false)
 
+# plot()
+# savefig("gaussian_process.png")
 # Check how well the Gaussian Process regression predicts on the
 # training and testing sets
 y_train_sqbias = GPEmulator.gp_sqbias(gpobj, u_train, g_train)

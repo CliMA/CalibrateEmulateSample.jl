@@ -156,7 +156,7 @@ function GPObj(
 
         # Make the regularization small. We actually learn 
         # total_noise = white_logstd + logstd_regularization_noise
-        magic_number = 1e-3 # magic_number << 1
+        magic_number = 1e-6 # magic_number << 1
         logstd_regularization_noise = log(sqrt(magic_number)) 
 
     else
@@ -181,20 +181,20 @@ function GPObj(
 
         # Instantiate GP model
         if non_gaussian
-            l = StuTLik(3,0.1)
+            l = StuTLik(50, 0.1)
             m = GPA(GPinputs,
                     GPdata_i,
                     kmean,
                     GPkernel_i, 
                     l)
             println("created GPA", i)
-            set_priors!(m.lik,[Normal(-2.0,4.0)])
-            set_priors!(m.kernel,[Normal(-2.0,4.0),Normal(-2.0,4.0)])
-
+            set_priors!(m.lik,[Normal(1.0,1.0)])
+            set_priors!(m.kernel,[Normal(0.0,2.0) for i in 1:size(GPinputs, 1)+1])
             samples = mcmc(m;nIter=10000,burn=1000,thin=2);
             for i in 1:size(samples,2)
-                GaussianProcesses.set_params!(gpa,samples[:,i])
-                update_target!(gpa)
+                GaussianProcesses.set_params!(m,samples[:,i])
+                update_target!(m)
+                # PREDICTION GOES HERE
             end
             println("optimized GPA", i)
         else
