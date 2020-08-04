@@ -169,10 +169,10 @@ function log_likelihood(mcmc::MCMCObj{FT},
         diff = g - mcmc.obs_sample
         log_rho[1] = -FT(0.5) * diff' * mcmc.obs_noise_covinv * diff
     else
-        gcov_inv = inv(Diagonal(gvar))
+        # gcov_inv = inv(Diagonal(gvar))
         log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
         diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * gcov_inv * diff + log_gpfidelity
+        log_rho[1] = -FT(0.5) * diff' * (Diagonal(gvar) \ diff) + log_gpfidelity
     end
     return log_rho[1]
 end
