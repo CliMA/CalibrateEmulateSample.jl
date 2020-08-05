@@ -69,7 +69,6 @@ using CalibrateEmulateSample.GPEmulator
     # 1.0/sqrt(0.05) * obs_sample ≈ 4.472
     @test mcmc.obs_sample ≈ [4.472] atol=1e-2
     @test mcmc.obs_noise_cov == σ2_y
-    @test mcmc.obs_noise_covinv == inv(σ2_y)
     @test mcmc.burnin == burnin
     @test mcmc.algtype == mcmc_alg
     @test mcmc.iter[1] == max_iter + 1

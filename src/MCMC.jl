@@ -33,8 +33,6 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     obs_sample::Vector{FT}
     "covariance of the observational noise"
     obs_noise_cov::Array{FT, 2}
-    "inverse of obs_noise_cov"
-    obs_noise_covinv::Array{FT, 2}
     "array of length N_parameters with the parameters' prior distributions"
     prior::Array{Prior, 1}
     "MCMC step size"
@@ -96,14 +94,12 @@ function MCMCObj(
     param = param_init_copy
     log_posterior = [nothing]
     iter = [1]
-    obs_noise_covinv = inv(obs_noise_cov)
     accept = [0]
     if algtype != "rwm"
         error("only random walk metropolis 'rwm' is implemented so far")
     end
     MCMCObj{FT,IT}(obs_sample,
                    obs_noise_cov,
-                   obs_noise_covinv,
                    priors,
                    [step],
                    burnin,
@@ -167,12 +163,11 @@ function log_likelihood(mcmc::MCMCObj{FT},
     log_rho = FT[0]
     if gvar == nothing
         diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * mcmc.obs_noise_covinv * diff
+        log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
     else
-        gcov_inv = inv(Diagonal(gvar))
         log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
         diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * gcov_inv * diff + log_gpfidelity
+        log_rho[1] = -FT(0.5) * diff' * (Diagonal(gvar) \ diff) + log_gpfidelity
     end
     return log_rho[1]
 end
