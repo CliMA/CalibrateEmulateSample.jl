@@ -45,8 +45,8 @@ println(size(true_g))
 # All outputs non-identical to LES
 outputs_to_learn = findall(true_g .!= g_train[1,:])
 # Pick a couple with well-trained GPs
-good_outputs = [14, 18, 130, 133, 137, 139, 147, 180, 321, 328, 332, 340, 
-  470, 481, 483, 485, 487, 489, 491, 493]
+good_outputs = [14, 18, 130, 133, 138, 147, 180, 321, 332, 340, 
+  470, 493]
 outputs_to_learn = outputs_to_learn[good_outputs]
 # outputs_to_learn = [16, 153, 154, 161, 162, 169, 170, 211, 212, 362, 542]
 g_train = g_train[:,outputs_to_learn]
@@ -114,7 +114,7 @@ logmeans[6], log_stds[6] = logmean_and_logstd(0.2, 0.2)
 logmeans[7], log_stds[7] = logmean_and_logstd(0.2, 0.2)
 logmeans[8], log_stds[8] = logmean_and_logstd(8.0, 1.0)
 logmeans[9], log_stds[9] = logmean_and_logstd(0.2, 0.2)
-priors = [Priors.Prior(Distributions.Normal(logmeans[1], log_stds[1]), param_names[1]),
+priors = [Priors.Prior(Distributions.Normal(    logmeans[1], log_stds[1]), param_names[1]),
               Priors.Prior(Distributions.Normal(logmeans[2], log_stds[2]), param_names[2]),
               Priors.Prior(Distributions.Normal(logmeans[3], log_stds[3]), param_names[3]),
               Priors.Prior(Distributions.Normal(logmeans[4], log_stds[4]), param_names[4]),
@@ -172,12 +172,12 @@ mcmc_test = MCMC.MCMCObj(yt_sample, yt_var,       # Cov matrix needs to be fixed
                          priors, step, u0, 
                          max_iter, mcmc_alg, burnin, svdflag=false)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
-
+new_step = new_step/2.0
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
 
 # reset parameters
-max_iter = 200000
+max_iter = 1000000
 burnin = 50000
 
 # u0 has been modified by MCMCObj in the test, resetting.
@@ -191,10 +191,10 @@ posterior = MCMC.get_posterior(mcmc)
 
 post_mean = mean(posterior, dims=1)
 post_cov = cov(posterior, dims=1)
-println("posterior mean and variance for each parameter:")
-println(mean_and_std_from_ln(post_mean[1], post_cov[1,1]))
-println(mean_and_std_from_ln(post_mean[2], post_cov[2,2]))
-println(mean_and_std_from_ln(post_mean[3], post_cov[3,3]))
+println("posterior mean for each parameter:")
+for i in 1:9
+  println(param_names[i], mean_and_std_from_ln(post_mean[i], post_cov[i]))
+end
 
 # Save posterior to file
 save("posterior.jld", "posterior", posterior)
@@ -202,7 +202,7 @@ save("posterior.jld", "posterior", posterior)
 
 # Plot the posteriors together with the priors and the 
 #   true parameter values in transformed space
-priors = [Distributions.Normal(logmeans[1], log_stds[1]),
+priors = [Distributions.Normal(              logmeans[1], log_stds[1]),
                         Distributions.Normal(logmeans[2], log_stds[2]),
                         Distributions.Normal(logmeans[3], log_stds[3]),
                         Distributions.Normal(logmeans[4], log_stds[4]),
@@ -212,7 +212,7 @@ priors = [Distributions.Normal(logmeans[1], log_stds[1]),
                         Distributions.Normal(logmeans[8], log_stds[8]),
                         Distributions.Normal(logmeans[9], log_stds[9])]
 
-priors_ln = [Distributions.LogNormal(logmeans[1], log_stds[1]),
+priors_ln = [Distributions.LogNormal(           logmeans[1], log_stds[1]),
                         Distributions.LogNormal(logmeans[2], log_stds[2]),
                         Distributions.LogNormal(logmeans[3], log_stds[3]),
                         Distributions.LogNormal(logmeans[4], log_stds[4]),
