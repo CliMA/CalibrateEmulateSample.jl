@@ -88,15 +88,22 @@ using CalibrateEmulateSample.Priors
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
     ###
-    eksobj = EKP.EKObj(initial_params, param_names, 
-                       vec(mean(truth_samples, dims=1)), Γy, 
-                       Sampler(prior_mean, prior_cov))
-    # EKS iterations
-    for i in 1:N_iter
-        params_i = eksobj.u[end]
-        g_ens = G(params_i)
-        EKP.update_ensemble!(eksobj, g_ens) 
-    end
+
+    # EKS is not fully implemented yet, so this should raise an exception
+    @test_throws Exception eksobj = EKP.EKObj(initial_params, param_names, 
+                                              vec(mean(truth_samples, dims=1)), 
+                                              Γy, Sampler(prior_mean, prior_cov))
+
+    # TODO: Uncomment L. 98-106 once EKS is implemented
+#    eksobj = EKP.EKObj(initial_params, param_names, 
+#                       vec(mean(truth_samples, dims=1)), Γy, 
+#                       Sampler(prior_mean, prior_cov))
+#    # EKS iterations
+#    for i in 1:N_iter
+#        params_i = eksobj.u[end]
+#        g_ens = G(params_i)
+#        EKP.update_ensemble!(eksobj, g_ens) 
+#    end
 
 #    # Plot evolution of the EKS particles
 #    eks_final_result = vec(mean(eksobj.u[end], dims=1))

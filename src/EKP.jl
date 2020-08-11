@@ -72,6 +72,14 @@ function EKObj(parameters::Array{FT, 2},
                process::P;
                Δt=FT(1)) where {FT<:AbstractFloat, P<:Process}
 
+    # Throw an error if an attempt is made to instantiate a `Sampler` EKObj
+    # EK Sampler implementation is not finalized yet, so its use is prohibited
+    # TODO: Finalize EKS implementation (can be done as soon as we know the 
+    #       correct EKS update equation, which apparently is different from
+    #       Eq. (2.8) in Cleary et al. (2019)) 
+    err_msg = "Ensemble Kalman Sampler is not fully implemented yet. Use Ensemble Kalman Inversion instead."
+    typeof(process) != Sampler{FT} || error(err_msg)
+
     # ensemble size
     N_ens = size(parameters)[1]
     IT = typeof(N_ens)
