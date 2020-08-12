@@ -5,7 +5,7 @@ ENV["PYTHON"] = ""
 
 for submodule in [
                   "Priors",
-                  "EKI",
+                  "EKP",
                   "GPEmulator",
                   "MCMC",
                   "Observations",

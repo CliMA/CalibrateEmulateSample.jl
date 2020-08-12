@@ -13,7 +13,7 @@ using Plots
 using Random
 
 # Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EKI
+using CalibrateEmulateSample.EKP
 using CalibrateEmulateSample.GPEmulator
 using CalibrateEmulateSample.MCMC
 using CalibrateEmulateSample.Observations
@@ -44,7 +44,7 @@ dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 
 # Assume lognormal priors for all three parameters
 # Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ 
-# and k need to be positive. The EKI update can result in violations of 
+# and k need to be positive. The EK update can result in violations of 
 # these constraints - therefore, we perform CES in log space, i.e., we try 
 # to find the logarithms of the true parameters (and of course, the actual
 # parameters can then simply be obtained by exponentiating the final results). 
@@ -118,8 +118,9 @@ exp_transform(a::AbstractArray) = exp.(a)
 N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
-initial_params = EKI.construct_initial_ensemble(N_ens, priors; rng_seed=6)
-ekiobj = EKI.EKIObj(initial_params, param_names, truth.mean, truth.obs_noise_cov, Δt=1.0)
+initial_params = EKP.construct_initial_ensemble(N_ens, priors; rng_seed=6)
+ekiobj = EKP.EKObj(initial_params, param_names, truth.mean, 
+                   truth.obs_noise_cov, Inversion(), Δt=1.0)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
@@ -136,7 +137,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EKI.update_ensemble!(ekiobj, g_ens) 
+    EKP.update_ensemble!(ekiobj, g_ens) 
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
