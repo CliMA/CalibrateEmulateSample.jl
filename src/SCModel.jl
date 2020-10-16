@@ -3,6 +3,7 @@ module SCModel
 using NCDatasets
 using Statistics
 using Interpolations
+using LinearAlgebra
 
 export run_SCAMPy
 export obs_LES
@@ -142,31 +143,35 @@ function get_timevar_profile(sim_dir::String,
             rho_half=nc_fetch(sim_dir, "reference", "rho0_half")
             var_ = var_.*rho_half
         end
-        if !isnothing(z_scm)
-            prof_vec = cat(prof_vec, var_[:, ti_index:tf_index], dims=1)
-        else
-            prof_vec = cat(prof_vec, var_[:, ti_index:tf_index], dims=1)
+        prof_vec = cat(prof_vec, var_[:, ti_index:tf_index], dims=1)
     end
-
     if !isnothing(z_scm)
-        if !getFullHeights:
+        if !getFullHeights
             z_les = get_profile(sim_dir, ["z_half"])
-        else:
+        else
             z_les = get_profile(sim_dir, ["z"])
-
+        end
         num_outputs = Integer(length(prof_vec[:, 1])/length(z_les))
         prof_vec_zscm = zeros(0, length(ti_index:tf_index))
+        maxvar_vec = zeros(num_outputs) 
         for i in 1:num_outputs
-            prof_vec_itp = interpolate( (z_les,ti_index:tf_index),
+            maxvar_vec[i] = maximum(var(prof_vec[1 + length(z_les)*(i-1) : i*length(z_les), :], dims=2))
+            prof_vec_itp = interpolate( (z_les, 1:tf_index-ti_index+1),
                 prof_vec[1 + length(z_les)*(i-1) : i*length(z_les), :],
                 ( Gridded(Linear()), NoInterp() ))
             prof_vec_zscm = cat(prof_vec_zscm,
-                prof_vec_itp(z_scm, ti_index:tf_index), dims=1)
+                prof_vec_itp(z_scm, 1:tf_index-ti_index+1), dims=1)
         end
         cov_mat = cov(prof_vec_zscm, dims=2)
-    else:
+        for i in 1:num_outputs
+	    cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)] = (
+              cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)]
+              + maxvar_vec[i].*Matrix{Float64}(I, length(z_scm), length(z_scm)))
+              println(det(cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)]))
+	end
+    else
         cov_mat = cov(prof_vec, dims=2)
-
+    end
     return cov_mat
 end
 

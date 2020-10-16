@@ -122,9 +122,12 @@ push!(yt_var_list, yt_var_)
 yt_var = zeros(length(yt), length(yt))
 vars_num = 1
 for sim_covmat in yt_var_list
-    vars = length(sim_covmat[1])
-    yt_var[vars_num:vars_num+vars-1] = sim_covmat
-    vars_num = vars_num+vars
+    vars = length(sim_covmat[1,:])
+    yt_var[vars_num:vars_num+vars-1, vars_num:vars_num+vars-1] = sim_covmat
+    global vars_num = vars_num+vars
+    #println(det(sim_covmat))
+end
+println( det(yt_var))
 @everywhere yt_var = $yt_var
 @everywhere n_observables = length(yt)
 
@@ -145,8 +148,8 @@ truth = Observations.Obs(samples, Γy, y_names[1])
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 5 # number of ensemble members
-@everywhere N_iter = 1 # number of EKI iterations.
+@everywhere N_ens = 50 # number of ensemble members
+@everywhere N_iter = 10 # number of EKI iterations.
 @everywhere N_yt = length(yt) # Length of data array
 
 @everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
