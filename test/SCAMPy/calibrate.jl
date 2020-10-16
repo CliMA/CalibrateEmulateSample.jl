@@ -87,38 +87,44 @@ push!(y_names, ["thetal_mean", "ql_mean", "qt_mean", "total_flux_h", "total_flux
 
 # Get observations
 @everywhere yt = zeros(0)
-@everywhere yt_var = zeros(0)
 @everywhere sim_names = ["DYCOMS_RF01", "GABLS", "Nieuwstadt", "Bomex"]
+yt_var_list = []
 
 les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[1],".may20")
 sim_dir = string("Output.", sim_names[1],".00000")
 z_scm = get_profile(sim_dir, ["z_half"])
 yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
 append!(yt, yt_)
-append!(yt_var, yt_var_)
+push!(yt_var_list, yt_var_)
 
 les_dir = string("/groups/esm/ilopezgo/Output.", sim_names[2],".iles128wCov")
 sim_dir = string("Output.", sim_names[2],".00000")
 z_scm = get_profile(sim_dir, ["z_half"])
 yt_, yt_var_ = obs_LES(y_names[2], les_dir, ti[2], tf[2], z_scm = z_scm)
 append!(yt, yt_)
-append!(yt_var, yt_var_)
+push!(yt_var_list, yt_var_)
 
 les_dir = string("/groups/esm/ilopezgo/Output.Soares.dry11")
 sim_dir = string("Output.", sim_names[3],".00000")
 z_scm = get_profile(sim_dir, ["z_half"])
 yt_, yt_var_ = obs_LES(y_names[3], les_dir, ti[3], tf[3], z_scm = z_scm)
 append!(yt, yt_)
-append!(yt_var, yt_var_)
+push!(yt_var_list, yt_var_)
 
 les_dir = string("/groups/esm/ilopezgo/Output.Bomex.may18")
 sim_dir = string("Output.", sim_names[4],".00000")
 z_scm = get_profile(sim_dir, ["z_half"])
 yt_, yt_var_ = obs_LES(y_names[4], les_dir, ti[4], tf[4], z_scm = z_scm)
 append!(yt, yt_)
-append!(yt_var, yt_var_)
+push!(yt_var_list, yt_var_)
 
 @everywhere yt = $yt
+yt_var = zeros(length(yt), length(yt))
+vars_num = 1
+for sim_covmat in yt_var_list
+    vars = length(sim_covmat[1])
+    yt_var[vars_num:vars_num+vars-1] = sim_covmat
+    vars_num = vars_num+vars
 @everywhere yt_var = $yt_var
 @everywhere n_observables = length(yt)
 
@@ -128,7 +134,7 @@ samples = zeros(n_samples, length(yt))
 samples[1,:] = yt
 # Noise level of the samples, which scales the time variance of each output.
 noise_level = 1.0
-Γy = noise_level^2 * convert(Array, Diagonal(yt_var))
+Γy = noise_level^2 * (yt_var)
 μ_noise = zeros(length(yt))
 
 # We construct the observations object with the samples and the cov.

@@ -67,10 +67,10 @@ function obs_LES(y_names::Array{String, 1},
     
     y_names_les = get_les_names(y_names, sim_dir)
     y_highres = get_profile(sim_dir, y_names_les, ti = ti, tf = tf)
-    y_tvar_highres = get_timevar_profile(sim_dir, y_names_les, ti = ti, tf = tf)
+    y_tvar = get_timevar_profile(sim_dir, y_names_les,
+        ti = ti, tf = tf, z_scm=z_scm)
     if !isnothing(z_scm)
         y_ = zeros(0)
-        y_tvar = zeros(0)
         z_les = get_profile(sim_dir, ["z_half"])
         num_outputs = Integer(length(y_highres)/length(z_les))
         for i in 1:num_outputs
@@ -78,15 +78,9 @@ function obs_LES(y_names::Array{String, 1},
                 y_highres[1 + length(z_les)*(i-1) : i*length(z_les)],
                 Gridded(Linear()) )
             append!(y_, y_itp(z_scm))
-
-            y_tvar_itp = interpolate( (z_les,), 
-                y_tvar_highres[1 + length(z_les)*(i-1) : i*length(z_les)],
-                Gridded(Linear()) )
-            append!(y_tvar, y_tvar_itp(z_scm))
         end
     else
         y_ = y_highres
-        y_tvar = y_tvar_highres
     end
     return y_, y_tvar
 end
@@ -131,14 +125,15 @@ function get_timevar_profile(sim_dir::String,
                      var_name::Array{String,1};
                      ti::Float64=0.0,
                      tf::Float64=0.0,
-                     getFullHeights=false)
+                     getFullHeights=false,
+                     z_scm::Union{Array{Float64, 1}, Nothing} = nothing)
 
     t = nc_fetch(sim_dir, "timeseries", "t")
     dt = t[2]-t[1]
     ti_diff, ti_index = findmin( broadcast(abs, t.-ti) )
     tf_diff, tf_index = findmin( broadcast(abs, t.-tf) )
-    
-    prof_vec = zeros(0)
+    prof_vec = zeros(0, length(ti_index:tf_index))
+
     # If simulation does not contain values for ti or tf, return high value
     for i in 1:length(var_name)
         var_ = nc_fetch(sim_dir, "profiles", var_name[i])
@@ -147,12 +142,32 @@ function get_timevar_profile(sim_dir::String,
             rho_half=nc_fetch(sim_dir, "reference", "rho0_half")
             var_ = var_.*rho_half
         end
-        # append!(prof_vec, var(var_[:, ti_index:tf_index], dims=2) )
-        append!(prof_vec, maximum(var(var_[:, ti_index:tf_index], dims=2))
-            *ones(length(var_[:, 1]) ) )
+        if !isnothing(z_scm)
+            prof_vec = cat(prof_vec, var_[:, ti_index:tf_index], dims=1)
+        else
+            prof_vec = cat(prof_vec, var_[:, ti_index:tf_index], dims=1)
     end
 
-    return prof_vec
+    if !isnothing(z_scm)
+        if !getFullHeights:
+            z_les = get_profile(sim_dir, ["z_half"])
+        else:
+            z_les = get_profile(sim_dir, ["z"])
+
+        num_outputs = Integer(length(prof_vec[:, 1])/length(z_les))
+        prof_vec_zscm = zeros(0, length(ti_index:tf_index))
+        for i in 1:num_outputs
+            prof_vec_itp = interpolate( (z_les,ti_index:tf_index),
+                prof_vec[1 + length(z_les)*(i-1) : i*length(z_les), :],
+                ( Gridded(Linear()), NoInterp() ))
+            prof_vec_zscm = cat(prof_vec_zscm,
+                prof_vec_itp(z_scm, ti_index:tf_index), dims=1)
+        end
+        cov_mat = cov(prof_vec_zscm, dims=2)
+    else:
+        cov_mat = cov(prof_vec, dims=2)
+
+    return cov_mat
 end
 
 function get_les_names(scm_y_names::Array{String,1}, sim_dir::String)
