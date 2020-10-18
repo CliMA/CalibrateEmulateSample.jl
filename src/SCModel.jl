@@ -162,13 +162,16 @@ function get_timevar_profile(sim_dir::String,
             prof_vec_zscm = cat(prof_vec_zscm,
                 prof_vec_itp(z_scm, 1:tf_index-ti_index+1), dims=1)
         end
-        cov_mat = cov(prof_vec_zscm, dims=2)
+        # Get correlation matrix, substitute NaNs by zeros
+        cov_mat = cor(prof_vec_zscm, dims=2)
+        cov_mat[findall(x->isnan(x), cov_mat)] .= 0.0
+        # Scale with max std per output variable
         for i in 1:num_outputs
-	    cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)] = (
-              cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)]
-              + maxvar_vec[i].*Matrix{Float64}(I, length(z_scm), length(z_scm)))
-              println(det(cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), 1 + length(z_scm)*(i-1) : i*length(z_scm)]))
-	end
+            cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), :] = (
+                cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), :] .* maxvar_vec[i])
+            cov_mat[:, 1 + length(z_scm)*(i-1) : i*length(z_scm)] = (
+                cov_mat[:, 1 + length(z_scm)*(i-1) : i*length(z_scm)] .* maxvar_vec[i])
+        end
     else
         cov_mat = cov(prof_vec, dims=2)
     end
