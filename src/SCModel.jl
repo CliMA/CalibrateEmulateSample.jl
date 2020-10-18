@@ -168,9 +168,9 @@ function get_timevar_profile(sim_dir::String,
         # Scale with max std per output variable
         for i in 1:num_outputs
             cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), :] = (
-                cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), :] .* maxvar_vec[i])
+                cov_mat[1 + length(z_scm)*(i-1) : i*length(z_scm), :] .* sqrt(maxvar_vec[i]) )
             cov_mat[:, 1 + length(z_scm)*(i-1) : i*length(z_scm)] = (
-                cov_mat[:, 1 + length(z_scm)*(i-1) : i*length(z_scm)] .* maxvar_vec[i])
+                cov_mat[:, 1 + length(z_scm)*(i-1) : i*length(z_scm)] .* sqrt(maxvar_vec[i]) )
         end
     else
         cov_mat = cov(prof_vec, dims=2)
