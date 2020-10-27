@@ -12,6 +12,7 @@ export EKIObj
 export construct_initial_ensemble
 export compute_error
 export update_ensemble!
+export update_ensemble_eks!
 export find_eki_step
 export precondition_ensemble!
 
@@ -178,6 +179,43 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
         println("Warning: Ensemble covariance after the last EKI stage decreased significantly. 
             Consider adjusting the EKI time step.")
     end
+end
+
+function update_ensemble_eks!(eki::EKIObj{FT}, g; Δt_scaling=1.0) where {FT}
+    # u: N_ens x N_params
+    # g: N_ens x N_data
+    u = ek.u[end]
+    N_ens = ek.N_ens
+
+    # u_mean: N_params x 1
+    u_mean = mean(u', dims=2)
+    # g_mean: N_data x 1
+    g_mean = mean(g', dims=2)
+    # g_cov: N_data x N_data
+    g_cov = cov(g, corrected=false)
+    # u_cov: N_params x N_params
+    u_cov = cov(u, corrected=false)
+
+    # Building tmp matrices for EKS update:
+    E = g' .- g_mean
+    R = g' .- ek.obs_mean
+    # D: N_ens x N_ens
+    D = 1/N_ens * (E' * (ek.obs_noise_cov \ R))
+
+    Δt = 1/(norm(D) + 1e-8)
+    noise = MvNormal(u_cov)
+
+    implicit = (Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov \ u_cov)') \
+                  (u' - Δt * u' * D  )
+
+    u += implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
+
+    # store new parameters (and observations)
+    push!(ek.u, u) # N_ens x N_params
+    push!(ek.g, g) # N_ens x N_data
+
+    compute_error!(ek)
+
 end
 
 """
