@@ -160,7 +160,7 @@ function find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_thresho
 end
 
 
-function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
+function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
     # u: N_ens x N_params
     u = ek.u[end]
     cov_init = cov(ek.u[end], dims=1)
@@ -203,12 +203,21 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     # Update the parameters (with additive noise too)
     noise = rand(MvNormal(zeros(size(g)[2]), 
                           ek.obs_noise_cov/ek.Δt[end]), ek.N_ens) # N_data x N_ens
+    
     # Add obs_mean (N_data) to each column of noise (N_data x N_ens), then 
     # transpose into N_ens x N_data
+    println("obs mean")
+    println(ek.obs_mean)
+    println("noise")
+    println(noise)
     y = (ek.obs_mean .+ noise)' 
     # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' 
     # --> tmp is N_data x N_ens
     tmp = (cov_gg + ek.obs_noise_cov) \ (y - g)' 
+    println("tmp")
+    println(tmp)
+    println("cov_ug")
+    println(cov_ug)
     u += (cov_ug * tmp)' # N_ens x N_params
 
     # store new parameters (and observations)
@@ -227,7 +236,7 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     end
 end
 
-function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
+function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g::Array{FT, 2}) where {FT, IT}
     # u: N_ens x N_params
     # g: N_ens x N_data
     u = ek.u[end]
