@@ -185,7 +185,7 @@ for i in 1:N_iter
     for j in 1:N_ens
       g_ens[j, :] = g_ens_arr[j]
     end
-    EKI.update_ensemble_eks!(ekiobj, g_ens, Δt_scaling=0.01)
+    EKI.update_ensemble_eks!(ekiobj, g_ens, priors, Δt_scaling=0.01)
     println("\nEnsemble updated.\n")
     println("\nEnsemble covariance det. for iteration ", size(ekiobj.u)[1])
     println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))

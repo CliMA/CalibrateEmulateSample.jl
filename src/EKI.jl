@@ -181,12 +181,12 @@ function update_ensemble!(eki::EKIObj{FT}, g; Δt=1.0) where {FT}
     end
 end
 
-function update_ensemble_eks!(ek::EKIObj{FT}, g; Δt_scaling = 1.0) where {FT}
+function update_ensemble_eks!(ek::EKIObj{FT}, g, priors; Δt_scaling = 1.0) where {FT}
     # u: N_ens x N_params
     # g: N_ens x N_data
     u = ek.u[end]
     N_ens = ek.N_ens
-
+    N_params = size(u)[2]
     # u_mean: N_params x 1
     u_mean = mean(u', dims=2)
     # g_mean: N_data x 1
@@ -197,8 +197,12 @@ function update_ensemble_eks!(ek::EKIObj{FT}, g; Δt_scaling = 1.0) where {FT}
     u_cov = cov(u, dims=1, corrected=false)
     println("Determinant of param covariance ", det(u_cov))
     # prior_cov: N_params x N_params
-    prior_cov = cov(ek.u[1], dims=1, corrected=false)
-    
+    prior_cov = Matrix(I, N_params, N_params)
+    prior_mean = ones(N_params,1)
+    for i in 1:N_params
+        prior_i = priors[i]
+        prior_cov[i,i] = var(prior_i)
+        prior_mean[i] = mean(prior_i)
     # Building tmp matrices for EKS update:
     E = g' .- g_mean
     R = g' .- ek.g_t
@@ -209,8 +213,8 @@ function update_ensemble_eks!(ek::EKIObj{FT}, g; Δt_scaling = 1.0) where {FT}
     println("Value of adaptive timestep is ", Δt)
     noise = MvNormal(Symmetric(u_cov))
 
-    implicit = (Matrix(I, size(u)[2], size(u)[2]) + Δt * (prior_cov \ u_cov)') \
-                  (u' - Δt * (u' .- u_mean) * D  )
+    implicit = (Matrix(I, N_params, N_params) + Δt * (prior_cov \ u_cov)') \
+                  (u' - Δt * (u' .- u_mean) * D  + Δt * u_cov * (prior_cov \ prior_mean) )
 
     u += implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
 
