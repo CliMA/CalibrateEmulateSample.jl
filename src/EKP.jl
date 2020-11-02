@@ -255,8 +255,6 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
     ###############    TODO: Implement correct equation here   ################
     ###########################################################################
 
-    println(diag(u_cov))
-
     implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov' \ u_cov')') \
                   (u'
                     .- Δt * ( u' .- u_mean) * D
