@@ -74,11 +74,11 @@ function EKObj(parameters::Array{FT, 2},
 
     # Throw an error if an attempt is made to instantiate a `Sampler` EKObj
     # EK Sampler implementation is not finalized yet, so its use is prohibited
-    # TODO: Finalize EKS implementation (can be done as soon as we know the 
+    # TODO: Finalize EKS implementation (can be done as soon as we know the
     #       correct EKS update equation, which apparently is different from
-    #       Eq. (2.8) in Cleary et al. (2019)) 
-    err_msg = "Ensemble Kalman Sampler is not fully implemented yet. Use Ensemble Kalman Inversion instead."
-    typeof(process) != Sampler{FT} || error(err_msg)
+    #       Eq. (2.8) in Cleary et al. (2019))
+    # err_msg = "Ensemble Kalman Sampler is not fully implemented yet. Use Ensemble Kalman Inversion instead."
+    # typeof(process) != Sampler{FT} || error(err_msg)
 
     # ensemble size
     N_ens = size(parameters)[1]
@@ -93,7 +93,7 @@ function EKObj(parameters::Array{FT, 2},
     # timestep store
     Δt = Array([Δt])
 
-    EKObj{FT, IT, P}(u, parameter_names, obs_mean, obs_noise_cov, N_ens, g, 
+    EKObj{FT, IT, P}(u, parameter_names, obs_mean, obs_noise_cov, N_ens, g,
                      err, Δt, process)
 end
 
@@ -132,7 +132,7 @@ end
 
 """
    find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
-Find largest step for the EK solver that leads to a reduction of the determinant of the sample  
+Find largest step for the EK solver that leads to a reduction of the determinant of the sample
 covariance matrix no greater than cov_threshold.
 """
 function find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT, IT}
@@ -201,14 +201,14 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     cov_gg = cov_gg / ek.N_ens - g_bar * g_bar'
 
     # Update the parameters (with additive noise too)
-    noise = rand(MvNormal(zeros(size(g)[2]), 
+    noise = rand(MvNormal(zeros(size(g)[2]),
                           ek.obs_noise_cov/ek.Δt[end]), ek.N_ens) # N_data x N_ens
-    # Add obs_mean (N_data) to each column of noise (N_data x N_ens), then 
+    # Add obs_mean (N_data) to each column of noise (N_data x N_ens), then
     # transpose into N_ens x N_data
-    y = (ek.obs_mean .+ noise)' 
-    # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' 
+    y = (ek.obs_mean .+ noise)'
+    # N_data x N_data \ [N_ens x N_data - N_ens x N_data]'
     # --> tmp is N_data x N_ens
-    tmp = (cov_gg + ek.obs_noise_cov) \ (y - g)' 
+    tmp = (cov_gg + ek.obs_noise_cov) \ (y - g)'
     u += (cov_ug * tmp)' # N_ens x N_params
 
     # store new parameters (and observations)
@@ -221,7 +221,7 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     cov_new = cov(ek.u[end], dims=1)
     cov_ratio = det(cov_new) / det(cov_init)
     if cov_ratio < cov_threshold
-        @warn string("New ensemble covariance determinant is less than ", 
+        @warn string("New ensemble covariance determinant is less than ",
                      cov_threshold, " times its previous value.",
                      "\nConsider reducing the EK time step.")
     end
@@ -234,8 +234,8 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
     N_ens = ek.N_ens
 
     # u_mean: N_params x 1
-    u_mean = mean(u', dims=2) 
-    # g_mean: N_params x 1 
+    u_mean = mean(u', dims=2)
+    # g_mean: N_params x 1
     g_mean = mean(g', dims=2)
     # g_cov: N_params x N_params
     g_cov = cov(g, corrected=false)
@@ -255,9 +255,11 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
     ###############    TODO: Implement correct equation here   ################
     ###########################################################################
 
-    implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov \ u_cov)) \
-                  (u' 
-                    - Δt * ( u' .- u_mean) * D  
+    println(diag(u_cov))
+
+    implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov' \ u_cov')') \
+                  (u'
+                    .- Δt * ( u' .- u_mean) * D
                     .+ Δt * u_cov * (ek.process.prior_cov \ ek.process.prior_mean)
                   )
 
