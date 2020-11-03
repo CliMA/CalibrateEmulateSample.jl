@@ -246,10 +246,12 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
     E = g' .- g_mean
     R = g' .- ek.obs_mean
     # D: N_ens x N_ens
-    D = 1/N_ens * (E' * (ek.obs_noise_cov \ R))
+    D = (1/N_ens) * (E' * (ek.obs_noise_cov \ R))
 
     Δt = 1/(norm(D) + 1e-8)
+
     noise = MvNormal(u_cov)
+
 
     ###########################################################################
     ###############    TODO: Implement correct equation here   ################
@@ -261,7 +263,7 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
                     .+ Δt * u_cov * (ek.process.prior_cov \ ek.process.prior_mean)
                   )
 
-    u += implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
+    u = implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
 
     ###########################################################################
     ###########################################################################
