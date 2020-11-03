@@ -148,8 +148,8 @@ truth = Observations.Obs(samples, Γy, y_names[1])
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-@everywhere N_ens = 16 # number of ensemble members
-@everywhere N_iter = 20 # number of EKI iterations.
+@everywhere N_ens = 40 # number of ensemble members
+@everywhere N_iter = 15 # number of EKI iterations.
 @everywhere N_yt = length(yt) # Length of data array
 
 @everywhere initial_params = EKI.construct_initial_ensemble(N_ens, priors)
@@ -185,7 +185,7 @@ for i in 1:N_iter
     for j in 1:N_ens
       g_ens[j, :] = g_ens_arr[j]
     end
-    EKI.update_ensemble_eks!(ekiobj, g_ens, priors, Δt_scaling=0.01)
+    EKI.update_ensemble_eks!(ekiobj, g_ens, priors, Δt_scaling=1.0)
     println("\nEnsemble updated.\n")
     println("\nEnsemble covariance det. for iteration ", size(ekiobj.u)[1])
     println(det(cov(deepcopy((ekiobj.u[end])), dims=1)))
