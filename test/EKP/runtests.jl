@@ -95,16 +95,19 @@ using CalibrateEmulateSample.Priors
     #                                           Γy, Sampler(prior_mean, prior_cov))
 
     # TODO: Uncomment L. 98-106 once EKS is implemented
-   eksobj = EKP.EKObj(initial_params, param_names,
-                      vec(mean(truth_samples, dims=1)), Γy,
-                      Sampler(prior_mean, prior_cov))
-   # EKS iterations
-   println("Iterations: ", N_iter)
-   for i in 1:N_iter
-       params_i = eksobj.u[end]
-       g_ens = G(params_i)
-       EKP.update_ensemble!(eksobj, g_ens)
-   end
+
+    println(size(prior_mean))
+    println(size(prior_cov))
+    eksobj = EKP.EKObj(initial_params, param_names,
+                       vec(mean(truth_samples, dims=1)), Γy,
+                       Sampler(prior_mean, prior_cov))
+    # EKS iterations
+    println("Iterations: ", N_iter)
+    for i in 1:N_iter
+        params_i = eksobj.u[end]
+        g_ens = G(params_i)
+        EKP.update_ensemble!(eksobj, g_ens)
+    end
 
    # Plot evolution of the EKI particles
    eki_final_result = vec(mean(ekiobj.u[end], dims=1))
