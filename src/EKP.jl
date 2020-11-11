@@ -72,14 +72,6 @@ function EKObj(parameters::Array{FT, 2},
                process::P;
                Δt=FT(1)) where {FT<:AbstractFloat, P<:Process}
 
-    # Throw an error if an attempt is made to instantiate a `Sampler` EKObj
-    # EK Sampler implementation is not finalized yet, so its use is prohibited
-    # TODO: Finalize EKS implementation (can be done as soon as we know the
-    #       correct EKS update equation, which apparently is different from
-    #       Eq. (2.8) in Cleary et al. (2019))
-    # err_msg = "Ensemble Kalman Sampler is not fully implemented yet. Use Ensemble Kalman Inversion instead."
-    # typeof(process) != Sampler{FT} || error(err_msg)
-
     # ensemble size
     N_ens = size(parameters)[1]
     IT = typeof(N_ens)
@@ -252,11 +244,6 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
 
     noise = MvNormal(u_cov)
 
-
-    ###########################################################################
-    ###############    TODO: Implement correct equation here   ################
-    ###########################################################################
-
     implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov' \ u_cov')') \
                   (u'
                     .- Δt * ( u' .- u_mean) * D
@@ -264,9 +251,6 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
                   )
 
     u = implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
-
-    ###########################################################################
-    ###########################################################################
 
     # store new parameters (and observations)
     push!(ek.u, u) # N_ens x N_params
