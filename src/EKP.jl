@@ -206,18 +206,18 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_thr
     
     # Add obs_mean (N_data) to each column of noise (N_data x N_ens), then 
     # transpose into N_ens x N_data
-    println("obs mean")
-    println(ek.obs_mean)
-    println("noise")
-    println(noise)
+    #println("obs mean")
+    #println(ek.obs_mean)
+    #println("noise")
+    #println(noise)
     y = (ek.obs_mean .+ noise)' 
     # N_data x N_data \ [N_ens x N_data - N_ens x N_data]' 
     # --> tmp is N_data x N_ens
     tmp = (cov_gg + ek.obs_noise_cov) \ (y - g)' 
-    println("tmp")
-    println(tmp)
-    println("cov_ug")
-    println(cov_ug)
+    #println("tmp")
+    #println(tmp)
+    #println("cov_ug")
+    #println(cov_ug)
     u += (cov_ug * tmp)' # N_ens x N_params
 
     # store new parameters (and observations)

@@ -1,8 +1,6 @@
-# Import Cloudy modules
-include("GModel.jl")
-using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
-using Cloudy
-const PDistributions = Cloudy.ParticleDistributions
+# Import modules
+include("GModel_gyre.jl")
+#const PDistributions = Cloudy.ParticleDistributions
 
 # Import modules
 using Distributions  # probability distributions and associated functions
@@ -22,7 +20,7 @@ using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Priors
 
-rng_seed = 41
+rng_seed = 4137
 Random.seed!(rng_seed)
 
 ###
@@ -32,16 +30,18 @@ Random.seed!(rng_seed)
 # Define the parameters that we want to learn
 # We assume that the true particle mass distribution is a Gamma distribution 
 # with parameters N0_true, θ_true, k_true
-param_names = ["N0", "θ", "k"]
+param_names = ["alpha", "eps", "omega"]
 n_param = length(param_names)
 
-N0_true = 300.0 
-θ_true = 1.5597  
-k_true = 0.0817                  
-params_true = [N0_true, θ_true, k_true]
+alpha_true = 0.1
+eps_true = 0.1  
+omega_true = 2*pi/10 
+params_true = [alpha_true, eps_true, omega_true]
+params_true = reshape(params_true, (1,3))
+y_avg = true
 # Note that dist_true is a Cloudy distribution, not a Distributions.jl 
 # distribution
-dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
+#dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 
 # Assume lognormal priors for all three parameters
 # Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ 
@@ -49,28 +49,29 @@ dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 # these constraints - therefore, we perform CES in log space, i.e., we try 
 # to find the logarithms of the true parameters (and of course, the actual
 # parameters can then simply be obtained by exponentiating the final results). 
-function logmean_and_logstd(μ, σ)
-    σ_log = sqrt(log(1.0 + σ^2/μ^2))
-    μ_log = log(μ / (sqrt(1.0 + σ^2/μ^2)))
-    return μ_log, σ_log
+function logmean_and_logstd(u,C)
+    C_log = sqrt(log(1.0 + C^2/u^2))
+    u_log = sqrt(u / sqrt(1.0 + C^2/u^2))
+    return u_log, C_log
 end
 
-logmean_N0, logstd_N0 = logmean_and_logstd(280., 40.)
-logmean_θ, logstd_θ = logmean_and_logstd(3.0, 1.5)
-logmean_k, logstd_k = logmean_and_logstd(0.5, 0.5)
+logmean_alpha, logstd_alpha = logmean_and_logstd(0.1, 0.2)
+logmean_eps, logstd_eps = logmean_and_logstd(0.1, 0.2)
+logmean_omega, logstd_omega = logmean_and_logstd(0.6, 0.2)
 
-priors = [Priors.Prior(Normal(logmean_N0, logstd_N0), "N0"),    # prior on N0
-          Priors.Prior(Normal(logmean_θ, logstd_θ), "θ"),       # prior on θ
-          Priors.Prior(Normal(logmean_k, logstd_k), "k")]       # prior on k
+priors = [Priors.Prior(Normal(logmean_alpha, logstd_alpha), "alpha"),    # prior on alpha
+          Priors.Prior(Normal(logmean_eps, logstd_eps), "eps"),       # prior on eps
+          Priors.Prior(Normal(logmean_omega, logstd_omega), "omega")]       # prior on omega
 
+#priors = [Priors.Prior(Normal(0.1, 0.1), "alpha"),    # prior on alpha
+#          Priors.Prior(Normal(0.1, 0.1), "eps"),       # prior on eps
+#          Priors.Prior(Normal(0.6, 0.1), "omega")]       # prior on omega
 
 ###
 ###  Define the data from which we want to learn the parameters
 ###
 
-data_names = ["M0", "M1", "M2"]
-moments = [0.0, 1.0, 2.0]
-n_moments = length(moments)
+data_names = ["y0", "y1", "y2", "y3"]
 
 
 ###
@@ -78,13 +79,23 @@ n_moments = length(moments)
 ###
 
 # Collision-coalescence kernel to be used in Cloudy
-coalescence_coeff = 1/3.14/4
-kernel_func = x -> coalescence_coeff
-kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
+#coalescence_coeff = 1/3.14/4
+#kernel_func = x -> coalescence_coeff
+#kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
 
 # Time period over which to run Cloudy
-tspan = (0., 0.5)  
-
+Nt = 6
+T = 2*pi/omega_true
+t = range(0,stop=T,length=Nt)
+# Domain
+Nx = 3; Ny = 2;
+#x = range(0,stop=2,length=Nx)
+#y = range(-1,stop=1,length=Ny)
+x = rand(Uniform(0,2), Nx)
+y = rand(Uniform(-1,1), Ny)
+println("Domain")
+println(x)
+println(y)
 
 ###
 ###  Generate (artificial) truth samples
@@ -92,29 +103,34 @@ tspan = (0., 0.5)
 ###        y = G(x1, x2) + η
 ###
 
-g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
-gt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
-                  PDistributions.moment, Cloudy.Sources.get_int_coalescence)
+# Lorenz forward
+# Input: params: [N_ens, N_params]
+# Output: gt: [N_ens, N_data]
+gt = GModel.gyre_forward(params_true, x, y, t, y_avg)
+
 n_samples = 100
 yt = zeros(n_samples, length(gt))
-noise_level = 0.05
-Γy = noise_level * convert(Array, Diagonal(gt))
-μ = zeros(length(gt))
+noise_level = 0.001
+Sy = noise_level * convert(Array, Diagonal(ones(length(gt))))
+#noise_level = 0.05
+#Sy = noise_level * convert(Array, Diagonal(gt))
+u = zeros(length(gt))
 
 # Add noise
 for i in 1:n_samples
-    yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
+    yt[i, :] = gt .+ reshape(rand(MvNormal(u, Sy)),(1,length(gt)))
+    #yt[i, :] = gt .+ rand(MvNormal(u, Sy))
 end
 
-truth = Observations.Obs(yt, Γy, data_names)
+truth = Observations.Obs(yt, Sy, data_names)
 
 
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
-log_transform(a::AbstractArray) = log.(a)
-exp_transform(a::AbstractArray) = exp.(a)
+#log_transform(a::AbstractArray) = log.(a)
+#exp_transform(a::AbstractArray) = exp.(a)
 
 N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
@@ -125,20 +141,22 @@ ekiobj = EKP.EKObj(initial_params, param_names, truth.mean,
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
-dummy = 1.0
-dist_type = PDistributions.Gamma(dummy, dummy, dummy)
-g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
+#dummy = 1.0
+#dist_type = PDistributions.Gamma(dummy, dummy, dummy)
+#g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
 
 # EKI iterations
+err = zeros(N_iter) 
 for i in 1:N_iter
-    # Note that the parameters are exp-transformed for use as input
-    # to Cloudy
-    params_i = deepcopy(exp_transform(ekiobj.u[end]))
-    g_ens = GModel.run_G_ensemble(params_i, g_settings,
-                                  PDistributions.update_params,
-                                  PDistributions.moment,
-                                  Cloudy.Sources.get_int_coalescence)
+    params_i = deepcopy(ekiobj.u[end])
+    g_ens = GModel.gyre_forward(params_i, x, y, t, y_avg)
+    #g_ens = GModel.run_G_ensemble(params_i, g_settings,
+    #                              PDistributions.update_params,
+    #                              PDistributions.moment,
+    #                              Cloudy.Sources.get_int_coalescence)
     EKP.update_ensemble!(ekiobj, g_ens) 
+    err[i] = mean((params_true - mean(ekiobj.u[end],dims=1)).^2)
+    println(err[i])
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -146,7 +164,7 @@ println("True parameters: ")
 println(params_true)
 
 println("\nEKI results:")
-println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
+println(mean(deepcopy(ekiobj.u[end]), dims=1))
 
 
 ###
@@ -167,22 +185,31 @@ kern2 = Mat52Ard(len2, 0.0)
 white = Noise(log(2.0))
 # # construct kernel
 GPkernel =  kern1 + kern2 + white
-# Get training points    
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+# Get training points from the EKP iteration number in the second input term  
+#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 4)
 normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
-                         obs_noise_cov=Γy, normalized=normalized, 
+#gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
+#			 obs_noise_cov=Sy, normalized=normalized,
+#                         noise_learn=false, prediction_type=pred_type)
+
+# Default kernel
+gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; 
+			 obs_noise_cov=Sy, normalized=normalized,
                          noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = GPEmulator.predict(gpobj, reshape(log.(params_true), 1, :), 
+y_mean, y_var = GPEmulator.predict(gpobj, reshape(params_true, 1, :), 
                                    transform_to_real=true)
 
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
+println(diag(y_var[1],0))
 println("true data: ")
 println(truth.mean)
+println("GP MSE: ")
+println(mean((truth.mean - vec(y_mean)).^2))
 
 
 ###
@@ -201,7 +228,7 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
-mcmc_test = MCMC.MCMCObj(yt_sample, Γy, priors, step, u0, max_iter, 
+mcmc_test = MCMC.MCMCObj(yt_sample, Sy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
 new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 
@@ -213,7 +240,7 @@ u0 = vec(mean(u_tp, dims=1))
 burnin = 1000
 max_iter = 100000
 
-mcmc = MCMC.MCMCObj(yt_sample, Γy, priors, new_step, u0, max_iter, 
+mcmc = MCMC.MCMCObj(yt_sample, Sy, priors, new_step, u0, max_iter, 
                     mcmc_alg, burnin, svdflag=true)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
@@ -230,19 +257,24 @@ println(det(inv(post_cov)))
 println(" ")
 
 # Plot the posteriors together with the priors and the true parameter values
-true_values = [log(N0_true) log(θ_true) log(k_true)]
+true_values = [alpha_true, eps_true, omega_true]
 n_params = length(true_values)
-
+if y_avg==true
+	y_folder = "average/"
+else
+	y_folder = "instantaneous/"
+end
+save_directory = "/home/mhowland/Codes/CESPlots/figures/"*y_folder
 for idx in 1:n_params
     if idx == 1
-        param = "N0"
-        xs = collect(4.5:0.01:6.5)
+        param = "alpha"
+	xs = collect(0:0.01:0.2)
     elseif idx == 2
-        param = "Theta"
-        xs = collect(-1.0:0.01:2.5)
+        param = "eps"
+	xs = collect(0:0.01:0.2)
     elseif idx == 3
-        param = "k"
-        xs = collect(-4.0:0.01:1.0)
+        param = "omega"
+	xs = collect(0.4:0.01:0.8)
     else
         throw("not implemented")
     end
@@ -254,5 +286,5 @@ for idx in 1:n_params
     plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
 
     title!(param)
-    StatsPlots.savefig("posterior_"*param*".png")
+    StatsPlots.savefig(save_directory*"posterior_"*param*".png")
 end
