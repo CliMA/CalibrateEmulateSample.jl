@@ -13,125 +13,113 @@ using CalibrateEmulateSample.Priors
     rng_seed = 41
     Random.seed!(rng_seed)
 
-    ### Define priors on the parameters u
-    umin = 0.0
-    umax = 20.0
-    dist1 = Uniform(umin, umax) # prior on u1
-    dist2 = Uniform(umin, umax) # prior on u2
-    priors = [Priors.Prior(dist1, "u1"), Priors.Prior(dist2, "u2")]
-    prior_mean = [mean(dist1), mean(dist2)]
-    # Assuming independence of u1 and u2
-    prior_cov = convert(Array, Diagonal([var(dist1), var(dist2)]))
+    ### Generate data from a linear model: a regression problem with n_par parameters
+    ### and n_obs. G(u) = A \times u, where A : R^n_par -> R
+    n_obs = 10                  # Number of synthetic observations from G(u)
+    n_par =  2                  # Number of parameteres
+    u_star = [-1., 2.]          # True parameters
+    noise_level = .1            # Defining the observation noise level
+    Γy = noise_level * Matrix(I, n_obs, n_obs) # Independent noise for synthetic observations
+    noise = MvNormal(zeros(n_obs), Γy)
 
-    ### Define forward model G
+    C = [1 -.9; -.9 1]          # Correlation structure for linear operator
+    A = rand(MvNormal(zeros(2,), C), n_obs)'    # Linear operator in R^{n_obs \times n_par}
+
+    @test size(A) == (n_obs, n_par)
+
+    y_star = A * u_star
+    y_obs  = y_star + rand(noise)
+
+    @test size(y_star) == (n_obs,)
+
+    #### Define linear model
     function G(u)
-        3.0 .* u
+        A * u
     end
 
-    ###  Generate (artificial) truth samples
-    npar = 2 # number of parameters
-    ut = Distributions.rand(Uniform(umin, umax), npar)
+    @test norm(y_star - G(u_star)) < n_obs * noise_level^2
+
+    #### Define prior information on parameters
     param_names = ["u1", "u2"]
-    yt = G(ut)
-    n_samples = 100
-    truth_samples = zeros(n_samples, length(yt))
-    noise_level = 0.9
-    Γy = noise_level^2 * convert(Array, Diagonal(yt))
-    μ = zeros(length(yt))
-    for i in 1:n_samples
-        truth_samples[i, :] = yt .+ Distributions.rand(MvNormal(μ, Γy))
-    end
+    priors     = [Priors.Prior(Normal(1., sqrt(2)), param_names[1]),
+                  Priors.Prior(Normal(1., sqrt(2)), param_names[2])]
+
+    prior_mean = [1., 1.]
+    # Assuming independence of u1 and u2
+    prior_cov = convert(Array, Diagonal([sqrt(2.), sqrt(2.)]))
 
     ###
     ###  Calibrate (1): Ensemble Kalman Inversion
     ###
 
     N_ens = 50 # number of ensemble members
-    N_iter = 5 # number of EKI iterations
-    initial_params = EKP.construct_initial_ensemble(N_ens, priors;
+    N_iter = 20 # number of EKI iterations
+    initial_ensemble = EKP.construct_initial_ensemble(N_ens, priors;
                                                     rng_seed=rng_seed)
-    ekiobj = EKP.EKObj(initial_params, param_names,
-                       vec(mean(truth_samples, dims=1)), Γy, Inversion())
+    @test size(initial_ensemble) == (N_ens, n_par)
 
-    @test size(initial_params) == (N_ens, npar)
-    @test size(ekiobj.u[end])  == (N_ens, npar)
-    @test ekiobj.unames == ["u1", "u2"]
-    @test ekiobj.obs_mean ≈ [37.29, 15.49] atol=1e-1
-    @test ekiobj.obs_noise_cov ≈ [30.29 0.0; 0.0 12.29] atol=1e-1
-    @test ekiobj.N_ens == N_ens
-
-    # test convergence warning during update
-    params_i = ekiobj.u[end]
-    g_ens = G(params_i)
-    @test_logs (:warn, string("New ensemble covariance determinant is less than ",
-                              "0.01 times its previous value.",
-                              "\nConsider reducing the EK time step."))
-    EKP.update_ensemble!(ekiobj, g_ens)
-
-    # restart EKObj and test step
-    ekiobj = EKP.EKObj(initial_params, param_names,
-                       vec(mean(truth_samples, dims=1)), Γy, Inversion())
-    @test EKP.find_ek_step(ekiobj, g_ens) ≈ 0.5
+    ekiobj = EKP.EKObj(initial_ensemble, param_names,
+                       y_obs, Γy, Inversion())
 
     # EKI iterations
     for i in 1:N_iter
         params_i = ekiobj.u[end]
-        g_ens = G(params_i)
+        g_ens = G(params_i')'
         EKP.update_ensemble!(ekiobj, g_ens)
     end
 
-    # EKI results: Test if ensemble has collapsed toward the true parameter values
+    # EKI results: Test if ensemble has collapsed toward the true parameter 
+    # values
     eki_final_result = vec(mean(ekiobj.u[end], dims=1))
-    @test norm(ut - eki_final_result) < 0.5
+    # @test norm(u_star - eki_final_result) < 0.5
 
+    # Plot evolution of the EKI particles
+    eki_final_result = vec(mean(ekiobj.u[end], dims=1))
+    gr()
+    p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
+    plot!(ekiobj.u[end][:, 1],  ekiobj.u[end][:,2], seriestype=:scatter)
+    plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
+          linestyle=:dash, linecolor=:red)
+    plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
+    savefig(p, "EKI_test.png")
 
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
     ###
+    eksobj = EKP.EKObj(initial_ensemble, param_names,
+                      y_obs, Γy,
+                      Sampler(prior_mean, prior_cov))
 
-    # EKS is not fully implemented yet, so this should raise an exception
-    # @test_throws Exception eksobj = EKP.EKObj(initial_params, param_names,
-    #                                           vec(mean(truth_samples, dims=1)),
-    #                                           Γy, Sampler(prior_mean, prior_cov))
-
-    # TODO: Uncomment L. 98-106 once EKS is implemented
-
-    println(size(prior_mean))
-    println(size(prior_cov))
-    eksobj = EKP.EKObj(initial_params, param_names,
-                       vec(mean(truth_samples, dims=1)), Γy,
-                       Sampler(prior_mean, prior_cov))
     # EKS iterations
-    println("Iterations: ", N_iter)
     for i in 1:N_iter
         params_i = eksobj.u[end]
-        g_ens = G(params_i)
+        g_ens = G(params_i')'
         EKP.update_ensemble!(eksobj, g_ens)
     end
 
-   # Plot evolution of the EKI particles
-   eki_final_result = vec(mean(ekiobj.u[end], dims=1))
-   gr()
-   p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
-   for i in 2:N_iter
-       plot!(ekiobj.u[i][:, 1],  ekiobj.u[i][:,2], seriestype=:scatter)
-   end
-   plot!([ut[1]], xaxis="u1", yaxis="u2", seriestype="vline",
-         linestyle=:dash, linecolor=:red)
-   plot!([ut[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
-   savefig(p, "EKI_test.png")
+    # Plot evolution of the EKS particles
+    eks_final_result = vec(mean(eksobj.u[end], dims=1))
+    gr()
+    p = plot(eksobj.u[1][:,1], eksobj.u[1][:,2], seriestype=:scatter)
+    plot!(eksobj.u[end][:, 1],  eksobj.u[end][:,2], seriestype=:scatter)
+    plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
+          linestyle=:dash, linecolor=:red)
+    plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
+    savefig(p, "EKS_test.png")
 
-   # Plot evolution of the EKS particles
-   eks_final_result = vec(mean(eksobj.u[end], dims=1))
-   gr()
-   p = plot(eksobj.u[1][:,1], eksobj.u[1][:,2], seriestype=:scatter)
-   for i in 2:N_iter
-       plot!(eksobj.u[i][:, 1],  eksobj.u[i][:,2], seriestype=:scatter)
-   end
-   plot!([ut[1]], xaxis="u1", yaxis="u2", seriestype="vline",
-         linestyle=:dash, linecolor=:red)
-   plot!([ut[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
-   savefig(p, "EKS_test.png")
+    posterior_cov_inv = (A' * (Γy\A) + 1 * Matrix(I, n_par, n_par)/prior_cov)
+    ols_mean          = (A'*(Γy\A)) \ (A'*(Γy\y_obs))
+    posterior_mean    = posterior_cov_inv \ ( (A'*(Γy\A)) * ols_mean  + (prior_cov\prior_mean))
 
-    #@test norm(ut - eks_final_result) < 0.5
+    #### This tests correspond to:
+    # EKI provides a solution closer to the ordinary Least Squares estimate
+    @test norm(ols_mean - eki_final_result) < norm(ols_mean - eks_final_result)
+    # EKS provides a solution closer to the posterior mean
+    @test norm(posterior_mean - eks_final_result) < norm(posterior_mean - eki_final_result)
+
+    ##### I expect this test to make sense:
+    # In words: the ensemble covariance is still a bit ill-dispersed since the
+    # algorithm employed still does not include the correction term for finite-sized
+    # ensembles.
+    @test abs(sum(diag(posterior_cov_inv\cov(eksobj.u[end]))) - n_par) > 1e-5
 end
