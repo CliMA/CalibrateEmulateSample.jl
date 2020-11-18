@@ -2,7 +2,6 @@ using Distributions
 using LinearAlgebra
 using Random
 using Test
-using Plots
 
 using CalibrateEmulateSample.EKP
 using CalibrateEmulateSample.Priors
@@ -75,13 +74,16 @@ using CalibrateEmulateSample.Priors
 
     # Plot evolution of the EKI particles
     eki_final_result = vec(mean(ekiobj.u[end], dims=1))
-    gr()
-    p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
-    plot!(ekiobj.u[end][:, 1],  ekiobj.u[end][:,2], seriestype=:scatter)
-    plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
-          linestyle=:dash, linecolor=:red)
-    plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
-    savefig(p, "EKI_test.png")
+    
+    if TEST_PLOT_OUTPUT
+        gr()
+        p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
+        plot!(ekiobj.u[end][:, 1],  ekiobj.u[end][:,2], seriestype=:scatter)
+        plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
+            linestyle=:dash, linecolor=:red)
+        plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
+        savefig(p, "EKI_test.png")
+    end
 
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
@@ -99,13 +101,16 @@ using CalibrateEmulateSample.Priors
 
     # Plot evolution of the EKS particles
     eks_final_result = vec(mean(eksobj.u[end], dims=1))
-    gr()
-    p = plot(eksobj.u[1][:,1], eksobj.u[1][:,2], seriestype=:scatter)
-    plot!(eksobj.u[end][:, 1],  eksobj.u[end][:,2], seriestype=:scatter)
-    plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
-          linestyle=:dash, linecolor=:red)
-    plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
-    savefig(p, "EKS_test.png")
+    
+    if TEST_PLOT_OUTPUT
+        gr()
+        p = plot(eksobj.u[1][:,1], eksobj.u[1][:,2], seriestype=:scatter)
+        plot!(eksobj.u[end][:, 1],  eksobj.u[end][:,2], seriestype=:scatter)
+        plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
+            linestyle=:dash, linecolor=:red)
+        plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
+        savefig(p, "EKS_test.png")
+    end
 
     posterior_cov_inv = (A' * (Γy\A) + 1 * Matrix(I, n_par, n_par)/prior_cov)
     ols_mean          = (A'*(Γy\A)) \ (A'*(Γy\y_obs))
