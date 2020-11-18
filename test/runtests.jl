@@ -1,7 +1,5 @@
 using Test
 using CalibrateEmulateSample
-ENV["JULIA_LOG_LEVEL"] = "WARN"
-ENV["PYTHON"] = ""
 
 for submodule in [
                   "Priors",
