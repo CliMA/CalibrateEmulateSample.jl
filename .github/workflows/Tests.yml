@@ -16,17 +16,17 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.4.0
+      uses: styfle/cancel-workflow-action@0.6.0
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2.2.0
+      uses: actions/checkout@v2
     
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1.1.6
+      uses: julia-actions/setup-julia@v1
       with:
-        version: 1.4
+        version: 1.5
  
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
@@ -70,15 +70,15 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.4.0
+      uses: styfle/cancel-workflow-action@0.6.0
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2.2.0
+      uses: actions/checkout@v2
     
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1.1.6
+      uses: julia-actions/setup-julia@v1
       with:
         version: 1.4
  
@@ -109,15 +109,15 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.4.0
+      uses: styfle/cancel-workflow-action@0.6.0
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2.2.0
+      uses: actions/checkout@v2
     
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1.1.6
+      uses: julia-actions/setup-julia@v1
       with:
         version: 1.4
  
