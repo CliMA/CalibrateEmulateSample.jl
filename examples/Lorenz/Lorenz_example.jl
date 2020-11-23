@@ -9,6 +9,7 @@ using StatsPlots
 using GaussianProcesses
 using Plots
 using Random
+using JLD2
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.EKP
@@ -22,21 +23,30 @@ rng_seed = 4137
 Random.seed!(rng_seed)
 
 # Output figure save directory
-figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_static/"
+figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/"
+data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/"
 
 ###
 ###  Define the (true) parameters and their priors
 ###
 
 # Define the parameters that we want to learn
-F_true = 5.
-param_names = ["F"]
+F_true = 8.
+#ω_true = 2. * π / 1000.
+#ω_true = 2. * π / 100.
+ω_true = 2. * π / 10.
+#Tc_vec = 1:2:20;
+#for w_ind = 1:length(ω_vec);
+A_true = 2.5
+param_names = ["F", "ω", "A"]
 n_param = length(param_names)
 
-params_true = [F_true]
-params_true = reshape(params_true, (1,1))
+params_true = [F_true, ω_true, A_true]
+params_true = reshape(params_true, (1,n_param))
 y_avg = true
 
+println(n_param)
+println(params_true)
 
 # Assume lognormal priors for all three parameters
 # Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ 
@@ -50,10 +60,12 @@ function logmean_and_logstd(u,C)
     return u_log, C_log
 end
 
-logmean_F, logstd_F = logmean_and_logstd(5, 1)
+# logmean_F, logstd_F = logmean_and_logstd(F_true, 1)
 
 #priors = [Priors.Prior(Normal(logmean_F, logstd_F), "F")]    # prior on F
-priors = [Priors.Prior(Normal(5, 1), "F")]    # prior on F
+priors = [Priors.Prior(Normal(F_true, 3), "F"),    # prior on F
+	Priors.Prior(Normal(ω_true, 0.05*ω_true), "ω"), 
+	Priors.Prior(Normal(A_true, 0.05*A_true), "A")]
 
 ###
 ###  Define the data from which we want to learn the parameters
@@ -67,21 +79,31 @@ data_names = ["y0", "y1"]
 
 # Lorenz 96 model parameters
 # Behavior changes depending on the size of F, N
-N = 38
+N = 36
 dt = 1/64.
-tend = 1000.
-nstep = Int32(tend/dt);
 # Start of integration
 t_start = 800.
 # Integration length
-#T = 15.
-T = 100.
+#T = 1.
+#T = 1.5
+#T = 2.
+#T = 4.
+#T = 8.
+T = 10.
 # Initial perturbation
 Fp = rand(Normal(0.0, 0.01), N);
+# Stats type
+stats_type = 1
+kmax = 1
+# Prescribe variance or use a number of forward passes to define true interval variability
+var_prescribe = false
+# Stationary or transient dynamics
+dynamics = 2
 
 # Settings
 # Constructs an LSettings structure, see GModel.jl for the descriptions
-lorenz_settings = GModel.LSettings(1, t_start, T, Fp, N, dt, tend);
+lorenz_settings = GModel.LSettings(dynamics, stats_type, t_start, T, Fp, N, dt, t_start+T, kmax);
+lorenz_params = GModel.LParams(F_true, ω_true, A_true)
 
 ###
 ###  Generate (artificial) truth samples
@@ -96,19 +118,31 @@ lorenz_settings = GModel.LSettings(1, t_start, T, Fp, N, dt, tend);
 # corresponding to the truth construction
 gt = dropdims(GModel.run_G_ensemble(params_true, lorenz_settings), dims=1)
 
-n_samples = 100
-yt = zeros(n_samples, length(gt))
-noise_level = 0.05
-Γy = noise_level * convert(Array, Diagonal(gt))
-μ = zeros(length(gt))
-
-# Add noise
-for i in 1:n_samples
-    yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
+# Prescribed variance
+if var_prescribe==true
+    n_samples = 100
+    yt = zeros(n_samples, length(gt))
+    noise_level = 0.05
+    Γy = noise_level * convert(Array, Diagonal(gt))
+    μ = zeros(length(gt))
+    # Add noise
+    for i in 1:n_samples
+        yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
+    end
+else
+    n_samples = 10; 
+    yt = zeros(n_samples, length(gt))
+    for i in 1:n_samples
+	    lorenz_settings_local = GModel.LSettings(dynamics, stats_type, t_start+T*(i-1), 
+					      T, Fp, N, dt, t_start+T*(i-1)+T, kmax);
+	    yt[i, :] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
+    end
+    # Variance of data
+    Γy = convert(Array, Diagonal(dropdims(mean((yt.-mean(yt,dims=1)).^2,dims=1),dims=1)))
+    println(Γy)
 end
 # Construct observation object
 truth = Observations.Obs(yt, Γy, data_names)
-
 
 ###
 ###  Calibrate: Ensemble Kalman Inversion
@@ -161,8 +195,8 @@ white = Noise(log(2.0))
 # # construct kernel
 GPkernel =  kern1 + kern2 + white
 # Get training points from the EKP iteration number in the second input term  
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
-#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 3)
+#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 3)
 #u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 1)
 normalized = true
 
@@ -236,24 +270,24 @@ println(det(inv(post_cov)))
 println(" ")
 
 # Plot the posteriors together with the priors and the true parameter values
-true_values = [F_true]
+true_values = params_true
 n_params = length(true_values)
 if lorenz_settings.stats_type==1
 	y_folder = "average/"
 else
-	y_folder = "instantaneous/"
+	y_folder = "spectral/"
 end
 save_directory = figure_save_directory*y_folder
 for idx in 1:n_params
     if idx == 1
         param = "F"
-	xs = collect(1:0.1:10)
+	xs = collect(5:0.1:15)
     elseif idx == 2
-        param = "eps"
-	xs = collect(0:0.01:0.2)
+        param = "ω"
+	xs = collect(ω_true-0.2:0.01:ω_true+0.2)
     elseif idx == 3
-        param = "omega"
-	xs = collect(0.4:0.01:0.8)
+        param = "A"
+	xs = collect(A_true-2.0:0.1:A_true+2.0)
     else
         throw("not implemented")
     end
@@ -265,5 +299,9 @@ for idx in 1:n_params
     plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
 
     title!(param)
-    StatsPlots.savefig(save_directory*"posterior_"*param*".png")
+    StatsPlots.savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
 end
+
+# Save data
+@save data_save_directory*"u_tp.jld2" u_tp
+@save data_save_directory*"g_tp.jld2" g_tp
