@@ -1,5 +1,6 @@
 using Test
 using Distributions
+using StatsBase
 using Random
 
 using CalibrateEmulateSample.ParameterDistributionsStorage
