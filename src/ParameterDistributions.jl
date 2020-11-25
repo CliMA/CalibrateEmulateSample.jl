@@ -53,7 +53,7 @@ abstract type ConstraintType end
 """
     NoConstrain <: ConstraintType
 
-The mapping x -> x
+No constraint.
 """
 
 struct NoConstraint <: ConstraintType end
@@ -61,7 +61,7 @@ struct NoConstraint <: ConstraintType end
 """
     BoundedBelow{FT <: AbstractFloat} <: ConstraintType
 
-The mapping x -> ln(x - lower_bound{FT}); from a space bounded below to an unbounded space.
+A lower bound constraint.
 """
 struct BoundedBelow{FT <: AbstractFloat} <:
     lower_bound::FT
@@ -70,7 +70,7 @@ end
 """
     BoundedAbove{FT <: AbstractFloat} <: ConstraintType
 
-The mapping to x -> ln( upper_bound{FT} - x); from a space bounded above to an unbounded space.
+And upper bound constraint
 """
 struct BoundedAbove{FT <: AbstractFloat}
     upper_bound::FT
@@ -79,7 +79,7 @@ end
 """
     Bounded{FT <: AbstractFloat} <: ConstraintType
 
-The mapping x -> ln( (x - lower_bound) / (upper_bound - x) ); from a bounded space to an unbounded space.
+Both a lower and upper bound constraint.
 """
 struct Bounded{FT <: AbstractFloat}
     lower_bound::FT
@@ -87,7 +87,7 @@ struct Bounded{FT <: AbstractFloat}
 end
 
 function Bounded(lower::FT, upper::FT) where {FT <: AbstractFloat}
-    @assert lower_bound < upper_bound
+    lower_bound < upper_bound || throw(DomainError("upper bound must be greater than lower bound"))
     Bounded{FT}(lower_bound,upper_bound)
 end
 
@@ -204,7 +204,7 @@ end
 """
     transform_real_to_prior(pds::ParameterDistributions, x::Array{AbstractFloat})
 
-Apply the transformation to map real parameter x into the unbounded prior space
+Apply the transformation to map real (and possibly constrained) parameters `xarray` into the unbounded prior space
 """
 function transform_real_to_prior(pds::ParameterDistributions, xarray::Array{FT}) where {FT <: AbstractFloat}
     #split xarray into chunks to be fed into each distribution
@@ -221,16 +221,30 @@ function transform_real_to_prior(pd::ParameterDistribution, xarray::Array{FT}) w
     return [transform_real_to_prior(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
 end
 
+"""
+No constraint mapping x -> x
+"""
 function transform_real_to_prior(c::NoConstraints , x::Array{FT}) where {FT <: AbstractFloat}
     return x
 end
+
+"""
+Bounded below -> unbounded, use mapping x -> ln(x - lower_bound)
+"""
 function transform_real_to_prior(c::BoundedBelow, x::Array{FT}) where {FT <: AbstractFloat}    
     return ln(x - c.lower_bound)
 end
+
+"""
+Bounded above -> unbounded, use mapping x -> ln(upper_bound - x)
+"""
 function transform_real_to_prior(c::BoundedAbove, x::Array{FT}) where {FT <: AbstractFloat}    
     return ln(c.upper_bound - x)
 end
 
+"""
+Bounded -> unbounded, use mapping x -> ln((x - lower_bound) / (upper_bound - x)
+"""
 function transform_real_to_prior(c::Bounded, x::Array{FT}) where {FT <: AbstractFloat}    
     return ln((c.upper_bound - x) / (x - c.lower_bound))
 end
@@ -240,7 +254,7 @@ end
 """
     transform_prior_to_real(pds::ParameterDistributions, xarray::Array{AbstractFloat})
 
-Apply the transformation to map parameter x into the real space
+Apply the transformation to map parameters `xarray` from the unbounded space into (possibly constrained) real space
 """
 function transform_prior_to_real(pds::ParameterDistributions,
                                  xarray::Array{FT}) where {FT <: AbstractFloat}
@@ -260,17 +274,30 @@ function transform_prior_to_real(pd::ParameterDistributions, xarray::Array{FT}) 
     return [transform_prior_to_real(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
 end
 
-
+"""
+No constraint mapping x -> x
+"""
 function transform_prior_to_real(c::NoConstraints , x::FT) where {FT <: AbstractFloat}
     return x
 end
+
+"""
+Unbounded -> bounded below, use mapping x -> exp(x) + lower_bound
+"""
 function transform_prior_to_real(c::BoundedBelow, x::FT) where {FT <: AbstractFloat}    
     return exp(x) + c.lower_bound
 end
+
+"""
+Unbounded -> bounded above, use mapping x -> upper_bound - exp(x)
+"""
 function transform_prior_to_real(c::BoundedAbove, x::FT) where {FT <: AbstractFloat}    
     return c.upper_bound - exp(x)
 end
 
+"""
+Unbounded -> bounded, use mapping x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
+"""
 function transform_prior_to_real(c::Bounded, x::FT) where {FT <: AbstractFloat}    
     return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
 end
