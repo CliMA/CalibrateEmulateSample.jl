@@ -106,13 +106,13 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         @test sample_distribution(u1,3) == s1
         
         Random.seed!(2020)
-        idx = sample(collect(1:size(d2.distribution_samples)[1]),1) 
+        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[1]),1) 
         s2 = d2.distribution_samples[idx, :]
         Random.seed!(2020)
         @test sample_distribution(u2) == s2
 
         Random.seed!(2020)
-        idx = sample(collect(1:size(d2.distribution_samples)[1]), 3; replace=false) 
+        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[1]), 3; replace=false) 
         s2 = d2.distribution_samples[idx, :]
         Random.seed!(2020)
         @test sample_distribution(u2,3) == s2

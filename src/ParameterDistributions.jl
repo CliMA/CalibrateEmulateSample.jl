@@ -192,7 +192,7 @@ end
 
 function sample_distribution(d::Samples, n_samples::IT)  where {IT <: Integer}
     total_samples = size(d.distribution_samples)[1]
-    samples_idx = sample(collect(1:total_samples), n_samples; replace=false)
+    samples_idx = StatsBase.sample(collect(1:total_samples), n_samples; replace=false)
     return d.distribution_samples[samples_idx, :]
 end
 
