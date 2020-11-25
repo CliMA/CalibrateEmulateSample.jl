@@ -193,18 +193,32 @@ function sample_distribution(d::Parameterized,n_samples::IT)
 end
 
 
-#transforms keyword template
+#apply transforms
+function length(c::CType) where {CType <: ConstraintType}
+    return 1
+end
+function length(carray::Array{CType}) where {CType <: ConstraintType}
+    return size(carray)[1]
+end
+
 """
     transform_real_to_prior(pds::ParameterDistributions, x::Array{AbstractFloat})
 
-apply the transformation to map real parameter x into the unbounded prior space
+Apply the transformation to map real parameter x into the unbounded prior space
 """
-function transform_real_to_prior(pds::ParameterDistributions, x::Array{FT}) where {FT <: AbstractFloat}
-    return Dict{String,Any}(get_name(pd) => transform_real_to_prior(pd,x) for pd in pds)
+function transform_real_to_prior(pds::ParameterDistributions, xarray::Array{FT}) where {FT <: AbstractFloat}
+    #split xarray into chunks to be fed into each distribution
+    clen = [length(pd.constraints) for pd in pds] # e.g [2,3,1,3]
+    cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
+    x_idx = Dict(Integer,Array{Integer})(i => collect(cumulative_cl[i-1]+1:cumulative_cl[i])
+                                         for i in 2:size(cumulative_clen)[1])
+    x_idx[1] = collect(1:cumulative_clen[1])
+
+    return Dict{String,Any}(get_name(pd) => transform_real_to_prior(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds))
 end
 
-function transform_real_to_prior(pd::ParameterDistribution, x::Array{FT}) where {FT <: AbstractFloat}
-    return [transform_real_to_prior(constraint,x) for constraint in pd.constraints]
+function transform_real_to_prior(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: AbstractFloat}
+    return [transform_real_to_prior(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
 end
 
 function transform_real_to_prior(c::NoConstraints , x::Array{FT}) where {FT <: AbstractFloat}
@@ -224,30 +238,40 @@ end
 
 
 """
-    transform_prior_to_real(pds::ParameterDistributions, x::Array{AbstractFloat})
+    transform_prior_to_real(pds::ParameterDistributions, xarray::Array{AbstractFloat})
 
-apply the transformation to map parameter x into the real space
+Apply the transformation to map parameter x into the real space
 """
-function transform_prior_to_real(pds::ParameterDistributions, x::Array{FT}) where {FT <: AbstractFloat}
-    return Dict{String,Any}(get_name(pd) => transform_prior_to_real(pd,x) for pd in pds)
+function transform_prior_to_real(pds::ParameterDistributions,
+                                 xarray::Array{FT}) where {FT <: AbstractFloat}
+
+    #split xarray into chunks to be fed into each distribution
+    clen = [length(pd.constraints) for pd in pds] # e.g [2,3,1,3]
+    cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
+    x_idx = Dict(Integer,Array{Integer})(i => collect(cumulative_cl[i-1]+1:cumulative_cl[i])
+                                         for i in 2:size(cumulative_clen)[1])
+    x_idx[1] = collect(1:cumulative_clen[1])
+    
+    return Dict{String,Any}(get_name(pd) => transform_prior_to_real(pd,xarray[x_idx[i]])
+                                             for (i,pd) in enumerate(pds))
 end
 
-function transform_prior_to_real(pd::ParameterDistributions, x::Array{FT}) where {FT <: AbstractFloat}
-    return [transform_prior_to_real(constraint,x) for constraint in pd.constraints]
+function transform_prior_to_real(pd::ParameterDistributions, xarray::Array{FT}) where {FT <: AbstractFloat}
+    return [transform_prior_to_real(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
 end
 
 
-function transform_prior_to_real(c::NoConstraints , x::Array{FT}) where {FT <: AbstractFloat}
+function transform_prior_to_real(c::NoConstraints , x::FT) where {FT <: AbstractFloat}
     return x
 end
-function transform_prior_to_real(c::BoundedBelow, x::Array{FT}) where {FT <: AbstractFloat}    
+function transform_prior_to_real(c::BoundedBelow, x::FT) where {FT <: AbstractFloat}    
     return exp(x) + c.lower_bound
 end
-function transform_prior_to_real(c::BoundedAbove, x::Array{FT}) where {FT <: AbstractFloat}    
+function transform_prior_to_real(c::BoundedAbove, x::FT) where {FT <: AbstractFloat}    
     return c.upper_bound - exp(x)
 end
 
-function transform_prior_to_real(c::Bounded, x::Array{FT}) where {FT <: AbstractFloat}    
+function transform_prior_to_real(c::Bounded, x::FT) where {FT <: AbstractFloat}    
     return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
 end
 
