@@ -212,11 +212,11 @@ function transform_real_to_prior(pds::ParameterDistributions, xarray::Array{FT})
     #split xarray into chunks to be fed into each distribution
     clen = [len(pd.constraints) for pd in pds.parameter_distributions] # e.g [2,3,1,3]
     cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
-    x_idx = Dict(Integer,Array{Integer})(i => collect(cumulative_cl[i - 1] + 1:cumulative_cl[i])
+    x_idx = Dict{Integer,Array{Integer}}(i => collect(cumulative_clen[i - 1] + 1:cumulative_clen[i])
                                          for i in 2:size(cumulative_clen)[1])
     x_idx[1] = collect(1:cumulative_clen[1])
 
-    return Dict{String,Any}(get_name(pd) => transform_real_to_prior(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds.parameter_distributions))
+    return cat([transform_real_to_prior(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds.parameter_distributions)]...,dims=1)
 end
 
 function transform_real_to_prior(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
@@ -226,29 +226,29 @@ end
 """
 No constraint mapping x -> x
 """
-function transform_real_to_prior(c::NoConstraint , x::Array{FT}) where {FT <: Real}
+function transform_real_to_prior(c::NoConstraint , x::FT) where {FT <: Real}
     return x
 end
 
 """
-Bounded below -> unbounded, use mapping x -> ln(x - lower_bound)
+Bounded below -> unbounded, use mapping x -> log(x - lower_bound)
 """
-function transform_real_to_prior(c::BoundedBelow, x::Array{FT}) where {FT <: Real}    
-    return ln(x - c.lower_bound)
+function transform_real_to_prior(c::BoundedBelow, x::FT) where {FT <: Real}    
+    return log(x - c.lower_bound)
 end
 
 """
-Bounded above -> unbounded, use mapping x -> ln(upper_bound - x)
+Bounded above -> unbounded, use mapping x -> log(upper_bound - x)
 """
-function transform_real_to_prior(c::BoundedAbove, x::Array{FT}) where {FT <: Real}    
-    return ln(c.upper_bound - x)
+function transform_real_to_prior(c::BoundedAbove, x::FT) where {FT <: Real}    
+    return log(c.upper_bound - x)
 end
 
 """
-Bounded -> unbounded, use mapping x -> ln((x - lower_bound) / (upper_bound - x)
+Bounded -> unbounded, use mapping x -> log((x - lower_bound) / (upper_bound - x)
 """
-function transform_real_to_prior(c::Bounded, x::Array{FT}) where {FT <: Real}    
-    return ln((c.upper_bound - x) / (x - c.lower_bound))
+function transform_real_to_prior(c::Bounded, x::FT) where {FT <: Real}    
+    return log( (x - c.lower_bound) / (c.upper_bound - x))
 end
 
 
@@ -262,14 +262,13 @@ function transform_prior_to_real(pds::ParameterDistributions,
                                  xarray::Array{FT}) where {FT <: Real}
 
     #split xarray into chunks to be fed into each distribution
-    clen = [len(pd.constraints) for pd in pds] # e.g [2,3,1,3]
+    clen = [len(pd.constraints) for pd in pds.parameter_distributions] # e.g [2,3,1,3]
     cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
-    x_idx = Dict(Integer,Array{Integer})(i => collect(cumulative_cl[i-1]+1:cumulative_cl[i])
+    x_idx = Dict{Integer,Array{Integer}}(i => collect(cumulative_clen[i-1]+1:cumulative_clen[i])
                                          for i in 2:size(cumulative_clen)[1])
     x_idx[1] = collect(1:cumulative_clen[1])
     
-    return Dict{String,Any}(get_name(pd) => transform_prior_to_real(pd,xarray[x_idx[i]])
-                                             for (i,pd) in enumerate(pds.parameter_distributions))
+    return cat([transform_prior_to_real(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds.parameter_distributions)]...,dims=1)
 end
 
 function transform_prior_to_real(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
