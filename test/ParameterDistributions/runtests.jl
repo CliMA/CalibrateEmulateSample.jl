@@ -10,9 +10,16 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         # Tests for the ParameterDistributionType
         d = Parameterized(Gamma(2.0, 0.8))
         @test d.distribution == Gamma(2.0,0.8)
-    
+        
         d = Samples([1 2 3; 4 5 6])
-        @test d.distribution_samples == [1.0 2.0 3.0; 4.0 5.0 6.0]
+        @test d.distribution_samples == [1 2 3; 4 5 6]
+        d = Samples([1 4; 2 5; 3 6]; params_are_columns=false)
+        @test d.distribution_samples == [1 2 3; 4 5 6]
+        d = Samples([1, 2, 3, 4, 5, 6])
+        @test d.distribution_samples == [1 2 3 4 5 6]
+        d = Samples([1, 2, 3, 4, 5, 6]; params_are_columns=false)
+        @test d.distribution_samples == reshape([1, 2, 3, 4, 5, 6],:,1)
+        
     end
     @testset "ConstraintType" begin
         # Tests for the ConstraintType
@@ -52,7 +59,7 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
-        d2 = Samples([1.0 3.0; 5.0 7.0; 9.0 11.0; 13.0 15.0])
+        d2 = Samples([1.0 3.0 5.0 7.0; 9.0 11.0 13.0 15.0])
         c2 = [Bounded(10,15),
               NoConstraint()]
         name2 = "constrained_sampled"
@@ -72,7 +79,8 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
-        d2 = Samples([1.0 3.0; 5.0 7.0; 9.0 11.0; 13.0 15.0])
+        d2 = Samples([1 2 3 4
+                      5 6 7 8])
         c2 = [Bounded(10,15),
               NoConstraint()]
         name2 = "constrained_sampled"
@@ -107,14 +115,14 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         @test sample_distribution(u1,3) == s1
         
         Random.seed!(seed)
-        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[1]),1) 
-        s2 = d2.distribution_samples[idx, :]
+        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[2]),1) 
+        s2 = d2.distribution_samples[:, idx]
         Random.seed!(seed)
         @test sample_distribution(u2) == s2
 
         Random.seed!(seed)
-        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[1]), 3; replace=false) 
-        s2 = d2.distribution_samples[idx, :]
+        idx = StatsBase.sample(collect(1:size(d2.distribution_samples)[2]), 3) 
+        s2 = d2.distribution_samples[:, idx]
         Random.seed!(seed)
         @test sample_distribution(u2,3) == s2
         
@@ -123,8 +131,7 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         s2 = sample_distribution(u2,3)
         Random.seed!(seed)
         s = sample_distribution(u,3)
-        @test s[name1] == s1
-        @test s[name2] == s2
+        @test s == cat([s1,s2]...,dims=1)
     end
 
     @testset "transform functions" begin
@@ -137,7 +144,7 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
-        d2 = Samples([1.0 3.0; 5.0 7.0; 9.0 11.0; 13.0 15.0])
+        d2 = Samples([1.0 3.0 5.0 7.0; 9.0 11.0 13.0 15.0])
         c2 = [Bounded(10,15),
               NoConstraint()]
         name2 = "constrained_sampled"

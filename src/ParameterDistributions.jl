@@ -23,7 +23,7 @@ abstract type ParameterDistributionType end
 
 """
     Parameterized <: ParameterDistributionType
-
+    
 A distribution constructed from a parametrized formula (e.g Julia Distributions.jl)
 """
 struct Parameterized <: ParameterDistributionType
@@ -33,10 +33,14 @@ end
 """
     Samples{FT<:Real} <: ParameterDistributionType
 
-A distribution comprised of only samples
+A distribution comprised of only samples, stored as columns of parameters
 """
 struct Samples{FT<:Real} <: ParameterDistributionType
-    distribution_samples::Array{FT}
+    distribution_samples::Array{FT,2} #parameters are columns
+    Samples(distribution_samples::Array{FT,2}; params_are_columns=true) where {FT <: Real} = params_are_columns ? new{FT}(distribution_samples) : new{FT}(permutedims(distribution_samples,[2,1]))
+    #Distinguish 1 sample of an ND parameter or N samples of 1D parameter, and store as 2D array  
+    Samples(distribution_samples::Array{FT,1}; params_are_columns=true) where {FT <: Real} = params_are_columns ? new{FT}(reshape(distribution_samples,1,:)) : new{FT}(reshape(distribution_samples,:,1))
+    
 end 
 
 
@@ -91,16 +95,26 @@ end
 function len(carray::Array{CType}) where {CType <: ConstraintType}
     return size(carray)[1]
 end
+
 """
-    len(d::ParametrizedDistributionType)
+    dimension(d::ParametrizedDistributionType)
 
 The number of dimensions of the parameter space
 """
-function len(d::Parameterized) 
+function dimension(d::Parameterized) 
     return length(d.distribution)
 end
 
-function len(d::Samples)
+function dimension(d::Samples)
+    return size(d.distribution_samples)[1]
+end
+
+"""
+    n_samples(d::Samples)
+
+The number of samples in the array
+"""
+function n_samples(d::Samples)
     return size(d.distribution_samples)[2]
 end
 
@@ -117,7 +131,7 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
     ParameterDistribution(parameter_distribution::PDType,
                           constraints::Array{CType},
                           name::String) where {PDType <: ParameterDistributionType,
-                                               CType <: ConstraintType} = !(len(parameter_distribution) ==
+                                               CType <: ConstraintType} = !(dimension(parameter_distribution) ==
 len(constraints)) ? throw(DimensionMismatch("There must be one constraint per parameter")) : new{PDType,CType}(parameter_distribution, constraints, name)     
 end
     
@@ -130,8 +144,6 @@ Structure to hold an array of ParameterDistribution's
 struct ParameterDistributions
     parameter_distributions::Array{ParameterDistribution}
 end
-
-
 
 
 ## Functions
@@ -178,26 +190,27 @@ function sample_distribution(pds::ParameterDistributions)
     return sample_distribution(pds,1)
 end
 
-function sample_distribution(pds::ParameterDistributions, n_samples::IT) where {IT <: Integer}
-    return Dict{String,Any}(get_name(pd) => sample_distribution(pd, n_samples) for pd in pds.parameter_distributions)
+function sample_distribution(pds::ParameterDistributions, n_draws::IT) where {IT <: Integer}
+    return cat([sample_distribution(pd,n_draws) for pd in pds.parameter_distributions]...,dims=1)
 end
 
 function sample_distribution(pd::ParameterDistribution)
     return sample_distribution(pd,1)
 end
 
-function sample_distribution(pd::ParameterDistribution, n_samples::IT) where {IT <: Integer}
-    return sample_distribution(pd.distribution,n_samples)
+function sample_distribution(pd::ParameterDistribution, n_draws::IT) where {IT <: Integer}
+    return sample_distribution(pd.distribution,n_draws)
 end
 
-function sample_distribution(d::Samples, n_samples::IT)  where {IT <: Integer}
-    total_samples = size(d.distribution_samples)[1]
-    samples_idx = StatsBase.sample(collect(1:total_samples), n_samples; replace=false)
-    return d.distribution_samples[samples_idx, :]
+function sample_distribution(d::Samples, n_draws::IT)  where {IT <: Integer}
+    n_stored_samples = n_samples(d)
+    samples_idx = StatsBase.sample(collect(1:n_stored_samples), n_draws)
+    return d.distribution_samples[:,samples_idx]
+
 end
 
-function sample_distribution(d::Parameterized,n_samples::IT) where {IT <: Integer}
-    return rand(d.distribution, n_samples)
+function sample_distribution(d::Parameterized, n_draws::IT) where {IT <: Integer}
+    return rand(d.distribution, n_draws)
 end
 
 
