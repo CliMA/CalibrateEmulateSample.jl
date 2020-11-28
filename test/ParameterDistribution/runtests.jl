@@ -5,7 +5,7 @@ using Random
 
 using CalibrateEmulateSample.ParameterDistributionStorage
 
-@testset "ParameterDistribution" begin
+@testset "ParameterDistributionStorage" begin
     @testset "ParameterDistributionType" begin
         # Tests for the ParameterDistributionType
         d = Parameterized(Gamma(2.0, 0.8))
@@ -35,7 +35,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test_throws DomainError Bounded(0.2,-0.1)
     end
 
-    @testset "ParameterDistribution(s)" begin
+    @testset "ParameterDistribution" begin
 
         d = Parameterized(Normal(0,1))
         c = NoConstraint()
