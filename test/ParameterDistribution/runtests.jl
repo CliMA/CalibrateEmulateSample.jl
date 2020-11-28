@@ -3,9 +3,9 @@ using Distributions
 using StatsBase
 using Random
 
-using CalibrateEmulateSample.ParameterDistributionsStorage
+using CalibrateEmulateSample.ParameterDistributionStorage
 
-@testset "ParameterDistributions" begin
+@testset "ParameterDistribution" begin
     @testset "ParameterDistributionType" begin
         # Tests for the ParameterDistributionType
         d = Parameterized(Gamma(2.0, 0.8))
@@ -36,6 +36,15 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
     end
 
     @testset "ParameterDistribution(s)" begin
+
+        d = Parameterized(Normal(0,1))
+        c = NoConstraint()
+        name = "unconstrained_normal"
+        u = ParameterDistribution(d,c,name)
+        @test u.distributions == [d]
+        @test u.constraints == [c]
+        @test u.names == [name]
+
         # Tests for the ParameterDistribution
         d = Parameterized(MvNormal(4,0.1))
         c = [NoConstraint(),
@@ -45,12 +54,12 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
       
         name = "constrained_mvnormal"
         u = ParameterDistribution(d,c,name)
-        @test u.distribution == d
+        @test u.distributions == [d]
         @test u.constraints == c
-        @test u.name == name
+        @test u.names == [name]
         @test_throws DimensionMismatch ParameterDistribution(d,c[1:3],name)
-
-        # Tests for the ParameterDistribuions
+        
+        # Tests for the ParameterDistribution
         d1 = Parameterized(MvNormal(4,0.1))
         c1 = [NoConstraint(),
               BoundedBelow(-1.0),
@@ -65,8 +74,10 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
-        u = ParameterDistributions([u1,u2])
-        @test u.parameter_distributions == [u1,u2]
+        u = ParameterDistribution([d1,d2], [c1,c2], [name1,name2])
+        @test u.distributions == [d1,d2]
+        @test u.constraints == cat([c1,c2]...,dims=1)
+        @test u.names == [name1,name2]
     end
 
     @testset "get/sample functions" begin
@@ -79,24 +90,22 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
-        d2 = Samples([1 2 3 4
-                      5 6 7 8])
-        c2 = [Bounded(10,15),
-              NoConstraint()]
+        d2 = Samples([1 2 3 4])
+        c2 = [Bounded(10,15)]
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
-        u = ParameterDistributions([u1,u2])
-
+        u = ParameterDistribution([d1,d2], [c1,c2], [name1,name2])
+        
         # Tests for get_name
-        @test get_name(u1) == name1
+        @test get_name(u1) == [name1]
         @test get_name(u) == [name1, name2]
         
         # Tests for get_distribution
         @test get_distribution(d1) == MvNormal(4,0.1)
-        @test get_distribution(u1) == MvNormal(4,0.1)
+        @test get_distribution(u1)[name1] == MvNormal(4,0.1)
         @test typeof(get_distribution(d2)) <: String
-        @test typeof(get_distribution(u2)) <: String
+        @test typeof(get_distribution(u2)[name2]) <: String
         
         d = get_distribution(u)
         @test d[name1] == MvNormal(4,0.1)
@@ -150,7 +159,7 @@ using CalibrateEmulateSample.ParameterDistributionsStorage
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
-        u = ParameterDistributions([u1,u2])
+        u = ParameterDistribution([d1,d2], [c1,c2], [name1,name2])
 
         x_unbd = rand(MvNormal(6,3), 1000)  #6 x 1000 
         # Tests for transforms

@@ -1,4 +1,4 @@
-module ParameterDistributionsStorage
+module ParameterDistributionStorage
 
 ## Imports
 using Distributions
@@ -10,7 +10,7 @@ using Random
 #objects
 export Parameterized, Samples
 export NoConstraint, BoundedBelow, BoundedAbove, Bounded
-export ParameterDistribution, ParameterDistributions
+export ParameterDistribution
 
 #functions
 export get_name, get_distribution
@@ -121,57 +121,59 @@ end
 """
     struct ParameterDistribution
 
-Structure to hold a parameter distribution
+Structure to hold a parameter distribution, always stored as an array of distributions
 """
-struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: ConstraintType}
-    distribution::PDType
+struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: ConstraintType, ST <: AbstractString}
+    distributions::Array{PDType}
     constraints::Array{CType}
-    name::String
+    names::Array{ST}
 
-    ParameterDistribution(parameter_distribution::PDType,
-                          constraints::Array{CType},
-                          name::String) where {PDType <: ParameterDistributionType,
-                                               CType <: ConstraintType} = !(dimension(parameter_distribution) ==
-len(constraints)) ? throw(DimensionMismatch("There must be one constraint per parameter")) : new{PDType,CType}(parameter_distribution, constraints, name)     
+    function ParameterDistribution(parameter_distributions::Union{PDType,Array{PDType}},
+                                   constraints::Union{CType, Array{CType}, Array},
+                                   names::Union{ST, Array{ST}}) where {PDType <: ParameterDistributionType,
+                                                                       CType <: ConstraintType,
+                                                                       ST <: AbstractString}
+        
+        parameter_distributions = isa(parameter_distributions, PDType) ? [parameter_distributions] : parameter_distributions
+        constraints = isa(constraints, Union{<:ConstraintType,Array{<:ConstraintType}}) ? [constraints] : constraints #to calc n_constraints_per_dist
+        names = isa(names, ST) ? [names] : names
+            
+        n_parameter_per_dist = [dimension(pd) for pd in parameter_distributions]
+        n_constraints_per_dist = [len(c) for c in constraints]
+        n_dists = length(parameter_distributions)
+        n_names = length(names)        
+        if !(n_parameter_per_dist == n_constraints_per_dist)
+            throw(DimensionMismatch("There must be one constraint per parameter in a distribution, use NoConstraint() type if no constraint is required"))
+        elseif !(n_dists == n_names)
+            throw(DimensionMismatch("There must be one name per parameter distribution"))
+        else            
+            constraints = cat(constraints...,dims=1)
+            
+            new{PDType,ConstraintType,ST}(parameter_distributions, constraints, names)
+        end
+    end
+    
 end
     
-
-"""
-    struct ParameterDistributions
-
-Structure to hold an array of ParameterDistribution's
-"""
-struct ParameterDistributions
-    parameter_distributions::Array{ParameterDistribution}
-end
-
 
 ## Functions
 
 """
-    get_name(pds::ParameterDistributions)
+    get_name(pd::ParameterDistribution)
 
 Returns a list of ParameterDistribution names
 """
-function get_name(pds::ParameterDistributions)
-    return [get_name(pd) for pd in pds.parameter_distributions]
-end
-
 function get_name(pd::ParameterDistribution)
-    return pd.name
+    return pd.names
 end
 
 """
-    get_distributions(pds::ParameterDistributions)
+    get_distribution(pd::ParameterDistribution)
 
 Returns a `Dict` of `ParameterDistribution` distributions by name, (unless sample type)
 """
-function get_distribution(pds::ParameterDistributions)
-    return Dict{String,Any}(get_name(pd) => get_distribution(pd) for pd in pds.parameter_distributions)
-end
-
 function get_distribution(pd::ParameterDistribution)
-    return get_distribution(pd.distribution)
+    return Dict{String,Any}(pd.names[i] => get_distribution(d) for (i,d) in enumerate(pd.distributions))
 end
 
 function get_distribution(d::Samples)
@@ -182,24 +184,16 @@ function get_distribution(d::Parameterized)
 end
 
 """
-    function sample_distribution(pds::ParameterDistributions)
+    function sample_distribution(pd::ParameterDistribution)
 
 Draws samples from the parameter distributions
 """
-function sample_distribution(pds::ParameterDistributions)
-    return sample_distribution(pds,1)
-end
-
-function sample_distribution(pds::ParameterDistributions, n_draws::IT) where {IT <: Integer}
-    return cat([sample_distribution(pd,n_draws) for pd in pds.parameter_distributions]...,dims=1)
-end
-
 function sample_distribution(pd::ParameterDistribution)
     return sample_distribution(pd,1)
 end
 
 function sample_distribution(pd::ParameterDistribution, n_draws::IT) where {IT <: Integer}
-    return sample_distribution(pd.distribution,n_draws)
+    return cat([sample_distribution(d,n_draws) for d in pd.distributions]...,dims=1)
 end
 
 function sample_distribution(d::Samples, n_draws::IT)  where {IT <: Integer}
@@ -217,23 +211,13 @@ end
 #apply transforms
 
 """
-    transform_real_to_prior(pds::ParameterDistributions, x::Array{Real})
+    transform_real_to_prior(pd::ParameterDistribution, x::Array{Real})
 
 Apply the transformation to map real (and possibly constrained) parameters `xarray` into the unbounded prior space
 """
-function transform_real_to_prior(pds::ParameterDistributions, xarray::Array{FT}) where {FT <: Real}
-    #split xarray into chunks to be fed into each distribution
-    clen = [len(pd.constraints) for pd in pds.parameter_distributions] # e.g [2,3,1,3]
-    cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
-    x_idx = Dict{Integer,Array{Integer}}(i => collect(cumulative_clen[i - 1] + 1:cumulative_clen[i])
-                                         for i in 2:size(cumulative_clen)[1])
-    x_idx[1] = collect(1:cumulative_clen[1])
-
-    return cat([transform_real_to_prior(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds.parameter_distributions)]...,dims=1)
-end
-
 function transform_real_to_prior(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-    return [transform_real_to_prior(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
+    #split xarray into chunks 
+    return cat([transform_real_to_prior(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
 
 """
@@ -267,25 +251,12 @@ end
 
 
 """
-    transform_prior_to_real(pds::ParameterDistributions, xarray::Array{Real})
+    transform_prior_to_real(pd::ParameterDistribution, xarray::Array{Real})
 
 Apply the transformation to map parameters `xarray` from the unbounded space into (possibly constrained) real space
 """
-function transform_prior_to_real(pds::ParameterDistributions,
-                                 xarray::Array{FT}) where {FT <: Real}
-
-    #split xarray into chunks to be fed into each distribution
-    clen = [len(pd.constraints) for pd in pds.parameter_distributions] # e.g [2,3,1,3]
-    cumulative_clen = [sum(clen[1:i]) for i = 1:size(clen)[1]] # e.g [1 1:2, 3:5, 6, 7:9 ]
-    x_idx = Dict{Integer,Array{Integer}}(i => collect(cumulative_clen[i-1]+1:cumulative_clen[i])
-                                         for i in 2:size(cumulative_clen)[1])
-    x_idx[1] = collect(1:cumulative_clen[1])
-    
-    return cat([transform_prior_to_real(pd,xarray[x_idx[i]]) for (i,pd) in enumerate(pds.parameter_distributions)]...,dims=1)
-end
-
 function transform_prior_to_real(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-    return [transform_prior_to_real(constraint,xarray[i]) for (i,constraint) in enumerate(pd.constraints)]
+    return [transform_prior_to_real(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
 end
 
 """

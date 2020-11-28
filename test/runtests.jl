@@ -30,7 +30,7 @@ end
 		      "MCMC",
 		      "Observations",
 		      "Utilities",
-                      "ParameterDistributions"]
+                      "ParameterDistribution"]
 
         if all_tests || has_submodule(submodule) || "CalibrateEmulateSample" in ARGS
             include_test(submodule)
