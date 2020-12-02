@@ -15,7 +15,7 @@ export ParameterDistribution
 #functions
 export get_name, get_distribution
 export sample_distribution
-export transform_real_to_prior, transform_prior_to_real
+export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
 
 ## Objects
 # for the Distribution
@@ -211,79 +211,79 @@ end
 #apply transforms
 
 """
-    transform_real_to_prior(pd::ParameterDistribution, x::Array{Real})
+    transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{Real})
 
 Apply the transformation to map real (and possibly constrained) parameters `xarray` into the unbounded prior space
 """
-function transform_real_to_prior(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
+function transform_constrained_to_unconstrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
     #split xarray into chunks 
-    return cat([transform_real_to_prior(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
+    return cat([transform_constrained_to_unconstrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
 
 """
 No constraint mapping x -> x
 """
-function transform_real_to_prior(c::NoConstraint , x::FT) where {FT <: Real}
+function transform_constrained_to_unconstrained(c::NoConstraint , x::FT) where {FT <: Real}
     return x
 end
 
 """
 Bounded below -> unbounded, use mapping x -> log(x - lower_bound)
 """
-function transform_real_to_prior(c::BoundedBelow, x::FT) where {FT <: Real}    
+function transform_constrained_to_unconstrained(c::BoundedBelow, x::FT) where {FT <: Real}    
     return log(x - c.lower_bound)
 end
 
 """
 Bounded above -> unbounded, use mapping x -> log(upper_bound - x)
 """
-function transform_real_to_prior(c::BoundedAbove, x::FT) where {FT <: Real}    
+function transform_constrained_to_unconstrained(c::BoundedAbove, x::FT) where {FT <: Real}    
     return log(c.upper_bound - x)
 end
 
 """
 Bounded -> unbounded, use mapping x -> log((x - lower_bound) / (upper_bound - x)
 """
-function transform_real_to_prior(c::Bounded, x::FT) where {FT <: Real}    
+function transform_constrained_to_unconstrained(c::Bounded, x::FT) where {FT <: Real}    
     return log( (x - c.lower_bound) / (c.upper_bound - x))
 end
 
 
 
 """
-    transform_prior_to_real(pd::ParameterDistribution, xarray::Array{Real})
+    transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{Real})
 
 Apply the transformation to map parameters `xarray` from the unbounded space into (possibly constrained) real space
 """
-function transform_prior_to_real(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-    return [transform_prior_to_real(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
+function transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
+    return [transform_unconstrained_to_constrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
 end
 
 """
 No constraint mapping x -> x
 """
-function transform_prior_to_real(c::NoConstraint , x::FT) where {FT <: Real}
+function transform_unconstrained_to_constrained(c::NoConstraint , x::FT) where {FT <: Real}
     return x
 end
 
 """
 Unbounded -> bounded below, use mapping x -> exp(x) + lower_bound
 """
-function transform_prior_to_real(c::BoundedBelow, x::FT) where {FT <: Real}    
+function transform_unconstrained_to_constrained(c::BoundedBelow, x::FT) where {FT <: Real}    
     return exp(x) + c.lower_bound
 end
 
 """
 Unbounded -> bounded above, use mapping x -> upper_bound - exp(x)
 """
-function transform_prior_to_real(c::BoundedAbove, x::FT) where {FT <: Real}    
+function transform_unconstrained_to_constrained(c::BoundedAbove, x::FT) where {FT <: Real}    
     return c.upper_bound - exp(x)
 end
 
 """
 Unbounded -> bounded, use mapping x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
 """
-function transform_prior_to_real(c::Bounded, x::FT) where {FT <: Real}    
+function transform_unconstrained_to_constrained(c::Bounded, x::FT) where {FT <: Real}    
     return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
 end
 

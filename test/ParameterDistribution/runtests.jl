@@ -164,28 +164,28 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         x_unbd = rand(MvNormal(6,3), 1000)  #6 x 1000 
         # Tests for transforms
         # prior to real
-        x_real_noconstraint = map(x -> transform_prior_to_real(NoConstraint(), x), x_unbd[1,:])
+        x_real_noconstraint = map(x -> transform_unconstrained_to_constrained(NoConstraint(), x), x_unbd[1,:])
         @test x_real_noconstraint == x_unbd[1,:]
-        x_real_below = map(x -> transform_prior_to_real(BoundedBelow(30), x), x_unbd[1,:])
+        x_real_below = map(x -> transform_unconstrained_to_constrained(BoundedBelow(30), x), x_unbd[1,:])
         @test all(x_real_below .> 30)
-        x_real_above = map(x -> transform_prior_to_real(BoundedAbove(-10), x), x_unbd[1,:])
+        x_real_above = map(x -> transform_unconstrained_to_constrained(BoundedAbove(-10), x), x_unbd[1,:])
         @test all(x_real_above .< -10)
-        x_real_bounded = map(x -> transform_prior_to_real(Bounded(-2,-1), x), x_unbd[1,:])
+        x_real_bounded = map(x -> transform_unconstrained_to_constrained(Bounded(-2,-1), x), x_unbd[1,:])
         @test all([all(x_real_bounded .> -2), all(x_real_bounded .< -1)])
 
         # prior to real
-        @test isapprox(x_unbd[1,:] - map(x -> transform_real_to_prior(NoConstraint(), x), x_real_noconstraint), zeros(size(x_unbd)[2]); atol=1e-6)
-        @test isapprox(x_unbd[1,:] - map(x -> transform_real_to_prior(BoundedBelow(30), x), x_real_below), zeros(size(x_unbd)[2]) ; atol=1e-6) 
-        @test isapprox(x_unbd[1,:] - map(x -> transform_real_to_prior(BoundedAbove(-10), x), x_real_above), zeros(size(x_unbd)[2]); atol=1e-6)
-        @test isapprox(x_unbd[1,:] - map(x -> transform_real_to_prior(Bounded(-2,-1), x), x_real_bounded), zeros(size(x_unbd)[2]); atol=1e-6)
+        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(NoConstraint(), x), x_real_noconstraint), zeros(size(x_unbd)[2]); atol=1e-6)
+        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(BoundedBelow(30), x), x_real_below), zeros(size(x_unbd)[2]) ; atol=1e-6) 
+        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(BoundedAbove(-10), x), x_real_above), zeros(size(x_unbd)[2]); atol=1e-6)
+        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(Bounded(-2,-1), x), x_real_bounded), zeros(size(x_unbd)[2]); atol=1e-6)
 
-        x_real_constrained1 = mapslices(x -> transform_prior_to_real(u1,x), x_unbd[1:4,:]; dims=1)
-        @test isapprox(x_unbd[1:4,:] - mapslices(x -> transform_real_to_prior(u1,x), x_real_constrained1; dims=1), zeros(size(x_unbd[1:4,:])) ; atol=1e-6)
-        x_real_constrained2 = mapslices(x -> transform_prior_to_real(u2,x), x_unbd[5:6,:]; dims=1) 
-        @test isapprox(x_unbd[5:6,:] -  mapslices(x -> transform_real_to_prior(u2,x), x_real_constrained2; dims=1), zeros(size(x_unbd[5:6,:])); atol=1e-6)
+        x_real_constrained1 = mapslices(x -> transform_unconstrained_to_constrained(u1,x), x_unbd[1:4,:]; dims=1)
+        @test isapprox(x_unbd[1:4,:] - mapslices(x -> transform_constrained_to_unconstrained(u1,x), x_real_constrained1; dims=1), zeros(size(x_unbd[1:4,:])) ; atol=1e-6)
+        x_real_constrained2 = mapslices(x -> transform_unconstrained_to_constrained(u2,x), x_unbd[5:6,:]; dims=1) 
+        @test isapprox(x_unbd[5:6,:] -  mapslices(x -> transform_constrained_to_unconstrained(u2,x), x_real_constrained2; dims=1), zeros(size(x_unbd[5:6,:])); atol=1e-6)
         
-        x_real = mapslices(x -> transform_prior_to_real(u,x), x_unbd; dims=1)
-        x_unbd_tmp = mapslices(x -> transform_real_to_prior(u,x), x_real; dims=1)
+        x_real = mapslices(x -> transform_unconstrained_to_constrained(u,x), x_unbd; dims=1)
+        x_unbd_tmp = mapslices(x -> transform_constrained_to_unconstrained(u,x), x_real; dims=1)
         @test isapprox(x_unbd - x_unbd_tmp,zeros(size(x_unbd));atol=1e-6)
         
     end
