@@ -9,12 +9,13 @@ using Random
 
 #objects
 export Parameterized, Samples
-export NoConstraint, BoundedBelow, BoundedAbove, Bounded
 export ParameterDistribution
+export Constraint
 
 #functions
 export get_name, get_distribution
 export sample_distribution
+export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
 
 ## Objects
@@ -46,41 +47,68 @@ end
 
 # For the transforms
 abstract type ConstraintType end
-
 """
-    NoConstraint <: ConstraintType
+    Constraint <: ConstraintType
 
-No constraint.
+Contains two functions to map between constrained and unconstrained spaces.
 """
 
-struct NoConstraint <: ConstraintType end
-
-"""
-    BoundedBelow{FT <: Real} <: ConstraintType
-
-A lower bound constraint.
-"""
-struct BoundedBelow{FT <: Real} <: ConstraintType
-    lower_bound::FT
+struct Constraint <: ConstraintType
+    constrained_to_unconstrained::Function
+    unconstrained_to_constrained::Function
 end
-"""
-    BoundedAbove{FT <: Real} <: ConstraintType
 
-And upper bound constraint
+
 """
-struct BoundedAbove{FT <: Real} <: ConstraintType
-    upper_bound::FT
+    no_constraint()
+
+Constructs a Constraint with no constraints, enforced by maps x -> x and x -> x.
+"""
+function no_constraint()
+    c_to_u = (x -> x)
+    u_to_c = (x -> x)
+    return Constraint(c_to_u,u_to_c)
 end
+    
+"""
+    bounded_below(lower_bound::FT) where {FT <: Real}
+
+Constructs a Constraint with provided lower bound, enforced by maps x -> log(x - lower_bound) and x -> exp(x) + lower_bound.
+"""
+function bounded_below(lower_bound::FT) where {FT <: Real}
+    c_to_u = ( x -> log(x - lower_bound) )
+    u_to_c = ( x -> exp(x) + lower_bound ) 
+    return Constraint(c_to_u, u_to_c)
+end
+
+"""
+    bounded_above(upper_bound::FT) where {FT <: Real} 
+
+Constructs a Constraint with provided upper bound, enforced by maps x -> log(upper_bound - x) and x -> upper_bound - exp(x).
+"""
+function bounded_above(upper_bound::FT) where {FT<:Real}
+    c_to_u = ( x -> log(upper_bound - x) )
+    u_to_c = ( x -> upper_bound - exp(x) ) 
+    return Constraint(c_to_u, u_to_c)
+end
+    
 
 """
     Bounded{FT <: Real} <: ConstraintType
 
-Both a lower and upper bound constraint.
+Constructs a Constraint with provided upper and lower bounds, enforced by maps
+x -> log((x - lower_bound) / (upper_bound - x))
+and
+x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
+
 """
-struct Bounded{FT <: Real} <: ConstraintType
-    lower_bound::FT
-    upper_bound::FT
-    Bounded(lower_bound::FT,upper_bound::FT) where {FT <: Real} = upper_bound <= lower_bound ? throw(DomainError("upper bound must be greater than lower bound")) : new{FT}(lower_bound, upper_bound)
+function bounded(lower_bound::FT, upper_bound::FT) where {FT <: Real}
+    if (upper_bound <= lower_bound)
+        throw(DomainError("upper bound must be greater than lower bound"))
+    end
+    c_to_u = ( x -> log( (x - lower_bound) / (upper_bound - x)) )
+    u_to_c = ( x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1) )
+    return Constraint(c_to_u, u_to_c)
 end
 
 """
@@ -97,7 +125,7 @@ function len(carray::Array{CType}) where {CType <: ConstraintType}
 end
 
 """
-    dimension(d::ParametrizedDistributionType)
+    dimension(d<:ParametrizedDistributionType)
 
 The number of dimensions of the parameter space
 """
@@ -156,6 +184,7 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
 end
     
 
+
 ## Functions
 
 """
@@ -213,79 +242,85 @@ end
 """
     transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{Real})
 
-Apply the transformation to map real (and possibly constrained) parameters `xarray` into the unbounded prior space
+Apply the transformation to map (possibly constrained) parameters `xarray` into the unconstrained space
 """
 function transform_constrained_to_unconstrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
     #split xarray into chunks 
-    return cat([transform_constrained_to_unconstrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
+#    return cat([transform_constrained_to_unconstrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
+    return cat([c.constrained_to_unconstrained(xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
-
-"""
-No constraint mapping x -> x
-"""
-function transform_constrained_to_unconstrained(c::NoConstraint , x::FT) where {FT <: Real}
-    return x
-end
-
-"""
-Bounded below -> unbounded, use mapping x -> log(x - lower_bound)
-"""
-function transform_constrained_to_unconstrained(c::BoundedBelow, x::FT) where {FT <: Real}    
-    return log(x - c.lower_bound)
-end
-
-"""
-Bounded above -> unbounded, use mapping x -> log(upper_bound - x)
-"""
-function transform_constrained_to_unconstrained(c::BoundedAbove, x::FT) where {FT <: Real}    
-    return log(c.upper_bound - x)
-end
-
-"""
-Bounded -> unbounded, use mapping x -> log((x - lower_bound) / (upper_bound - x)
-"""
-function transform_constrained_to_unconstrained(c::Bounded, x::FT) where {FT <: Real}    
-    return log( (x - c.lower_bound) / (c.upper_bound - x))
-end
-
-
 
 """
     transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{Real})
 
-Apply the transformation to map parameters `xarray` from the unbounded space into (possibly constrained) real space
+Apply the transformation to map parameters `xarray` from the unconstrained space into (possibly constrained) space
 """
 function transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-    return [transform_unconstrained_to_constrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
+#    return [transform_unconstrained_to_constrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
+    return cat([c.unconstrained_to_constrained(xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
 
-"""
-No constraint mapping x -> x
-"""
-function transform_unconstrained_to_constrained(c::NoConstraint , x::FT) where {FT <: Real}
-    return x
-end
 
-"""
-Unbounded -> bounded below, use mapping x -> exp(x) + lower_bound
-"""
-function transform_unconstrained_to_constrained(c::BoundedBelow, x::FT) where {FT <: Real}    
-    return exp(x) + c.lower_bound
-end
 
-"""
-Unbounded -> bounded above, use mapping x -> upper_bound - exp(x)
-"""
-function transform_unconstrained_to_constrained(c::BoundedAbove, x::FT) where {FT <: Real}    
-    return c.upper_bound - exp(x)
-end
 
-"""
-Unbounded -> bounded, use mapping x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
-"""
-function transform_unconstrained_to_constrained(c::Bounded, x::FT) where {FT <: Real}    
-    return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
-end
+# """
+# No constraint mapping x -> x
+# """
+# function transform_constrained_to_unconstrained(c::NoConstraint , x::FT) where {FT <: Real}
+#     return x
+# end
+
+# """
+# Bounded below -> unbounded, use mapping x -> log(x - lower_bound)
+# """
+# function transform_constrained_to_unconstrained(c::BoundedBelow, x::FT) where {FT <: Real}    
+#     return log(x - c.lower_bound)
+# end
+
+# """
+# Bounded above -> unbounded, use mapping x -> log(upper_bound - x)
+# """
+# function transform_constrained_to_unconstrained(c::BoundedAbove, x::FT) where {FT <: Real}    
+#     return log(c.upper_bound - x)
+# end
+
+# """
+# Bounded -> unbounded, use mapping x -> log((x - lower_bound) / (upper_bound - x)
+# """
+# function transform_constrained_to_unconstrained(c::Bounded, x::FT) where {FT <: Real}    
+#     return log( (x - c.lower_bound) / (c.upper_bound - x))
+# end
+
+
+
+
+# """
+# No constraint mapping x -> x
+# """
+# function transform_unconstrained_to_constrained(c::NoConstraint , x::FT) where {FT <: Real}
+#     return x
+# end
+
+# """
+# Unbounded -> bounded below, use mapping x -> exp(x) + lower_bound
+# """
+# function transform_unconstrained_to_constrained(c::BoundedBelow, x::FT) where {FT <: Real}    
+#     return exp(x) + c.lower_bound
+# end
+
+# """
+# Unbounded -> bounded above, use mapping x -> upper_bound - exp(x)
+# """
+# function transform_unconstrained_to_constrained(c::BoundedAbove, x::FT) where {FT <: Real}    
+#     return c.upper_bound - exp(x)
+# end
+
+# """
+# Unbounded -> bounded, use mapping x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
+# """
+# function transform_unconstrained_to_constrained(c::Bounded, x::FT) where {FT <: Real}    
+#     return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
+# end
 
 
 

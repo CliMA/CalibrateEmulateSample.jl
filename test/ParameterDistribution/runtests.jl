@@ -23,22 +23,36 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     end
     @testset "ConstraintType" begin
         # Tests for the ConstraintType
-        c = BoundedBelow(0.2)
-        @test c.lower_bound == 0.2
+        # The predefined transforms
+        c1 = bounded_below(0.2)
+        @test isapprox(c1.constrained_to_unconstrained(1.0) - (log(1.0 - 0.2)), 0)
+        @test isapprox(c1.unconstrained_to_constrained(0.0) - (exp(0.0) + 0.2), 0)
+            
+        c2 = bounded_above(0.2)
+        @test isapprox(c2.constrained_to_unconstrained(-1.0) - (log(0.2 - -1.0)), 0) 
+        @test isapprox(c2.unconstrained_to_constrained(10.0) - (0.2 - exp(10.0)), 0)
+
         
-        c = BoundedAbove(0.2)
-        @test c.upper_bound == 0.2
+        c3 = bounded(-0.1,0.2)
+        @test isapprox(c3.constrained_to_unconstrained(0.0) - (log( (0.0 - -0.1) / (0.2 - 0.0))) , 0 )
+        @test isapprox(c3.unconstrained_to_constrained(1.0) - ((0.2 * exp(1.0) + -0.1) / (exp(1.0) + 1)) , 0)
+        @test_throws DomainError bounded(0.2,-0.1)
+
+        #an example with user defined invertible transforms
+        c_to_u = (x -> 3 * x + 14)
+        u_to_c = (x -> (x - 14) / 3) 
         
-        c = Bounded(-0.1,0.2)
-        @test c.lower_bound == -0.1
-        @test c.upper_bound == 0.2
-        @test_throws DomainError Bounded(0.2,-0.1)
+        c4 = Constraint(c_to_u, u_to_c)
+        @test isapprox( c4.constrained_to_unconstrained(5.0) - c_to_u(5.0) , 0)
+        @test isapprox( c4.unconstrained_to_constrained(5.0) - u_to_c(5.0) , 0)
+        
+
     end
 
     @testset "ParameterDistribution" begin
 
         d = Parameterized(Normal(0,1))
-        c = NoConstraint()
+        c = no_constraint()
         name = "unconstrained_normal"
         u = ParameterDistribution(d,c,name)
         @test u.distributions == [d]
@@ -47,10 +61,10 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 
         # Tests for the ParameterDistribution
         d = Parameterized(MvNormal(4,0.1))
-        c = [NoConstraint(),
-             BoundedBelow(-1.0),
-             BoundedAbove(0.4),
-             Bounded(-0.1,0.2)]
+        c = [no_constraint(),
+             bounded_below(-1.0),
+             bounded_above(0.4),
+             bounded(-0.1,0.2)]
       
         name = "constrained_mvnormal"
         u = ParameterDistribution(d,c,name)
@@ -58,19 +72,20 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test u.constraints == c
         @test u.names == [name]
         @test_throws DimensionMismatch ParameterDistribution(d,c[1:3],name)
+        @test_throws DimensionMismatch ParameterDistribution(d,c, [name,"extra_name"])
         
         # Tests for the ParameterDistribution
         d1 = Parameterized(MvNormal(4,0.1))
-        c1 = [NoConstraint(),
-              BoundedBelow(-1.0),
-              BoundedAbove(0.4),
-              Bounded(-0.1,0.2)]
+        c1 = [no_constraint(),
+              bounded_below(-1.0),
+              bounded_above(0.4),
+              bounded(-0.1,0.2)]
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
         d2 = Samples([1.0 3.0 5.0 7.0; 9.0 11.0 13.0 15.0])
-        c2 = [Bounded(10,15),
-              NoConstraint()]
+        c2 = [bounded(10,15),
+              no_constraint()]
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
@@ -78,20 +93,21 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test u.distributions == [d1,d2]
         @test u.constraints == cat([c1,c2]...,dims=1)
         @test u.names == [name1,name2]
+
     end
 
     @testset "get/sample functions" begin
         # setup for the tests:
         d1 = Parameterized(MvNormal(4,0.1))
-        c1 = [NoConstraint(),
-              BoundedBelow(-1.0),
-              BoundedAbove(0.4),
-              Bounded(-0.1,0.2)]
+        c1 = [no_constraint(),
+              bounded_below(-1.0),
+              bounded_above(0.4),
+              bounded(-0.1,0.2)]
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
         d2 = Samples([1 2 3 4])
-        c2 = [Bounded(10,15)]
+        c2 = [bounded(10,15)]
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
@@ -146,16 +162,16 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     @testset "transform functions" begin
         #setup for the tests
         d1 = Parameterized(MvNormal(4,0.1))
-        c1 = [NoConstraint(),
-              BoundedBelow(-1.0),
-              BoundedAbove(0.4),
-              Bounded(-0.1,0.2)]
+        c1 = [no_constraint(),
+              bounded_below(-1.0),
+              bounded_above(0.4),
+              bounded(-0.1,0.2)]
         name1 = "constrained_mvnormal"
         u1 = ParameterDistribution(d1,c1,name1)
         
         d2 = Samples([1.0 3.0 5.0 7.0; 9.0 11.0 13.0 15.0])
-        c2 = [Bounded(10,15),
-              NoConstraint()]
+        c2 = [bounded(10,15),
+              no_constraint()]
         name2 = "constrained_sampled"
         u2 = ParameterDistribution(d2,c2,name2)
         
@@ -163,30 +179,14 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 
         x_unbd = rand(MvNormal(6,3), 1000)  #6 x 1000 
         # Tests for transforms
-        # prior to real
-        x_real_noconstraint = map(x -> transform_unconstrained_to_constrained(NoConstraint(), x), x_unbd[1,:])
-        @test x_real_noconstraint == x_unbd[1,:]
-        x_real_below = map(x -> transform_unconstrained_to_constrained(BoundedBelow(30), x), x_unbd[1,:])
-        @test all(x_real_below .> 30)
-        x_real_above = map(x -> transform_unconstrained_to_constrained(BoundedAbove(-10), x), x_unbd[1,:])
-        @test all(x_real_above .< -10)
-        x_real_bounded = map(x -> transform_unconstrained_to_constrained(Bounded(-2,-1), x), x_unbd[1,:])
-        @test all([all(x_real_bounded .> -2), all(x_real_bounded .< -1)])
-
-        # prior to real
-        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(NoConstraint(), x), x_real_noconstraint), zeros(size(x_unbd)[2]); atol=1e-6)
-        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(BoundedBelow(30), x), x_real_below), zeros(size(x_unbd)[2]) ; atol=1e-6) 
-        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(BoundedAbove(-10), x), x_real_above), zeros(size(x_unbd)[2]); atol=1e-6)
-        @test isapprox(x_unbd[1,:] - map(x -> transform_constrained_to_unconstrained(Bounded(-2,-1), x), x_real_bounded), zeros(size(x_unbd)[2]); atol=1e-6)
-
         x_real_constrained1 = mapslices(x -> transform_unconstrained_to_constrained(u1,x), x_unbd[1:4,:]; dims=1)
-        @test isapprox(x_unbd[1:4,:] - mapslices(x -> transform_constrained_to_unconstrained(u1,x), x_real_constrained1; dims=1), zeros(size(x_unbd[1:4,:])) ; atol=1e-6)
+        @test isapprox(x_unbd[1:4,:] - mapslices(x -> transform_constrained_to_unconstrained(u1,x), x_real_constrained1; dims=1), zeros(size(x_unbd[1:4,:])); atol=1e-8)
         x_real_constrained2 = mapslices(x -> transform_unconstrained_to_constrained(u2,x), x_unbd[5:6,:]; dims=1) 
-        @test isapprox(x_unbd[5:6,:] -  mapslices(x -> transform_constrained_to_unconstrained(u2,x), x_real_constrained2; dims=1), zeros(size(x_unbd[5:6,:])); atol=1e-6)
+        @test isapprox(x_unbd[5:6,:] -  mapslices(x -> transform_constrained_to_unconstrained(u2,x), x_real_constrained2; dims=1), zeros(size(x_unbd[5:6,:])); atol=1e-8)
         
         x_real = mapslices(x -> transform_unconstrained_to_constrained(u,x), x_unbd; dims=1)
         x_unbd_tmp = mapslices(x -> transform_constrained_to_unconstrained(u,x), x_real; dims=1)
-        @test isapprox(x_unbd - x_unbd_tmp,zeros(size(x_unbd));atol=1e-6)
+        @test isapprox(x_unbd - x_unbd_tmp,zeros(size(x_unbd)); atol=1e-8)
         
     end
     
