@@ -29,7 +29,8 @@ end
 		      "GPEmulator",
 		      "MCMC",
 		      "Observations",
-		      "Utilities"]
+		      "Utilities",
+                      "ParameterDistribution"]
 
         if all_tests || has_submodule(submodule) || "CalibrateEmulateSample" in ARGS
             include_test(submodule)
