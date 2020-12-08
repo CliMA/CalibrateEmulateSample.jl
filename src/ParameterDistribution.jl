@@ -14,11 +14,12 @@ export ParameterDistribution
 export Constraint
 
 #functions
-export get_name, get_distribution, get_dimensions
+export get_name, get_distribution, get_total_dimension, get_dimensions
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
-
+export get_logpdf, get_cov, get_var
+    
 ## Objects
 # for the Distribution
 abstract type ParameterDistributionType end
@@ -217,11 +218,13 @@ Returns a list of contiguous [collect(1:i), collect(i+1:j),... ] used to split p
 function batch(pd::ParameterDistribution)
     #chunk xarray to give to the different distributions.
     d_dim = get_dimensions(pd) #e.g [4,1,2]
-    d_dim_tmp = zeros(size(d_dim)+1)
-    for i = 2:(d_dim)+1
+    d_dim_tmp = Array{Int64}(undef,size(d_dim)[1]+1)
+    d_dim_tmp[1] = 0
+    for i = 2:size(d_dim)[1]+1
         d_dim_tmp[i] = sum(d_dim[1:i-1]) # e.g [0,4,5,7]
     end
-    return [collect(d_dim_tmp[i]+1:d_dim_tmp[i+1]) for i = 1:size(d_dim)] # e.g [1:4, 5:5, 6:7]
+    
+    return [collect(d_dim_tmp[i]+1:d_dim_tmp[i+1]) for i = 1:size(d_dim)[1]] # e.g [1:4, 5:5, 6:7]
 end
 
 """
@@ -265,23 +268,31 @@ function sample_distribution(d::Parameterized, n_draws::IT) where {IT <: Integer
 end
 
 """
-    logpdf(pd::ParameterDistribution, xarray::Array{<:Real})
+    logpdf(pd::ParameterDistribution, xarray::Array{<:Real,1})
 
 Obtains the logpdf at at parameter xarray (non-Samples Distributions only)
 """
-function logpdf(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
+function get_logpdf(d::Parameterized, xarray::Array{FT,1}) where {FT <: Real}
+    return logpdf.(d.distribution, xarray)
+end
+
+function get_logpdf(pd::ParameterDistribution, xarray::Array{FT,1}) where {FT <: Real}
     #first check we don't have sampled distribution
     for d in pd.distributions
         if typeof(d) <: Samples
-            throw(TypeError("No implementation for taking logpdf of Samples distribution. Consider using a Parameterized type for your prior."))
+            throw(ErrorException("Cannot compute get_logpdf of Samples distribution. Consider using a Parameterized type for your prior."))
         end
+    end
+    #assert xarray correct dim/length
+    if size(xarray)[1] != get_total_dimension(pd)
+        throw(DimensionMismatch("xarray must have dimension equal to the parameter space"))
     end
     
     # get the index of xarray chunks to give to the different distributions.
     batches = batch(pd)
 
     # perform the logpdf of the distributions    
-    return cat([logpdf(d, xarray[batches[i]]) for (i,d) in enumerate(pd.distributions)]...,dims=1)
+    return cat([get_logpdf(d, xarray[batches[i]]) for (i,d) in enumerate(pd.distributions)]...,dims=1)
 end
 
 """
@@ -289,21 +300,38 @@ end
 
 returns a blocked covariance of the distributions
 """
-function cov(pd::ParameterDistribution)
-    #first check we don't have sampled distribution
+function get_cov(d::Parameterized)
+    return cov(d.distribution)
+end
 
+function get_cov(d::Samples)
+    return cov(d.distribution_samples,dims=2) #parameters are columns
+end
+
+function get_var(d::Parameterized)
+    return var(d.distribution)
+end
+
+function get_var(d::Samples)
+    return var(d.distribution_samples)
+end
+
+
+function get_cov(pd::ParameterDistribution)
+    #first check we don't have sampled distribution
+    
     d_dims = get_dimensions(pd)
     
     # create each block (co)variance
-    block_cov = [] 
+    block_cov = Array{Any}(undef,size(d_dims)[1]) 
     for (i,dimension) in enumerate(d_dims)
         if dimension == 1
-            block_cov[i] = var(pd.distributions[i]) 
+            block_cov[i] = get_var(pd.distributions[i]) 
         else
-            block_cov[i] = cov(pd.distributions[i])
+            block_cov[i] = get_cov(pd.distributions[i])
         end
     end
-
+   
     return cat(block_cov...,dims=(1,2)) #build the block diagonal (dense) matrix
     
 end

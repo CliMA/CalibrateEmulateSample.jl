@@ -95,7 +95,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test u.names == [name1,name2]
     end
 
-    @testset "get/sample functions" begin
+    @testset "getter functions" begin
         # setup for the tests:
         d1 = Parameterized(MvNormal(4,0.1))
         c1 = [no_constraint(),
@@ -133,7 +133,32 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         d = get_distribution(u)
         @test d[name1] == MvNormal(4,0.1)
         @test typeof(d[name2]) <: String
+    end
 
+    @testset "statistics functions" begin
+
+        # setup for the tests:
+        d1 = Parameterized(MvNormal(4,0.1))
+        c1 = [no_constraint(),
+              bounded_below(-1.0),
+              bounded_above(0.4),
+              bounded(-0.1,0.2)]
+        name1 = "constrained_mvnormal"
+        u1 = ParameterDistribution(d1,c1,name1)
+
+        d2 = Samples([1 2 3 4])
+        c2 = [bounded(10,15)]
+        name2 = "constrained_sampled"
+        u2 = ParameterDistribution(d2,c2,name2)
+        
+        d3 = Parameterized(Beta(2,2))
+        c3 = [no_constraint()]
+        name3 = "unconstrained_beta"
+        u3 = ParameterDistribution(d3,c3,name3)
+
+        u = ParameterDistribution([d1,d2],[c1,c2],[name1,name2])
+        v = ParameterDistribution([d1,d2,d3],[c1,c2,c3],[name1,name2,name3])
+                
         # Tests for sample distribution
         seed=2020
         Random.seed!(seed)
@@ -164,6 +189,20 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         Random.seed!(seed)
         s = sample_distribution(u,3)
         @test s == cat([s1,s2]...,dims=1)
+
+        #Test for get_logpdf
+        @test_throws ErrorException get_logpdf(u,zeros(get_total_dimension(u))) 
+        x_in_bd = [0.5]
+        Random.seed!(seed)
+        lpdf3 = logpdf.(Beta(2,2),x_in_bd)
+        Random.seed!(seed)
+        @test isapprox(get_logpdf(u3,x_in_bd) - lpdf3 , [0.0]; atol=1e-6)
+        @test_throws DimensionMismatch get_logpdf(u3, [0.5,0.5])
+
+        #Test for get_cov, get_var        
+        block_cov = cat([get_cov(d1),get_var(d2),get_var(d3)]..., dims=(1,2)) 
+        @test isapprox(get_cov(v) - block_cov, zeros(get_total_dimension(v),get_total_dimension(v)); atol=1e-6)
+        
     end
 
     @testset "transform functions" begin
