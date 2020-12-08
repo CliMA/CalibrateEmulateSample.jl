@@ -18,7 +18,7 @@ export get_name, get_distribution, get_total_dimension, get_dimensions
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
-export get_logpdf, get_cov, get_var
+export get_logpdf, get_cov, get_var, get_mean
     
 ## Objects
 # for the Distribution
@@ -165,10 +165,11 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
                                                                        ST <: AbstractString}
         
         parameter_distributions = isa(parameter_distributions, PDType) ? [parameter_distributions] : parameter_distributions
+        n_parameter_per_dist = [dimension(pd) for pd in parameter_distributions]
+        
         constraints = isa(constraints, Union{<:ConstraintType,Array{<:ConstraintType}}) ? [constraints] : constraints #to calc n_constraints_per_dist
         names = isa(names, ST) ? [names] : names
             
-        n_parameter_per_dist = [dimension(pd) for pd in parameter_distributions]
         n_constraints_per_dist = [len(c) for c in constraints]
         n_dists = length(parameter_distributions)
         n_names = length(names)        
@@ -246,7 +247,7 @@ end
 """
     function sample_distribution(pd::ParameterDistribution)
 
-Draws samples from the parameter distributions
+Draws samples from the parameter distributions returns an array, with parameters as columns
 """
 function sample_distribution(pd::ParameterDistribution)
     return sample_distribution(pd,1)
@@ -259,12 +260,19 @@ end
 function sample_distribution(d::Samples, n_draws::IT)  where {IT <: Integer}
     n_stored_samples = n_samples(d)
     samples_idx = StatsBase.sample(collect(1:n_stored_samples), n_draws)
-    return d.distribution_samples[:,samples_idx]
-
+    if dimension(d) == 1
+        return reshape(d.distribution_samples[:,samples_idx],:,n_draws) #columns are parameters
+    else
+        return d.distribution_samples[:,samples_idx]
+    end
 end
 
 function sample_distribution(d::Parameterized, n_draws::IT) where {IT <: Integer}
-    return rand(d.distribution, n_draws)
+    if dimension(d) == 1
+        return reshape(rand(d.distribution,n_draws), :, n_draws) #columns are parameters
+    else
+        return rand(d.distribution, n_draws)
+    end
 end
 
 """
@@ -296,7 +304,7 @@ function get_logpdf(pd::ParameterDistribution, xarray::Array{FT,1}) where {FT <:
 end
 
 """
-    variance(pd::ParameterDistribution)
+    get_cov(pd::ParameterDistribution)
 
 returns a blocked covariance of the distributions
 """
@@ -305,7 +313,7 @@ function get_cov(d::Parameterized)
 end
 
 function get_cov(d::Samples)
-    return cov(d.distribution_samples,dims=2) #parameters are columns
+    return cov(d.distribution_samples, dims=2) #parameters are columns
 end
 
 function get_var(d::Parameterized)
@@ -335,7 +343,24 @@ function get_cov(pd::ParameterDistribution)
     return cat(block_cov...,dims=(1,2)) #build the block diagonal (dense) matrix
     
 end
-    
+"""
+    get_mean(pd::ParameterDistribution)
+
+returns a mean of the distirbutions
+"""
+
+function get_mean(d::Parameterized)
+    return mean(d.distribution)
+end
+
+function get_mean(d::Samples)
+    return mean(d.distribution_samples, dims=2) #parameters are columns
+end
+
+function get_mean(pd::ParameterDistribution)
+    return reshape(cat([get_mean(d) for d in pd.distributions]...,dims=1),:,1)
+end
+
 
 #apply transforms
 

@@ -4,8 +4,7 @@ using Random
 using Test
 
 using CalibrateEmulateSample.EKP
-using CalibrateEmulateSample.Priors
-
+using CalibrateEmulateSample.ParameterDistributionStorage
 @testset "EKP" begin
 
     # Seed for pseudo-random number generator
@@ -39,13 +38,16 @@ using CalibrateEmulateSample.Priors
     @test norm(y_star - G(u_star)) < n_obs * noise_level^2
 
     #### Define prior information on parameters
-    param_names = ["u1", "u2"]
-    priors     = [Priors.Prior(Normal(1., sqrt(2)), param_names[1]),
-                  Priors.Prior(Normal(1., sqrt(2)), param_names[2])]
+    prior_distns = [Parameterized(Normal(1., sqrt(2))),
+              Parameterized(Normal(1., sqrt(2)))]
+    constraints = [[no_constraint()], [no_constraint()]]
+    prior_names = ["u1","u2"]
+    prior = ParameterDistribution(prior_distns, constraints, prior_names)
+    
+    prior_mean = reshape(get_mean(prior),:)
 
-    prior_mean = [1., 1.]
     # Assuming independence of u1 and u2
-    prior_cov = convert(Array, Diagonal([sqrt(2.), sqrt(2.)]))
+    prior_cov = get_cov(prior)#convert(Array, Diagonal([sqrt(2.), sqrt(2.)]))
 
     ###
     ###  Calibrate (1): Ensemble Kalman Inversion
@@ -53,11 +55,11 @@ using CalibrateEmulateSample.Priors
 
     N_ens = 50 # number of ensemble members
     N_iter = 20 # number of EKI iterations
-    initial_ensemble = EKP.construct_initial_ensemble(N_ens, priors;
+    initial_ensemble = EKP.construct_initial_ensemble(N_ens, prior;
                                                     rng_seed=rng_seed)
     @test size(initial_ensemble) == (N_ens, n_par)
 
-    ekiobj = EKP.EKObj(initial_ensemble, param_names,
+    ekiobj = EKP.EKObj(initial_ensemble, prior_names,
                        y_obs, Γy, Inversion())
 
     # EKI iterations
@@ -88,7 +90,7 @@ using CalibrateEmulateSample.Priors
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
     ###
-    eksobj = EKP.EKObj(initial_ensemble, param_names,
+    eksobj = EKP.EKObj(initial_ensemble, prior_names,
                       y_obs, Γy,
                       Sampler(prior_mean, prior_cov))
 

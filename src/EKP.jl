@@ -96,13 +96,12 @@ end
 construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
 
 Construct the initial parameters, by sampling N_ens samples from specified
-prior distribution.
+prior distribution. Returned with parameters as rows
 """
 function construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
     # Ensuring reproducibility of the sampled parameter values
     Random.seed!(rng_seed)
-    params = sample_distribution(prior, N_ens)' #the transpose will be [N_ens x dim(param space)]
-    
+    params = permutedims(sample_distribution(prior, N_ens), (2,1)) #this transpose is [N_ens x dim(param space)]
     return params
 end
 
