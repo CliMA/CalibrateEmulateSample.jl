@@ -4,7 +4,7 @@ using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
 # No internal deps, light external deps
 include("Observations.jl")
-#include("Priors.jl")
+include("Priors.jl")
 include("ParameterDistribution.jl")
 
 # No internal deps, heavy external deps
