@@ -93,7 +93,6 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test u.distributions == [d1,d2]
         @test u.constraints == cat([c1,c2]...,dims=1)
         @test u.names == [name1,name2]
-
     end
 
     @testset "get/sample functions" begin
@@ -112,6 +111,14 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         u2 = ParameterDistribution(d2,c2,name2)
         
         u = ParameterDistribution([d1,d2], [c1,c2], [name1,name2])
+
+        # Test for get_dimension(s)
+        @test get_total_dimension(u1) == 4
+        @test get_total_dimension(u2) == 1
+        @test get_total_dimension(u) == 5
+        @test get_dimensions(u1) == [4]
+        @test get_dimensions(u2) == [1]
+        @test get_dimensions(u) == [4,1]
         
         # Tests for get_name
         @test get_name(u1) == [name1]

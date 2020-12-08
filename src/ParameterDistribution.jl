@@ -2,6 +2,7 @@ module ParameterDistributionStorage
 
 ## Imports
 using Distributions
+using Statistics
 using StatsBase
 using Random
 
@@ -13,7 +14,7 @@ export ParameterDistribution
 export Constraint
 
 #functions
-export get_name, get_distribution
+export get_name, get_distribution, get_dimensions
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
@@ -125,7 +126,7 @@ function len(carray::Array{CType}) where {CType <: ConstraintType}
 end
 
 """
-    dimension(d<:ParametrizedDistributionType)
+    get_dimensions(d<:ParametrizedDistributionType)
 
 The number of dimensions of the parameter space
 """
@@ -197,6 +198,33 @@ function get_name(pd::ParameterDistribution)
 end
 
 """
+    get_dimensions(pd::ParameterDistribution)
+
+The number of dimensions of the parameter space
+"""
+function get_dimensions(pd::ParameterDistribution)
+    return [dimension(d) for d in pd.distributions]
+end
+function get_total_dimension(pd::ParameterDistribution)
+    return sum(dimension(d) for d in pd.distributions)
+end
+
+"""
+    batch(pd:ParameterDistribution)
+
+Returns a list of contiguous [collect(1:i), collect(i+1:j),... ] used to split parameter arrays by distribution dimensions
+"""
+function batch(pd::ParameterDistribution)
+    #chunk xarray to give to the different distributions.
+    d_dim = get_dimensions(pd) #e.g [4,1,2]
+    d_dim_tmp = zeros(size(d_dim)+1)
+    for i = 2:(d_dim)+1
+        d_dim_tmp[i] = sum(d_dim[1:i-1]) # e.g [0,4,5,7]
+    end
+    return [collect(d_dim_tmp[i]+1:d_dim_tmp[i+1]) for i = 1:size(d_dim)] # e.g [1:4, 5:5, 6:7]
+end
+
+"""
     get_distribution(pd::ParameterDistribution)
 
 Returns a `Dict` of `ParameterDistribution` distributions by name, (unless sample type)
@@ -236,17 +264,59 @@ function sample_distribution(d::Parameterized, n_draws::IT) where {IT <: Integer
     return rand(d.distribution, n_draws)
 end
 
+"""
+    logpdf(pd::ParameterDistribution, xarray::Array{<:Real})
+
+Obtains the logpdf at at parameter xarray (non-Samples Distributions only)
+"""
+function logpdf(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
+    #first check we don't have sampled distribution
+    for d in pd.distributions
+        if typeof(d) <: Samples
+            throw(TypeError("No implementation for taking logpdf of Samples distribution. Consider using a Parameterized type for your prior."))
+        end
+    end
+    
+    # get the index of xarray chunks to give to the different distributions.
+    batches = batch(pd)
+
+    # perform the logpdf of the distributions    
+    return cat([logpdf(d, xarray[batches[i]]) for (i,d) in enumerate(pd.distributions)]...,dims=1)
+end
+
+"""
+    variance(pd::ParameterDistribution)
+
+returns a blocked covariance of the distributions
+"""
+function cov(pd::ParameterDistribution)
+    #first check we don't have sampled distribution
+
+    d_dims = get_dimensions(pd)
+    
+    # create each block (co)variance
+    block_cov = [] 
+    for (i,dimension) in enumerate(d_dims)
+        if dimension == 1
+            block_cov[i] = var(pd.distributions[i]) 
+        else
+            block_cov[i] = cov(pd.distributions[i])
+        end
+    end
+
+    return cat(block_cov...,dims=(1,2)) #build the block diagonal (dense) matrix
+    
+end
+    
 
 #apply transforms
 
 """
-    transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{Real})
+    transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{<:Real})
 
 Apply the transformation to map (possibly constrained) parameters `xarray` into the unconstrained space
 """
 function transform_constrained_to_unconstrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-    #split xarray into chunks 
-#    return cat([transform_constrained_to_unconstrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
     return cat([c.constrained_to_unconstrained(xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
 
@@ -256,71 +326,10 @@ end
 Apply the transformation to map parameters `xarray` from the unconstrained space into (possibly constrained) space
 """
 function transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{FT}) where {FT <: Real}
-#    return [transform_unconstrained_to_constrained(c,xarray[i]) for (i,c) in enumerate(pd.constraints)]
     return cat([c.unconstrained_to_constrained(xarray[i]) for (i,c) in enumerate(pd.constraints)]...,dims=1)
 end
 
 
-
-
-# """
-# No constraint mapping x -> x
-# """
-# function transform_constrained_to_unconstrained(c::NoConstraint , x::FT) where {FT <: Real}
-#     return x
-# end
-
-# """
-# Bounded below -> unbounded, use mapping x -> log(x - lower_bound)
-# """
-# function transform_constrained_to_unconstrained(c::BoundedBelow, x::FT) where {FT <: Real}    
-#     return log(x - c.lower_bound)
-# end
-
-# """
-# Bounded above -> unbounded, use mapping x -> log(upper_bound - x)
-# """
-# function transform_constrained_to_unconstrained(c::BoundedAbove, x::FT) where {FT <: Real}    
-#     return log(c.upper_bound - x)
-# end
-
-# """
-# Bounded -> unbounded, use mapping x -> log((x - lower_bound) / (upper_bound - x)
-# """
-# function transform_constrained_to_unconstrained(c::Bounded, x::FT) where {FT <: Real}    
-#     return log( (x - c.lower_bound) / (c.upper_bound - x))
-# end
-
-
-
-
-# """
-# No constraint mapping x -> x
-# """
-# function transform_unconstrained_to_constrained(c::NoConstraint , x::FT) where {FT <: Real}
-#     return x
-# end
-
-# """
-# Unbounded -> bounded below, use mapping x -> exp(x) + lower_bound
-# """
-# function transform_unconstrained_to_constrained(c::BoundedBelow, x::FT) where {FT <: Real}    
-#     return exp(x) + c.lower_bound
-# end
-
-# """
-# Unbounded -> bounded above, use mapping x -> upper_bound - exp(x)
-# """
-# function transform_unconstrained_to_constrained(c::BoundedAbove, x::FT) where {FT <: Real}    
-#     return c.upper_bound - exp(x)
-# end
-
-# """
-# Unbounded -> bounded, use mapping x -> (upper_bound * exp(x) + lower_bound) / (exp(x) + 1)
-# """
-# function transform_unconstrained_to_constrained(c::Bounded, x::FT) where {FT <: Real}    
-#     return (c.upper_bound * exp(x) + c.lower_bound) / (exp(x) + 1)
-# end
 
 
 

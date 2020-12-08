@@ -1,6 +1,8 @@
 module EKP
 
-using ..Priors
+#using ..Priors
+using ..ParameterDistributionStorage
+
 using Random
 using Statistics
 using Distributions
@@ -91,25 +93,16 @@ end
 
 
 """
-construct_initial_ensemble(N_ens::IT, priors::Array{Prior, 1}; rng_seed=42) where {IT<:Int}
+construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
 
 Construct the initial parameters, by sampling N_ens samples from specified
-prior distributions.
+prior distribution.
 """
-function construct_initial_ensemble(N_ens::IT, priors::Array{Prior, 1}; rng_seed=42) where {IT<:Int}
-    N_params = length(priors)
-    params = zeros(N_ens, N_params)
+function construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
     # Ensuring reproducibility of the sampled parameter values
     Random.seed!(rng_seed)
-    for i in 1:N_params
-        prior_i = priors[i].dist
-        if !(typeof(priors[i].dist) == Deterministic{Float64})
-            params[:, i] = rand(prior_i, N_ens)
-        else
-            params[:, i] = prior_i.value * ones(N_ens)
-        end
-    end
-
+    params = sample_distribution(prior, N_ens)' #the transpose will be [N_ens x dim(param space)]
+    
     return params
 end
 

@@ -1,7 +1,8 @@
 module MCMC
 
 using ..GPEmulator
-using ..Priors
+#using ..Priors
+using ..ParameterDistributionStorage
 
 using Statistics
 using Distributions
@@ -34,7 +35,7 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     "covariance of the observational noise"
     obs_noise_cov::Array{FT, 2}
     "array of length N_parameters with the parameters' prior distributions"
-    prior::Array{Prior, 1}
+    prior::ParameterDistribution
     "MCMC step size"
     step::Array{FT}
     "Number of MCMC steps that are considered burnin"
@@ -69,7 +70,7 @@ where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 function MCMCObj(
     obs_sample::Vector{FT},
     obs_noise_cov::Array{FT, 2},
-    priors::Array{Prior, 1},
+    prior::ParameterDistribution,
     step::FT,
     param_init::Vector{FT},
     max_iter::IT,
@@ -100,7 +101,7 @@ function MCMCObj(
     end
     MCMCObj{FT,IT}(obs_sample,
                    obs_noise_cov,
-                   priors,
+                   prior,
                    [step],
                    burnin,
                    param,
@@ -174,30 +175,17 @@ end
 
 
 function log_prior(mcmc::MCMCObj{FT}) where {FT}
-    log_rho = FT[0]
-    # Assume independent priors for each parameter
-    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
-    for (param, prior_dist) in zip(mcmc.param, priors)
-        # get density at current parameter value
-        log_rho[1] += logpdf(prior_dist, param)
-    end
-
-    return log_rho[1]
+    return logpdf(mcmc.prior,param)
 end
 
 
 function proposal(mcmc::MCMCObj)
 
-    variances = zeros(length(mcmc.param))
-    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
-    param_names = [mcmc.prior[i].param_name for i in 1:length(mcmc.prior)]
-    for (idx, prior) in enumerate(priors)
-        variances[idx] = var(prior)
-    end
-
+    proposal_covariance = cov(mcmc.prior)
+ 
     if mcmc.algtype == "rwm"
         prop_dist = MvNormal(zeros(length(mcmc.param)), 
-                             (mcmc.step[1]^2) * Diagonal(variances))
+                             (mcmc.step[1]^2) * proposal_covariance)
     end
     sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
 
