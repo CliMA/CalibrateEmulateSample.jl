@@ -175,13 +175,13 @@ end
 
 
 function log_prior(mcmc::MCMCObj{FT}) where {FT}
-    return logpdf(mcmc.prior,param)
+    return get_logpdf(mcmc.prior,mcmc.param)
 end
 
 
 function proposal(mcmc::MCMCObj)
 
-    proposal_covariance = cov(mcmc.prior)
+    proposal_covariance = get_cov(mcmc.prior)
  
     if mcmc.algtype == "rwm"
         prop_dist = MvNormal(zeros(length(mcmc.param)), 

@@ -5,7 +5,8 @@ using GaussianProcesses
 using Test
 
 using CalibrateEmulateSample.MCMC
-using CalibrateEmulateSample.Priors
+#using CalibrateEmulateSample.Priors
+using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.GPEmulator
 
 @testset "MCMC" begin
@@ -39,7 +40,12 @@ using CalibrateEmulateSample.GPEmulator
     ### Define prior
     umin = -1.0
     umax = 6.0
-    prior = [Priors.Prior(Uniform(umin, umax), "u")]  # prior on u
+    #prior = [Priors.Prior(Uniform(umin, umax), "u")]  # prior on u
+    prior_dist = Parameterized(Normal(0,1))
+    prior_constraint = bounded(-1.0,6.0)
+    prior_name = "u"
+    prior = ParameterDistribution(prior_dist, prior_constraint, prior_name)
+    
     obs_sample = [1.0]
 
     # MCMC parameters    

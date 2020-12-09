@@ -278,7 +278,7 @@ end
 """
     logpdf(pd::ParameterDistribution, xarray::Array{<:Real,1})
 
-Obtains the logpdf at at parameter xarray (non-Samples Distributions only)
+Obtains the independent logpdfs of the parameter distributions at xarray (non-Samples Distributions only), and returns their sum.
 """
 function get_logpdf(d::Parameterized, xarray::Array{FT,1}) where {FT <: Real}
     return logpdf.(d.distribution, xarray)
@@ -299,8 +299,8 @@ function get_logpdf(pd::ParameterDistribution, xarray::Array{FT,1}) where {FT <:
     # get the index of xarray chunks to give to the different distributions.
     batches = batch(pd)
 
-    # perform the logpdf of the distributions    
-    return cat([get_logpdf(d, xarray[batches[i]]) for (i,d) in enumerate(pd.distributions)]...,dims=1)
+    # perform the logpdf of each of the distributions, and returns their sum    
+    return sum(cat([get_logpdf(d, xarray[batches[i]]) for (i,d) in enumerate(pd.distributions)]...,dims=1))
 end
 
 """
