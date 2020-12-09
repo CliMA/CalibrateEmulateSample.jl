@@ -194,7 +194,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test_throws ErrorException get_logpdf(u,zeros(get_total_dimension(u))) 
         x_in_bd = [0.5]
         Random.seed!(seed)
-        lpdf3 = logpdf.(Beta(2,2),x_in_bd)
+        lpdf3 = logpdf.(Beta(2,2),x_in_bd)[1] #throws deprecated warning without "."
         Random.seed!(seed)
         @test isapprox(get_logpdf(u3,x_in_bd) - lpdf3 , 0.0; atol=1e-6)
         @test_throws DimensionMismatch get_logpdf(u3, [0.5,0.5])
