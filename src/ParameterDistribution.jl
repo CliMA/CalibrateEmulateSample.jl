@@ -14,7 +14,7 @@ export ParameterDistribution
 export Constraint
 
 #functions
-export get_name, get_distribution, get_total_dimension, get_dimensions
+export get_name, get_distribution, get_total_dimension, get_dimensions, get_all_constraints, get_n_samples
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
@@ -25,7 +25,7 @@ export get_logpdf, get_cov, get_var, get_mean
 abstract type ParameterDistributionType end
 
 """
-    Parameterized <: ParameterDistributionType
+    struct Parameterized <: ParameterDistributionType
     
 A distribution constructed from a parametrized formula (e.g Julia Distributions.jl)
 """
@@ -34,13 +34,13 @@ struct Parameterized <: ParameterDistributionType
 end
 
 """
-    Samples{FT<:Real} <: ParameterDistributionType
+    struct Samples{FT<:Real} <: ParameterDistributionType
 
 A distribution comprised of only samples, stored as columns of parameters
 """
 struct Samples{FT<:Real} <: ParameterDistributionType
     distribution_samples::Array{FT,2} #parameters are columns
-    Samples(distribution_samples::Array{FT,2}; params_are_columns=true) where {FT <: Real} = params_are_columns ? new{FT}(distribution_samples) : new{FT}(permutedims(distribution_samples,[2,1]))
+    Samples(distribution_samples::Array{FT,2}; params_are_columns=true) where {FT <: Real} = params_are_columns ? new{FT}(distribution_samples) : new{FT}(permutedims(distribution_samples,(2,1)))
     #Distinguish 1 sample of an ND parameter or N samples of 1D parameter, and store as 2D array  
     Samples(distribution_samples::Array{FT,1}; params_are_columns=true) where {FT <: Real} = params_are_columns ? new{FT}(reshape(distribution_samples,1,:)) : new{FT}(reshape(distribution_samples,:,1))
     
@@ -50,7 +50,7 @@ end
 # For the transforms
 abstract type ConstraintType end
 """
-    Constraint <: ConstraintType
+    struct Constraint <: ConstraintType
 
 Contains two functions to map between constrained and unconstrained spaces.
 """
@@ -62,7 +62,7 @@ end
 
 
 """
-    no_constraint()
+    function no_constraint()
 
 Constructs a Constraint with no constraints, enforced by maps x -> x and x -> x.
 """
@@ -73,7 +73,7 @@ function no_constraint()
 end
     
 """
-    bounded_below(lower_bound::FT) where {FT <: Real}
+    function bounded_below(lower_bound::FT) where {FT <: Real}
 
 Constructs a Constraint with provided lower bound, enforced by maps x -> log(x - lower_bound) and x -> exp(x) + lower_bound.
 """
@@ -84,7 +84,7 @@ function bounded_below(lower_bound::FT) where {FT <: Real}
 end
 
 """
-    bounded_above(upper_bound::FT) where {FT <: Real} 
+    function bounded_above(upper_bound::FT) where {FT <: Real} 
 
 Constructs a Constraint with provided upper bound, enforced by maps x -> log(upper_bound - x) and x -> upper_bound - exp(x).
 """
@@ -96,7 +96,7 @@ end
     
 
 """
-    Bounded{FT <: Real} <: ConstraintType
+    function bounded(lower_bound::FT, upper_bound::FT) where {FT <: Real} 
 
 Constructs a Constraint with provided upper and lower bounds, enforced by maps
 x -> log((x - lower_bound) / (upper_bound - x))
@@ -114,7 +114,7 @@ function bounded(lower_bound::FT, upper_bound::FT) where {FT <: Real}
 end
 
 """
-    len(c::Array{CType})
+    function len(c::Array{CType})
 
 The number of constraints, each constraint has length 1.
 """
@@ -127,7 +127,7 @@ function len(carray::Array{CType}) where {CType <: ConstraintType}
 end
 
 """
-    get_dimensions(d<:ParametrizedDistributionType)
+    function get_dimensions(d<:ParametrizedDistributionType)
 
 The number of dimensions of the parameter space
 """
@@ -140,12 +140,15 @@ function dimension(d::Samples)
 end
 
 """
-    n_samples(d::Samples)
+    function n_samples(d::Samples)
 
 The number of samples in the array
 """
 function n_samples(d::Samples)
     return size(d.distribution_samples)[2]
+end
+function n_samples(d::Parameterized)
+    return "Distribution stored in Parameterized form, draw samples using `sample_distribution` function" 
 end
 
 """
@@ -191,7 +194,7 @@ end
 ## Functions
 
 """
-    get_name(pd::ParameterDistribution)
+    function get_name(pd::ParameterDistribution)
 
 Returns a list of ParameterDistribution names
 """
@@ -200,7 +203,7 @@ function get_name(pd::ParameterDistribution)
 end
 
 """
-    get_dimensions(pd::ParameterDistribution)
+    function get_dimensions(pd::ParameterDistribution)
 
 The number of dimensions of the parameter space
 """
@@ -212,7 +215,25 @@ function get_total_dimension(pd::ParameterDistribution)
 end
 
 """
-    batch(pd:ParameterDistribution)
+    function get_n_samples(pd::ParameterDistribution)
+
+The number of samples in a Samples distribution
+"""
+function get_n_samples(pd::ParameterDistribution)
+    return Dict{String,Any}(pd.names[i] => n_samples(d) for (i,d) in enumerate(pd.distributions))
+end
+
+"""
+    function get_all_constraints(pd::ParameterDistribution)
+
+returns the (flattened) array of constraints of the parameter distribution
+"""
+function get_all_constraints(pd::ParameterDistribution)
+    return pd.constraints
+end
+
+"""
+    function batch(pd:ParameterDistribution)
 
 Returns a list of contiguous [collect(1:i), collect(i+1:j),... ] used to split parameter arrays by distribution dimensions
 """
@@ -229,7 +250,7 @@ function batch(pd::ParameterDistribution)
 end
 
 """
-    get_distribution(pd::ParameterDistribution)
+    function get_distribution(pd::ParameterDistribution)
 
 Returns a `Dict` of `ParameterDistribution` distributions by name, (unless sample type)
 """
@@ -276,7 +297,7 @@ function sample_distribution(d::Parameterized, n_draws::IT) where {IT <: Integer
 end
 
 """
-    logpdf(pd::ParameterDistribution, xarray::Array{<:Real,1})
+    function logpdf(pd::ParameterDistribution, xarray::Array{<:Real,1})
 
 Obtains the independent logpdfs of the parameter distributions at xarray (non-Samples Distributions only), and returns their sum.
 """
@@ -304,7 +325,7 @@ function get_logpdf(pd::ParameterDistribution, xarray::Array{FT,1}) where {FT <:
 end
 
 """
-    get_cov(pd::ParameterDistribution)
+    function get_cov(pd::ParameterDistribution)
 
 returns a blocked covariance of the distributions
 """
@@ -344,7 +365,7 @@ function get_cov(pd::ParameterDistribution)
     
 end
 """
-    get_mean(pd::ParameterDistribution)
+    function get_mean(pd::ParameterDistribution)
 
 returns a mean of the distirbutions
 """
@@ -365,7 +386,7 @@ end
 #apply transforms
 
 """
-    transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{<:Real})
+    function transform_constrained_to_unconstrained(pd::ParameterDistribution, x::Array{<:Real})
 
 Apply the transformation to map (possibly constrained) parameters `xarray` into the unconstrained space
 """
@@ -374,7 +395,7 @@ function transform_constrained_to_unconstrained(pd::ParameterDistribution, xarra
 end
 
 """
-    transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{Real})
+    function transform_unconstrained_to_constrained(pd::ParameterDistribution, xarray::Array{Real})
 
 Apply the transformation to map parameters `xarray` from the unconstrained space into (possibly constrained) space
 """

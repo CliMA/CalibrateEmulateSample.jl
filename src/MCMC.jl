@@ -125,7 +125,14 @@ end
 
 
 function get_posterior(mcmc::MCMCObj)
-    return mcmc.posterior[mcmc.burnin+1:end, :]
+    #Return a parameter distributions object
+    posterior_samples = Samples(mcmc.posterior[mcmc.burnin+1:end,:]; params_are_columns=false) 
+    parameter_constraints = get_all_constraints(mcmc.prior) #live in same space as prior
+    parameter_names = get_name(mcmc.prior) #the same parameters as in prior
+    posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
+    return posterior_distribution
+    #return mcmc.posterior[mcmc.burnin+1:end, :]
+    
 end
 
 function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
