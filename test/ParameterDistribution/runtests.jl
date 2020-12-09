@@ -123,6 +123,10 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         # Tests for get_name
         @test get_name(u1) == [name1]
         @test get_name(u) == [name1, name2]
+
+        # Tests for get_n_samples
+        @test typeof(get_n_samples(u)[name1]) <: String
+        @test get_n_samples(u)[name2] == 4
         
         # Tests for get_distribution
         @test get_distribution(d1) == MvNormal(4,0.1)
@@ -133,6 +137,9 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         d = get_distribution(u)
         @test d[name1] == MvNormal(4,0.1)
         @test typeof(d[name2]) <: String
+
+        # Test for get_all_constraints
+        @test get_all_constraints(u) == cat([c1,c2]...,dims=1)
     end
 
     @testset "statistics functions" begin
