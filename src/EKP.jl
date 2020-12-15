@@ -48,8 +48,6 @@ $(DocStringExtensions.FIELDS)
 struct EKObj{FT<:AbstractFloat, IT<:Int, P<:Process}
     "vector of arrays of size N_ensemble x N_parameters containing the parameters (in each EK iteration a new array of parameters is added)"
      u::Vector{Array{FT, 2}}
-     "vector of parameter names"
-     unames::Vector{String}
      "vector of observations (length: N_data); mean of all observation samples"
      obs_mean::Vector{FT}
      "covariance of the observational noise, which is assumed to be normally distributed"
@@ -68,7 +66,6 @@ end
 
 # outer constructors
 function EKObj(parameters::Array{FT, 2},
-               parameter_names::Vector{String},
                obs_mean,
                obs_noise_cov::Array{FT, 2},
                process::P;
@@ -87,18 +84,18 @@ function EKObj(parameters::Array{FT, 2},
     # timestep store
     Δt = Array([Δt])
 
-    EKObj{FT, IT, P}(u, parameter_names, obs_mean, obs_noise_cov, N_ens, g,
+    EKObj{FT, IT, P}(u, obs_mean, obs_noise_cov, N_ens, g,
                      err, Δt, process)
 end
 
 
 """
-construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
+construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng_seed=42) where {IT<:Int}
 
 Construct the initial parameters, by sampling N_ens samples from specified
 prior distribution. Returned with parameters as rows
 """
-function construct_initial_ensemble(N_ens::IT, prior::ParameterDistribution; rng_seed=42) where {IT<:Int}
+function construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng_seed=42) where {IT<:Int}
     # Ensuring reproducibility of the sampled parameter values
     Random.seed!(rng_seed)
     params = permutedims(sample_distribution(prior, N_ens), (2,1)) #this transpose is [N_ens x dim(param space)]

@@ -55,11 +55,11 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 
     N_ens = 50 # number of ensemble members
     N_iter = 20 # number of EKI iterations
-    initial_ensemble = EKP.construct_initial_ensemble(N_ens, prior;
+    initial_ensemble = EKP.construct_initial_ensemble(prior,N_ens;
                                                     rng_seed=rng_seed)
     @test size(initial_ensemble) == (N_ens, n_par)
 
-    ekiobj = EKP.EKObj(initial_ensemble, prior_names,
+    ekiobj = EKP.EKObj(initial_ensemble,
                        y_obs, Γy, Inversion())
 
     # EKI iterations
@@ -90,7 +90,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
     ###
-    eksobj = EKP.EKObj(initial_ensemble, prior_names,
+    eksobj = EKP.EKObj(initial_ensemble,
                       y_obs, Γy,
                       Sampler(prior_mean, prior_cov))
 
