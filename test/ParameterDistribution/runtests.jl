@@ -164,8 +164,13 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         u3 = ParameterDistribution(d3,c3,name3)
 
         u = ParameterDistribution([d1,d2],[c1,c2],[name1,name2])
-        v = ParameterDistribution([d1,d2,d3],[c1,c2,c3],[name1,name2,name3])
-                
+
+        d4 = Samples([1 2 3 4 5 6 7 8; 8 7 6 5 4 3 2 1])
+        c4 = [no_constraint(),
+              no_constraint()]
+        name4 = "constrained_MVsampled"
+        v = ParameterDistribution([d1,d2,d3,d4],[c1,c2,c3,c4],[name1,name2,name3,name4])
+        
         # Tests for sample distribution
         seed=2020
         Random.seed!(seed)
@@ -207,11 +212,10 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test_throws DimensionMismatch get_logpdf(u3, [0.5,0.5])
 
         #Test for get_cov, get_var        
-        block_cov = cat([get_cov(d1),get_var(d2),get_var(d3)]..., dims=(1,2)) 
+        block_cov = cat([get_cov(d1),get_var(d2),get_var(d3),get_cov(d4)]..., dims=(1,2)) 
         @test isapprox(get_cov(v) - block_cov, zeros(get_total_dimension(v),get_total_dimension(v)); atol=1e-6)
-
         #Test for get_mean
-        means = reshape(cat([get_mean(d1), get_mean(d2), get_mean(d3)]...,dims=1),:,1)
+        means = reshape(cat([get_mean(d1), get_mean(d2), get_mean(d3), get_mean(d4)]...,dims=1),:,1)
         @test isapprox(get_mean(v) - means, zeros(get_total_dimension(v)); atol=1e-6)
         
     end
