@@ -93,10 +93,9 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test u.distributions == [d1,d2]
         @test u.constraints == cat([c1,c2]...,dims=1)
         @test u.names == [name1,name2]
-
     end
 
-    @testset "get/sample functions" begin
+    @testset "getter functions" begin
         # setup for the tests:
         d1 = Parameterized(MvNormal(4,0.1))
         c1 = [no_constraint(),
@@ -112,10 +111,22 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         u2 = ParameterDistribution(d2,c2,name2)
         
         u = ParameterDistribution([d1,d2], [c1,c2], [name1,name2])
+
+        # Test for get_dimension(s)
+        @test get_total_dimension(u1) == 4
+        @test get_total_dimension(u2) == 1
+        @test get_total_dimension(u) == 5
+        @test get_dimensions(u1) == [4]
+        @test get_dimensions(u2) == [1]
+        @test get_dimensions(u) == [4,1]
         
         # Tests for get_name
         @test get_name(u1) == [name1]
         @test get_name(u) == [name1, name2]
+
+        # Tests for get_n_samples
+        @test typeof(get_n_samples(u)[name1]) <: String
+        @test get_n_samples(u)[name2] == 4
         
         # Tests for get_distribution
         @test get_distribution(d1) == MvNormal(4,0.1)
@@ -127,6 +138,39 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         @test d[name1] == MvNormal(4,0.1)
         @test typeof(d[name2]) <: String
 
+        # Test for get_all_constraints
+        @test get_all_constraints(u) == cat([c1,c2]...,dims=1)
+    end
+
+    @testset "statistics functions" begin
+
+        # setup for the tests:
+        d1 = Parameterized(MvNormal(4,0.1))
+        c1 = [no_constraint(),
+              bounded_below(-1.0),
+              bounded_above(0.4),
+              bounded(-0.1,0.2)]
+        name1 = "constrained_mvnormal"
+        u1 = ParameterDistribution(d1,c1,name1)
+
+        d2 = Samples([1 2 3 4])
+        c2 = [bounded(10,15)]
+        name2 = "constrained_sampled"
+        u2 = ParameterDistribution(d2,c2,name2)
+        
+        d3 = Parameterized(Beta(2,2))
+        c3 = [no_constraint()]
+        name3 = "unconstrained_beta"
+        u3 = ParameterDistribution(d3,c3,name3)
+
+        u = ParameterDistribution([d1,d2],[c1,c2],[name1,name2])
+
+        d4 = Samples([1 2 3 4 5 6 7 8; 8 7 6 5 4 3 2 1])
+        c4 = [no_constraint(),
+              no_constraint()]
+        name4 = "constrained_MVsampled"
+        v = ParameterDistribution([d1,d2,d3,d4],[c1,c2,c3,c4],[name1,name2,name3,name4])
+        
         # Tests for sample distribution
         seed=2020
         Random.seed!(seed)
@@ -157,6 +201,23 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         Random.seed!(seed)
         s = sample_distribution(u,3)
         @test s == cat([s1,s2]...,dims=1)
+
+        #Test for get_logpdf
+        @test_throws ErrorException get_logpdf(u,zeros(get_total_dimension(u))) 
+        x_in_bd = [0.5]
+        Random.seed!(seed)
+        lpdf3 = logpdf.(Beta(2,2),x_in_bd)[1] #throws deprecated warning without "."
+        Random.seed!(seed)
+        @test isapprox(get_logpdf(u3,x_in_bd) - lpdf3 , 0.0; atol=1e-6)
+        @test_throws DimensionMismatch get_logpdf(u3, [0.5,0.5])
+
+        #Test for get_cov, get_var        
+        block_cov = cat([get_cov(d1),get_var(d2),get_var(d3),get_cov(d4)]..., dims=(1,2)) 
+        @test isapprox(get_cov(v) - block_cov, zeros(get_total_dimension(v),get_total_dimension(v)); atol=1e-6)
+        #Test for get_mean
+        means = reshape(cat([get_mean(d1), get_mean(d2), get_mean(d3), get_mean(d4)]...,dims=1),:,1)
+        @test isapprox(get_mean(v) - means, zeros(get_total_dimension(v)); atol=1e-6)
+        
     end
 
     @testset "transform functions" begin

@@ -1,7 +1,8 @@
 module MCMC
 
 using ..GPEmulator
-using ..Priors
+#using ..Priors
+using ..ParameterDistributionStorage
 
 using Statistics
 using Distributions
@@ -34,7 +35,7 @@ struct MCMCObj{FT<:AbstractFloat, IT<:Int}
     "covariance of the observational noise"
     obs_noise_cov::Array{FT, 2}
     "array of length N_parameters with the parameters' prior distributions"
-    prior::Array{Prior, 1}
+    prior::ParameterDistribution
     "MCMC step size"
     step::Array{FT}
     "Number of MCMC steps that are considered burnin"
@@ -69,7 +70,7 @@ where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 function MCMCObj(
     obs_sample::Vector{FT},
     obs_noise_cov::Array{FT, 2},
-    priors::Array{Prior, 1},
+    prior::ParameterDistribution,
     step::FT,
     param_init::Vector{FT},
     max_iter::IT,
@@ -100,7 +101,7 @@ function MCMCObj(
     end
     MCMCObj{FT,IT}(obs_sample,
                    obs_noise_cov,
-                   priors,
+                   prior,
                    [step],
                    burnin,
                    param,
@@ -124,7 +125,14 @@ end
 
 
 function get_posterior(mcmc::MCMCObj)
-    return mcmc.posterior[mcmc.burnin+1:end, :]
+    #Return a parameter distributions object
+    posterior_samples = Samples(mcmc.posterior[mcmc.burnin+1:end,:]; params_are_columns=false) 
+    parameter_constraints = get_all_constraints(mcmc.prior) #live in same space as prior
+    parameter_names = get_name(mcmc.prior) #the same parameters as in prior
+    posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
+    return posterior_distribution
+    #return mcmc.posterior[mcmc.burnin+1:end, :]
+    
 end
 
 function mcmc_sample!(mcmc::MCMCObj{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
@@ -174,30 +182,17 @@ end
 
 
 function log_prior(mcmc::MCMCObj{FT}) where {FT}
-    log_rho = FT[0]
-    # Assume independent priors for each parameter
-    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
-    for (param, prior_dist) in zip(mcmc.param, priors)
-        # get density at current parameter value
-        log_rho[1] += logpdf(prior_dist, param)
-    end
-
-    return log_rho[1]
+    return get_logpdf(mcmc.prior,mcmc.param)
 end
 
 
 function proposal(mcmc::MCMCObj)
 
-    variances = zeros(length(mcmc.param))
-    priors = [mcmc.prior[i].dist for i in 1:length(mcmc.prior)]
-    param_names = [mcmc.prior[i].param_name for i in 1:length(mcmc.prior)]
-    for (idx, prior) in enumerate(priors)
-        variances[idx] = var(prior)
-    end
-
+    proposal_covariance = get_cov(mcmc.prior)
+ 
     if mcmc.algtype == "rwm"
         prop_dist = MvNormal(zeros(length(mcmc.param)), 
-                             (mcmc.step[1]^2) * Diagonal(variances))
+                             (mcmc.step[1]^2) * proposal_covariance)
     end
     sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
 

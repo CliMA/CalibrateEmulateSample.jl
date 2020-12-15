@@ -24,8 +24,7 @@ end
         end
     end
 
-    for submodule in ["Priors",
-		      "EKP",
+    for submodule in ["EKP",
 		      "GPEmulator",
 		      "MCMC",
 		      "Observations",

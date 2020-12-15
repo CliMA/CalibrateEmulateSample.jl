@@ -5,7 +5,8 @@ using GaussianProcesses
 using Test
 
 using CalibrateEmulateSample.MCMC
-using CalibrateEmulateSample.Priors
+#using CalibrateEmulateSample.Priors
+using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.GPEmulator
 
 @testset "MCMC" begin
@@ -39,7 +40,12 @@ using CalibrateEmulateSample.GPEmulator
     ### Define prior
     umin = -1.0
     umax = 6.0
-    prior = [Priors.Prior(Uniform(umin, umax), "u")]  # prior on u
+    #prior = [Priors.Prior(Uniform(umin, umax), "u")]  # prior on u
+    prior_dist = Parameterized(Normal(0,1))
+    prior_constraint = bounded(-1.0,6.0)
+    prior_name = "u"
+    prior = ParameterDistribution(prior_dist, prior_constraint, prior_name)
+    
     obs_sample = [1.0]
 
     # MCMC parameters    
@@ -62,9 +68,9 @@ using CalibrateEmulateSample.GPEmulator
     mcmc = MCMCObj(obs_sample, σ2_y, prior, step, param_init, max_iter, 
                    mcmc_alg, burnin, svdflag=true)
     sample_posterior!(mcmc, gpobj, max_iter)
-    posterior = get_posterior(mcmc)      
-    post_mean = mean(posterior, dims=1)[1]
-    
+    posterior_distribution = get_posterior(mcmc)      
+    #post_mean = mean(posterior, dims=1)[1]
+    posterior_mean = get_mean(posterior_distribution)
     # We had svdflag=true, so the MCMCObj stores a transformed sample, 
     # 1.0/sqrt(0.05) * obs_sample ≈ 4.472
     @test mcmc.obs_sample ≈ [4.472] atol=1e-2
@@ -72,9 +78,10 @@ using CalibrateEmulateSample.GPEmulator
     @test mcmc.burnin == burnin
     @test mcmc.algtype == mcmc_alg
     @test mcmc.iter[1] == max_iter + 1
-    @test size(posterior) == (max_iter - burnin + 1, length(param_init))
+    @test get_n_samples(posterior_distribution)[prior_name] == max_iter - burnin + 1
+    @test get_total_dimension(posterior_distribution) == length(param_init)
     @test_throws Exception MCMCObj(obs_sample, σ2_y, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)
-    @test post_mean ≈ π/2 atol=4e-1
+    @test isapprox(posterior_mean[1] - π/2, 0.0; atol=4e-1)
 
 end
