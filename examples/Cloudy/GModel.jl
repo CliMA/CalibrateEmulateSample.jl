@@ -6,7 +6,7 @@ using DocStringExtensions
 using Pkg; Pkg.build()
 
 using Random
-using Sundials # CVODE_BDF() solver for ODE
+#using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
 using DifferentialEquations
@@ -117,7 +117,7 @@ function run_G(u::Array{FT, 1},
     rhs(M, p, t) = get_src(M, dist, settings.kernel)
     prob = ODEProblem(rhs, moments_init, settings.tspan)
     # Solve the ODE
-    sol = solve(prob, CVODE_BDF(), alg_hints=[:stiff], reltol=tol, abstol=tol)
+    sol = solve(prob, Tsit5(), alg_hints=[:stiff], reltol=tol, abstol=tol)
     # Return moments at last time step
     moments_final = vcat(sol.u'...)[end, :]
 

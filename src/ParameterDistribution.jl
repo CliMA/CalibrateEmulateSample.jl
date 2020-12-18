@@ -252,14 +252,14 @@ end
 """
     function get_distribution(pd::ParameterDistribution)
 
-Returns a `Dict` of `ParameterDistribution` distributions by name, (unless sample type)
+Returns a `Dict` of `ParameterDistribution` distributions, with the parameter names as dictionary keys. For parameters represented by `Samples`, the samples are returned as a 2D (parameter_dimension x n_samples) array
 """
 function get_distribution(pd::ParameterDistribution)
     return Dict{String,Any}(pd.names[i] => get_distribution(d) for (i,d) in enumerate(pd.distributions))
 end
 
 function get_distribution(d::Samples)
-    return "Contains samples only"
+    return d.distribution_samples
 end
 function get_distribution(d::Parameterized)
     return d.distribution
