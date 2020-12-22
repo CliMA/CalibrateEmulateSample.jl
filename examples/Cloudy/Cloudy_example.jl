@@ -46,9 +46,8 @@ using .GModel
 #     realistic applications, the observations will come from some external    #
 #     measurement system.                                                      #
 #                                                                              #
-#     The focus here is on the "how", not on the results, i.e., the purpose    #
-#     is to show how to do parameter learning using Calibrate-Emulate-Sample   #
-#     for a simple (and highly artificial) problem.                            #
+#     The purpose is to show how to do parameter learning using                #
+#     Calibrate-Emulate-Sample in a simple (and highly artificial) setting.    #
 #                                                                              #
 #     For more information on Cloudy, see                                      #
 #              https://github.com/CliMA/Cloudy.jl.git                          #
@@ -83,8 +82,8 @@ dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 ###
 
 # Define constraints
-lbound_N0 = 1.0e-1 * N0_true 
-lbound_θ = 1.0e-4
+lbound_N0 = 0.4 * N0_true 
+lbound_θ = 1.0e-1
 lbound_k = 1.0e-4
 c1 = bounded_below(lbound_N0)
 c2 = bounded_below(lbound_θ)
@@ -93,14 +92,14 @@ constraints = [[c1], [c2], [c3]]
 
 # We choose to use normal distributions to represent the prior distributions of
 # the parameters in the transformed (unconstrained) space.
-d1 = Parameterized(Normal(0.0, 0.1))
-d2 = Parameterized(Normal(0.0, 0.1))
-d3 = Parameterized(Normal(0.0, 0.1))
+d1 = Parameterized(Normal(0.0, 1.0))
+d2 = Parameterized(Normal(0.0, 1.0))
+d3 = Parameterized(Normal(0.0, 1.0))
 distributions = [d1, d2, d3]
 
-names = ["N0", "θ", "k"]
+param_names = ["N0", "θ", "k"]
 
-priors = ParameterDistribution(distributions, constraints, names)
+priors = ParameterDistribution(distributions, constraints, param_names)
 
 ###
 ###  Define the data from which we want to learn the parameters
@@ -116,12 +115,12 @@ n_moments = length(moments)
 ###
 
 # Collision-coalescence kernel to be used in Cloudy
-coalescence_coeff = 1/3.14/4/1000
+coalescence_coeff = 1/3.14/4/100
 kernel_func = x -> coalescence_coeff
 kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
 
 # Time period over which to run Cloudy
-tspan = (0., 0.5)  
+tspan = (0., 1.0)  
 
 
 ###
@@ -135,8 +134,12 @@ gt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params,
                   PDistributions.moment, Cloudy.Sources.get_int_coalescence)
 n_samples = 100
 yt = zeros(n_samples, length(gt))
-noise_level = 0.05
-Γy = noise_level * convert(Array, Diagonal(gt))
+# In a perfect model setting, the "observational noise" represent the internal
+# model variability. Since Cloudy is a purely deterministic model, there is no
+# straightforward way of coming up with a covariance structure for this internal
+# model variability. We decide to use a diagonal covariance, with entries
+# (variances) largely proportional to their corresponding data values, gt.
+Γy = convert(Array, Diagonal([13.0, 1.2, 2.7]))
 μ = zeros(length(gt))
 
 # Add noise
@@ -156,7 +159,7 @@ N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
 initial_params = EKP.construct_initial_ensemble(priors, N_ens; rng_seed=6)
 ekiobj = EKP.EKObj(initial_params, truth.mean, truth.obs_noise_cov,
-                   Inversion(), Δt=1.0)
+                   Inversion(), Δt=0.3)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
@@ -167,7 +170,7 @@ g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
 # EKI iterations
 for i in 1:N_iter
     params_i = mapslices(x -> transform_unconstrained_to_constrained(priors, x),
-                        ekiobj.u[end]; dims=2)
+                         ekiobj.u[end]; dims=2)
     g_ens = GModel.run_G_ensemble(params_i, g_settings,
                                   PDistributions.update_params,
                                   PDistributions.moment,
@@ -176,9 +179,10 @@ for i in 1:N_iter
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
-transformed_truth = transform_constrained_to_unconstrained(priors, params_true)
-println("True (transformed) parameters: ")
-println(transformed_truth)
+transformed_params_true = transform_constrained_to_unconstrained(priors,
+                                                                 params_true)
+println("True parameters (transformed): ")
+println(transformed_params_true)
 
 println("\nEKI results:")
 println(mean(ekiobj.u[end], dims=1))
@@ -200,9 +204,8 @@ kern1 = SE(len1, 1.0)
 len2 = zeros(3)
 kern2 = Mat52Ard(len2, 0.0)
 white = Noise(log(2.0))
-# # construct kernel
 GPkernel =  kern1 + kern2 + white
-# Get training points    
+# Get training points
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
 gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
@@ -212,7 +215,7 @@ gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel,
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
 y_mean, y_var = GPEmulator.predict(gpobj,
-                                   reshape(transformed_truth, 1, :),
+                                   reshape(transformed_params_true, 1, :),
                                    transform_to_real=true)
 
 println("GP prediction on true parameters: ")
@@ -229,7 +232,7 @@ println(truth.mean)
 u0 = vec(mean(u_tp, dims=1))
 println("initial parameters: ", u0)
 
-# MCMC parameters    
+# MCMC settings
 mcmc_alg = "rwm" # random walk Metropolis
 
 # First let's run a short chain to determine a good step size
@@ -244,49 +247,43 @@ new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
 u0 = vec(mean(u_tp, dims=1))
-
-# reset parameters 
 burnin = 1000
 max_iter = 100000
-
-mcmc = MCMC.MCMCObj(yt_sample, Γy, priors, new_step, u0, max_iter, 
-                    mcmc_alg, burnin, svdflag=true)
+mcmc = MCMC.MCMCObj(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
+                    burnin, svdflag=true)
 MCMC.sample_posterior!(mcmc, gpobj, max_iter)
 
 posterior = MCMC.get_posterior(mcmc)
 
 post_mean = get_mean(posterior)
 post_cov = get_cov(posterior)
-println("post_mean")
+println("posterior mean")
 println(post_mean)
-println("post_cov")
+println("posterior covariance")
 println(post_cov)
 
 # Plot the posteriors together with the priors and the true parameter values
-n_params = length(names)
+# (in the transformed/unconstrained space)
+n_params = length(get_name(posterior))
 
 for idx in 1:n_params
     if idx == 1
-        xs = collect(range(-2.0, stop=2.0, length=1000))
+        xs = collect(range(5.0, stop=5.5, length=1000))
     elseif idx == 2
-        xs = collect(range(-2.0, stop=2.0, length=1000))
+        xs = collect(range(-1.0, stop=1.0, length=1000))
     elseif idx == 3
-        xs = collect(range(-2.0, stop=2.0, length=1000))
+        xs = collect(range(-3.0, stop=-1.0, length=1000))
     else
         throw("not implemented")
     end
 
-    label = "true " * names[idx]
-    println("size of samples to be plotted in histogram")
-    println(size(posterior.distributions[idx].distribution_samples))
+    label = "true " * param_names[idx]
     ys = dropdims(posterior.distributions[idx].distribution_samples, dims=1)
     histogram(ys, bins=100, normed=true, fill=:slategray, thickness_scaling=2.0,
-              lab="posterior")
-    println("created histogram")
-    plot!(xs, get_distribution(mcmc.prior.distributions[idx]), w=2.6,
-          color=:blue, lab="prior")
-    plot!([transformed_truth[idx]], seriestype="vline", w=2.6, lab=label)
-
-    title!(names[idx])
-    StatsPlots.savefig("posterior_"*names[idx]*".png")
+              lab="posterior", legend=:outertopright)
+    prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
+    plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
+    plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
+    title!(param_names[idx])
+    StatsPlots.savefig("posterior_" * param_names[idx] * ".png")
 end
