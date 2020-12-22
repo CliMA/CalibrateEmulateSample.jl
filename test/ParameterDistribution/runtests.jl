@@ -131,12 +131,12 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         # Tests for get_distribution
         @test get_distribution(d1) == MvNormal(4,0.1)
         @test get_distribution(u1)[name1] == MvNormal(4,0.1)
-        @test typeof(get_distribution(d2)) <: String
-        @test typeof(get_distribution(u2)[name2]) <: String
+        @test typeof(get_distribution(d2)) == Array{Int64, 2}
+        @test typeof(get_distribution(u2)[name2]) == Array{Int64, 2}
         
         d = get_distribution(u)
         @test d[name1] == MvNormal(4,0.1)
-        @test typeof(d[name2]) <: String
+        @test typeof(d[name2]) == Array{Int64, 2}
 
         # Test for get_all_constraints
         @test get_all_constraints(u) == cat([c1,c2]...,dims=1)
