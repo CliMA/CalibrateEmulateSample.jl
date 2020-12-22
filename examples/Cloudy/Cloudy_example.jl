@@ -278,9 +278,10 @@ for idx in 1:n_params
     end
 
     label = "true " * param_names[idx]
-    ys = dropdims(posterior.distributions[idx].distribution_samples, dims=1)
-    histogram(ys, bins=100, normed=true, fill=:slategray, thickness_scaling=2.0,
-              lab="posterior", legend=:outertopright)
+    posterior_samples = dropdims(get_distribution(posterior)[param_names[idx]],
+                                 dims=1)
+    histogram(posterior_samples, bins=100, normed=true, fill=:slategray,
+              thickness_scaling=2.0, lab="posterior", legend=:outertopright)
     prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
     plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
     plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
