@@ -6,7 +6,7 @@ using Random
 using ..Observations
 using ..EnsembleKalmanProcesses
 
-export extract_training_points
+export get_training_points
 export get_obs_sample
 export orig2zscore
 export zscore2orig
@@ -21,7 +21,7 @@ Extract the training points needed to train the Gaussian Process Regression.
  - `N_ek_iter` - Number of EK layers/iterations to train on
 
 """
-function extract_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_ek_it::IT) where {FT, IT, P}
+function get_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_ek_it::IT) where {FT, IT, P}
 
     # Note u[end] does not have an equivalent g
     u_tp = ekp.u[end-N_ek_it:end-1] # N_ek_it x [N_ensemble x N_parameters]
