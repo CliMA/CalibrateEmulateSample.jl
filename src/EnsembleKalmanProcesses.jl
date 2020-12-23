@@ -1,4 +1,4 @@
-module EKP
+module EnsembleKalmanProcesses
 
 #using ..Priors
 using ..ParameterDistributionStorage
@@ -9,11 +9,11 @@ using Distributions
 using LinearAlgebra
 using DocStringExtensions
 
-export EKObj, Inversion, Sampler
+export EnsembleKalmanProcess, Inversion, Sampler
 export construct_initial_ensemble
 export compute_error!
 export update_ensemble!
-export find_ek_step
+export find_ekp_stepsize
 
 
 abstract type Process end
@@ -38,14 +38,14 @@ struct Sampler{FT<:AbstractFloat} <: Process
 end
 
 """
-    EKObj{FT<:AbstractFloat, IT<:Int}
+    EnsembleKalmanProcess{FT<:AbstractFloat, IT<:Int}
 
 Structure that is used in Ensemble Kalman processes
 
 #Fields
 $(DocStringExtensions.FIELDS)
 """
-struct EKObj{FT<:AbstractFloat, IT<:Int, P<:Process}
+struct EnsembleKalmanProcess{FT<:AbstractFloat, IT<:Int, P<:Process}
     "vector of arrays of size N_ensemble x N_parameters containing the parameters (in each EK iteration a new array of parameters is added)"
      u::Vector{Array{FT, 2}}
      "vector of observations (length: N_data); mean of all observation samples"
@@ -65,7 +65,7 @@ struct EKObj{FT<:AbstractFloat, IT<:Int, P<:Process}
 end
 
 # outer constructors
-function EKObj(parameters::Array{FT, 2},
+function EnsembleKalmanProcess(parameters::Array{FT, 2},
                obs_mean,
                obs_noise_cov::Array{FT, 2},
                process::P;
@@ -84,7 +84,7 @@ function EKObj(parameters::Array{FT, 2},
     # timestep store
     Δt = Array([Δt])
 
-    EKObj{FT, IT, P}(u, obs_mean, obs_noise_cov, N_ens, g,
+    EnsembleKalmanProcess{FT, IT, P}(u, obs_mean, obs_noise_cov, N_ens, g,
                      err, Δt, process)
 end
 
@@ -102,35 +102,35 @@ function construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng
     return params
 end
 
-function compute_error!(ek::EKObj)
-    mean_g = dropdims(mean(ek.g[end], dims=1), dims=1)
-    diff = ek.obs_mean - mean_g
-    X = ek.obs_noise_cov \ diff # diff: column vector
+function compute_error!(ekp::EnsembleKalmanProcess)
+    mean_g = dropdims(mean(ekp.g[end], dims=1), dims=1)
+    diff = ekp.obs_mean - mean_g
+    X = ekp.obs_noise_cov \ diff # diff: column vector
     newerr = dot(diff, X)
-    push!(ek.err, newerr)
+    push!(ekp.err, newerr)
 end
 
 
 """
-   find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
-Find largest step for the EK solver that leads to a reduction of the determinant of the sample
+   find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
+Find largest stepsize for the EK solver that leads to a reduction of the determinant of the sample
 covariance matrix no greater than cov_threshold.
 """
-function find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT, IT}
-    accept_step = false
-    if !isempty(ek.Δt)
-        Δt = deepcopy(ek.Δt[end])
+function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT, IT}
+    accept_stepsize = false
+    if !isempty(ekp.Δt)
+        Δt = deepcopy(ekp.Δt[end])
     else
         Δt = FT(1)
     end
     # u: N_ens x N_params
-    cov_init = cov(ek.u[end], dims=1)
-    while accept_step == false
-        ek_copy = deepcopy(ek)
-        update_ensemble!(ek_copy, g, Δt_new=Δt)
-        cov_new = cov(ek_copy.u[end], dims=1)
+    cov_init = cov(ekp.u[end], dims=1)
+    while accept_stepsize == false
+        ekp_copy = deepcopy(ekp)
+        update_ensemble!(ekp_copy, g, Δt_new=Δt)
+        cov_new = cov(ekp_copy.u[end], dims=1)
         if det(cov_new) > cov_threshold * det(cov_init)
-            accept_step = true
+            accept_stepsize = true
         else
             Δt = Δt/2
         end
@@ -141,10 +141,10 @@ function find_ek_step(ek::EKObj{FT, IT, Inversion}, g::Array{FT, 2}; cov_thresho
 end
 
 
-function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
+function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
     # u: N_ens x N_params
-    u = ek.u[end]
-    cov_init = cov(ek.u[end], dims=1)
+    u = ekp.u[end]
+    cov_init = cov(ekp.u[end], dims=1)
 
     u_bar = fill(FT(0), size(u)[2])
     # g: N_ens x N_data
@@ -154,15 +154,15 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     cov_gg = fill(FT(0), size(g)[2], size(g)[2])
 
     if !isnothing(Δt_new)
-        push!(ek.Δt, Δt_new)
-    elseif isnothing(Δt_new) && isempty(ek.Δt)
-        push!(ek.Δt, FT(1))
+        push!(ekp.Δt, Δt_new)
+    elseif isnothing(Δt_new) && isempty(ekp.Δt)
+        push!(ekp.Δt, FT(1))
     else
-        push!(ek.Δt, ek.Δt[end])
+        push!(ekp.Δt, ekp.Δt[end])
     end
 
     # update means/covs with new param/observation pairs u, g
-    for j = 1:ek.N_ens
+    for j = 1:ekp.N_ens
 
         u_ens = u[j, :]
         g_ens = g[j, :]
@@ -176,30 +176,30 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
         cov_gg += g_ens * g_ens'
     end
 
-    u_bar = u_bar / ek.N_ens
-    g_bar = g_bar / ek.N_ens
-    cov_ug = cov_ug / ek.N_ens - u_bar * g_bar'
-    cov_gg = cov_gg / ek.N_ens - g_bar * g_bar'
+    u_bar = u_bar / ekp.N_ens
+    g_bar = g_bar / ekp.N_ens
+    cov_ug = cov_ug / ekp.N_ens - u_bar * g_bar'
+    cov_gg = cov_gg / ekp.N_ens - g_bar * g_bar'
 
     # Update the parameters (with additive noise too)
     noise = rand(MvNormal(zeros(size(g)[2]),
-                          ek.obs_noise_cov/ek.Δt[end]), ek.N_ens) # N_data x N_ens
+                          ekp.obs_noise_cov/ekp.Δt[end]), ekp.N_ens) # N_data x N_ens
     # Add obs_mean (N_data) to each column of noise (N_data x N_ens), then
     # transpose into N_ens x N_data
-    y = (ek.obs_mean .+ noise)'
+    y = (ekp.obs_mean .+ noise)'
     # N_data x N_data \ [N_ens x N_data - N_ens x N_data]'
     # --> tmp is N_data x N_ens
-    tmp = (cov_gg + ek.obs_noise_cov) \ (y - g)'
+    tmp = (cov_gg + ekp.obs_noise_cov) \ (y - g)'
     u += (cov_ug * tmp)' # N_ens x N_params
 
     # store new parameters (and observations)
-    push!(ek.u, u) # N_ens x N_params
-    push!(ek.g, g) # N_ens x N_data
+    push!(ekp.u, u) # N_ens x N_params
+    push!(ekp.g, g) # N_ens x N_data
 
-    compute_error!(ek)
+    compute_error!(ekp)
 
     # Check convergence
-    cov_new = cov(ek.u[end], dims=1)
+    cov_new = cov(ekp.u[end], dims=1)
     cov_ratio = det(cov_new) / det(cov_init)
     if cov_ratio < cov_threshold
         @warn string("New ensemble covariance determinant is less than ",
@@ -208,11 +208,11 @@ function update_ensemble!(ek::EKObj{FT, IT, Inversion}, g; cov_threshold::FT=0.0
     end
 end
 
-function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
+function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Sampler{FT}}, g) where {FT, IT}
     # u: N_ens x N_params
     # g: N_ens x N_data
-    u = ek.u[end]
-    N_ens = ek.N_ens
+    u = ekp.u[end]
+    N_ens = ekp.N_ens
 
     # u_mean: N_params x 1
     u_mean = mean(u', dims=2)
@@ -225,28 +225,28 @@ function update_ensemble!(ek::EKObj{FT, IT, Sampler{FT}}, g) where {FT, IT}
 
     # Building tmp matrices for EKS update:
     E = g' .- g_mean
-    R = g' .- ek.obs_mean
+    R = g' .- ekp.obs_mean
     # D: N_ens x N_ens
-    D = (1/N_ens) * (E' * (ek.obs_noise_cov \ R))
+    D = (1/N_ens) * (E' * (ekp.obs_noise_cov \ R))
 
     Δt = 1/(norm(D) + 1e-8)
 
     noise = MvNormal(u_cov)
 
-    implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ek.process.prior_cov' \ u_cov')') \
+    implicit = (1 * Matrix(I, size(u)[2], size(u)[2]) + Δt * (ekp.process.prior_cov' \ u_cov')') \
                   (u'
                     .- Δt * ( u' .- u_mean) * D
-                    .+ Δt * u_cov * (ek.process.prior_cov \ ek.process.prior_mean)
+                    .+ Δt * u_cov * (ekp.process.prior_cov \ ekp.process.prior_mean)
                   )
 
     u = implicit' + sqrt(2*Δt) * rand(noise, N_ens)'
 
     # store new parameters (and observations)
-    push!(ek.u, u) # N_ens x N_params
-    push!(ek.g, g) # N_ens x N_data
+    push!(ekp.u, u) # N_ens x N_params
+    push!(ekp.g, g) # N_ens x N_data
 
-    compute_error!(ek)
+    compute_error!(ekp)
 
 end
 
-end # module EKP
+end # module EnsembleKalmanProcesses
