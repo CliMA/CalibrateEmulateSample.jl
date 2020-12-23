@@ -13,9 +13,9 @@ using Plots
 using Random
 
 # Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EKP
-using CalibrateEmulateSample.GPEmulator
-using CalibrateEmulateSample.MCMC
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.ParameterDistributionStorage
@@ -157,8 +157,8 @@ truth = Observations.Obs(yt, Γy, data_names)
 N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
 # initial parameters: N_ens x N_params
-initial_params = EKP.construct_initial_ensemble(priors, N_ens; rng_seed=6)
-ekiobj = EKP.EKObj(initial_params, truth.mean, truth.obs_noise_cov,
+initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth.mean, truth.obs_noise_cov,
                    Inversion(), Δt=0.3)
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
@@ -175,7 +175,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EKP.update_ensemble!(ekiobj, g_ens) 
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -192,8 +192,8 @@ println(mean(ekiobj.u[end], dims=1))
 ###  Emulate: Gaussian Process Regression
 ###
 
-gppackage = GPEmulator.GPJL()
-pred_type = GPEmulator.YType()
+gppackage = GaussianProcessEmulator.GPJL()
+pred_type = GaussianProcessEmulator.YType()
 
 # Construct kernel:
 # Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
@@ -208,13 +208,13 @@ GPkernel =  kern1 + kern2 + white
 # Get training points
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
 normalized = true
-gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
+gpobj = GaussianProcessEmulator.GaussianProcess(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
                          obs_noise_cov=Γy, normalized=normalized, 
                          noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = GPEmulator.predict(gpobj,
+y_mean, y_var = GaussianProcessEmulator.predict(gpobj,
                                    reshape(transformed_params_true, 1, :),
                                    transform_to_real=true)
 
@@ -240,20 +240,20 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 5000
 yt_sample = truth.mean
-mcmc_test = MCMC.MCMCObj(yt_sample, Γy, priors, step, u0, max_iter, 
+mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
-new_step = MCMC.find_mcmc_step!(mcmc_test, gpobj)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
 u0 = vec(mean(u_tp, dims=1))
 burnin = 1000
 max_iter = 100000
-mcmc = MCMC.MCMCObj(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
+mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
                     burnin, svdflag=true)
-MCMC.sample_posterior!(mcmc, gpobj, max_iter)
+MarkovChainMonteCarlo.sample_posterior!(mcmc, gpobj, max_iter)
 
-posterior = MCMC.get_posterior(mcmc)
+posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
 
 post_mean = get_mean(posterior)
 post_cov = get_cov(posterior)
