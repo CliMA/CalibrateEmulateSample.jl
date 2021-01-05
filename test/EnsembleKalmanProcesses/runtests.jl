@@ -3,9 +3,9 @@ using LinearAlgebra
 using Random
 using Test
 
-using CalibrateEmulateSample.EKP
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributionStorage
-@testset "EKP" begin
+@testset "EnsembleKalmanProcesses" begin
 
     # Seed for pseudo-random number generator
     rng_seed = 41
@@ -55,18 +55,23 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 
     N_ens = 50 # number of ensemble members
     N_iter = 20 # number of EKI iterations
-    initial_ensemble = EKP.construct_initial_ensemble(prior,N_ens;
+    initial_ensemble = EnsembleKalmanProcesses.construct_initial_ensemble(prior,N_ens;
                                                     rng_seed=rng_seed)
     @test size(initial_ensemble) == (N_ens, n_par)
 
-    ekiobj = EKP.EKObj(initial_ensemble,
+    ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                        y_obs, Γy, Inversion())
 
+    # Find EKI timestep
+    g_ens = G(ekiobj.u[end]')'
+    Δ = find_ekp_stepsize(ekiobj, g_ens)
+    @test Δ ≈ 0.0625
+    
     # EKI iterations
     for i in 1:N_iter
         params_i = ekiobj.u[end]
         g_ens = G(params_i')'
-        EKP.update_ensemble!(ekiobj, g_ens)
+        EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
     end
 
     # EKI results: Test if ensemble has collapsed toward the true parameter 
@@ -90,7 +95,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     ###
     ###  Calibrate (2): Ensemble Kalman Sampleer
     ###
-    eksobj = EKP.EKObj(initial_ensemble,
+    eksobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                       y_obs, Γy,
                       Sampler(prior_mean, prior_cov))
 
@@ -98,7 +103,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     for i in 1:N_iter
         params_i = eksobj.u[end]
         g_ens = G(params_i')'
-        EKP.update_ensemble!(eksobj, g_ens)
+        EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens)
     end
 
     # Plot evolution of the EKS particles

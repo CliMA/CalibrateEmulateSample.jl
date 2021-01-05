@@ -22,12 +22,12 @@ In a one-sentence summary, the **calibrate** step of the algorithm consists of a
 
 `CalibrateEmulateSample.jl` contains the following modules:
 
-Module                  | Purpose
------------------------ | -------------------------------------------------------
-EKI.jl                  | Calibrate – Ensemble Kalman inversion
-GPEmulator.jl           | Emulate – Gaussian process regression
-MCMC.jl                 | Sample – Markov chain Monte Carlo
-Observations.jl         | Structure to hold observations
-Utilities.jl            | Helper functions
+Module                                      | Purpose
+--------------------------------------------|--------------------------------------------------------
+EnsembleKalmanProcesses.jl                  | Calibrate – Ensemble Kalman inversion
+GaussianProcessEmulator.jl                  | Emulate – Gaussian process regression
+MarkovChainMonteCarlo.jl                    | Sample – Markov chain Monte Carlo
+Observations.jl                             | Structure to hold observations
+Utilities.jl                                | Helper functions
 
 **The best way to get started is to have a look at the examples!**

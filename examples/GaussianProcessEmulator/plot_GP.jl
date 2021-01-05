@@ -5,12 +5,12 @@ using Statistics
 using Plots; pyplot(size=(1500, 700))
 Plots.scalefontsizes(1.3)
 using LinearAlgebra
-using CalibrateEmulateSample.GPEmulator
+using CalibrateEmulateSample.GaussianProcessEmulator
 
 ###############################################################################
 #                                                                             #
 #   This examples shows how to fit a Gaussian Process regression model        #
-#   using GPEmulator, and how to plot the mean and variance                   #
+#   using GaussianProcessEmulator, and how to plot the mean and variance                   #
 #                                                                             #
 #   Training points: {(x_i, y_i)} (i=1,...,n), where x_i ∈ ℝ ² and y_i ∈ ℝ ²  #
 #   The y_i are assumed to be related to the x_i by:                          #
@@ -25,11 +25,11 @@ using CalibrateEmulateSample.GPEmulator
 #   noise covariance Σ, and each model is then trained in the decorrelated    #
 #   space.                                                                    #
 #                                                                             #
-#   The decorrelation is done automatically when instantiating a `GPObj`,     #
+#   The decorrelation is done automatically when instantiating a `GaussianProcess`,     #
 #   but the user can choose to have the `predict` function return its         #
 #   predictions in the original space (by setting transform_to_real=true)     # 
 #                                                                             #
-#   The GPEmulator module can be used as a standalone module to fit           #
+#   The GaussianProcessEmulator module can be used as a standalone module to fit           #
 #   Gaussian Process regression models, but it was originally designed as     #
 #   the "Emulate" step of the "Calibrate-Emulate-Sample" framework            #
 #   developed at CliMA.                                                       #
@@ -85,7 +85,7 @@ Y = gx .+ noise_samples
 # exponential kernel. 
 # Setting noise_learn=true leads to the addition of white noise to the
 # kernel
-gpobj = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
+gpobj = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
               normalized=true, noise_learn=true, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2
@@ -104,7 +104,7 @@ for y_i in 1:d
     # Predict on the grid points (note that `predict` returns the full
     # covariance matrices, not just the variance -- gp_cov is a vector
     # of covariance matrices)
-    gp_mean, gp_cov = GPEmulator.predict(gpobj, 
+    gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
                                          inputs, 
                                          transform_to_real=true)
     # Reshape gp_cov to size N_samples x output_dim
@@ -147,7 +147,7 @@ for y_i in 1:d
     # Predict on the grid points (note that `predict` returns the full
     # covariance matrices, not just the variance -- gp_cov is a vector
     # of covariance matrices)
-    gp_mean, gp_cov = GPEmulator.predict(gpobj, 
+    gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
                                          inputs, 
                                          transform_to_real=true)
     # Reshape gp_cov to size N_samples x output_dim

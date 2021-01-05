@@ -1,9 +1,11 @@
 using Test
 using Random
 using Statistics
+using LinearAlgebra
 
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Observations
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 
 @testset "Utilities" begin
 
@@ -38,5 +40,22 @@ using CalibrateEmulateSample.Observations
     @test z_v ≈ [1.0, 1.0, 1.0] atol=1e-5
     orig_v = zscore2orig(z_v, mean_v, std_v)
     @test orig_v ≈ v atol=1e-5
+
+    # test get_training_points
+    # first create the EnsembleKalmanProcess
+    n_ens = 10
+    n_obs = 3
+    n_par = 2
+    initial_ensemble = randn(n_ens,n_par)#params are rows
+    y_obs = randn(n_obs)
+    Γy = Matrix{Float64}(I,n_obs,n_obs)
+    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
+    g_ens = randn(n_ens,n_obs)
+    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
+    u_tp,g_tp = get_training_points(ekp,1)
+    
+    @test u_tp ≈ initial_ensemble
+    @test g_tp ≈ g_ens
+    
 
 end

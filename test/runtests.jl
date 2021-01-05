@@ -24,9 +24,9 @@ end
         end
     end
 
-    for submodule in ["EKP",
-		      "GPEmulator",
-		      "MCMC",
+    for submodule in ["EnsembleKalmanProcesses",
+		      "GaussianProcessEmulator",
+		      "MarkovChainMonteCarlo",
 		      "Observations",
 		      "Utilities",
                       "ParameterDistribution"]
