@@ -112,11 +112,11 @@ end
 
 
 """
-   find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
+   find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::AbstractArray{FT, 2}; cov_threshold::FT=0.01) where {FT}
 Find largest stepsize for the EK solver that leads to a reduction of the determinant of the sample
 covariance matrix no greater than cov_threshold.
 """
-function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT, IT}
+function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::AbstractArray{FT, 2}; cov_threshold::FT=0.01) where {FT, IT}
     accept_stepsize = false
     if !isempty(ekp.Δt)
         Δt = deepcopy(ekp.Δt[end])

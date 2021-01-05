@@ -62,6 +62,11 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                        y_obs, Γy, Inversion())
 
+    # Find EKI timestep
+    g_ens = G(ekiobj.u[end]')'
+    Δ = find_ekp_stepsize(ekiobj, g_ens)
+    @test Δ ≈ 0.0625
+    
     # EKI iterations
     for i in 1:N_iter
         params_i = ekiobj.u[end]
@@ -77,6 +82,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     # Plot evolution of the EKI particles
     eki_final_result = vec(mean(ekiobj.u[end], dims=1))
     
+    TEST_PLOT_OUTPUT = false
     if TEST_PLOT_OUTPUT
         gr()
         p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
