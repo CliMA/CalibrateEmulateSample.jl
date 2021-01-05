@@ -82,7 +82,6 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     # Plot evolution of the EKI particles
     eki_final_result = vec(mean(ekiobj.u[end], dims=1))
     
-    TEST_PLOT_OUTPUT = false
     if TEST_PLOT_OUTPUT
         gr()
         p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
