@@ -1,9 +1,8 @@
 using Distributions
 using LinearAlgebra
 using Random
-using Test
 using Plots
-using CalibrateEmulateSample.EKP
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributionStorage
 # Seed for pseudo-random number generator for reproducibility
 rng_seed = 41
@@ -38,16 +37,16 @@ prior_cov = get_cov(prior)
 # Calibrate
 N_ens = 50  # number of ensemble members
 N_iter = 20 # number of EKI iterations
-initial_ensemble = EKP.construct_initial_ensemble(prior, N_ens;
+initial_ensemble = EnsembleKalmanProcesses.construct_initial_ensemble(prior, N_ens;
                                                 rng_seed=rng_seed)
 
-ekiobj = EKP.EKObj(initial_ensemble,
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                     y_obs, Γy, Inversion())
 #
 for i in 1:N_iter
     params_i = ekiobj.u[end]
     g_ens = hcat([G(params_i[i,:]) for i in 1:N_ens]...)'
-    EKP.update_ensemble!(ekiobj, g_ens)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 for i in eachindex(ekiobj.u)
@@ -87,16 +86,16 @@ prior_cov = get_cov(prior)
 # Calibrate
 N_ens = 50  # number of ensemble members
 N_iter = 40 # number of EKI iterations
-initial_ensemble = EKP.construct_initial_ensemble(prior, N_ens;
+initial_ensemble = EnsembleKalmanProcesses.construct_initial_ensemble(prior, N_ens;
                                                 rng_seed=rng_seed)
 
-ekiobj = EKP.EKObj(initial_ensemble,
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                     y_obs, Γy, Inversion())
 #
 for i in 1:N_iter
     params_i = ekiobj.u[end]
     g_ens = hcat([G(params_i[i,:]) for i in 1:N_ens]...)'
-    EKP.update_ensemble!(ekiobj, g_ens)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 for i in eachindex(ekiobj.u)
