@@ -1,0 +1,48 @@
+env:
+  JULIA_VERSION: "1.5.2"
+  OPENBLAS_NUM_THREADS: 1
+  PYTHON: ""
+
+steps:
+  - label: "init project env"
+    key: "init_project_env"
+    command:
+      - "echo $JULIA_DEPOT_PATH"
+      - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
+      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+
+  - wait
+
+  - label: "Loss Minimization"
+    key: "loss_minimization"
+    command:
+      - "julia --color=yes --project examples/LossMinimization/loss_minimization.jl"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+  
+  - label: "Gaussian Process Emulator"
+    key: "gaussian_process_emulator"
+    command:
+      - "julia --color=yes --project=examples/GaussianProcessEmulator -e 'using Pkg; Pkg.instantiate()'"
+      - "julia --color=yes --project=examples/GaussianProcessEmulator examples/GaussianProcessEmulator/learn_noise.jl"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+ 
+  - label: "Cloudy"
+    key: "cloudy"
+    command:
+      - "julia --color=yes --project=examples/Cloudy -e 'using Pkg; Pkg.instantiate()'"
+      - "julia --color=yes --project=examples/Cloudy examples/Cloudy/Cloudy_example.jl"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+ 
