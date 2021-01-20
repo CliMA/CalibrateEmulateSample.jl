@@ -55,8 +55,12 @@ struct LSettings
 	stats_type::Int32    
 	# Integration time start
 	t_start::Float64    
-	# Integration length
+	# Data collection length
 	T::Float64
+	# Integration length
+	Ts::Float64
+	# Duration of polynomial fit, number of samples of Ts to fit over
+	Tfit::Float64
 	# Initial perturbation
 	Fp::Array{Float64}
 	# Number of longitude steps
@@ -67,6 +71,10 @@ struct LSettings
 	tend::Float64
 	# For stats_type=2, number of frequencies to consider
 	kmax::Int32
+	# Should ω be learned using CES?
+	ω_fixed::Bool
+	# Truth ω
+	ω_true::Float64
 end
 
 struct LParams
@@ -103,23 +111,36 @@ function run_G_ensemble(params::Array{FT, 2},
     N_ens = size(params, 1) # params is N_ens x N_params
     if settings.stats_type == 1
 	    nd = 2
-	    #nd = settings.N # can average over N as well
     elseif settings.stats_type == 2
 	    nd = 1 + (2*settings.kmax)
     elseif settings.stats_type == 3
 	    nd = 3
+    elseif settings.stats_type == 4
+	    nd = Int64(2*(settings.T/settings.Ts/settings.Tfit))
+    elseif settings.stats_type == 5
+	    nd = Int64(settings.T/settings.Ts/settings.Tfit)
     end
     g_ens = zeros(N_ens, nd)
     # Lorenz parameters
     #Fp = rand(Normal(0.0, 0.01), N); # Initial perturbation
     F = params[:, 1] # Forcing
-    ω = params[:, 2] # Transience frequency
-    A = params[:, 3] # Transience amplitude
+    if settings.dynamics==2
+        A = params[:, 2] # Transience amplitude
+    else
+        A = F .* 0. # Set to zero, it is not used
+    end
+    if settings.ω_fixed==false;
+    	ω = params[:, 3] # Transience frequency
+    end
 
     Random.seed!(rng_seed)
     for i in 1:N_ens
         # run the model with the current parameters, i.e., map θ to G(θ)
-	lorenz_params = GModel.LParams(F[i], ω[i], A[i])
+	if settings.ω_fixed==false
+	    lorenz_params = GModel.LParams(F[i], ω[i], A[i])
+	elseif settings.ω_fixed==true
+	    lorenz_params = GModel.LParams(F[i], settings.ω_true, A[i])
+	end
 	g_ens[i, :] = lorenz_forward(settings, lorenz_params) 
     end
 
@@ -196,6 +217,12 @@ function RK4(xold, dt, N, F)
 	xnew = xold + (dt/6.0)*(k1 + 2.0*k2 + 2.0*k3 + k4)
 	# Output
 	return xnew
+end
+
+function regression(X,y)    
+	beta_tilde = [ ones(length(X),1) X ] \ y;
+	v = beta_tilde[1];  beta = beta_tilde[2];    
+	return beta, v
 end
 
 function spectra(signal, Ts, t)    
@@ -279,6 +306,58 @@ function stats(settings, xn, t)
 		end
 		# Combine
 		gt = vcat(gtm, mean(st)..., mxval_out...)
+	elseif settings.stats_type == 4 # Variance sub-samples
+		T = settings.T
+		# Calculate variance on subsamples
+		# Variances over sliding windows
+		Ts = settings.Ts
+		N = Int64(T/Ts); # number of sliding windows
+		nt = Int64(Ts/settings.dt)-1 # length of sliding windows
+		var_slide = zeros(N); t_slide = zeros(nt,N); 
+		for i in 1:N;    
+			var_slide[i] = var(vcat(xn[:,indices[(i-1)*nt+1:i*nt]]...))    
+			t_slide[:,i] = t[(i-1)*nt+1:i*nt];
+		end
+		# Polynomial fit over a batch of sliding windows
+		Tfit = Int64(settings.Tfit);  
+		NT = Int64(N/Tfit); a1 = zeros(NT); a2 = zeros(NT); t_start = zeros(NT)
+		y = zeros(Tfit,NT); ty = zeros(Tfit,NT); ym = zeros(Tfit,NT)
+		for i in 1:NT    
+			ind_low = (i-1)*Tfit+1; ind_high = i*Tfit;    
+			t_start[i] = t_slide[1,ind_low]
+			ty[:,i] = t_slide[1, ind_low:ind_high] .- t_start[i]
+			a1[i], a2[i] = regression(ty[:,i], var_slide[ind_low:ind_high])    
+			y[:,i] = a1[i].*ty[:,i] .+ a2[i]    
+			ym[i] = mean(var_slide[ind_low:ind_high])
+		end
+		# Combine
+		gt = vcat(a1..., a2...)
+	elseif settings.stats_type == 5 # Variance sub-samples
+		T = settings.T
+		# Calculate variance on subsamples
+		# Variances over sliding windows
+		Ts = settings.Ts
+		N = Int64(T/Ts); # number of sliding windows
+		nt = Int64(Ts/settings.dt)-1 # length of sliding windows
+		var_slide = zeros(N); t_slide = zeros(nt,N); 
+		for i in 1:N;    
+			var_slide[i] = var(vcat(xn[:,indices[(i-1)*nt+1:i*nt]]...))    
+			t_slide[:,i] = t[(i-1)*nt+1:i*nt];
+		end
+		# Polynomial fit over a batch of sliding windows
+		Tfit = Int64(settings.Tfit);  
+		NT = Int64(N/Tfit); a1 = zeros(NT); a2 = zeros(NT); t_start = zeros(NT)
+		y = zeros(Tfit,NT); ty = zeros(Tfit,NT); ym = zeros(NT)
+		for i in 1:NT    
+			ind_low = (i-1)*Tfit+1; ind_high = i*Tfit;    
+			t_start[i] = t_slide[1,ind_low]
+			ty[:,i] = t_slide[1, ind_low:ind_high] .- t_start[i]
+			a1[i], a2[i] = regression(ty[:,i], var_slide[ind_low:ind_high])    
+			y[:,i] = a1[i].*ty[:,i] .+ a2[i]    
+			ym[i] = mean(var_slide[ind_low:ind_high])
+		end
+		# Combine
+		gt = vcat(ym...)
 	else 
 		ArgumentError("Setting "*string(settings.stats_type)*" not implemented.")	
 	end

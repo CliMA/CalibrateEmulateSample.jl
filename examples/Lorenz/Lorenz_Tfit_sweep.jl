@@ -22,9 +22,19 @@ using CalibrateEmulateSample.Priors
 rng_seed = 4137
 Random.seed!(rng_seed)
 
+# Stats type
+stats_type = 4
+# Loop over polynomial fit length
+Tv = [6, 8, 9, 12, 18, 24, 36]
+for stats_type in [4,5]
+for Tfit in Tv;
+
 # Output figure save directory
-#figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/Tfit_12/"
-figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/"
+figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/lognormal/Tfit_"*string(Tfit)*"/"
+if isdir(figure_save_directory)==false
+    mkdir(figure_save_directory)
+end
+#figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/"
 #figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_static/"
 data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/"
 #data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_static/"
@@ -35,9 +45,7 @@ data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/"
 # Stationary or transient dynamics
 dynamics = 2
 # Lognormal prior?
-log_normal = false
-# Stats type
-stats_type = 4
+log_normal = true
 
 
 ###
@@ -57,7 +65,6 @@ else
 end
 n_param = length(param_names)
 params_true = reshape(params_true, (1,n_param))
-y_avg = true
 
 println(n_param)
 println(params_true)
@@ -119,8 +126,6 @@ else
 end
 # Integration length
 Ts = 5. / τc
-# Polynomial fit length
-Tfit = 12
 # Initial perturbation
 Fp = rand(Normal(0.0, 0.01), N);
 kmax = 1
@@ -351,12 +356,11 @@ for idx in 1:n_params
               lab="posterior")
     plot!(xs, mcmc.prior[idx].dist, w=2.6, color=:blue, lab="prior")
     plot!([true_values[idx]], seriestype="vline", w=2.6, lab=label)
-    #plot!(xlims=xbounds)
+    plot!(xlims=xbounds)
 
     title!(param)
     StatsPlots.savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
 end
 
-# Save data
-@save data_save_directory*"u_tp.jld2" u_tp
-@save data_save_directory*"g_tp.jld2" g_tp
+end
+end
