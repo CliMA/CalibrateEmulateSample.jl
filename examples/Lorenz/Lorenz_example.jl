@@ -23,30 +23,32 @@ rng_seed = 4137
 Random.seed!(rng_seed)
 
 # Output figure save directory
-#figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/Tfit_12/"
-figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/qoi/"
-#figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_static/"
-data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/"
-#data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_static/"
+figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/debug/T_90/"
+data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/debug/T_90/"
 
 # Governing settings
 # Characteristic time scale
 τc = 5. # days, prescribed by the L96 problem
 # Stationary or transient dynamics
-dynamics = 2
-# Lognormal prior?
+dynamics = 2 # Transient is 2
+# Lognormal prior or normal prior?
 log_normal = false
-# Stats type
-stats_type = 4
+# Statistics integration length
+Ts_days = 90. # Integration length in days
+# This has to be less than 360 and 360 must be divisible by Ts_days
+# Stats type, which statistics to construct from the L96 system
+# 4 is a linear fit over a batch of length Ts_days
+# 5 is the mean over a batch of length Ts_days
+stats_type = 5 
 
 
 ###
 ###  Define the (true) parameters and their priors
 ###
 # Define the parameters that we want to learn
-F_true = 8.
-A_true = 2.5
-ω_true = 2. * π / (360. / τc)
+F_true = 8. # Mean F
+A_true = 2.5 # Transient F amplitude
+ω_true = 2. * π / (360. / τc) # Frequency of the transient F
 
 if dynamics==2
     params_true = [F_true, A_true]
@@ -62,12 +64,7 @@ y_avg = true
 println(n_param)
 println(params_true)
 
-# Assume lognormal priors for all three parameters
-# Note: For the model G (=Cloudy) to run, N0 needs to be nonnegative, and θ 
-# and k need to be positive. The EK update can result in violations of 
-# these constraints - therefore, we perform CES in log space, i.e., we try 
-# to find the logarithms of the true parameters (and of course, the actual
-# parameters can then simply be obtained by exponentiating the final results). 
+# Priors
 function logmean_and_logstd(μ, σ)
     σ_log = sqrt(log(1.0 + σ^2/μ^2))
     μ_log = log(μ / (sqrt(1.0 + σ^2/μ^2)))
@@ -117,10 +114,10 @@ if dynamics==1
 else
     T = 360. / τc
 end
+# Batch length
+Ts = 5. / τc # Nondimensionalize by L96 timescale
 # Integration length
-Ts = 5. / τc
-# Polynomial fit length
-Tfit = 12
+Tfit = Ts_days / τc
 # Initial perturbation
 Fp = rand(Normal(0.0, 0.01), N);
 kmax = 1
@@ -150,6 +147,7 @@ lorenz_params = GModel.LParams(F_true, ω_true, A_true)
 gt = dropdims(GModel.run_G_ensemble(params_true, lorenz_settings), dims=1)
 
 # Prescribed variance
+# TODO: It would be better to take cov() directly of the truth data samples
 if var_prescribe==true
     n_samples = 100
     yt = zeros(n_samples, length(gt))
@@ -161,6 +159,7 @@ if var_prescribe==true
         yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
     end
 else
+    println("Using truth values to compute covariance")
     n_samples = 20; 
     yt = zeros(n_samples, length(gt))
     for i in 1:n_samples
@@ -235,9 +234,6 @@ white = Noise(log(2.0))
 GPkernel =  kern1 + kern2 + white
 # Get training points from the EKP iteration number in the second input term  
 u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
-#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 3)
-#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 2)
-#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, 1)
 normalized = true
 
 # Kernel defined above

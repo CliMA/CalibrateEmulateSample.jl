@@ -2,17 +2,7 @@ module GModel
 
 using DocStringExtensions
 
-# TODO: 
-# 3) Finish validating Lorenz implementation
-# 4) Test the Lorenz framework using CES
-# 	a) CES performance seems to be poor for simple QOIs and is sensitive to the CES framework selections
-# 	b) Worse performance with increased inversion steps
-# 5) Implement a periodic forcing and validate
-# 6) Define statistics in periodic setting using filtering (optimal filtering?)
-# 7) Test periodic Lorenz CES as a function of various statistics
-
 using Random
-#using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
 using DifferentialEquations
@@ -22,13 +12,6 @@ export run_G
 export run_G_ensemble
 export lorenz_forward
 
-# TODO: It would be nice to have run_G_ensemble take a pointer to the
-# function G (called run_G below), which maps the parameters u to G(u),
-# as an input argument. In the example below, run_G runs the model, but
-# in general run_G will be supplied by the user and run the specific
-# model the user wants to do UQ with.
-# So, the interface would ideally be something like:
-#      run_G_ensemble(params, G) where G is user-defined
 """
     GSettings{FT<:AbstractFloat, KT, D}
 
@@ -306,7 +289,7 @@ function stats(settings, xn, t)
 		end
 		# Combine
 		gt = vcat(gtm, mean(st)..., mxval_out...)
-	elseif settings.stats_type == 4 # Variance sub-samples
+	elseif settings.stats_type == 4 # Variance sub-samples, linear fit over window
 		T = settings.T
 		# Calculate variance on subsamples
 		# Variances over sliding windows
@@ -332,7 +315,7 @@ function stats(settings, xn, t)
 		end
 		# Combine
 		gt = vcat(a1..., a2...)
-	elseif settings.stats_type == 5 # Variance sub-samples
+	elseif settings.stats_type == 5 # Variance sub-samples, mean over window
 		T = settings.T
 		# Calculate variance on subsamples
 		# Variances over sliding windows
