@@ -1,4 +1,4 @@
-module GPEmulator
+module GaussianProcessEmulator
 
 using Statistics
 using Distributions
@@ -15,7 +15,7 @@ function __init__()
     copy!(pyGP, pyimport("sklearn.gaussian_process"))
 end
 
-export GPObj
+export GaussianProcess
 export predict
 
 export GPJL, SKLJL
@@ -46,7 +46,7 @@ struct YType <: PredictionType end
 struct FType <: PredictionType end
 
 """
-    GPObj{FT<:AbstractFloat}
+    GaussianProcess{FT<:AbstractFloat}
 
 Structure holding training input and the fitted Gaussian Process Regression
 models.
@@ -55,7 +55,7 @@ models.
 $(DocStringExtensions.FIELDS)
 
 """
-struct GPObj{FT<:AbstractFloat, GPM}
+struct GaussianProcess{FT<:AbstractFloat, GPM}
     "training inputs/parameters; N_samples x input_dim"
     inputs::Array{FT}
     "training data/targets; N_samples x output_dim"
@@ -76,14 +76,14 @@ end
 
 
 """
-GPObj(inputs::Array{FT, 2}, data::Array{FT, 2}, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+GaussianProcess(inputs::Array{FT, 2}, data::Array{FT, 2}, package::GPJL; GPkernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
 
-Inputs and data of size N_samples x input_dim (both arrays will be transposed in the construction of the GPObj)
+Inputs and data of size N_samples x input_dim (both arrays will be transposed in the construction of the GaussianProcess)
 
  - `GPkernel` - GaussianProcesses kernel object. If not supplied, a default Squared Exponential kernel is used.
 """
 
-function GPObj(
+function GaussianProcess(
     inputs::Array{FT, 2},
     data::Array{FT, 2},
     package::GPJL;
@@ -129,7 +129,7 @@ function GPObj(
     # transformed_data is equal to data)
     transformed_data, decomposition = svd_transform(data, obs_noise_cov)
 
-    # Use a default kernel unless a kernel was supplied to GPObj
+    # Use a default kernel unless a kernel was supplied to GaussianProcess
     if GPkernel==nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Construct kernel:
@@ -166,7 +166,7 @@ function GPObj(
     for i in 1:N_models
         # Make a copy of the kernel (because it gets altered in every 
         # iteration)
-        println("kernel in GPObj")
+        println("kernel in GaussianProcess")
         GPkernel_i = deepcopy(kern)
         println(GPkernel_i)
         GPdata_i = transformed_data[:, i]
@@ -193,7 +193,7 @@ function GPObj(
         println(m.kernel)
     end
 
-    return GPObj{FT, typeof(package)}(inputs,
+    return GaussianProcess{FT, typeof(package)}(inputs,
                                       data,
                                       input_mean, 
                                       models,
@@ -205,14 +205,14 @@ end
 
 
 """
-GPObj(inputs::Array{FT, 2}, data::Array{FT, 2}, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+GaussianProcess(inputs::Array{FT, 2}, data::Array{FT, 2}, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
 
 
 Inputs and data of size N_samples x input_dim
 
  - `GPkernel` - ScikitLearn kernel object. If not supplied, a default Squared Exponential kernel is used.
 """
-function GPObj(
+function GaussianProcess(
     inputs::Array{FT, 2},
     data::Array{FT, 2},
     package::SKLJL;
@@ -310,7 +310,7 @@ function GPObj(
         push!(models, m)
         println(m.kernel)
     end
-    return GPObj{FT, typeof(package)}(inputs,
+    return GaussianProcess{FT, typeof(package)}(inputs,
                                       data,
                                       input_mean,
                                       models,
@@ -322,10 +322,10 @@ end
 
 
 """
-    predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, gp.prediction_type)
+    predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, gp.prediction_type)
 
 Evaluate the GP model(s) at new inputs.
-  - `gp` - a GPObj
+  - `gp` - a GaussianProcess
   - `new_inputs` - inputs for which GP model(s) is/are evaluated; N_new_inputs x input_dim
 
 Returns the predicted mean(s) and covariance(s) at the input points. 
@@ -334,9 +334,9 @@ Covariances: vector of length N_new_inputs, each element is a matrix of size out
 
 Note: If gp.normalized == true, the new inputs are normalized prior to the prediction
 """
-predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}; transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
+predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}; transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
 
-function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::FType) where {FT}
+function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::FType) where {FT}
 
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -367,7 +367,7 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_rea
                                                          gp.decomposition)
     elseif transform_to_real && gp.decomposition == nothing
         err = """Need SVD decomposition to transform back to original space, 
-                 but GPObj.decomposition == nothing. 
+                 but GaussianProcess.decomposition == nothing. 
                  Try setting transform_to_real=false"""
         throw(ArgumentError(err))
     else
@@ -384,7 +384,7 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_rea
     return μ_pred, σ2_pred
 end
 
-function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::YType) where {FT}
+function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::YType) where {FT}
 
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -415,7 +415,7 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_rea
                                                          gp.decomposition)
     elseif transform_to_real && gp.decomposition == nothing
         err = """Need SVD decomposition to transform back to original space, 
-                 but GPObj.decomposition == nothing. 
+                 but GaussianProcess.decomposition == nothing. 
                  Try setting transform_to_real=false"""
         throw(ArgumentError(err))
     else
@@ -432,7 +432,7 @@ function predict(gp::GPObj{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_rea
     return μ_pred, σ2_pred
 end
 
-function predict(gp::GPObj{FT, SKLJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT}
+function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT}
 
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -461,7 +461,7 @@ function predict(gp::GPObj{FT, SKLJL}, new_inputs::Array{FT, 2}, transform_to_re
                                                          gp.decomposition)
     elseif transform_to_real && gp.decomposition == nothing
         err = """Need SVD decomposition to transform back to original space, 
-                 but GPObj.decomposition == nothing. 
+                 but GaussianProcess.decomposition == nothing. 
                  Try setting transform_to_real=false"""
         throw(ArgumentError(err))
     else

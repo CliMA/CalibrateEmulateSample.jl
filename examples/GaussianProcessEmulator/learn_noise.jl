@@ -3,12 +3,12 @@ using Random
 using Distributions
 using Statistics
 using LinearAlgebra
-using CalibrateEmulateSample.GPEmulator
+using CalibrateEmulateSample.GaussianProcessEmulator
 
 ###############################################################################
 #                                                                             #
 #   This examples shows how to fit a Gaussian Process (GP) regression model   #
-#   using GPEmulator and demonstrates how the GPObj's built-in Singular       #
+#   using GaussianProcessEmulator and demonstrates how the GaussianProcess's built-in Singular       #
 #   Value Decomposition (SVD) decorrelates the training data and maps into    #
 #   a space where the covariance of the observational noise is the identity.  #
 #                                                                             #
@@ -20,7 +20,7 @@ using CalibrateEmulateSample.GPEmulator
 #   The SVD transformation ensures that this is a valid assumption.           #
 #                                                                             #
 #   The decorrelation by the SVD is done automatically when instantiating     #
-#   a `GPObj`, but the user can choose to have the `predict` function         #
+#   a `GaussianProcess`, but the user can choose to have the `predict` function         #
 #   return its predictions in the original space (by setting                  #
 #   transform_to_real=true)                                                   # 
 #                                                                             #
@@ -31,7 +31,7 @@ using CalibrateEmulateSample.GPEmulator
 #   Two Gaussian Process models are fit, one that predicts y_i[1] from x_i    #
 #   and one that predicts y_i[2] from x_i.                                    #
 #                                                                             #
-#   The GPEmulator module can be used as a standalone module to fit           #
+#   The GaussianProcessEmulator module can be used as a standalone module to fit           #
 #   Gaussian Process regression models, but it was originally designed as     #
 #   the "Emulate" step of the "Calibrate-Emulate-Sample" framework            #
 #   developed at CliMA.                                                       #
@@ -82,7 +82,7 @@ Y = gx .+ noise_samples
 # in the training phase via an optimization procedure.
 # Because of the SVD transformation applied to the output, we expect the 
 # learned noise to be close to 1.
-gpobj1 = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
+gpobj1 = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
                normalized=true, noise_learn=true, prediction_type=pred_type)
 
 println("\n-----------")
@@ -109,7 +109,7 @@ println("------------------------------------------------------------------\n")
 # For comparison: When noise_learn is set to false, the observational noise
 # is set to 1.0 and is not learned/optimized during the training. But thanks
 # to the SVD, 1.0 is the correct value to use.
-gpobj2 = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
+gpobj2 = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
                normalized=true, noise_learn=false, prediction_type=pred_type)
 
 println("\n-----------")

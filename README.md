@@ -15,3 +15,7 @@
 [bors-img]: https://bors.tech/images/badge_small.svg
 [bors-url]: https://app.bors.tech/repositories/24774
 
+
+### Project Mind map
+The latest code structure is found at:
+https://miro.com/welcomeonboard/j4n8NPSihwQ3X7wjEH7kkitUi6I9deUa5veFV15dCndrTNRZkczGGyIviVjnuAhZ

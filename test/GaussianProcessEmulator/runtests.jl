@@ -7,9 +7,9 @@ using ScikitLearn
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
-using CalibrateEmulateSample.GPEmulator
+using CalibrateEmulateSample.GaussianProcessEmulator
 
-@testset "GPEmulator" begin
+@testset "GaussianProcessEmulator" begin
 
     # Seed for pseudo-random number generator
     rng_seed = 41
@@ -39,52 +39,52 @@ using CalibrateEmulateSample.GPEmulator
     # ScikitLearn's Gaussian process regression (SKLJL) only offers one 
     # predict function, which predicts y.
 
-    # GPObj 1: GPJL, predict_y
+    # GaussianProcess 1: GPJL, predict_y
     gppackage = GPJL()
     pred_type = YType()
 
-    gpobj1 = GPObj(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
+    gp1 = GaussianProcess(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
                    prediction_type=pred_type)
-    μ1, σ1² = GPEmulator.predict(gpobj1, new_inputs)
+    μ1, σ1² = GaussianProcessEmulator.predict(gp1, new_inputs)
 
-    @test gpobj1.inputs == x
-    @test gpobj1.data == y
-    @test gpobj1.input_mean[1] ≈ 3.0 atol=1e-2
-    @test gpobj1.sqrt_inv_input_cov == nothing
-    @test gpobj1.prediction_type == pred_type
+    @test gp1.inputs == x
+    @test gp1.data == y
+    @test gp1.input_mean[1] ≈ 3.0 atol=1e-2
+    @test gp1.sqrt_inv_input_cov == nothing
+    @test gp1.prediction_type == pred_type
     @test vec(μ1) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol=0.3
     @assert(size(μ1)==(5,1))
     @test vec(σ1²) ≈ [0.017, 0.003, 0.004, 0.004, 0.009] atol=1e-2
 
     # Check if normalization works
-    gpobj1_norm = GPObj(x, y, gppackage; GPkernel=GPkernel, 
+    gp1_norm = GaussianProcess(x, y, gppackage; GPkernel=GPkernel, 
                         obs_noise_cov=nothing, normalized=true, 
                         noise_learn=true, prediction_type=pred_type)
-    @test gpobj1_norm.sqrt_inv_input_cov ≈ [sqrt(1.0 / Statistics.var(x))] atol=1e-4
+    @test gp1_norm.sqrt_inv_input_cov ≈ [sqrt(1.0 / Statistics.var(x))] atol=1e-4
 
 
-    # GPObj 2: GPJL, predict_f
+    # GaussianProcess 2: GPJL, predict_f
     pred_type = FType()
-    gpobj2 = GPObj(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
+    gp2 = GaussianProcess(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
                    prediction_type=pred_type)
-    μ2, σ2² = GPEmulator.predict(gpobj2, new_inputs)
+    μ2, σ2² = GaussianProcessEmulator.predict(gp2, new_inputs)
     # predict_y and predict_f should give the same mean
     @test μ2 ≈ μ1 atol=1e-6
 
 
-    # GPObj 3: SKLJL 
+    # GaussianProcess 3: SKLJL 
     gppackage = SKLJL()
     pred_type = YType()
     var = ConstantKernel(constant_value=1.0)
     se = RBF(1.0)
     GPkernel = var * se
 
-    gpobj3 = GPObj(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
+    gp3 = GaussianProcess(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
                    prediction_type=pred_type)
-    μ3, σ3² = GPEmulator.predict(gpobj3, new_inputs)
+    μ3, σ3² = GaussianProcessEmulator.predict(gp3, new_inputs)
     @test vec(μ3) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol=0.3
     @test vec(σ3²) ≈ [0.016, 0.002, 0.003, 0.004, 0.003] atol=1e-2
 
@@ -119,7 +119,7 @@ using CalibrateEmulateSample.GPEmulator
     transformed_Y, decomposition = svd_transform(Y[1, :], Σ)
     @test size(transformed_Y) == size(Y[1, :])
     
-    gpobj4 = GPObj(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
+    gp4 = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
                    normalized=true, noise_learn=true, 
                    prediction_type=pred_type)
 
@@ -128,7 +128,7 @@ using CalibrateEmulateSample.GPEmulator
     new_inputs[3, :] = [π, π/2]
     new_inputs[4, :] = [3*π/2, 2*π]
 
-    μ4, σ4² = GPEmulator.predict(gpobj4, new_inputs, transform_to_real=true)
+    μ4, σ4² = GaussianProcessEmulator.predict(gp4, new_inputs, transform_to_real=true)
     @test μ4[1, :] ≈ [1.0, -1.0] atol=0.5
     @test μ4[2, :] ≈ [0.0, 2.0] atol=0.5
     @test μ4[3, :] ≈ [0.0, 0.0] atol=0.5

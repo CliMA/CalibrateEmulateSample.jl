@@ -4,16 +4,16 @@ using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
 # No internal deps, light external deps
 include("Observations.jl")
-include("Priors.jl")
+include("ParameterDistribution.jl")
 
 # No internal deps, heavy external deps
-include("EKP.jl")
-include("GPEmulator.jl")
+include("EnsembleKalmanProcesses.jl")
+include("GaussianProcessEmulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
 
 # Internal deps, light external deps
-include("MCMC.jl")
+include("MarkovChainMonteCarlo.jl")
 
 end # module
