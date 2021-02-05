@@ -24,7 +24,8 @@ end
         end
     end
 
-    for submodule in ["EnsembleKalmanProcesses",
+    for submodule in ["DataStorage",
+                      "EnsembleKalmanProcesses",
 		      "GaussianProcessEmulator",
 		      "MarkovChainMonteCarlo",
 		      "Observations",

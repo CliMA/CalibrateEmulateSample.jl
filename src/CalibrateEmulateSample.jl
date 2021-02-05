@@ -5,6 +5,7 @@ using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 # No internal deps, light external deps
 include("Observations.jl")
 include("ParameterDistribution.jl")
+include("DataStorage.jl")
 
 # No internal deps, heavy external deps
 include("EnsembleKalmanProcesses.jl")
