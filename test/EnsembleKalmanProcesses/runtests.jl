@@ -57,35 +57,38 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     N_iter = 20 # number of EKI iterations
     initial_ensemble = EnsembleKalmanProcesses.construct_initial_ensemble(prior,N_ens;
                                                     rng_seed=rng_seed)
-    @test size(initial_ensemble) == (N_ens, n_par)
+    @test size(initial_ensemble) == (n_par, N_ens)
 
     ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                        y_obs, Γy, Inversion())
 
     # Find EKI timestep
-    g_ens = G(ekiobj.u[end]')'
-    Δ = find_ekp_stepsize(ekiobj, g_ens)
+    g_ens = G(get_u_final(ekiobj))
+    @test size(g_ens) == (n_obs, N_ens)
+    # as the columns of g are the data, this should throw an error
+    @test_throws DimensionMismatch find_ekp_stepsize(ekiobj, g_ens, false)
+    Δ = find_ekp_stepsize(ekiobj, g_ens, true)
     @test Δ ≈ 0.0625
     
     # EKI iterations
     for i in 1:N_iter
-        params_i = ekiobj.u[end]
-        g_ens = G(params_i')'
-        EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
+        params_i = get_u_final(ekiobj)
+        g_ens = G(params_i)
+        EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
     end
 
     # EKI results: Test if ensemble has collapsed toward the true parameter 
     # values
-    eki_final_result = vec(mean(ekiobj.u[end], dims=1))
+    eki_final_result = vec(mean(get_u_final(ekiobj), dims=2))
     # @test norm(u_star - eki_final_result) < 0.5
 
     # Plot evolution of the EKI particles
-    eki_final_result = vec(mean(ekiobj.u[end], dims=1))
+    eki_final_result = vec(mean(get_u_final(ekiobj), dims=2))
     
     if TEST_PLOT_OUTPUT
         gr()
-        p = plot(ekiobj.u[1][:,1], ekiobj.u[1][:,2], seriestype=:scatter)
-        plot!(ekiobj.u[end][:, 1],  ekiobj.u[end][:,2], seriestype=:scatter)
+        p = plot(get_u_prior(ekiobj)[1,:], get_u_prior(ekiobj)[2,:], seriestype=:scatter)
+        plot!(get_u_final(ekiobj)[1, :],  get_u_final(ekiobj)[2,:], seriestype=:scatter)
         plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
             linestyle=:dash, linecolor=:red)
         plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
@@ -101,18 +104,18 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 
     # EKS iterations
     for i in 1:N_iter
-        params_i = eksobj.u[end]
-        g_ens = G(params_i')'
-        EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens)
+        params_i = get_u_final(eksobj)
+        g_ens = G(params_i)
+        EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens, true)
     end
 
     # Plot evolution of the EKS particles
-    eks_final_result = vec(mean(eksobj.u[end], dims=1))
+    eks_final_result = vec(mean(get_u_final(eksobj), dims=2))
     
     if TEST_PLOT_OUTPUT
         gr()
-        p = plot(eksobj.u[1][:,1], eksobj.u[1][:,2], seriestype=:scatter)
-        plot!(eksobj.u[end][:, 1],  eksobj.u[end][:,2], seriestype=:scatter)
+        p = plot(get_u_prior(eksobj)[1,:], get_u_prior(eksobj)[2,:], seriestype=:scatter)
+        plot!(get_u_final(eksobj)[1, :],  get_u_final(eksobj)[2,:], seriestype=:scatter)
         plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
             linestyle=:dash, linecolor=:red)
         plot!([u_star[2]], seriestype="hline", linestyle=:dash, linecolor=:red)
@@ -133,5 +136,5 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     # In words: the ensemble covariance is still a bit ill-dispersed since the
     # algorithm employed still does not include the correction term for finite-sized
     # ensembles.
-    @test abs(sum(diag(posterior_cov_inv\cov(eksobj.u[end]))) - n_par) > 1e-5
+    @test abs(sum(diag(posterior_cov_inv\cov(get_u_final(eksobj),dims=2))) - n_par) > 1e-5
 end
