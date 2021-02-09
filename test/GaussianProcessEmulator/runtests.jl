@@ -8,6 +8,7 @@ using ScikitLearn
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
 using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.DataStorage
 
 @testset "GaussianProcessEmulator" begin
 
