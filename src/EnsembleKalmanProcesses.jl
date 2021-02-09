@@ -11,7 +11,7 @@ using LinearAlgebra
 using DocStringExtensions
 
 export EnsembleKalmanProcess, Inversion, Sampler
-export get_u_final, get_u, get_g
+export get_u_final, get_u, get_g, get_N_iterations
 export construct_initial_ensemble
 export compute_error!
 export update_ensemble!
@@ -68,16 +68,17 @@ end
 
 # outer constructors
 function EnsembleKalmanProcess(params::Array{FT, 2},
-               obs_mean,
-               obs_noise_cov::Array{FT, 2},
-               process::P;
-               Δt=FT(1)) where {FT<:AbstractFloat, P<:Process}
+                               obs_mean,
+                               obs_noise_cov::Array{FT, 2},
+                               process::P;
+                               data_are_columns = true,
+                               Δt=FT(1)) where {FT<:AbstractFloat, P<:Process}
 
+    init_params=DataContainer(params, data_are_columns=data_are_columns)
     # ensemble size
-    N_ens = size(params)[2]
+    N_ens = size(get_data(init_params))[2] #stored with data as columns
     IT = typeof(N_ens)
     # parameters
-    init_params=DataContainer(params)
     g=[] #populated once we have evaluations
     # error store
     err = FT[]
@@ -99,7 +100,7 @@ function get_u(ekp::EnsembleKalmanProcess, iteration::IT; return_array=true) whe
     return  return_array ? get_data(ekp.u[iteration]) : ekp.u[iteration]
 end
 
-function get_g(eki::EnsembleKalmanProcess,iteration::IT; return_array=true) where {IT <: Integer}
+function get_g(ekp::EnsembleKalmanProcess,iteration::IT; return_array=true) where {IT <: Integer}
     return return_array ? get_data(ekp.g[iteration]) : ekp.g[iteration]
 end
 
@@ -116,7 +117,14 @@ function get_u_prior(ekp::EnsembleKalmanProcess; return_array=true)
     return return_array ? get_u(ekp,1) : ekp.u[1]
 end
 
+"""
+    get_N_iterations(ekp::EnsembleKalmanProcess
 
+get number of times update has been called (equals size(g), or size(u)-1) 
+"""
+function get_N_iterations(ekp::EnsembleKalmanProcess)
+    return size(ekp.u)[1] - 1 
+end
 """
     construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng_seed=42) where {IT<:Int}
 
