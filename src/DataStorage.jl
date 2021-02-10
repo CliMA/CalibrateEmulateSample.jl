@@ -93,40 +93,5 @@ function get_outputs(pdc::PairedDataContainer)
     return get_data(pdc.outputs)
 end
 
-#these functions are useless as DataContainers are immutable
-# function set_data(dc::DataContainer,data; data_are_columns=true)
-#     old_data = get_data(dc)
-#     if !(size(data) == size(old_data))
-#         throw(DimensionMismatch("Do not change size of data in storage, create new storage instead"))
-#     end
-#     if data_are_columns    
-#         dc.stored_data = data
-#     else
-#         dc.stored_data = permutedims(data,(2,1))
-#     end 
-# end
-
-# function set_data(pdc::PairedDataContainer, input_data::Array{FT,2}, output_data::Array{FT,2}; data_are_columns=true) where {FT <: Real}
-#     set_inputs(pdc, input_data, data_are_columns=data_are_columns)
-#     set_outputs(pdc, output_data, data_are_columns=data_are_columns)
-# end
-
-# function set_inputs(pdc::PairedDataContainer,input_data::Array{FT,2}; data_are_columns=true) where {FT <: Real}
-#     sample_dim = data_are_columns ? 2 : 1    
-#     if !(size(input_data,sample_dim) == size(pdc.outputs,2))
-#         throw(DimensionMismatch("There must be the same number of samples of both inputs and outputs"))
-#     end
-#     set_data(pdc.inputs, input_data; data_are_columns=data_are_columns)        
-# end
-
-# function set_outputs(pdc::PairedDataContainer,output_data::Array{FT,2}; data_are_columns=true) where {FT <: Real}
-#     sample_dim = data_are_columns ? 2 : 1    
-#     if !(size(pdc.inputs,2) == size(output_data,sample_dim))
-#         throw(DimensionMismatch("There must be the same number of samples of both inputs and outputs"))
-#     end
-#     set_data(pdc.outputs, output_data; data_are_columns=data_are_columns)
-# end
-
-# Statistics? e.g get mean/cov/add_inflation could be done here.
 
 end

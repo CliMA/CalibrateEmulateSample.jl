@@ -58,18 +58,18 @@ $(DocStringExtensions.FIELDS)
 """
 struct GaussianProcess{FT<:AbstractFloat, GPM}
     "training inputs and outputs, data stored in columns"
-    input_output_pairs::PairedDataContainer
+    input_output_pairs::PairedDataContainer{FT}
     "mean of input; 1 x input_dim"
     input_mean::Array{FT}
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
+    sqrt_inv_input_cov::Union{Nothing, Array{FT, 2}}
+    "prediction type (`y` to predict the data, `f` to predict the latent function)"
     models::Vector
     "the singular value decomposition of obs_noise_cov, such that obs_noise_cov = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt."
     decomposition::Union{SVD, Nothing}
     "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
     normalized::Bool
     "square root of the inverse of the input covariance matrix; input_dim x input_dim"
-    sqrt_inv_input_cov::Union{Nothing, Array{FT, 2}}
-    "prediction type (`y` to predict the data, `f` to predict the latent function)"
     prediction_type::Union{Nothing, PredictionType}
 end
 
@@ -83,7 +83,7 @@ Input-output pairs in paired data storage, storing in/out_dim x N_samples
 """
 
 function GaussianProcess(
-    input_output_pairs::PairedDataContainer,
+    input_output_pairs::PairedDataContainer{FT},
     package::GPJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
     obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing,
@@ -93,7 +93,7 @@ function GaussianProcess(
 
     # Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
-
+    
     if obs_noise_cov != nothing
         err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
         size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
@@ -109,11 +109,10 @@ function GaussianProcess(
     sqrt_inv_input_cov = nothing
     if normalized
         # Normalize (NB the inputs have to be of size [input_dim x N_samples] to pass to GPE())
-        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(get_inputs(input_output_pairs), dims=2))))
-        GPinputs = convert(Array, sqrt_inv_input_cov * (inputs.-input_mean) )
+        sqrt_inv_input_cov = sqrt(inv(cov(get_inputs(input_output_pairs), dims=2)))
+        GPinputs = sqrt_inv_input_cov * (get_inputs(input_output_pairs).-input_mean) 
     else
-        # Only transpose
-        GPinputs = convert(Array, get_inputs(input_output_pairs))
+        GPinputs = get_inputs(input_output_pairs)
     end
     
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, transformed_data is equal to data)
@@ -182,26 +181,26 @@ function GaussianProcess(
         push!(models, m)
         println(m.kernel)
     end
-
-    return GaussianProcess{FT, typeof(package)}(input_output_pairs,
-                                                input_mean, 
-                                                sqrt_inv_input_cov,
-                                                models,
-                                                decomposition,
-                                                normalized,
-                                                prediction_type)
+    
+    return GaussianProcess{FT,typeof(package)}(input_output_pairs,
+                                               input_mean, 
+                                               sqrt_inv_input_cov,
+                                               models,
+                                               decomposition,
+                                               normalized,
+                                               prediction_type)
 end
 
 
 """
     GaussianProcess(inputs::Array{FT, 2}, data::Array{FT, 2}, package::SKLJL; GPkernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
-
+    FT = eltype(get_inputs(input_output_pa
 Input-output pairs in paired data storage, storing in/out_dim x N_samples
 
  - `GPkernel` - ScikitLearn kernel object. If not supplied, a default Squared Exponential kernel is used.
 """
 function GaussianProcess(
-    input_output_pairs::PairedDataContainer,
+    input_output_pairs::PairedDataContainer{FT},
     package::SKLJL;
     GPkernel::Union{K, KPy, Nothing}=nothing,
     obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing,
@@ -229,10 +228,10 @@ function GaussianProcess(
     input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1)
     sqrt_inv_input_cov = nothing
     if normalized
-        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(inputs, dims=1))))
-        GPinputs = permutedims((inputs .- input_mean) * sqrt_inv_input_cov, (2,1))
+        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(get_inputs(input_output_pairs), dims=2))))
+        GPinputs = permutedims((get_inputs(input_output_pairs) .- input_mean) * sqrt_inv_input_cov, (2,1))
     else
-        GPinputs = permutedims(inputs, (2,1))
+        GPinputs = permutedims(get_inputs(input_output_pairs), (2,1))
     end
 
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, 
@@ -294,7 +293,7 @@ function GaussianProcess(
     end
     return GaussianProcess{FT, typeof(package)}(input_output_pairs,
                                                 input_mean,
-                                                sqrt_inv_input_cov,                                                
+                                                sqrt_inv_input_cov,
                                                 models,
                                                 decomposition,
                                                 normalized,
@@ -322,9 +321,8 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
     input_dim, output_dim = size(gp.input_output_pairs, 1)
-
     N_new_inputs = size(new_inputs, 2)
-    size(new_inputs, 2) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
+    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
 
     if gp.normalized
         new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
@@ -336,8 +334,8 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
 
     # Return mean(s) and variance(s)
     # of size output_dim x N_samples
-    μ  = vcat(first.(μσ2)...)
-    σ2 = vcat(last.(μσ2)...)
+    μ  = reshape(vcat(first.(μσ2)...), output_dim, N_new_inputs)
+    σ2 = reshape(vcat(last.(μσ2)...), output_dim, N_new_inputs)
 
     if transform_to_real && gp.decomposition != nothing
         μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2,
@@ -350,7 +348,7 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
         μ_pred = μ
         # Convert to vector of (diagonal) matrices to match the format of 
         # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[j, :]) for j in 1:N_new_inputs])
+        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_new_inputs])
     end
 
     if output_dim == 1
@@ -367,7 +365,7 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
     input_dim, output_dim = size(gp.input_output_pairs, 1)
 
     N_new_inputs = size(new_inputs, 2)
-    size(new_inputs, 2) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
+    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
 
     if gp.normalized
         new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
@@ -378,8 +376,8 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
     μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
 
     # Return mean(s) and variance(s) size output_dim x N_new_inputs
-    μ  = vcat(first.(μσ2)...)
-    σ2 = vcat(last.(μσ2)...)
+    μ  = reshape(vcat(first.(μσ2)...), output_dim, N_new_inputs)
+    σ2 = reshape(vcat(last.(μσ2)...), output_dim, N_new_inputs)
 
     if transform_to_real && gp.decomposition != nothing
         μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2, 
@@ -392,7 +390,7 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
         μ_pred = μ
         # Convert to vector of (diagonal) matrices to match the format of 
         # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[j, :]) for j in 1:N_new_inputs])
+        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_new_inputs])
     end
 
     if output_dim == 1
@@ -409,18 +407,20 @@ function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, trans
     input_dim, output_dim = size(gp.input_output_pairs, 1)
 
     N_new_inputs = size(new_inputs, 2)
-    size(new_inputs, 2) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
+    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
 
     if gp.normalized
         new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
     end
 
     M = length(gp.models)
-    # Predicts rows of inputs; no need to transpose
-    μσ = [gp.models[i].predict(new_inputs, return_std=true) for i in 1:M]
-    # Return mean(s) and standard deviations(s): output_dim xN_new_inputs
-    μ = vcat(first.(μσ)...)
-    σ = vcat(last.(μσ)...)
+
+    # SKJL based on rows not columns; need to transpose inputs
+    μσ = [gp.models[i].predict(new_inputs', return_std=true) for i in 1:M]
+  
+    # Return mean(s) and standard deviations(s): output_dim x N_new_inputs
+    μ  = reshape(vcat(first.(μσ)...), output_dim, N_new_inputs)
+    σ = reshape(vcat(last.(μσ)...), output_dim, N_new_inputs)
     σ2 = σ .* σ
 
     if transform_to_real && gp.decomposition != nothing
@@ -434,11 +434,11 @@ function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, trans
         μ_pred = μ
         # Convert to vector of (diagonal) matrices to match the format of 
         # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[j, :]) for j in 1:N_new_inputs])
+        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_new_inputs])
     end
 
     if output_dim == 1
-        σ2_pred = reshape([σ2_pred[i][1] for i in 1:N_new_inputs], N_new_inputs, 1)
+        σ2_pred = reshape([σ2_pred[i][1] for i in 1:N_new_inputs], 1,N_new_inputs)
     end
 
     return μ_pred, σ2_pred
@@ -464,8 +464,7 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
     if obs_noise_cov != nothing
         decomposition = svd(obs_noise_cov)
         sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-        transformed_data_T = sqrt_singular_values_inv * decomposition.Vt * data
-        transformed_data = convert(Array, transformed_data_T')
+        transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
     else
         decomposition = nothing
         transformed_data = data
@@ -474,6 +473,18 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
     return transformed_data, decomposition
 end
 
+function svd_transform(data::Vector{FT}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
+    if obs_noise_cov != nothing
+        decomposition = svd(obs_noise_cov)
+        sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
+        transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+    else
+        decomposition = nothing
+        transformed_data = data
+    end
+
+    return transformed_data, decomposition
+end
 """
 svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::{Array{FT, 2}, decomposition::SVD) where {FT}
 
@@ -491,14 +502,15 @@ each element is a matrix of size output_dim x output_dim
 
 function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, decomposition::SVD) where {FT}
 
-    N_predicted_points, output_dim = size(σ2)
+    output_dim, N_predicted_points = size(σ2)
     # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
     sqrt_singular_values= Diagonal(sqrt.(decomposition.S)) 
-    transformed_μT = decomposition.V * sqrt_singular_values * μ
+    transformed_μ = decomposition.V * sqrt_singular_values * μ
     transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
     # Back transformation
+
     for j in 1:N_predicted_points
-        σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:, j]) * sqrt_singular_values * decomposition.Vt
+        σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
         transformed_σ2[j] = σ2_j
     end
 
