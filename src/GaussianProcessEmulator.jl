@@ -108,7 +108,7 @@ function GaussianProcess(
     input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1) #column vector
     sqrt_inv_input_cov = nothing
     if normalized
-        # Normalize (NB the inputs have to be of size [input_dim x N_samples] to pass to GPE())
+        # Normalize (NB the inputs have to be of) size [input_dim x N_samples] to pass to GPE())
         sqrt_inv_input_cov = sqrt(inv(cov(get_inputs(input_output_pairs), dims=2)))
         GPinputs = sqrt_inv_input_cov * (get_inputs(input_output_pairs).-input_mean) 
     else
@@ -117,7 +117,7 @@ function GaussianProcess(
     
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, transformed_data is equal to data)
     transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), obs_noise_cov)
-    
+
     # Use a default kernel unless a kernel was supplied to GaussianProcess
     if GPkernel==nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
@@ -229,7 +229,7 @@ function GaussianProcess(
     sqrt_inv_input_cov = nothing
     if normalized
         sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(get_inputs(input_output_pairs), dims=2))))
-        GPinputs = permutedims((get_inputs(input_output_pairs) .- input_mean) * sqrt_inv_input_cov, (2,1))
+        GPinputs = permutedims(sqrt_inv_input_cov*(get_inputs(input_output_pairs) .- input_mean), (2,1))
     else
         GPinputs = permutedims(get_inputs(input_output_pairs), (2,1))
     end
@@ -330,12 +330,11 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
 
     M = length(gp.models)
     # Predicts columns of inputs: input_dim x N_samples
-    μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
-
-    # Return mean(s) and variance(s)
-    # of size output_dim x N_samples
-    μ  = reshape(vcat(first.(μσ2)...), output_dim, N_new_inputs)
-    σ2 = reshape(vcat(last.(μσ2)...), output_dim, N_new_inputs)
+    μ = zeros(output_dim,N_new_inputs)
+    σ2 = zeros(output_dim,N_new_inputs)
+    for i in 1:M
+        μ[i,:],σ2[i,:] = predict_f(gp.models[i], new_inputs)
+    end
 
     if transform_to_real && gp.decomposition != nothing
         μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2,
@@ -373,12 +372,11 @@ function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transf
 
     M = length(gp.models)
     # Predicts columns of inputs: input_dim x N_new_inputs
-    μσ2 = [predict_f(gp.models[i], new_inputs) for i in 1:M]
-
-    # Return mean(s) and variance(s) size output_dim x N_new_inputs
-    μ  = reshape(vcat(first.(μσ2)...), output_dim, N_new_inputs)
-    σ2 = reshape(vcat(last.(μσ2)...), output_dim, N_new_inputs)
-
+    μ = zeros(output_dim,N_new_inputs)
+    σ2 = zeros(output_dim,N_new_inputs)
+    for i in 1:M
+        μ[i,:],σ2[i,:] = predict_f(gp.models[i], new_inputs)
+    end
     if transform_to_real && gp.decomposition != nothing
         μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2, 
                                                          gp.decomposition)
@@ -416,11 +414,11 @@ function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, trans
     M = length(gp.models)
 
     # SKJL based on rows not columns; need to transpose inputs
-    μσ = [gp.models[i].predict(new_inputs', return_std=true) for i in 1:M]
-  
-    # Return mean(s) and standard deviations(s): output_dim x N_new_inputs
-    μ  = reshape(vcat(first.(μσ)...), output_dim, N_new_inputs)
-    σ = reshape(vcat(last.(μσ)...), output_dim, N_new_inputs)
+    μ = zeros(output_dim,N_new_inputs)
+    σ = zeros(output_dim,N_new_inputs)
+    for i in 1:M
+        μ[i,:],σ[i,:] = gp.models[i].predict(new_inputs', return_std=true)
+    end
     σ2 = σ .* σ
 
     if transform_to_real && gp.decomposition != nothing
@@ -477,7 +475,7 @@ function svd_transform(data::Vector{FT}, obs_noise_cov::Union{Array{FT, 2}, Noth
     if obs_noise_cov != nothing
         decomposition = svd(obs_noise_cov)
         sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-        transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+        transformed_data =  sqrt_singular_values_inv * decomposition.Vt * data
     else
         decomposition = nothing
         transformed_data = data
@@ -504,8 +502,9 @@ function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, dec
 
     output_dim, N_predicted_points = size(σ2)
     # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
-    sqrt_singular_values= Diagonal(sqrt.(decomposition.S)) 
+    sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
     transformed_μ = decomposition.V * sqrt_singular_values * μ
+
     transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
     # Back transformation
 
