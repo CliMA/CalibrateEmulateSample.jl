@@ -11,7 +11,7 @@ using LinearAlgebra
 using DocStringExtensions
 
 export EnsembleKalmanProcess, Inversion, Sampler
-export get_u_final, get_u, get_g, get_N_iterations
+export get_u_prior, get_u_final, get_u, get_g, get_N_iterations
 export construct_initial_ensemble
 export compute_error!
 export update_ensemble!
