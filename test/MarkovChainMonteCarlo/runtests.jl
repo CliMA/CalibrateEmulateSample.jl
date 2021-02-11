@@ -7,6 +7,7 @@ using Test
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.DataStorage
 
 @testset "MarkovChainMonteCarlo" begin
 
@@ -17,9 +18,11 @@ using CalibrateEmulateSample.GaussianProcessEmulator
     # We need a GaussianProcess to run MarkovChainMonteCarlo, so let's reconstruct the one that's tested
     # in test/GaussianProcesses/runtests.jl
     n = 20                                       # number of training points
-    x = reshape(2.0 * π * rand(n), n, 1)         # predictors/features: n x 1
-    σ2_y = reshape([0.05], 1, 1)
-    y = reshape(sin.(x) + rand(Normal(0, σ2_y[1]), n), n, 1) # predictands/targets: n x 1
+    x = reshape(2.0 * π * rand(n), 1, n)         # predictors/features: n x 1
+    σ2_y = reshape([0.05],1,1)
+    y = sin.(x) + rand(Normal(0, σ2_y[1]), (1, n)) # predictands/targets: n x 1
+
+    iopairs = PairedDataContainer(x,y,data_are_columns=true)
 
     gppackage = GPJL()
     pred_type = YType()
@@ -32,7 +35,7 @@ using CalibrateEmulateSample.GaussianProcessEmulator
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
 
-    gp = GaussianProcess(x, y, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
+    gp = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
                   normalized=false, noise_learn=true, 
                   prediction_type=pred_type) 
 
