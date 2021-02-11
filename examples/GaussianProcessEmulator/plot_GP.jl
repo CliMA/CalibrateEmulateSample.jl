@@ -1,3 +1,4 @@
+
 # Import modules
 using Random
 using Distributions
@@ -6,11 +7,12 @@ using Plots; pyplot(size=(1500, 700))
 Plots.scalefontsizes(1.3)
 using LinearAlgebra
 using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.DataStorage
 
 ###############################################################################
 #                                                                             #
 #   This examples shows how to fit a Gaussian Process regression model        #
-#   using GaussianProcessEmulator, and how to plot the mean and variance                   #
+#   using GaussianProcess, and how to plot the mean and variance                   #
 #                                                                             #
 #   Training points: {(x_i, y_i)} (i=1,...,n), where x_i ∈ ℝ ² and y_i ∈ ℝ ²  #
 #   The y_i are assumed to be related to the x_i by:                          #
@@ -63,20 +65,43 @@ n = 50  # number of training points
 p = 2   # input dim 
 d = 2   # output dim
 
-X = 2.0 * π * rand(n, p)
-
+X = 2.0 * π * rand(p, n)
 # G(x1, x2)
-g1x = sin.(X[:, 1]) .+ cos.(X[:, 2])
-g2x = sin.(X[:, 1]) .- cos.(X[:, 2])
-gx = [g1x g2x]
+g1x = sin.(X[1, :]) .+ cos.(X[2, :])
+g2x = sin.(X[1, :]) .- cos.(X[2, :])
+gx = zeros(2,n)
+gx[1,:] = g1x
+gx[2,:] = g2x
 
 # Add noise η
 μ = zeros(d) 
 Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
-noise_samples = rand(MvNormal(μ, Σ), n)' 
-
+noise_samples = rand(MvNormal(μ, Σ), n) 
 # y = G(x) + η
 Y = gx .+ noise_samples
+
+#plot training data with and without noise
+p1 = plot(X[1,:], X[2,:], g1x, st=:surface, camera=(-30, 30), c=:cividis, 
+              xlabel="x1", ylabel="x2",
+              zguidefontrotation=90)
+savefig("GP_test_observed_y1nonoise.png")
+p2 = plot(X[1,:], X[2,:], g2x, st=:surface, camera=(-30, 30), c=:cividis, 
+              xlabel="x1", ylabel="x2",
+              zguidefontrotation=90)
+savefig("GP_test_observed_y2nonoise.png")
+p1 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(-30, 30), c=:cividis, 
+              xlabel="x1", ylabel="x2",
+              zguidefontrotation=90)
+savefig("GP_test_observed_y1.png")
+p2 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(-30, 30), c=:cividis, 
+              xlabel="x1", ylabel="x2",
+              zguidefontrotation=90)
+savefig("GP_test_observed_y2.png")
+
+
+iopairs = PairedDataContainer(X,Y,data_are_columns=true)
+@assert get_inputs(iopairs) == X
+@assert get_outputs(iopairs) == Y
 
 # Fit 2D Gaussian Process regression model
 # (To be precise: We fit two models, one that predicts y1 from x1 and x2, 
@@ -85,38 +110,42 @@ Y = gx .+ noise_samples
 # exponential kernel. 
 # Setting noise_learn=true leads to the addition of white noise to the
 # kernel
-gpobj = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
+gpobj = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
               normalized=true, noise_learn=true, prediction_type=pred_type)
 
 # Plot mean and variance of the predicted observables y1 and y2
 # For this, we generate test points on a x1-x2 grid.
-n_pts = 200
+n_pts = 100
 x1 = range(0.0, stop=2*π, length=n_pts)
 x2 = range(0.0, stop=2*π, length=n_pts) 
 X1, X2 = meshgrid(x1, x2)
 # Input for predict has to be of size N_samples x input_dim
-inputs = hcat(X1[:], X2[:])
+inputs = permutedims(hcat(X1[:], X2[:]),(2,1))
 
 font = Plots.font("Helvetica", 18)
 fontdict = Dict(:guidefont=>font, :xtickfont=>font, :ytickfont=>font, 
                 :legendfont=>font)
-for y_i in 1:d
-    # Predict on the grid points (note that `predict` returns the full
-    # covariance matrices, not just the variance -- gp_cov is a vector
-    # of covariance matrices)
-    gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
-                                         inputs, 
-                                         transform_to_real=true)
-    # Reshape gp_cov to size N_samples x output_dim
-    gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
-    gp_var = vcat([x' for x in gp_var_temp]...) # 40000 x 2
+# Predict on the grid points (note that `predict` returns the full
+# covariance matrices, not just the variance -- gp_cov is a vector
+# of covariance matrices)
+gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
+                                                  inputs, 
+                                                  transform_to_real=true)
+println("end predictions at ", n_pts*n_pts, " points")
+println("start plotting...")
 
-    mean_grid = reshape(gp_mean[:, y_i], n_pts, n_pts)
+#plot predictions
+for y_i in 1:d
+
+    gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
+    gp_var = permutedims(vcat([x' for x in gp_var_temp]...),(2,1)) # 2 x 40000
+   
+    mean_grid = reshape(gp_mean[y_i, :], n_pts, n_pts) # 2 x 40000
     p1 = plot(x1, x2, mean_grid, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2", zlabel="mean of y"*string(y_i),
               zguidefontrotation=90)
 
-    var_grid = reshape(gp_var[:, y_i], n_pts, n_pts)
+    var_grid = reshape(gp_var[y_i, :], n_pts, n_pts)
     p2 = plot(x1, x2, var_grid, st=:surface, camera=(-30, 30), c=:cividis,
               xlabel="x1", ylabel="x2", zlabel="var of y"*string(y_i),
               zguidefontrotation=90)
@@ -126,14 +155,14 @@ for y_i in 1:d
 end
 
 # Plot the true components of G(x1, x2)
-g1_true = sin.(inputs[:, 1]) .+ cos.(inputs[:, 2])
+g1_true = sin.(inputs[1,:]) .+ cos.(inputs[2, :])
 g1_true_grid = reshape(g1_true, n_pts, n_pts)
 p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
           zguidefontrotation=90)
 savefig("GP_test_true_g1.png")
 
-g2_true = sin.(inputs[:, 1]) .- cos.(inputs[:, 2])
+g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
 p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
@@ -144,18 +173,13 @@ savefig("GP_test_true_g2.png")
 
 # Plot the difference between the truth and the mean of the predictions
 for y_i in 1:d
-    # Predict on the grid points (note that `predict` returns the full
-    # covariance matrices, not just the variance -- gp_cov is a vector
-    # of covariance matrices)
-    gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
-                                         inputs, 
-                                         transform_to_real=true)
+
     # Reshape gp_cov to size N_samples x output_dim
     gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
-    gp_var = vcat([x' for x in gp_var_temp]...) # 40000 x 2
+    gp_var = permutedims(vcat([x' for x in gp_var_temp]...),(2,1)) # 40000 x 2
 
-    mean_grid = reshape(gp_mean[:, y_i], n_pts, n_pts)
-    var_grid = reshape(gp_var[:, y_i], n_pts, n_pts)
+    mean_grid = reshape(gp_mean[y_i,:], n_pts, n_pts)
+    var_grid = reshape(gp_var[y_i, :], n_pts, n_pts)
     # Compute and plot 1/variance * (truth - prediction)^2
     zlabel = "1/var * (true_y"*string(y_i)*" - predicted_y"*string(y_i)*")^2"
     p5 = plot(x1, x2, 1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid).^2, 

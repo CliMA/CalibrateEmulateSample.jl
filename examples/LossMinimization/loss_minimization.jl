@@ -4,6 +4,7 @@ using Random
 using Plots
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributionStorage
+
 # Seed for pseudo-random number generator for reproducibility
 rng_seed = 41
 Random.seed!(rng_seed)
@@ -44,13 +45,16 @@ ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                     y_obs, Γy, Inversion())
 #
 for i in 1:N_iter
-    params_i = ekiobj.u[end]
-    g_ens = hcat([G(params_i[i,:]) for i in 1:N_ens]...)'
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
+    params_i = get_u_final(ekiobj)
+    g_ens = hcat([G(params_i[:,i]) for i in 1:N_ens]...)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens,true)
 end
 
-for i in eachindex(ekiobj.u)
-    p = plot(ekiobj.u[i][:,1], ekiobj.u[i][:,2], seriestype=:scatter, xlims = extrema(ekiobj.u[1][:,1]), ylims = extrema(ekiobj.u[1][:,2]))
+u_init = get_u_prior(ekiobj)
+
+for i in 1:N_iter
+    u_i = get_u(ekiobj,i)
+    p = plot(u_i[1,:], u_i[2,:], seriestype=:scatter, xlims = extrema(u_init[1,:]), ylims = extrema(u_init[2,:]))
     plot!([u_star[1]], xaxis="u1", yaxis="u2", seriestype="vline",
         linestyle=:dash, linecolor=:red, label = false,
         title = "EKI iteration = " * string(i)
@@ -93,13 +97,15 @@ ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
                     y_obs, Γy, Inversion())
 #
 for i in 1:N_iter
-    params_i = ekiobj.u[end]
-    g_ens = hcat([G(params_i[i,:]) for i in 1:N_ens]...)'
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
+    params_i = get_u_final(ekiobj)
+    g_ens = hcat([G(params_i[:,i]) for i in 1:N_ens]...)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
 end
 
-for i in eachindex(ekiobj.u)
-    p = plot(ekiobj.u[i][:,1], ekiobj.u[i][:,2], seriestype=:scatter, xlims = (-2,2), ylims = (-2,2))
+u_init = get_u_prior(ekiobj)
+for i in 1:N_iter
+    u_i = get_u(ekiobj,i)
+    p = plot(u_i[1,:], u_i[2,:], seriestype=:scatter, xlims = (-2,2), ylims = (-2,2))
     plot!([1], xaxis="u1", yaxis="u2", seriestype="vline",
         linestyle=:dash, linecolor=:red, label = false,
         title = "EKI iteration = " * string(i)
