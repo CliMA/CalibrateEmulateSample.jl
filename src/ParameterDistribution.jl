@@ -18,7 +18,7 @@ export get_name, get_distribution, get_total_dimension, get_dimensions, get_all_
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
-export get_logpdf, get_cov, get_var, get_mean
+export get_logpdf, get_cov, get_var, get_mean, batch
     
 ## Objects
 # for the Distribution
@@ -167,7 +167,7 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
                                                                        CType <: ConstraintType,
                                                                        ST <: AbstractString}
         
-        parameter_distributions = isa(parameter_distributions, PDType) ? [parameter_distributions] : parameter_distributions
+	parameter_distributions = isa(parameter_distributions, PDType) ? [parameter_distributions] : parameter_distributions
         n_parameter_per_dist = [dimension(pd) for pd in parameter_distributions]
         
         constraints = isa(constraints, Union{<:ConstraintType,Array{<:ConstraintType}}) ? [constraints] : constraints #to calc n_constraints_per_dist
@@ -176,12 +176,6 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
         n_constraints_per_dist = [len(c) for c in constraints]
         n_dists = length(parameter_distributions)
         n_names = length(names)   
-	# Howland, 2/1/21, Debug
-	#println(n_dists)
-	#println(n_names)
-	#println(names)
-	#n_dists = 2
-	#
         if !(n_parameter_per_dist == n_constraints_per_dist)
             throw(DimensionMismatch("There must be one constraint per parameter in a distribution, use NoConstraint() type if no constraint is required"))
         elseif !(n_dists == n_names)
@@ -235,7 +229,7 @@ end
 returns the (flattened) array of constraints of the parameter distribution
 """
 function get_all_constraints(pd::ParameterDistribution)
-    return pd.constraints
+    return pd.constraints 
 end
 
 """

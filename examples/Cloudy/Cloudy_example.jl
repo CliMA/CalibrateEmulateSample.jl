@@ -206,7 +206,8 @@ kern2 = Mat52Ard(len2, 0.0)
 white = Noise(log(2.0))
 GPkernel =  kern1 + kern2 + white
 # Get training points
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+u_tp, g_tp = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
 gpobj = GaussianProcessEmulator.GaussianProcess(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
                          obs_noise_cov=Γy, normalized=normalized, 
