@@ -1,16 +1,8 @@
 # Import modules
 include("GModel.jl") # Contains Lorenz 96 source code
 
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/ParameterDistribution.jl")
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/GaussianProcessEmulator.jl")
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/MarkovChainMonteCarlo.jl")
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/Observations.jl")
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/EnsembleKalmanProcesses.jl")
-include("/groups/esm/mhowland/Codes/CalibrateEmulateSample.jl/src/Utilities.jl")
-
 # Import modules
 using Distributions  # probability distributions and associated functions
-#using StatsBase
 using LinearAlgebra
 using StatsPlots
 using GaussianProcesses
@@ -18,20 +10,13 @@ using Plots
 using Random
 using JLD2
 
-# Import Calibrate-Emulate-Sample modules
-using .EnsembleKalmanProcesses
-using .GaussianProcessEmulator
-using .MarkovChainMonteCarlo
-using .Observations
-using .Utilities
-using .ParameterDistributionStorage
-# If using CES Github
-#using CalibrateEmulateSample.EnsembleKalmanProcesses
-#using CalibrateEmulateSample.GaussianProcessEmulator
-#using CalibrateEmulateSample.MarkovChainMonteCarlo
-#using CalibrateEmulateSample.Observations
-#using CalibrateEmulateSample.Utilities
-#using CalibrateEmulateSample.ParameterDistributionStorage
+# CES 
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.MarkovChainMonteCarlo
+using CalibrateEmulateSample.Observations
+using CalibrateEmulateSample.Utilities
+using CalibrateEmulateSample.ParameterDistributionStorage
 
 
 rng_seed = 4137
