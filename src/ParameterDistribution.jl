@@ -8,6 +8,9 @@ using Random
 
 ## Exports
 
+#types
+
+export ParameterDistributionType
 #objects
 export Parameterized, Samples
 export ParameterDistribution
@@ -19,7 +22,8 @@ export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
 export get_logpdf, get_cov, get_var, get_mean
-    
+export batch
+
 ## Objects
 # for the Distribution
 abstract type ParameterDistributionType end
@@ -168,15 +172,14 @@ struct ParameterDistribution{PDType <: ParameterDistributionType, CType <: Const
                                                                        ST <: AbstractString}
         
         parameter_distributions = isa(parameter_distributions, PDType) ? [parameter_distributions] : parameter_distributions
-        n_parameter_per_dist = [dimension(pd) for pd in parameter_distributions]
-        
+        n_parameters_per_dist = [dimension(pd) for pd in parameter_distributions]
         constraints = isa(constraints, Union{<:ConstraintType,Array{<:ConstraintType}}) ? [constraints] : constraints #to calc n_constraints_per_dist
         names = isa(names, ST) ? [names] : names
             
         n_constraints_per_dist = [len(c) for c in constraints]
         n_dists = length(parameter_distributions)
-        n_names = length(names)        
-        if !(n_parameter_per_dist == n_constraints_per_dist)
+        n_names = length(names)
+        if !(n_parameters_per_dist == n_constraints_per_dist)
             throw(DimensionMismatch("There must be one constraint per parameter in a distribution, use NoConstraint() type if no constraint is required"))
         elseif !(n_dists == n_names)
             throw(DimensionMismatch("There must be one name per parameter distribution"))
