@@ -36,7 +36,7 @@ versions = map(param -> generate_cm_params(param, param_names), params_arr)
 
 open("versions.txt", "w") do io
         for version in versions
-            write(io, "$(version)\n")
+            write(io, "clima_param_defs_$(version).jl\n")
         end
     end
 ## Continue calibration
