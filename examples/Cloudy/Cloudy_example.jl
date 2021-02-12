@@ -1,5 +1,5 @@
 # This example requires Cloudy to be installed.
-using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
+#using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
 using Cloudy
 const PDistributions = Cloudy.ParticleDistributions
 
@@ -19,6 +19,7 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.ParameterDistributionStorage
+using CalibrateEmulateSample.DataStorage
 
 # Import the module that runs Cloudy
 include("GModel.jl")
@@ -91,10 +92,10 @@ c3 = bounded_below(lbound_k)
 constraints = [[c1], [c2], [c3]]
 
 # We choose to use normal distributions to represent the prior distributions of
-# the parameters in the transformed (unconstrained) space.
-d1 = Parameterized(Normal(0.0, 1.0))
-d2 = Parameterized(Normal(0.0, 1.0))
-d3 = Parameterized(Normal(0.0, 1.0))
+# the parameters in the transformed (unconstrained) space. i.e log coordinates
+d1 = Parameterized(Normal(5.0, 1.0)) #truth is 5.19
+d2 = Parameterized(Normal(0.0, 1.0)) #truth is 0.378
+d3 = Parameterized(Normal(-2.0, 1.0))#truth is -2.51
 distributions = [d1, d2, d3]
 
 param_names = ["N0", "θ", "k"]
@@ -148,18 +149,19 @@ for i in 1:n_samples
 end
 
 truth = Observations.Obs(yt, Γy, data_names)
-
-
+truth_sample = truth.samples[30]
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
 
+
 N_ens = 50 # number of ensemble members
-N_iter = 5 # number of EKI iterations
+N_iter = 8 # number of EKI iterations
 # initial parameters: N_ens x N_params
 initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
-ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth.mean, truth.obs_noise_cov,
-                   Inversion(), Δt=0.3)
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
+                   Inversion(), Δt=0.1)
+
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set in run_G_ensemble
@@ -169,13 +171,14 @@ g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
 
 # EKI iterations
 for i in 1:N_iter
+
     params_i = mapslices(x -> transform_unconstrained_to_constrained(priors, x),
-                         ekiobj.u[end]; dims=2)
+                         get_u_final(ekiobj); dims=1)
     g_ens = GModel.run_G_ensemble(params_i, g_settings,
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -185,7 +188,7 @@ println("True parameters (transformed): ")
 println(transformed_params_true)
 
 println("\nEKI results:")
-println(mean(ekiobj.u[end], dims=1))
+println(mean(get_u_final(ekiobj), dims=2))
 
 
 ###
@@ -197,26 +200,29 @@ pred_type = GaussianProcessEmulator.YType()
 
 # Construct kernel:
 # Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
-# kernel and white noise. Note that the kernels take the signal standard 
+# kernel and white noise. As we explicitly learn white noise here, we do not need
+# noise_learn=true
+#Note that the kernels take the signal standard 
 # deviations on a log scale as input.
 len1 = 1.0
 kern1 = SE(len1, 1.0)
 len2 = zeros(3)
-kern2 = Mat52Ard(len2, 0.0)
+kern2 = Mat52Ard(len2, 1.0)
 white = Noise(log(2.0))
 GPkernel =  kern1 + kern2 + white
+
 # Get training points
-u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
+input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
-gpobj = GaussianProcessEmulator.GaussianProcess(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
-                         obs_noise_cov=Γy, normalized=normalized, 
-                         noise_learn=false, prediction_type=pred_type)
+gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage; GPkernel=nothing, 
+                                                obs_noise_cov=Γy, normalized=normalized, 
+                                                noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
 y_mean, y_var = GaussianProcessEmulator.predict(gpobj,
-                                   reshape(transformed_params_true, 1, :),
-                                   transform_to_real=true)
+                                                reshape(transformed_params_true, :, 1),
+                                                transform_to_real=true)
 
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
@@ -229,7 +235,8 @@ println(truth.mean)
 ###
 
 # initial values
-u0 = vec(mean(u_tp, dims=1))
+u0 = vec(mean(get_inputs(input_output_pairs), dims=2))
+println(size(u0))
 println("initial parameters: ", u0)
 
 # MCMC settings
@@ -246,7 +253,6 @@ new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-u0 = vec(mean(u_tp, dims=1))
 burnin = 1000
 max_iter = 100000
 mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
