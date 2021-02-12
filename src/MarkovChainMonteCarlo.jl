@@ -199,7 +199,7 @@ function proposal(mcmc::MCMC)
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}) where {FT}
+function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}; max_iter=2000) where {FT}
     step = mcmc_test.step[1]
     mcmc_accept = false
     doubled = false
@@ -221,7 +221,7 @@ function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}) where {FT
             mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
         end
         it += 1
-        if it % 2000 == 0
+        if it % max_iter == 0
             countmcmc += 1
             acc_ratio = accept_ratio(mcmc_test)
             println("iteration ", it, "; acceptance rate = ", acc_ratio,

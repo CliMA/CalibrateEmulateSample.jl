@@ -93,9 +93,9 @@ constraints = [[c1], [c2], [c3]]
 
 # We choose to use normal distributions to represent the prior distributions of
 # the parameters in the transformed (unconstrained) space. i.e log coordinates
-d1 = Parameterized(Normal(5.0, 1.0)) #truth is 5.19
-d2 = Parameterized(Normal(0.0, 1.0)) #truth is 0.378
-d3 = Parameterized(Normal(-2.0, 1.0))#truth is -2.51
+d1 = Parameterized(Normal(4.0, 1.0)) #truth is 5.19
+d2 = Parameterized(Normal(0.0, 2.0)) #truth is 0.378
+d3 = Parameterized(Normal(-1.0, 1.0))#truth is -2.51
 distributions = [d1, d2, d3]
 
 param_names = ["N0", "θ", "k"]
@@ -140,7 +140,7 @@ yt = zeros(n_samples, length(gt))
 # straightforward way of coming up with a covariance structure for this internal
 # model variability. We decide to use a diagonal covariance, with entries
 # (variances) largely proportional to their corresponding data values, gt.
-Γy = convert(Array, Diagonal([13.0, 1.2, 2.7]))
+Γy = convert(Array, Diagonal([150.0, 15.0, 30.0]))
 μ = zeros(length(gt))
 
 # Add noise
@@ -198,19 +198,6 @@ println(mean(get_u_final(ekiobj), dims=2))
 gppackage = GaussianProcessEmulator.GPJL()
 pred_type = GaussianProcessEmulator.YType()
 
-# Construct kernel:
-# Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
-# kernel and white noise. As we explicitly learn white noise here, we do not need
-# noise_learn=true
-#Note that the kernels take the signal standard 
-# deviations on a log scale as input.
-len1 = 1.0
-kern1 = SE(len1, 1.0)
-len2 = zeros(3)
-kern2 = Mat52Ard(len2, 1.0)
-white = Noise(log(2.0))
-GPkernel =  kern1 + kern2 + white
-
 # Get training points
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
@@ -236,7 +223,6 @@ println(truth.mean)
 
 # initial values
 u0 = vec(mean(get_inputs(input_output_pairs), dims=2))
-println(size(u0))
 println("initial parameters: ", u0)
 
 # MCMC settings
@@ -245,11 +231,11 @@ mcmc_alg = "rwm" # random walk Metropolis
 # First let's run a short chain to determine a good step size
 burnin = 0
 step = 0.1 # first guess
-max_iter = 5000
+max_iter = 2000 # number of steps before checking acc/rej rate for step size determination
 yt_sample = truth.mean
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
@@ -272,13 +258,15 @@ println(post_cov)
 # (in the transformed/unconstrained space)
 n_params = length(get_name(posterior))
 
+gr(size=(800,600))
+   
 for idx in 1:n_params
     if idx == 1
-        xs = collect(range(5.0, stop=5.5, length=1000))
+        xs = collect(range(5.15, stop=5.25, length=1000))
     elseif idx == 2
-        xs = collect(range(-1.0, stop=1.0, length=1000))
+        xs = collect(range(0.0, stop=0.5, length=1000))
     elseif idx == 3
-        xs = collect(range(-3.0, stop=-1.0, length=1000))
+        xs = collect(range(-3.0, stop=-2.0, length=1000))
     else
         throw("not implemented")
     end
