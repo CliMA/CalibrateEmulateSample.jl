@@ -109,7 +109,7 @@ function GaussianProcess(
     sqrt_inv_input_cov = nothing
     if normalized
         # Normalize (NB the inputs have to be of) size [input_dim x N_samples] to pass to GPE())
-        sqrt_inv_input_cov = sqrt(inv(cov(get_inputs(input_output_pairs), dims=2)))
+        sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(input_output_pairs), dims=2))))
         GPinputs = sqrt_inv_input_cov * (get_inputs(input_output_pairs).-input_mean) 
     else
         GPinputs = get_inputs(input_output_pairs)
@@ -140,7 +140,7 @@ function GaussianProcess(
         white = Noise(white_logstd)
         kern = kern + white
         println("Learning additive white noise")
-
+        
         # Make the regularization small. We actually learn 
         # total_noise = white_logstd + logstd_regularization_noise
         magic_number = 1e-3 # magic_number << 1
@@ -228,7 +228,7 @@ function GaussianProcess(
     input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1)
     sqrt_inv_input_cov = nothing
     if normalized
-        sqrt_inv_input_cov = convert(Array{FT}, sqrt(inv(cov(get_inputs(input_output_pairs), dims=2))))
+        sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(input_output_pairs), dims=2))))
         GPinputs = permutedims(sqrt_inv_input_cov*(get_inputs(input_output_pairs) .- input_mean), (2,1))
     else
         GPinputs = permutedims(get_inputs(input_output_pairs), (2,1))
