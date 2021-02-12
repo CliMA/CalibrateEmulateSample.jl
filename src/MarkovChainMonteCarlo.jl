@@ -124,13 +124,13 @@ end
 
 
 function get_posterior(mcmc::MCMC)
-    #Return a parameter distributions object
-    posterior_samples = Samples(mcmc.posterior[mcmc.burnin+1:end,:]; params_are_columns=false) 
-    parameter_constraints = get_all_constraints(mcmc.prior) #live in same space as prior
+    #Return a parameter distributions object, with parameter info from prior
+    parameter_slices = batch(mcmc.prior)
+    posterior_samples = [Samples(mcmc.posterior[mcmc.burnin+1:end,slice]; params_are_columns=false) for slice in parameter_slices]
+    parameter_constraints = [get_all_constraints(mcmc.prior)[slice] for slice in parameter_slices] #live in same space as prior
     parameter_names = get_name(mcmc.prior) #the same parameters as in prior
     posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
     return posterior_distribution
-    #return mcmc.posterior[mcmc.burnin+1:end, :]
     
 end
 
@@ -213,8 +213,8 @@ function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}) where {FT
     local acc_ratio
     while mcmc_accept == false
 
-        param = reshape(mcmc_test.param, 1, :)
-        gp_pred, gp_predvar = predict(gp, param)
+        param = reshape(mcmc_test.param, :, 1)
+        gp_pred, gp_predvar = predict(gp, param )
         if ndims(gp_predvar[1]) != 0
             mcmc_sample!(mcmc_test, vec(gp_pred), diag(gp_predvar[1]))
         else
@@ -266,7 +266,7 @@ function sample_posterior!(mcmc::MCMC{FT,IT},
                            max_iter::IT) where {FT,IT<:Int}
 
     for mcmcit in 1:max_iter
-        param = reshape(mcmc.param, 1, :)
+        param = reshape(mcmc.param, :, 1)
         # test predictions (param is 1 x N_parameters)
         gp_pred, gp_predvar = predict(gp, param)
 
