@@ -192,7 +192,7 @@ function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g_in::A
     g = data_are_columns ? permutedims(g_in, (2,1)) : g_in
     #catch works when g_in non-square
     if !(size(g)[1] == ekp.N_ens) 
-         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns? (default is true), or check ensemble size"))
+         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns or check ensemble size"))
     end
            
     cov_init = cov(u, dims=1)
@@ -271,7 +271,7 @@ function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Sampler{FT}}, g_in:
     g = data_are_columns ? permutedims(g_in, (2,1)) : g_in
     #catch works when g_in non-square 
     if !(size(g)[1] == ekp.N_ens) 
-         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns? (default is true), or check ensemble size"))
+         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns, or check ensemble size"))
     end
 
     # u_mean: N_params x 1
