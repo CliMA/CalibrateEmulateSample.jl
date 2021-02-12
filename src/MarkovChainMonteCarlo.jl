@@ -124,10 +124,11 @@ end
 
 
 function get_posterior(mcmc::MCMC)
-    #Return a parameter distributions object, with parameter info from prior
+    #Return a parameter distributions object
     parameter_slices = batch(mcmc.prior)
     posterior_samples = [Samples(mcmc.posterior[mcmc.burnin+1:end,slice]; params_are_columns=false) for slice in parameter_slices]
-    parameter_constraints = [get_all_constraints(mcmc.prior)[slice] for slice in parameter_slices] #live in same space as prior
+    flattened_constraints = get_all_constraints(mcmc.prior)
+    parameter_constraints = [flattened_constraints[slice] for slice in parameter_slices] #live in same space as prior
     parameter_names = get_name(mcmc.prior) #the same parameters as in prior
     posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
     return posterior_distribution

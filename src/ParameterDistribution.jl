@@ -21,9 +21,8 @@ export get_name, get_distribution, get_total_dimension, get_dimensions, get_all_
 export sample_distribution
 export no_constraint, bounded_below, bounded_above, bounded
 export transform_constrained_to_unconstrained, transform_unconstrained_to_constrained
-export get_logpdf, get_cov, get_var, get_mean
-export batch
-
+export get_logpdf, get_cov, get_var, get_mean, batch
+    
 ## Objects
 # for the Distribution
 abstract type ParameterDistributionType end
@@ -232,7 +231,7 @@ end
 returns the (flattened) array of constraints of the parameter distribution
 """
 function get_all_constraints(pd::ParameterDistribution)
-    return pd.constraints
+    return pd.constraints 
 end
 
 """
