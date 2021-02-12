@@ -125,13 +125,10 @@ end
 
 function get_posterior(mcmc::MCMC)
     #Return a parameter distributions object
-    #posterior_samples = Samples(mcmc.posterior[mcmc.burnin+1:end,:]; params_are_columns=false)
-    
     parameter_slices = batch(mcmc.prior)
     posterior_samples = [Samples(mcmc.posterior[mcmc.burnin+1:end,slice]; params_are_columns=false) for slice in parameter_slices]
-    parameter_constraints = [mcmc.prior.constraints[slice] for slice in parameter_slices] #live in same space as prior
-    # MFH: This line causes an issue since the mcmc.prior.constraints were splatted 
-    #parameter_constraints = get_all_constraints(mcmc.prior) #live in same space as prior
+    flattened_constraints = get_all_constraints(mcmc.prior)
+    parameter_constraints = [flattened_constraints[slice] for slice in parameter_slices] #live in same space as prior
     parameter_names = get_name(mcmc.prior) #the same parameters as in prior
     posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
     return posterior_distribution

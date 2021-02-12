@@ -47,8 +47,8 @@ data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/debu
 # Stationary or transient dynamics
 dynamics = 2 # Transient is 2
 # Statistics integration length
-Ts_days = 90. # Integration length in days
 # This has to be less than 360 and 360 must be divisible by Ts_days
+Ts_days = 90. # Integration length in days
 # Stats type, which statistics to construct from the L96 system
 # 4 is a linear fit over a batch of length Ts_days
 # 5 is the mean over a batch of length Ts_days
@@ -381,7 +381,6 @@ for idx in 1:n_params
     histogram(mcmc.posterior[:, idx], bins=100, normed=true, fill=:slategray, 
               lab="posterior")
     prior_plot = get_distribution(mcmc.prior)
-    println(prior_plot)
     # This requires StatsPlots
     plot!(xs, prior_plot[param_names[idx]], w=2.6, color=:blue, lab="prior")
     #plot!(xs, mcmc.prior[idx].dist, w=2.6, color=:blue, lab="prior")
