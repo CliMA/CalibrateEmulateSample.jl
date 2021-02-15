@@ -11,7 +11,7 @@ using LinearAlgebra
 using DocStringExtensions
 
 export EnsembleKalmanProcess, Inversion, Sampler
-export get_u_prior, get_u_final, get_u, get_g, get_N_iterations
+export get_u_prior, get_u_final, get_u, get_g, get_N_iterations, get_error
 export construct_initial_ensemble
 export compute_error!
 export update_ensemble!
@@ -146,6 +146,9 @@ function compute_error!(ekp::EnsembleKalmanProcess)
     push!(ekp.err, newerr)
 end
 
+function get_error(ekp::EnsembleKalmanProcess)
+    return ekp.err
+end
 
 """
    find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}, data_are_columns::Bool; cov_threshold::FT=0.01) where {FT}

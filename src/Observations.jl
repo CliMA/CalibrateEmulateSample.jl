@@ -59,11 +59,19 @@ function Obs(samples::Vector{Vector{FT}},
     Obs(samples, obs_noise_cov, samplemean, data_names)
 end
 
-function Obs(samples::Array{FT, 2},
-             data_names::Union{Vector{String}, String}) where {FT<:AbstractFloat}
+function Obs(samples_in::Array{FT, 2},
+             data_names::Union{Vector{String}, String};
+             data_are_columns=true) where {FT<:AbstractFloat}
 
-    # samples is of size N_samples x sample_dim
-    N_samples, sample_dim = size(samples)
+    if data_are_columns
+        samples = samples_in
+    else
+        samples = permutedims(samples_in, (2,1))
+    end
+
+    # samples is of size sample_dim x N_samples
+    sample_dim, N_samples = size(samples)
+    
     if N_samples == 1
         # Only one sample, so there is no covariance to be computed and the 
         # sample mean equals the sample itself
@@ -72,15 +80,15 @@ function Obs(samples::Array{FT, 2},
         samples_vec = vec([vec(samples)])
     else
         # convert matrix of samples to a vector of vectors
-        samples_vec = [samples[i, :] for i in 1:N_samples]
+        samples_vec = [samples[:, i] for i in 1:N_samples]
         if sample_dim == 1
             # We have 1D samples, so the sample mean and covariance (which in 
             # this case is actually the variance) are scalars
             samplemean = mean(samples)
             obs_noise_cov = var(samples)
         else
-            samplemean = vec(mean(samples, dims=1))
-            obs_noise_cov = cov(samples)
+            samplemean = vec(mean(samples, dims=2))
+            obs_noise_cov = cov(samples, dims=2)
         end
     end
     Obs(samples_vec, obs_noise_cov, samplemean, data_names)
@@ -120,12 +128,19 @@ function Obs(samples::Vector{Vector{FT}},
     Obs(samples, obs_noise_cov, samplemean, data_names)
 end
 
-function Obs(samples::Array{FT, 2},
+function Obs(samples_in::Array{FT, 2},
              obs_noise_cov::Union{Array{FT, 2}, Nothing},
-             data_names::Union{Vector{String}, String})where {FT<:AbstractFloat}
+             data_names::Union{Vector{String}, String},
+             data_are_columns=true)where {FT<:AbstractFloat}
+
+    if data_are_columns
+        samples = samples_in
+    else
+        samples = permutedims(samples_in, (2,1))
+    end
 
     # samples is of size N_samples x sample_dim
-    N_samples, sample_dim = size(samples)
+    sample_dim, N_samples = size(samples)
     if N_samples == 1
         # Only one sample, so there is no covariance to be computed and the 
         # sample mean equals the sample itself
@@ -134,7 +149,7 @@ function Obs(samples::Array{FT, 2},
         samples_vec = vec([vec(samples)])
     else
         # convert matrix of samples to a vector of vectors
-        samples_vec = [samples[i, :] for i in 1:N_samples]
+        samples_vec = [samples[:, i] for i in 1:N_samples]
         if sample_dim == 1
             # We have 1D samples, so the sample mean and covariance (which in 
             # this case is actually the variance) are scalars
@@ -143,7 +158,7 @@ function Obs(samples::Array{FT, 2},
                    \tsample_dim: number of elements per observation sample")
             @assert(ndims(obs_noise_cov) == 0, err)
         else
-            samplemean = vec(mean(samples, dims=1))
+            samplemean = vec(mean(samples, dims=2))
             err = ("obs_cov_noise must be of size sample_dim x sample_dim.
                    \tsample_dim: number of elements per observation sample")
             @assert(size(obs_noise_cov) == (sample_dim, sample_dim), err)
