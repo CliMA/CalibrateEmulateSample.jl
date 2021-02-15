@@ -93,7 +93,7 @@ constraints = [[c1], [c2], [c3]]
 
 # We choose to use normal distributions to represent the prior distributions of
 # the parameters in the transformed (unconstrained) space. i.e log coordinates
-d1 = Parameterized(Normal(4.0, 1.0)) #truth is 5.19
+d1 = Parameterized(Normal(4.5, 1.0)) #truth is 5.19
 d2 = Parameterized(Normal(0.0, 2.0)) #truth is 0.378
 d3 = Parameterized(Normal(-1.0, 1.0))#truth is -2.51
 distributions = [d1, d2, d3]
@@ -134,22 +134,22 @@ g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
 gt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
                   PDistributions.moment, Cloudy.Sources.get_int_coalescence)
 n_samples = 100
-yt = zeros(n_samples, length(gt))
+yt = zeros(length(gt),n_samples)
 # In a perfect model setting, the "observational noise" represent the internal
 # model variability. Since Cloudy is a purely deterministic model, there is no
 # straightforward way of coming up with a covariance structure for this internal
 # model variability. We decide to use a diagonal covariance, with entries
 # (variances) largely proportional to their corresponding data values, gt.
-Γy = convert(Array, Diagonal([150.0, 15.0, 30.0]))
+Γy = convert(Array, Diagonal([100.0, 5.0, 30.0]))
 μ = zeros(length(gt))
 
 # Add noise
 for i in 1:n_samples
-    yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
+    yt[:, i] = gt .+ rand(MvNormal(μ, Γy))
 end
 
 truth = Observations.Obs(yt, Γy, data_names)
-truth_sample = truth.samples[30]
+truth_sample = truth.mean
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
@@ -157,7 +157,7 @@ truth_sample = truth.samples[30]
 
 N_ens = 50 # number of ensemble members
 N_iter = 8 # number of EKI iterations
-# initial parameters: N_ens x N_params
+# initial parameters: N_params x N_ens
 initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
 ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
                    Inversion(), Δt=0.1)
@@ -232,7 +232,7 @@ mcmc_alg = "rwm" # random walk Metropolis
 burnin = 0
 step = 0.1 # first guess
 max_iter = 2000 # number of steps before checking acc/rej rate for step size determination
-yt_sample = truth.mean
+yt_sample = truth_sample
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
 new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
