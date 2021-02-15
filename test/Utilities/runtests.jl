@@ -14,7 +14,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 
     arr = vcat([i*ones(3)' for i in 1:5]...)
     data_names = ["d1", "d2", "d3"]
-    obs = Obs(arr, data_names)
+    obs = Obs(arr, data_names, data_are_columns=false) #default is true
     sample = get_obs_sample(obs; rng_seed=rng_seed)
     @test sample == [3.0, 3.0, 3.0]
 

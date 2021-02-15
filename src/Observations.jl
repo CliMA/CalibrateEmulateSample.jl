@@ -71,13 +71,14 @@ function Obs(samples_in::Array{FT, 2},
 
     # samples is of size sample_dim x N_samples
     sample_dim, N_samples = size(samples)
-    
+
     if N_samples == 1
         # Only one sample, so there is no covariance to be computed and the 
         # sample mean equals the sample itself
         obs_noise_cov = nothing
         samplemean = vec(samples)
         samples_vec = vec([vec(samples)])
+
     else
         # convert matrix of samples to a vector of vectors
         samples_vec = [samples[:, i] for i in 1:N_samples]
@@ -130,7 +131,7 @@ end
 
 function Obs(samples_in::Array{FT, 2},
              obs_noise_cov::Union{Array{FT, 2}, Nothing},
-             data_names::Union{Vector{String}, String},
+             data_names::Union{Vector{String}, String};
              data_are_columns=true)where {FT<:AbstractFloat}
 
     if data_are_columns
