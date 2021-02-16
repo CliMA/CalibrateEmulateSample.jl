@@ -20,7 +20,7 @@ iteration_ = parsed_args["iteration"]
 # Construct EK object
 versions = readlines("versions_$(iteration_).txt")
 open("$(versions[1]).output/$(versions[1])", "r") do io
-    n_params = length([float(line) for (index, line) in enumerate(eachline(io)) if index%3 == 0])
+    n_params = length([parse(Float64, line) for (index, line) in enumerate(eachline(io)) if index%3 == 0])
     u_names = [split(line, "(")[1] for (index, line) in enumerate(eachline(io)) if index%2 == 0]
 end
 u = zeros(length(versions), n_params)
