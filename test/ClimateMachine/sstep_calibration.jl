@@ -17,15 +17,16 @@ end
 parsed_args = parse_args(ARGS, s)
 iteration_ = parsed_args["iteration"]
 
-# Recover inputs
+# Construct EK object
 versions = readlines("versions_$(iteration_).txt")
 open("$(versions[1]).output/$(versions[1])", "r") do io
     n_params = length([float(line) for (index, line) in enumerate(eachline(io)) if index%3 == 0])
+    u_names = [split(line, "(")[1] for (index, line) in enumerate(eachline(io)) if index%2 == 0]
 end
 u = zeros(length(versions), n_params)
 for (ens_index, version_) in enumerate(versions)
     open("$(version_).output/$(version_)", "r") do io
-        u[ens_index, :] = [float(line) for (index, line) in enumerate(eachline(io)) if index%3 == 0]
+        u[ens_index, :] = [parse(Float64, line) for (index, line) in enumerate(eachline(io)) if index%3 == 0]
     end
 end
 
