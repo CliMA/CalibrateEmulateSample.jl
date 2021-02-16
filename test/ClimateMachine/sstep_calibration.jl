@@ -11,6 +11,8 @@ using CalibrateEmulateSample.Utilities
 function reconstruct_ek_obj(iteration_)
     # Construct EK object
     versions = readlines("versions_$(iteration_).txt")
+    n_params = 0
+    u_names = []
     open("$(versions[1]).output/$(versions[1])", "r") do io
         n_params = length([parse(Float64, line) for (index, line) in enumerate(eachline(io)) if index%3 == 0])
         u_names = [split(line, "(")[1] for (index, line) in enumerate(eachline(io)) if index%2 == 0]
