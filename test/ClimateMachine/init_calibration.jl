@@ -1,5 +1,6 @@
 using Distributions
 using JLD
+using ArgParse
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.Priors
 using CalibrateEmulateSample.EKP
@@ -22,6 +23,16 @@ function generate_cm_params(cm_params::Union{Float64, Array{Float64}},
     return version
 end
 
+s = ArgParseSettings()
+@add_arg_table s begin
+    "--iteration"
+        help = "Calibration iteration number"
+        arg_type = Int
+        default = 1
+end
+parsed_args = parse_args(ARGS, s)
+iteration_ = parsed_args["iteration"]
+
 param_names = ["C_smag", "C_drag"]
 n_param = length(param_names)
 priors = [Priors.Prior(Distributions.Normal(0.25, 0.05), param_names[1]),
@@ -34,7 +45,7 @@ params_arr = [row[:] for row in eachrow(initial_params)]
 versions = map(param -> generate_cm_params(param, param_names), params_arr)
 
 
-open("versions.txt", "w") do io
+open("versions_$(iteration_).txt", "w") do io
         for version in versions
             write(io, "clima_param_defs_$(version).jl\n")
         end
