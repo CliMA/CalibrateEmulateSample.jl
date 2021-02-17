@@ -79,7 +79,7 @@ s = ArgParseSettings()
 end
 parsed_args = parse_args(ARGS, s)
 iteration_ = parsed_args["iteration"]
-ens_new, param_names = reconstruct_ek_obj(iteration_)
+ens_new, param_names = ek_update(iteration_)
 params_arr = [row[:] for row in eachrow(ens_new)]
 versions = map(param -> generate_cm_params(param, param_names), params_arr)
 open("versions_$(iteration_+1).txt", "w") do io
