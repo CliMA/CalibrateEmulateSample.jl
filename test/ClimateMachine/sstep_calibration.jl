@@ -33,10 +33,14 @@ function reconstruct_ek_obj(iteration_)
     z_scm = get_clima_profile("$(versions[1]).output", ["z"])
     println(size(z_scm))
     println(z_scm)
-    yt_, yt_var_ = obs_LES(y_names, les_dir, 0.0, 360.0, z_scm = z_scm)
+    yt_, yt_var_ = obs_LES(y_names, les_dir, 0.0, 360.0)
     append!(yt, yt_)
     push!(yt_var_list, yt_var_)
 
+    # Get outputs
+    g_names = ["u", "v"]
+    g_ = get_clima_profile("$(versions[1]).output", g_names, ti=0.0, tf=360.0)
+    println(g_)
 end
 
 s = ArgParseSettings()
