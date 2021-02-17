@@ -26,6 +26,18 @@ function reconstruct_ek_obj(iteration_)
     end
     println(u_names)
     println(u)
+
+    # Get observations
+    yt = zeros(0)
+    yt_var_list = []
+    y_names = Array{String, 1}[]
+    push!(y_names, ["u_mean", "v_mean"])
+    les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
+    z_scm = get_clima_profile("$(versions[1]).output", ["z"])
+    yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
+    append!(yt, yt_)
+    push!(yt_var_list, yt_var_)
+
 end
 
 s = ArgParseSettings()
@@ -38,15 +50,3 @@ end
 parsed_args = parse_args(ARGS, s)
 iteration_ = parsed_args["iteration"]
 reconstruct_ek_obj(iteration_)
-
-# Get observations
-yt = zeros(0)
-yt_var_list = []
-y_names = Array{String, 1}[]
-push!(y_names, ["u_mean", "v_mean"])
-les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
-sim_dir = string("Output.", "GABLS",".00000")
-z_scm = get_clima_profile(sim_dir, ["z"])
-yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
-append!(yt, yt_)
-push!(yt_var_list, yt_var_)
