@@ -15,8 +15,8 @@ function reconstruct_ek_obj(iteration_)
     n_params = 0
     u_names = []
     open("$(versions[1]).output/$(versions[1])", "r") do io
-        n_params = length([parse(Float64, line) for (index, line) in enumerate(eachline(io)) if index%3 == 0])
-        u_names = [split(line, "(")[1] for (index, line) in enumerate(eachline(io)) if index%2 == 0]
+        append!(u_names, [strip(string(split(line, "(")[1]), [' ']) for (index, line) in enumerate(eachline(io)) if index%3 == 2])
+        n_params = length(u_names)
     end
     u = zeros(length(versions), n_params)
     for (ens_index, version_) in enumerate(versions)
@@ -24,17 +24,16 @@ function reconstruct_ek_obj(iteration_)
             u[ens_index, :] = [parse(Float64, line) for (index, line) in enumerate(eachline(io)) if index%3 == 0]
         end
     end
-    println(u_names)
-    println(u)
 
     # Get observations
     yt = zeros(0)
     yt_var_list = []
-    y_names = Array{String, 1}[]
-    push!(y_names, ["u_mean", "v_mean"])
+    y_names = ["u_mean", "v_mean"]
     les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
     z_scm = get_clima_profile("$(versions[1]).output", ["z"])
-    yt_, yt_var_ = obs_LES(y_names[1], les_dir, 0.0, 360.0, z_scm = z_scm)
+    println(size(z_scm))
+    println(z_scm)
+    yt_, yt_var_ = obs_LES(y_names, les_dir, 0.0, 360.0, z_scm = z_scm)
     append!(yt, yt_)
     push!(yt_var_list, yt_var_)
 
@@ -50,3 +49,4 @@ end
 parsed_args = parse_args(ARGS, s)
 iteration_ = parsed_args["iteration"]
 reconstruct_ek_obj(iteration_)
+
