@@ -85,7 +85,10 @@ function get_clima_profile(sim_dir::String,
     if length(var_name) == 1 && occursin("z", var_name[1])
         prof_vec = Array(ds[var_name[1]])
     else
+        # Time in Datetime format
         t = Array(ds["time"])
+        # Convert to float (seconds)
+        t = [(time_ .- t[1]).value/1000.0 for time_ in t]
         dt = t[2]-t[1]
         ti_diff, ti_index = findmin( broadcast(abs, t.-ti) )
         tf_diff, tf_index = findmin( broadcast(abs, t.-tf) )
