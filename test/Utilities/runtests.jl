@@ -13,8 +13,9 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
     Random.seed!(rng_seed)
 
     arr = vcat([i*ones(3)' for i in 1:5]...)
+    arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
-    obs = Obs(arr, data_names, data_are_columns=false) #default is true
+    obs = Obs(arr_t, data_names) #data must be columns as default
     sample = get_obs_sample(obs; rng_seed=rng_seed)
     @test sample == [3.0, 3.0, 3.0]
 

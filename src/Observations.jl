@@ -59,15 +59,8 @@ function Obs(samples::Vector{Vector{FT}},
     Obs(samples, obs_noise_cov, samplemean, data_names)
 end
 
-function Obs(samples_in::Array{FT, 2},
-             data_names::Union{Vector{String}, String};
-             data_are_columns=true) where {FT<:AbstractFloat}
-
-    if data_are_columns
-        samples = samples_in
-    else
-        samples = permutedims(samples_in, (2,1))
-    end
+function Obs(samples::Array{FT, 2},
+             data_names::Union{Vector{String}, String}) where {FT<:AbstractFloat}
 
     # samples is of size sample_dim x N_samples
     sample_dim, N_samples = size(samples)
@@ -129,16 +122,9 @@ function Obs(samples::Vector{Vector{FT}},
     Obs(samples, obs_noise_cov, samplemean, data_names)
 end
 
-function Obs(samples_in::Array{FT, 2},
+function Obs(samples::Array{FT, 2},
              obs_noise_cov::Union{Array{FT, 2}, Nothing},
-             data_names::Union{Vector{String}, String};
-             data_are_columns=true)where {FT<:AbstractFloat}
-
-    if data_are_columns
-        samples = samples_in
-    else
-        samples = permutedims(samples_in, (2,1))
-    end
+             data_names::Union{Vector{String}, String})where {FT<:AbstractFloat}
 
     # samples is of size N_samples x sample_dim
     sample_dim, N_samples = size(samples)

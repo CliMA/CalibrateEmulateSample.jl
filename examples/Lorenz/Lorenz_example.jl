@@ -170,7 +170,7 @@ if var_prescribe==true
     end
 else
     println("Using truth values to compute covariance")
-    n_samples = 50; 
+    n_samples = 20 
     yt = zeros(length(gt), n_samples)
     for i in 1:n_samples
 	    lorenz_settings_local = GModel.LSettings(dynamics, stats_type, t_start+T*(i-1), 
