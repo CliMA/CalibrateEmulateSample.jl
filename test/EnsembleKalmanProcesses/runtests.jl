@@ -66,15 +66,16 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     g_ens = G(get_u_final(ekiobj))
     @test size(g_ens) == (n_obs, N_ens)
     # as the columns of g are the data, this should throw an error
-    @test_throws DimensionMismatch find_ekp_stepsize(ekiobj, g_ens, false)
-    Δ = find_ekp_stepsize(ekiobj, g_ens, true)
+    g_ens_t = permutedims(g_ens, (2,1))
+    @test_throws DimensionMismatch find_ekp_stepsize(ekiobj, g_ens_t)
+    Δ = find_ekp_stepsize(ekiobj, g_ens)
     @test Δ ≈ 0.0625
     
     # EKI iterations
     for i in 1:N_iter
         params_i = get_u_final(ekiobj)
         g_ens = G(params_i)
-        EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
+        EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
     end
 
     # EKI results: Test if ensemble has collapsed toward the true parameter 
@@ -106,7 +107,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     for i in 1:N_iter
         params_i = get_u_final(eksobj)
         g_ens = G(params_i)
-        EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens, true)
+        EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens)
     end
 
     # Plot evolution of the EKS particles

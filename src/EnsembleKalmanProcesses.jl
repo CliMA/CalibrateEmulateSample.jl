@@ -71,10 +71,9 @@ function EnsembleKalmanProcess(params::Array{FT, 2},
                                obs_mean,
                                obs_noise_cov::Array{FT, 2},
                                process::P;
-                               data_are_columns = true,
                                Δt=FT(1)) where {FT<:AbstractFloat, P<:Process}
 
-    init_params=DataContainer(params, data_are_columns=data_are_columns)
+    init_params=DataContainer(params, data_are_columns=true)
     # ensemble size
     N_ens = size(get_data(init_params))[2] #stored with data as columns
     IT = typeof(N_ens)
@@ -151,11 +150,11 @@ function get_error(ekp::EnsembleKalmanProcess)
 end
 
 """
-   find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}, data_are_columns::Bool; cov_threshold::FT=0.01) where {FT}
+   find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT, 2}; cov_threshold::FT=0.01) where {FT}
 Find largest stepsize for the EK solver that leads to a reduction of the determinant of the sample
 covariance matrix no greater than cov_threshold. 
 """
-function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT,2}, data_are_columns::Bool; cov_threshold::FT=0.01) where {FT, IT}
+function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Array{FT,2}; cov_threshold::FT=0.01) where {FT, IT}
     accept_stepsize = false
     if !isempty(ekp.Δt)
         Δt = deepcopy(ekp.Δt[end])
@@ -166,7 +165,7 @@ function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Arr
     cov_init = cov(get_u_final(ekp), dims=2)
     while accept_stepsize == false
         ekp_copy = deepcopy(ekp)
-        update_ensemble!(ekp_copy, g, data_are_columns, Δt_new=Δt)
+        update_ensemble!(ekp_copy, g, Δt_new=Δt)
         cov_new = cov(get_u_final(ekp_copy), dims=2)
         if det(cov_new) > cov_threshold * det(cov_init)
             accept_stepsize = true
@@ -180,23 +179,25 @@ function find_ekp_stepsize(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g::Arr
 end
 
 """
-    update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, <:Process}, g_in::Array{FT,2}, data_are_columns::Bool, cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
+    update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, <:Process}, g_in::Array{FT,2} cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
 
-Updates the ensemble according to which type of Process we have. User must provide a boolean to indicate whether model outputs g_in are stored as columms (data_are_columns=true) or rows (false)
+Updates the ensemble according to which type of Process we have. Model outputs g_in need to be a output_dim x n_samples array (i.e data are columms)
 """
-function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g_in::Array{FT,2}, data_are_columns::Bool; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
+function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g_in::Array{FT,2}; cov_threshold::FT=0.01, Δt_new=nothing) where {FT, IT}
 
-    # We enforce that data are rows
+    #catch works when g non-square
+    if !(size(g_in)[2] == ekp.N_ens) 
+         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try transposing g_in or check ensemble size"))
+    end
+
+    # We enforce that data are rows here...
     # u: N_ens x N_params
     # g: N_ens x N_data
     u_old = get_u_final(ekp)
     u_old = permutedims(u_old,(2,1))    
     u = u_old
-    g = data_are_columns ? permutedims(g_in, (2,1)) : g_in
-    #catch works when g_in non-square
-    if !(size(g)[1] == ekp.N_ens) 
-         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns or check ensemble size"))
-    end
+    g = permutedims(g_in,(2,1))
+    
            
     cov_init = cov(u, dims=1)
 
@@ -264,19 +265,20 @@ function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Inversion}, g_in::A
     end
 end
 
-function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Sampler{FT}}, g_in::Array{FT,2}, data_are_columns::Bool) where {FT, IT}
+function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Sampler{FT}}, g_in::Array{FT,2}) where {FT, IT}
+
+    #catch works when g_in non-square 
+    if !(size(g_in)[2] == ekp.N_ens) 
+         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try transposing or check ensemble size"))
+    end
 
     # u: N_ens x N_params
     # g: N_ens x N_data
     u_old = get_u_final(ekp)
     u_old = permutedims(u_old,(2,1))
     u = u_old
-    g = data_are_columns ? permutedims(g_in, (2,1)) : g_in
-    #catch works when g_in non-square 
-    if !(size(g)[1] == ekp.N_ens) 
-         throw(DimensionMismatch("ensemble size in EnsembleKalmanProcess and g_in do not match, try flipping the boolean data_are_columns, or check ensemble size"))
-    end
-
+    g = permutedims(g_in, (2,1))
+   
     # u_mean: N_params x 1
     u_mean = mean(u', dims=2)
     # g_mean: N_params x 1

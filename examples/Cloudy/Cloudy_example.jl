@@ -178,7 +178,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?

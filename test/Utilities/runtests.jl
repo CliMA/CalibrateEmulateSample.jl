@@ -44,14 +44,14 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
     # test get_training_points
     # first create the EnsembleKalmanProcess
     n_ens = 10
-    n_obs = 3
-    n_par = 2
-    initial_ensemble = randn(n_par,n_ens)#params are cols
-    y_obs = randn(n_obs)
-    Γy = Matrix{Float64}(I,n_obs,n_obs)
-    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(),data_are_columns=true)
-    g_ens = randn(n_obs,n_ens) # data are cols
-    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens, true)
+    dim_obs = 3
+    dim_par = 2
+    initial_ensemble = randn(dim_par,n_ens)#params are cols
+    y_obs = randn(dim_obs)
+    Γy = Matrix{Float64}(I,dim_obs,dim_obs)
+    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
+    g_ens = randn(dim_obs,n_ens) # data are cols
+    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens

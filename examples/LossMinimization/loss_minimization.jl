@@ -47,7 +47,7 @@ ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
 for i in 1:N_iter
     params_i = get_u_final(ekiobj)
     g_ens = hcat([G(params_i[:,i]) for i in 1:N_ens]...)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens,true)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 u_init = get_u_prior(ekiobj)
@@ -99,7 +99,7 @@ ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble,
 for i in 1:N_iter
     params_i = get_u_final(ekiobj)
     g_ens = hcat([G(params_i[:,i]) for i in 1:N_ens]...)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 u_init = get_u_prior(ekiobj)

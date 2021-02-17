@@ -210,8 +210,7 @@ initial_params = construct_initial_ensemble(priors, N_ens; rng_seed=rng_seed)
 ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, 
 						       truth_sample, 
 						       truth.obs_noise_cov,
-						       Inversion(),
-                                                       data_are_columns=true)
+						       Inversion())
 
 # EKI iterations
 println("EKP inversion error:")
@@ -223,7 +222,7 @@ for i in 1:N_iter
         params_i = exp_transform(get_u_final(ekiobj))
     end
     g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens, true) 
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
     err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
     println("Iteration: "*string(i)*", Error: "*string(err[i]))
 end
