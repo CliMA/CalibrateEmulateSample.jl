@@ -8,12 +8,14 @@ include("Priors.jl")
 
 # No internal deps, heavy external deps
 include("EKP.jl")
-include("GPEmulator.jl")
+#include("GPEmulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
 
 # Internal deps, light external deps
-include("MCMC.jl")
+#include("MCMC.jl")
 
+# Netcdf utils for clima
+include("Netcdf_utils.jl")
 end # module
