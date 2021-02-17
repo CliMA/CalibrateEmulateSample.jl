@@ -52,7 +52,22 @@ function ek_update(iteration_)
     EKP.update_ensemble!(ekobj, g_ens)
     # Get step
     ek_final_result = ekobj.u[end]
-    return ek_final_result
+    return ek_final_result, u_names
+end
+
+function generate_cm_params(cm_params::Union{Float64, Array{Float64}}, 
+                            cm_param_names::Union{String,Array{String}})
+    # Generate version
+    version = rand(11111:99999)
+
+    open("clima_param_defs_$(version).jl", "w") do io
+        for i in 1:length(cm_params)
+            write(io, "CLIMAParameters.Atmos.SubgridScale.
+                $(cm_param_names[i])(::EarthParameterSet) = 
+                $(cm_params[i])\n")
+        end
+    end
+    return version
 end
 
 s = ArgParseSettings()
@@ -64,5 +79,12 @@ s = ArgParseSettings()
 end
 parsed_args = parse_args(ARGS, s)
 iteration_ = parsed_args["iteration"]
-reconstruct_ek_obj(iteration_)
+ens_new, param_names = reconstruct_ek_obj(iteration_)
+params_arr = [row[:] for row in eachrow(ens_new)]
+versions = map(param -> generate_cm_params(param, param_names), params_arr)
+open("versions_$(iteration_+1).txt", "w") do io
+        for version in versions
+            write(io, "clima_param_defs_$(version).jl\n")
+        end
+    end
 
