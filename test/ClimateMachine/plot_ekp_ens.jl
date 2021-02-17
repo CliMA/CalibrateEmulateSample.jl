@@ -2,12 +2,8 @@ using Distributions
 using JLD
 using NCDatasets
 using LinearAlgebra
-using Plots
-# Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.Netcdf_utils
 
-function write_ekp(outdir_path=".")
+function write_ekp()
     # Get versions
     version_files = glob("versions_*.txt")
     n_params = 2
@@ -22,8 +18,7 @@ function write_ekp(outdir_path=".")
         end
         push!(ens_all, u)
     end
-
-    save( string(outdir_path,"/eki.jld"), "eki_u", ens_all)
+    save( string("ekp_clima.jld"), "eki_u", ens_all)
     return
 end
 
