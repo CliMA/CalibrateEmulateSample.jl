@@ -109,7 +109,7 @@ function get_clima_profile(sim_dir::String,
                     var_itp = interpolate( (z_, 1:tf_index-ti_index+1),
                         var_[:, 1:tf_index-ti_index+1],
                         ( Gridded(Linear()), NoInterp() ))
-                    var_ = var_itp(z_les, 1:tf_index-ti_index+1), dims=1)
+                    var_ = var_itp(z_les, 1:tf_index-ti_index+1)
                 end
                 append!(prof_vec, mean(var_[:, ti_index:tf_index], dims=2))
             end
