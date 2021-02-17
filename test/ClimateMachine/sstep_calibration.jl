@@ -34,7 +34,7 @@ function reconstruct_ek_obj(iteration_)
     push!(y_names, ["u_mean", "v_mean"])
     les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
     z_scm = get_clima_profile("$(versions[1]).output", ["z"])
-    yt_, yt_var_ = obs_LES(y_names[1], les_dir, ti[1], tf[1], z_scm = z_scm)
+    yt_, yt_var_ = obs_LES(y_names[1], les_dir, 0.0, 360.0, z_scm = z_scm)
     append!(yt, yt_)
     push!(yt_var_list, yt_var_)
 
