@@ -17,7 +17,17 @@ struct to store data samples as columns in an array
 struct DataContainer{FT <: Real}
     #stored data, each piece of data is a column [number of samples x data size]
     stored_data::Array{FT,2}    
-    DataContainer(stored_data::Array{FT,2}; data_are_columns=true) where {FT <: Real} = data_are_columns ? new{FT}(stored_data) : new{FT}(permutedims(stored_data,(2,1)))
+    #constructor with 2D arrays
+    function DataContainer(
+        stored_data::Array{FT,2};
+        data_are_columns=true) where {FT <: Real}
+
+        if data_are_columns
+            new{FT}(stored_data)
+        else
+            new{FT}(permutedims(stored_data,(2,1)))
+        end
+    end
 end
 
 """
@@ -29,6 +39,8 @@ struct PairedDataContainer{FT <: Real}
     #container for inputs and ouputs [sample_size x data/parameter size]
     inputs::DataContainer{FT} 
     outputs::DataContainer{FT}
+
+    #constructor with 2D Arrays
     function PairedDataContainer(
         inputs::Array{FT,2},
         outputs::Array{FT,2};
@@ -44,7 +56,7 @@ struct PairedDataContainer{FT <: Real}
         new{FT}(stored_inputs,stored_outputs)
         
     end
-    
+    #constructor with DataContainers
     function PairedDataContainer(
         inputs::DataContainer,
         outputs::DataContainer)

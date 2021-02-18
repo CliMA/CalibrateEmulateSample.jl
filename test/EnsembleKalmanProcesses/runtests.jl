@@ -72,12 +72,19 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     @test Δ ≈ 0.0625
     
     # EKI iterations
+    params_i_vec = []
+    g_ens_vec = []
     for i in 1:N_iter
         params_i = get_u_final(ekiobj)
+        push!(params_i_vec,params_i)
         g_ens = G(params_i)
+        push!(g_ens_vec, g_ens)
         EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
     end
-
+    push!(params_i_vec,get_u_final(ekiobj))
+    
+    @test get_u(ekiobj) == params_i_vec
+    @test get_g(ekiobj) == g_ens_vec
     # EKI results: Test if ensemble has collapsed toward the true parameter 
     # values
     eki_final_result = vec(mean(get_u_final(ekiobj), dims=2))
