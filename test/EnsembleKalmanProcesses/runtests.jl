@@ -122,6 +122,11 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     for i in 1:N_iter
         params_i = get_u_final(eksobj)
         g_ens = G(params_i)
+        if i == 1
+            g_ens_t = permutedims(g_ens, (2,1))
+            @test_throws DimensionMismatch EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens_t)
+        end
+
         EnsembleKalmanProcesses.update_ensemble!(eksobj, g_ens)
     end
 
