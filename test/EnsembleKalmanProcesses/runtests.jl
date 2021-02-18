@@ -79,12 +79,20 @@ using CalibrateEmulateSample.ParameterDistributionStorage
         push!(params_i_vec,params_i)
         g_ens = G(params_i)
         push!(g_ens_vec, g_ens)
+        if i == 1
+            g_ens_t = permutedims(g_ens, (2,1))
+            @test_throws DimensionMismatch EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens_t)
+        end
         EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
     end
     push!(params_i_vec,get_u_final(ekiobj))
     
+    @test get_u_prior(ekiobj) == params_i_vec[1]
     @test get_u(ekiobj) == params_i_vec
     @test get_g(ekiobj) == g_ens_vec
+
+    @test get_error(ekiobj) == ekiobj.err
+    
     # EKI results: Test if ensemble has collapsed toward the true parameter 
     # values
     eki_final_result = vec(mean(get_u_final(ekiobj), dims=2))
