@@ -90,7 +90,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
     @test get_u_prior(ekiobj) == params_i_vec[1]
     @test get_u(ekiobj) == params_i_vec
     @test get_g(ekiobj) == g_ens_vec
-
+    @test get_g_final(ekiobj) == g_ens_vec[end]
     @test get_error(ekiobj) == ekiobj.err
     
     # EKI results: Test if ensemble has collapsed toward the true parameter 
