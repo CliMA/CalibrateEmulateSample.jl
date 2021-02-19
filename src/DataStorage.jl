@@ -10,12 +10,12 @@ export get_data, get_inputs, get_outputs
 
 ## Objects
 """
-    struct DataContainer
+    struct DataContainer{FT <: Real}
 
 struct to store data samples as columns in an array
 """
 struct DataContainer{FT <: Real}
-    #stored data, each piece of data is a column [number of samples x data size]
+    #stored data, each piece of data is a column [data dimension × number samples]
     stored_data::Array{FT,2}    
     #constructor with 2D arrays
     function DataContainer(
@@ -31,12 +31,13 @@ struct DataContainer{FT <: Real}
 end
 
 """
-    PairedDataContainer
+    PairedDataContainer{FT <: Real}
 
-stores input - output pairs as data containers
+stores input - output pairs as data containers, there must be an equal number of inputs and outputs
 """
 struct PairedDataContainer{FT <: Real}
-    #container for inputs and ouputs [sample_size x data/parameter size]
+    # container for inputs and ouputs, each Container holds an array
+    # size [data/parameter dimension × number samples]
     inputs::DataContainer{FT} 
     outputs::DataContainer{FT}
 
@@ -71,10 +72,12 @@ struct PairedDataContainer{FT <: Real}
     
 end
 
-#other constructors
-
-
 ## functions
+"""
+    size(dc::DataContainer,idx::IT) where {IT <: Integer}
+
+returns the size of the stored data (if idx provided, it returns the size along dimension idx) 
+"""
 function size(dc::DataContainer)
     return size(dc.stored_data)
 end
@@ -86,7 +89,11 @@ end
 function size(pdc::PairedDataContainer)
     return size(pdc.inputs), size(pdc.outputs)
 end
+"""
+    size(pdc::PairedDataContainer,idx::IT) where {IT <: Integer}
 
+returns the sizes of the inputs and ouputs along dimension idx (if provided)
+"""
 function size(pdc::PairedDataContainer,idx::IT) where {IT <: Integer}
     return size(pdc.inputs,idx), size(pdc.outputs,idx)
 end

@@ -11,7 +11,8 @@ using LinearAlgebra
 using DocStringExtensions
 
 export EnsembleKalmanProcess, Inversion, Sampler
-export get_u_prior, get_u_final, get_u, get_g, get_N_iterations, get_error
+export get_u, get_g
+export get_u_prior, get_u_final, get_g_final, get_N_iterations, get_error
 export construct_initial_ensemble
 export compute_error!
 export update_ensemble!
@@ -76,7 +77,7 @@ function EnsembleKalmanProcess(params::Array{FT, 2},
     #initial parameters stored as columns
     init_params=DataContainer(params, data_are_columns=true)
     # ensemble size
-    N_ens = size(get_data(init_params))[2] #stored with data as columns
+    N_ens = size(init_params,2) #stored with data as columns
     IT = typeof(N_ens)
     #store for model evaluations
     g=[] 
@@ -116,9 +117,11 @@ end
 
 
 """
-    get_u_X(ekp::EnsembleKalmanProcess, return_array=true)
+    get_u_final(ekp::EnsembleKalmanProcess, return_array=true)
+    get_u_prior(ekp::EnsembleKalmanProcess, return_array=true)
+    get_g_final(ekp::EnsembleKalmanProcess, return_array=true)
 
-Get the X=final or X=prior iteration of parameters (the "solution" to the optimization problem), returns a DataContainer Object if return_array is false.
+Get the final or prior iteration of parameters or model ouputs, returns a DataContainer Object if return_array is false.
 """
 function get_u_final(ekp::EnsembleKalmanProcess; return_array=true)
     return return_array ? get_u(ekp,size(ekp.u)[1]) : ekp.u[end]
@@ -126,6 +129,10 @@ end
 
 function get_u_prior(ekp::EnsembleKalmanProcess; return_array=true)
     return return_array ? get_u(ekp,1) : ekp.u[1]
+end
+
+function get_g_final(ekp::EnsembleKalmanProcess; return_array=true)
+    return return_array ? get_g(ekp,size(ekp.g)[1]) : ekp.g[end]
 end
 
 """
@@ -150,7 +157,7 @@ function construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng
 end
 
 function compute_error!(ekp::EnsembleKalmanProcess)
-    mean_g = dropdims(mean(get_data(ekp.g[end]), dims=2), dims=2)
+    mean_g = dropdims(mean(get_g_final(ekp)), dims=2), dims=2)
     diff = ekp.obs_mean - mean_g
     X = ekp.obs_noise_cov \ diff # diff: column vector
     newerr = dot(diff, X)
@@ -293,9 +300,9 @@ function update_ensemble!(ekp::EnsembleKalmanProcess{FT, IT, Sampler{FT}}, g_in:
    
     # u_mean: parameter_dim × 1
     u_mean = mean(u', dims=2)
-    # g_mean: parameter_dim × 1
+    # g_mean: data_dim × 1
     g_mean = mean(g', dims=2)
-    # g_cov: parameter_dim × parameter_dim
+    # g_cov: data_dim × data_dim
     g_cov = cov(g, corrected=false)
     # u_cov: parameter_dim × parameter_dim
     u_cov = cov(u, corrected=false)
