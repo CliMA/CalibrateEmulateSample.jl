@@ -157,7 +157,7 @@ function construct_initial_ensemble(prior::ParameterDistribution, N_ens::IT; rng
 end
 
 function compute_error!(ekp::EnsembleKalmanProcess)
-    mean_g = dropdims(mean(get_g_final(ekp)), dims=2), dims=2)
+    mean_g = dropdims(mean(get_g_final(ekp), dims=2), dims=2)
     diff = ekp.obs_mean - mean_g
     X = ekp.obs_noise_cov \ diff # diff: column vector
     newerr = dot(diff, X)
