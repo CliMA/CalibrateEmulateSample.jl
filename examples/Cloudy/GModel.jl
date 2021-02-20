@@ -3,7 +3,7 @@ module GModel
 using DocStringExtensions
 
 # TODO: Remove build (which currently prevents segfault):
-using Pkg; Pkg.build()
+#using Pkg; Pkg.build()
 
 using Random
 using Sundials # CVODE_BDF() solver for ODE
@@ -66,14 +66,14 @@ function run_G_ensemble(params::Array{FT, 2},
                         get_src;
                         rng_seed=42) where {FT<:AbstractFloat}
 
-    N_ens = size(params, 1) # params is N_ens x N_params
+    N_ens = size(params, 2) # params is N_ens x N_params
     n_moments = length(settings.moments)
-    g_ens = zeros(N_ens, n_moments)
+    g_ens = zeros(n_moments,N_ens)
 
     Random.seed!(rng_seed)
     for i in 1:N_ens
         # run the model with the current parameters, i.e., map θ to G(θ)
-        g_ens[i, :] = run_G(params[i, :], settings, update_params, moment, get_src)
+        g_ens[:, i] = run_G(params[:, i], settings, update_params, moment, get_src)
     end
 
     return g_ens

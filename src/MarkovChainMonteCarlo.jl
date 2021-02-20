@@ -41,7 +41,7 @@ struct MCMC{FT<:AbstractFloat, IT<:Int}
     burnin::IT
     "the current parameters"
     param::Vector{FT}
-    "Array of accepted MCMC parameter samples. The histogram of these samples gives an approximation of the posterior distribution of the parameters."
+    "Array of accepted MCMC parameter samples. The histogram of these samples gives an approximation of the posterior distribution of the parameters. param_dim x n_samples"
     posterior::Array{FT, 2}
     "the (current) value of the logarithm of the posterior (= log_likelihood + log_prior of the current parameters)"
     log_posterior::Array{Union{FT, Nothing}}
@@ -89,8 +89,8 @@ function MCMC(
     end
     
     # first row is param_init
-    posterior = zeros(max_iter + 1, length(param_init_copy))
-    posterior[1, :] = param_init_copy
+    posterior = zeros(length(param_init_copy),max_iter + 1)
+    posterior[:, 1] = param_init_copy
     param = param_init_copy
     log_posterior = [nothing]
     iter = [1]
@@ -118,21 +118,20 @@ function reset_with_step!(mcmc::MCMC{FT}, step::FT) where {FT}
     mcmc.log_posterior[1] = nothing
     mcmc.iter[1] = 1
     mcmc.accept[1] = 0
-    mcmc.posterior[2:end, :] = zeros(size(mcmc.posterior[2:end, :]))
-    mcmc.param[:] = mcmc.posterior[1, :]
+    mcmc.posterior[:,2:end] = zeros(size(mcmc.posterior[:,2:end]))
+    mcmc.param[:] = mcmc.posterior[:, 1]
 end
 
 
 function get_posterior(mcmc::MCMC)
     #Return a parameter distributions object
     parameter_slices = batch(mcmc.prior)
-    posterior_samples = [Samples(mcmc.posterior[mcmc.burnin+1:end,slice]; params_are_columns=false) for slice in parameter_slices]
+    posterior_samples = [Samples(mcmc.posterior[slice,mcmc.burnin+1:end]) for slice in parameter_slices]
     flattened_constraints = get_all_constraints(mcmc.prior)
     parameter_constraints = [flattened_constraints[slice] for slice in parameter_slices] #live in same space as prior
     parameter_names = get_name(mcmc.prior) #the same parameters as in prior
     posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
     return posterior_distribution
-    #return mcmc.posterior[mcmc.burnin+1:end, :]
     
 end
 
@@ -150,11 +149,11 @@ function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT
     p_accept = exp(log_posterior - mcmc.log_posterior[1])
 
     if p_accept > rand(Distributions.Uniform(0, 1))
-        mcmc.posterior[1 + mcmc.iter[1], :] = mcmc.param
+        mcmc.posterior[:,1 + mcmc.iter[1]] = mcmc.param
         mcmc.log_posterior[1] = log_posterior
         mcmc.accept[1] = mcmc.accept[1] + 1
     else
-        mcmc.posterior[1 + mcmc.iter[1], :] = mcmc.posterior[mcmc.iter[1], :]
+        mcmc.posterior[:,1 + mcmc.iter[1]] = mcmc.posterior[:,mcmc.iter[1]]
     end
     mcmc.param[:] = proposal(mcmc)[:]
     mcmc.iter[1] = mcmc.iter[1] + 1
@@ -195,13 +194,12 @@ function proposal(mcmc::MCMC)
         prop_dist = MvNormal(zeros(length(mcmc.param)), 
                              (mcmc.step[1]^2) * proposal_covariance)
     end
-    sample = mcmc.posterior[1 + mcmc.iter[1], :] .+ rand(prop_dist)
-
+    sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ rand(prop_dist)
     return sample
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}) where {FT}
+function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}; max_iter=2000) where {FT}
     step = mcmc_test.step[1]
     mcmc_accept = false
     doubled = false
@@ -215,15 +213,15 @@ function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}) where {FT
     local acc_ratio
     while mcmc_accept == false
 
-        param = reshape(mcmc_test.param, 1, :)
-        gp_pred, gp_predvar = predict(gp, param)
+        param = reshape(mcmc_test.param, :, 1)
+        gp_pred, gp_predvar = predict(gp, param )
         if ndims(gp_predvar[1]) != 0
             mcmc_sample!(mcmc_test, vec(gp_pred), diag(gp_predvar[1]))
         else
             mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
         end
         it += 1
-        if it % 2000 == 0
+        if it % max_iter == 0
             countmcmc += 1
             acc_ratio = accept_ratio(mcmc_test)
             println("iteration ", it, "; acceptance rate = ", acc_ratio,
@@ -268,7 +266,7 @@ function sample_posterior!(mcmc::MCMC{FT,IT},
                            max_iter::IT) where {FT,IT<:Int}
 
     for mcmcit in 1:max_iter
-        param = reshape(mcmc.param, 1, :)
+        param = reshape(mcmc.param, :, 1)
         # test predictions (param is 1 x N_parameters)
         gp_pred, gp_predvar = predict(gp, param)
 

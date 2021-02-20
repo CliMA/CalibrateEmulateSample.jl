@@ -17,14 +17,22 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.ParameterDistributionStorage
-
+using CalibrateEmulateSample.DataStorage
 
 rng_seed = 4137
 Random.seed!(rng_seed)
 
 # Output figure save directory
-figure_save_directory = "/home/mhowland/Codes/CESPlots/figures/lorenz_96_dynamic/debug/T_90/"
-data_save_directory = "/home/mhowland/Codes/CESPlots/data/lorenz_96_dynamic/debug/T_90/"
+homedir = pwd()
+println(homedir)
+figure_save_directory = homedir*"/Lorenz_outputs/"
+data_save_directory = homedir*"/Lorenz_outputs/"
+if ~isdir(figure_save_directory)
+    mkdir(figure_save_directory)
+end
+if ~isdir(data_save_directory)
+    mkdir(data_save_directory)
+end
 
 # Governing settings
 # Characteristic time scale
@@ -56,7 +64,7 @@ else
     param_names = ["F"]
 end
 n_param = length(param_names)
-params_true = reshape(params_true, (1,n_param))
+params_true = reshape(params_true, (n_param,1))
 
 println(n_param)
 println(params_true)
@@ -77,10 +85,8 @@ end
 #logmean_A, logstd_A = logmean_and_logstd(A_true, 0.2*A_true)
 
 if dynamics == 2
-	prior_means = [F_true+1.0, A_true+1.0]
+	prior_means = [F_true+1.0, A_true+0.5]
 	prior_stds = [2.0, 0.5*A_true]
-	F_prior_mean = F_true+1.0
-	A_prior_mean = A_true
 	d1 = Parameterized(Normal(prior_means[1], prior_stds[1]))
 	d2 = Parameterized(Normal(prior_means[2], prior_stds[2]))
 	prior_distns = [d1, d2]
@@ -145,42 +151,45 @@ lorenz_params = GModel.LParams(F_true, ω_true, A_true)
 ###
 
 # Lorenz forward
-# Input: params: [N_ens, N_params]
-# Output: gt: [N_ens, N_data]
+# Input: params: [N_params, N_ens]
+# Output: gt: [N_data, N_ens]
 # Dropdims of the output since the forward model is only being run with N_ens=1 
 # corresponding to the truth construction
-gt = dropdims(GModel.run_G_ensemble(params_true, lorenz_settings), dims=1)
+gt = dropdims(GModel.run_G_ensemble(params_true, lorenz_settings), dims=2)
 
 # Compute internal variability covariance
 if var_prescribe==true
     n_samples = 100
-    yt = zeros(n_samples, length(gt))
+    yt = zeros(length(gt),n_samples)
     noise_level = 0.05
     Γy = noise_level * convert(Array, Diagonal(gt))
     μ = zeros(length(gt))
     # Add noise
     for i in 1:n_samples
-        yt[i, :] = gt .+ rand(MvNormal(μ, Γy))
+        yt[:,i] = gt .+ rand(MvNormal(μ, Γy))
     end
 else
     println("Using truth values to compute covariance")
-    n_samples = 20; 
-    yt = zeros(n_samples, length(gt))
+    n_samples = 20 
+    yt = zeros(length(gt), n_samples)
     for i in 1:n_samples
 	    lorenz_settings_local = GModel.LSettings(dynamics, stats_type, t_start+T*(i-1), 
 					      T, Ts, Tfit, Fp, N, dt, 
 					      t_start+T*(i-1)+T, kmax, ω_fixed, ω_true);
-	    yt[i, :] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
+	    yt[:, i] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
     end
     # Variance of truth data
     #Γy = convert(Array, Diagonal(dropdims(mean((yt.-mean(yt,dims=1)).^2,dims=1),dims=1)))
     # Covariance of truth data
-    Γy = cov(yt, dims=1)
+    Γy = cov(yt, dims=2)
+    
     println(Γy)
 end
+
+
 # Construct observation object
 truth = Observations.Obs(yt, Γy, data_names)
-
+truth_sample = truth.mean
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
@@ -195,26 +204,26 @@ exp_transform(a::AbstractArray) = exp.(a)
 
 N_ens = 50 # number of ensemble members
 N_iter = 5 # number of EKI iterations
-# initial parameters: N_ens x N_params
+# initial parameters: N_params x N_ens
 initial_params = construct_initial_ensemble(priors, N_ens; rng_seed=rng_seed)
 
 ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, 
-						     truth.mean, 
-						     truth.obs_noise_cov,
-						     Inversion())
+						       truth_sample, 
+						       truth.obs_noise_cov,
+						       Inversion())
 
 # EKI iterations
 println("EKP inversion error:")
 err = zeros(N_iter) 
 for i in 1:N_iter
     if log_normal==false
-        params_i = deepcopy(ekiobj.u[end])
+        params_i = get_u_final(ekiobj)
     else
-        params_i = deepcopy(exp_transform(ekiobj.u[end]))
+        params_i = exp_transform(get_u_final(ekiobj))
     end
     g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
     EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
-    err[i] = mean((params_true - mean(params_i,dims=1)).^2)
+    err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
     println("Iteration: "*string(i)*", Error: "*string(err[i]))
 end
 
@@ -224,9 +233,9 @@ println(params_true)
 
 println("\nEKI results:")
 if log_normal==false
-    println(mean(deepcopy(ekiobj.u[end]), dims=1))
+    println(mean(get_u_final(ekiobj), dims=2))
 else
-    println(mean(deepcopy(exp_transform(ekiobj.u[end])), dims=1))
+    println(mean(exp_transform(get_u_final(ekiobj)), dims=2))
 end
 
 ###
@@ -236,39 +245,22 @@ end
 gppackage = GaussianProcessEmulator.GPJL()
 pred_type = GaussianProcessEmulator.YType()
 
-# Construct kernel:
-# Sum kernel consisting of Matern 5/2 ARD kernel, a Squared Exponential Iso 
-# kernel and white noise. Note that the kernels take the signal standard 
-# deviations on a log scale as input.
-len1 = 1.0
-kern1 = SE(len1, 1.0)
-len2 = zeros(3)
-kern2 = Mat52Ard(len2, 0.0)
-white = Noise(log(2.0))
-# # construct kernel
-GPkernel =  kern1 + kern2 + white
 # Get training points from the EKP iteration number in the second input term  
-#u_tp, g_tp = Utilities.extract_GP_tp(ekiobj, N_iter)
-u_tp, g_tp = Utilities.get_training_points(ekiobj, N_iter)
+input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
 
-# Kernel defined above
-#gpobj = GPEmulator.GPObj(u_tp, g_tp, gppackage; GPkernel=GPkernel, 
-#			 obs_noise_cov=Sy, normalized=normalized,
-#                         noise_learn=false, prediction_type=pred_type)
-
 # Default kernel
-gpobj = GaussianProcessEmulator.GaussianProcess(u_tp, g_tp, gppackage; 
+gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage; 
 			 obs_noise_cov=Γy, normalized=normalized,
                          noise_learn=false, prediction_type=pred_type)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
 if log_normal==false
-    y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, 1, :), 
+    y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, :, 1), 
                                    transform_to_real=true)
 else
-	y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(log.(params_true), 1, :), 
+	y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(log.(params_true), :, 1), 
                                    transform_to_real=true)
 end
 
@@ -286,7 +278,7 @@ println(mean((truth.mean - vec(y_mean)).^2))
 ###
 
 # initial values
-u0 = vec(mean(u_tp, dims=1))
+u0 = vec(mean(get_inputs(input_output_pairs), dims=2))
 println("initial parameters: ", u0)
 
 # MCMC parameters    
@@ -295,15 +287,14 @@ mcmc_alg = "rwm" # random walk Metropolis
 # First let's run a short chain to determine a good step size
 burnin = 0
 step = 0.1 # first guess
-max_iter = 5000
-yt_sample = truth.mean
+max_iter = 2000
+yt_sample = truth_sample
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-u0 = vec(mean(u_tp, dims=1))
 
 # reset parameters 
 burnin = 2000
@@ -318,8 +309,6 @@ println(size(mcmc.posterior))
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc)      
 
-#post_mean = mean(posterior, dims=1)
-#post_cov = cov(posterior, dims=1)
 post_mean = get_mean(posterior)
 post_cov = get_cov(posterior)
 println("post_mean")
@@ -342,13 +331,12 @@ save_directory = figure_save_directory*y_folder
 for idx in 1:n_params
     if idx == 1
         param = "F"
-	xs = collect(0:0.1:15)
-	xbounds = [0, 15]
-	#xbounds = [5, 11]
+	xbounds = [7.95, 8.05]
+	xs = collect(xbounds[1]:(xbounds[2]-xbounds[1])/100:xbounds[2])
     elseif idx == 2
         param = "A"
-	xs = collect(0:0.1:5.0)
-	xbounds = [0, 5.0]
+	xbounds = [2.45, 2.55]
+	xs = collect(xbounds[1]:(xbounds[2]-xbounds[1])/100:xbounds[2])
     elseif idx == 3
         param = "ω"
 	xs = collect(ω_true-0.2:0.01:ω_true+0.2)
@@ -363,7 +351,9 @@ for idx in 1:n_params
     end
 
     label = "true " * param
-    histogram(mcmc.posterior[:, idx], bins=100, normed=true, fill=:slategray, 
+    posterior_distributions = get_distribution(posterior)
+
+    histogram(posterior_distributions[param_names[idx]][1,:], bins=100, normed=true, fill=:slategray, 
               lab="posterior")
     prior_plot = get_distribution(mcmc.prior)
     # This requires StatsPlots
@@ -378,5 +368,4 @@ for idx in 1:n_params
 end
 
 # Save data
-@save data_save_directory*"u_tp.jld2" u_tp
-@save data_save_directory*"g_tp.jld2" g_tp
+@save data_save_directory*"input_output_pairs.jld2" input_output_pairs

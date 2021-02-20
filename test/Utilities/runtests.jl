@@ -13,8 +13,9 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
     Random.seed!(rng_seed)
 
     arr = vcat([i*ones(3)' for i in 1:5]...)
+    arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
-    obs = Obs(arr, data_names)
+    obs = Obs(arr_t, data_names) #data must be columns as default
     sample = get_obs_sample(obs; rng_seed=rng_seed)
     @test sample == [3.0, 3.0, 3.0]
 
@@ -44,18 +45,17 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
     # test get_training_points
     # first create the EnsembleKalmanProcess
     n_ens = 10
-    n_obs = 3
-    n_par = 2
-    initial_ensemble = randn(n_ens,n_par)#params are rows
-    y_obs = randn(n_obs)
-    Γy = Matrix{Float64}(I,n_obs,n_obs)
+    dim_obs = 3
+    dim_par = 2
+    initial_ensemble = randn(dim_par,n_ens)#params are cols
+    y_obs = randn(dim_obs)
+    Γy = Matrix{Float64}(I,dim_obs,dim_obs)
     ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
-    g_ens = randn(n_ens,n_obs)
+    g_ens = randn(dim_obs,n_ens) # data are cols
     EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
-    u_tp,g_tp = get_training_points(ekp,1)
-    
-    @test u_tp ≈ initial_ensemble
-    @test g_tp ≈ g_ens
+    training_points = get_training_points(ekp, 1)
+    @test get_inputs(training_points) ≈ initial_ensemble
+    @test get_outputs(training_points) ≈ g_ens
     
 
 end
