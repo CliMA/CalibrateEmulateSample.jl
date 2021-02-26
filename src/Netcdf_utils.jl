@@ -78,7 +78,8 @@ function get_clima_profile(sim_dir::String,
                      var_name::Array{String,1};
                      ti::Float64=0.0,
                      tf::Float64=0.0,
-                     z_les::Union{Array{Float64, 1}, Nothing} = nothing)
+                     z_les::Union{Array{Float64, 1}, Nothing} = nothing,
+                     get_variance::Bool=false)
 
     ds_name = glob("$(sim_dir)/*.nc")[1]
     ds = NCDataset(ds_name)
@@ -112,11 +113,18 @@ function get_clima_profile(sim_dir::String,
                     var_ = var_itp(z_les, 1:tf_index-ti_index+1)
                 end
                 append!(prof_vec, mean(var_[:, ti_index:tf_index], dims=2))
+                if get_variance
+                    cov_mat = cov(var_[:, ti_index:tf_index], dims=2)
+                end
             end
         end
     end
     close(ds)
-    return prof_vec 
+    if get_variance
+        return prof_vec, cov_mat
+    else
+        return prof_vec
+    end
 end
 
 function get_timevar_profile(sim_dir::String,

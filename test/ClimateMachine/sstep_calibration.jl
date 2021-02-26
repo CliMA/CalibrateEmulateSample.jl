@@ -26,25 +26,38 @@ function ek_update(iteration_)
         end
     end
 
-    # Get observations
+    # Get observations (PyCLES)
+    # yt = zeros(0)
+    # yt_var_list = []
+    # y_names = ["u_mean", "v_mean"]
+    # les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
+    # z_scm = get_clima_profile("$(versions[1]).output", ["z"])
+    # println(size(z_scm))
+    # println(z_scm)
+    # yt_, yt_var_ = obs_LES(y_names, les_dir, 0.0, 360.0)
+    # yt_var_ = yt_var_ + Matrix(0.1I, size(yt_var_)[1], size(yt_var_)[2])
+    # append!(yt, yt_)
+    # push!(yt_var_list, yt_var_)
+
+    t0_ = 0.0
+    tf_ = 360.0
+    # Get observations (CliMA)
     yt = zeros(0)
     yt_var_list = []
-    y_names = ["u_mean", "v_mean"]
-    les_dir = string("/groups/esm/ilopezgo/Output.", "GABLS",".iles128wCov")
-    z_scm = get_clima_profile("$(versions[1]).output", ["z"])
-    println(size(z_scm))
-    println(z_scm)
-    yt_, yt_var_ = obs_LES(y_names, les_dir, 0.0, 360.0)
+    y_names = ["u", "v"]
+    yt_, yt_var_ = get_clima_profile("truth_output", y_names, ti=t0_, tf=tf_, get_variance=true)
+    # Add nugget
     yt_var_ = yt_var_ + Matrix(0.1I, size(yt_var_)[1], size(yt_var_)[2])
     append!(yt, yt_)
     push!(yt_var_list, yt_var_)
 
     # Get outputs
     g_names = ["u", "v"]
-    g_ = get_clima_profile("$(versions[1]).output", g_names, ti=0.0, tf=360.0, z_les = Array(range(3.125, 400, length=128)))
+    g_ =  get_clima_profile("$(versions[1]).output", g_names, ti=t0_, tf=tf_)
+    #get_clima_profile("$(versions[1]).output", g_names, ti=0.0, tf=360.0, z_les = Array(range(3.125, 400, length=128))) # For PyCLES
     g_ens = zeros(length(versions), length(g_))
     for (ens_index, version) in enumerate(versions)
-        g_ens[ens_index, :] = get_clima_profile("$(version).output", g_names, ti=0.0, tf=360.0, z_les = Array(range(3.125, 400, length=128)))
+        g_ens[ens_index, :] = get_clima_profile("$(version).output", g_names, ti=t0_, tf=tf_, z_les = Array(range(3.125, 400, length=128)))
     end
     # Construct EKP
     ekobj = EKP.EKObj(u, u_names, yt_, yt_var_, Inversion())
