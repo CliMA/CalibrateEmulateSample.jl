@@ -96,12 +96,14 @@ function get_clima_profile(sim_dir::String,
         tf_diff, tf_index = findmin( broadcast(abs, t.-tf) )
         
         prof_vec = zeros(0)
+        ts_vec = zeros(0, length(ti_index:tf_index))
         # If simulation does not contain values for ti or tf, return high value
         if ti_diff > dt || tf_diff > dt
             for i in 1:length(var_name)
                 var_ = Array(ds[var_name[i]])
                 append!(prof_vec, 1.0e4*ones(length(var_[:, 1])))
             end
+            println("Initial or final times are not contained in netcdf file.")
         else
             for i in 1:length(var_name)
                 var_ = Array(ds[var_name[i]])
@@ -113,14 +115,13 @@ function get_clima_profile(sim_dir::String,
                     var_ = var_itp(z_les, 1:tf_index-ti_index+1)
                 end
                 append!(prof_vec, mean(var_[:, ti_index:tf_index], dims=2))
-                if get_variance
-                    cov_mat = cov(var_[:, ti_index:tf_index], dims=2)
-                end
+                ts_vec = cat(ts_vec, var_[:, ti_index:tf_index], dims=1)
             end
         end
     end
     close(ds)
     if get_variance
+        cov_mat = cov(ts_vec, dims=2)
         return prof_vec, cov_mat
     else
         return prof_vec
