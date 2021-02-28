@@ -57,7 +57,8 @@ function ek_update(iteration_)
     #get_clima_profile("$(versions[1]).output", g_names, ti=0.0, tf=360.0, z_les = Array(range(3.125, 400, length=128))) # For PyCLES
     g_ens = zeros(length(versions), length(g_))
     for (ens_index, version) in enumerate(versions)
-        g_ens[ens_index, :] = get_clima_profile("$(version).output", g_names, ti=t0_, tf=tf_, z_les = Array(range(3.125, 400, length=128)))
+        # g_ens[ens_index, :] = get_clima_profile("$(version).output", g_names, ti=t0_, tf=tf_, z_les = Array(range(3.125, 400, length=128)))
+        g_ens[ens_index, :] = get_clima_profile("$(version).output", g_names, ti=t0_, tf=tf_)
     end
     # Construct EKP
     ekobj = EKP.EKObj(u, u_names, yt_, yt_var_, Inversion())
