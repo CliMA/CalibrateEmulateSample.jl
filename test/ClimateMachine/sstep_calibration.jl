@@ -10,8 +10,14 @@ using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Netcdf_utils
 
-function ek_update(iteration_)
-    # Construct EK object
+"""
+ek_update(iteration_::Int64)
+
+Update CLIMAParameters ensemble using Ensemble Kalman Inversion,
+return the ensemble and the parameter names.
+"""
+function ek_update(iteration_::Int64)
+    # Recover versions from last iteration
     versions = readlines("versions_$(iteration_).txt")
     n_params = 0
     u_names = String[]
@@ -19,6 +25,7 @@ function ek_update(iteration_)
         append!(u_names, [strip(string(split(line, "(")[1]), [' ']) for (index, line) in enumerate(eachline(io)) if index%3 == 2])
         n_params = length(u_names)
     end
+    # Recover ensemble from last iteration, [N_ens, N_params]
     u = zeros(length(versions), n_params)
     for (ens_index, version_) in enumerate(versions)
         open("$(version_).output/$(version_)", "r") do io
@@ -39,20 +46,21 @@ function ek_update(iteration_)
     # append!(yt, yt_)
     # push!(yt_var_list, yt_var_)
 
+    # Set averaging period for loss function
     t0_ = 0.0
-    tf_ = 360.0
+    tf_ = 1800.0
     # Get observations (CliMA)
     yt = zeros(0)
     yt_var_list = []
     y_names = ["u", "v"]
     yt_, yt_var_ = get_clima_profile("truth_output", y_names, ti=t0_, tf=tf_, get_variance=true)
-    # Add nugget
+    # Add nugget to variance (regularization)
     yt_var_ = yt_var_ + Matrix(0.1I, size(yt_var_)[1], size(yt_var_)[2])
     append!(yt, yt_)
     push!(yt_var_list, yt_var_)
 
     # Get outputs
-    g_names = ["u", "v"]
+    g_names = y_names
     g_ =  get_clima_profile("$(versions[1]).output", g_names, ti=t0_, tf=tf_)
     #get_clima_profile("$(versions[1]).output", g_names, ti=0.0, tf=360.0, z_les = Array(range(3.125, 400, length=128))) # For PyCLES
     g_ens = zeros(length(versions), length(g_))
@@ -64,9 +72,9 @@ function ek_update(iteration_)
     ekobj = EKP.EKObj(u, u_names, yt_, yt_var_, Inversion())
     # Advance EKP
     EKP.update_ensemble!(ekobj, g_ens)
-    # Get step
-    ek_final_result = ekobj.u[end]
-    return ek_final_result, u_names
+    # Get new step
+    u_new = ekobj.u[end]
+    return u_new, u_names
 end
 
 function generate_cm_params(cm_params::Union{Float64, Array{Float64}}, 
