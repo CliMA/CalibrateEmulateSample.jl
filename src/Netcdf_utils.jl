@@ -78,7 +78,7 @@ function get_clima_profile(sim_dir::String,
                      var_name::Array{String,1};
                      ti::Float64=0.0,
                      tf::Float64=0.0,
-                     z_les::Union{Array{Float64, 1}, Nothing} = nothing,
+                     z_obs::Union{Array{Float64, 1}, Nothing} = nothing,
                      get_variance::Bool=false)
 
     ds_name = glob("$(sim_dir)/*.nc")[1]
@@ -107,13 +107,15 @@ function get_clima_profile(sim_dir::String,
         else
             for i in 1:length(var_name)
                 var_ = Array(ds[var_name[i]])
-                if !isnothing(z_les)
+                if !isnothing(z_obs)
                     z_ = Array(ds["z"])
-                    var_itp = interpolate( (z_, 1:tf_index-ti_index+1),
-                        var_[:, 1:tf_index-ti_index+1],
-                        ( Gridded(Linear()), NoInterp() ))
-                    var_ = var_itp(z_les, 1:tf_index-ti_index+1)
+                    # Form interpolation
+                    var_itp = interpolate( (z_, t), var_,
+                        ( Gridded(Linear()), Gridded(Linear()) ))
+                    # Evaluate interpolation
+                    var_ = var_itp(z_obs, t)
                 end
+                # Average in time
                 append!(prof_vec, mean(var_[:, ti_index:tf_index], dims=2))
                 ts_vec = cat(ts_vec, var_[:, ti_index:tf_index], dims=1)
             end
