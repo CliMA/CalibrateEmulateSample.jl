@@ -8,7 +8,7 @@ using CalibrateEmulateSample.Priors
 using CalibrateEmulateSample.EKP
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.Netcdf_utils
+using CalibrateEmulateSample.ClimaUtils
 
 """
 ek_update(iteration_::Int64)
@@ -75,21 +75,6 @@ function ek_update(iteration_::Int64)
     # Get new step
     u_new = ekobj.u[end]
     return u_new, u_names
-end
-
-function generate_cm_params(cm_params::Union{Float64, Array{Float64}}, 
-                            cm_param_names::Union{String,Array{String}})
-    # Generate version
-    version = rand(11111:99999)
-
-    open("clima_param_defs_$(version).jl", "w") do io
-        for i in 1:length(cm_params)
-            write(io, "CLIMAParameters.Atmos.SubgridScale.
-                $(cm_param_names[i])(::EarthParameterSet) = 
-                $(cm_params[i])\n")
-        end
-    end
-    return version
 end
 
 s = ArgParseSettings()

@@ -10,6 +10,30 @@ export obs_LES
 export get_profile
 export get_clima_profile
 
+"""
+generate_cm_params(cm_params::Array{Float64}, 
+                            cm_param_names::Array{String})
+
+Generate a CLIMAParameters file, setting the values (cp_params) of
+a group of CLIMAParameters (cm_param_names).
+"""
+function generate_cm_params(cm_params::Array{Float64}, cm_param_names::Array{String})
+    # Generate version
+    version = rand(11111:99999)
+    if length(cm_params) == length(cm_param_names)
+        open("clima_param_defs_$(version).jl", "w") do io
+            for i in 1:length(cm_params)
+                write(io, "CLIMAParameters.Atmos.SubgridScale.
+                    $(cm_param_names[i])(::EarthParameterSet) = 
+                    $(cm_params[i])\n")
+            end
+        end
+    else
+        throw(ArgumentError("Number of parameter names must be equal to number of values provided."))
+    end
+    return version
+end
+
 # Read truth data from PyCLES
 function obs_LES(y_names::Array{String, 1},
                     sim_dir::String,

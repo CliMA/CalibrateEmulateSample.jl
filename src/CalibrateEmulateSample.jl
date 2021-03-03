@@ -17,5 +17,5 @@ include("Utilities.jl")
 #include("MCMC.jl")
 
 # Netcdf utils for clima
-include("Netcdf_utils.jl")
+include("ClimaUtils.jl")
 end # module
