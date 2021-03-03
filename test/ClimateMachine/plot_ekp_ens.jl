@@ -2,6 +2,7 @@ using Distributions
 using JLD
 using NCDatasets
 using LinearAlgebra
+using Glob
 
 function write_ekp()
     # Get versions
