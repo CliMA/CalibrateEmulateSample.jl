@@ -8,7 +8,8 @@ using CalibrateEmulateSample.Priors
 using CalibrateEmulateSample.EKP
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.ClimaUtils
+
+include(joinpath(@__DIR__, "helper_funcs.jl"))
 
 """
 ek_update(iteration_::Int64)

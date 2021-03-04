@@ -1,15 +1,9 @@
-module ClimaUtils
-
 using NCDatasets
 using Statistics
 using Interpolations
 using LinearAlgebra
 using Glob
 
-export obs_LES
-export get_profile
-export get_clima_profile
-export generate_cm_params
 """
 generate_cm_params(cm_params::Array{Float64}, 
                             cm_param_names::Array{String})
@@ -247,5 +241,3 @@ function nc_fetch(dir, nc_group, var_name)
     close(ds)
     return Array(ds_var)
 end
-
-end #module

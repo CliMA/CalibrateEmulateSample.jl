@@ -16,6 +16,4 @@ include("Utilities.jl")
 # Internal deps, light external deps
 #include("MCMC.jl")
 
-# Netcdf utils for clima
-include("ClimaUtils.jl")
 end # module

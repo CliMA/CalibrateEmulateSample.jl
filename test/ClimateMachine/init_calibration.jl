@@ -6,7 +6,8 @@ using CalibrateEmulateSample.Priors
 using CalibrateEmulateSample.EKP
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.ClimaUtils
+
+include(joinpath(@__DIR__, "helper_funcs.jl"))
 
 # Set parameter priors
 param_names = ["C_smag", "C_drag"]
