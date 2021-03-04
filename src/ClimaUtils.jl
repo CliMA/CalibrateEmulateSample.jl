@@ -1,4 +1,4 @@
-module Netcdf_utils
+module ClimaUtils
 
 using NCDatasets
 using Statistics
@@ -9,7 +9,7 @@ using Glob
 export obs_LES
 export get_profile
 export get_clima_profile
-
+export generate_cm_params
 """
 generate_cm_params(cm_params::Array{Float64}, 
                             cm_param_names::Array{String})
