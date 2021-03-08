@@ -10,14 +10,20 @@ using Plots
 using Random
 using JLD2
 
+#EKP
+#using EnsembleKalmanProcesses.EnsembleKalmanProcessModule
+#using EnsembleKalmanProcesses.ParameterDistributionStorage
+#using EnsembleKalmanProcesses.DataStorage
+#using EnsembleKalmanProcesses.Observations
+
 # CES 
-using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.GaussianProcessEmulator
 using CalibrateEmulateSample.MarkovChainMonteCarlo
-using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
+using CalibrateEmulateSample.EnsembleKalmanProcessModule
 using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.Observations
 
 rng_seed = 4137
 Random.seed!(rng_seed)
@@ -25,8 +31,8 @@ Random.seed!(rng_seed)
 # Output figure save directory
 homedir = pwd()
 println(homedir)
-figure_save_directory = homedir*"/Lorenz_outputs/"
-data_save_directory = homedir*"/Lorenz_outputs/"
+figure_save_directory = homedir*"/output/"
+data_save_directory = homedir*"/output/"
 if ~isdir(figure_save_directory)
     mkdir(figure_save_directory)
 end
@@ -207,10 +213,10 @@ N_iter = 5 # number of EKI iterations
 # initial parameters: N_params x N_ens
 initial_params = construct_initial_ensemble(priors, N_ens; rng_seed=rng_seed)
 
-ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, 
-						       truth_sample, 
-						       truth.obs_noise_cov,
-						       Inversion())
+ekiobj = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_params, 
+						           truth_sample, 
+						           truth.obs_noise_cov,
+						           Inversion())
 
 # EKI iterations
 println("EKP inversion error:")
@@ -222,7 +228,7 @@ for i in 1:N_iter
         params_i = exp_transform(get_u_final(ekiobj))
     end
     g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
+    EnsembleKalmanProcessModule.update_ensemble!(ekiobj, g_ens) 
     err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
     println("Iteration: "*string(i)*", Error: "*string(err[i]))
 end
