@@ -5,7 +5,8 @@ using LinearAlgebra
 
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Observations
-using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcessModule
+using CalibrateEmulateSample.DataStorage
 
 @testset "Utilities" begin
 
@@ -50,9 +51,9 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
     initial_ensemble = randn(dim_par,n_ens)#params are cols
     y_obs = randn(dim_obs)
     Γy = Matrix{Float64}(I,dim_obs,dim_obs)
-    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
+    ekp = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
     g_ens = randn(dim_obs,n_ens) # data are cols
-    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
+    EnsembleKalmanProcessModule.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens
