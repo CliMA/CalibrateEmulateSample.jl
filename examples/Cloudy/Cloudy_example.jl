@@ -13,7 +13,7 @@ using Plots
 using Random
 
 # Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcessModule
 using CalibrateEmulateSample.GaussianProcessEmulator
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
@@ -158,8 +158,8 @@ truth_sample = truth.mean
 N_ens = 50 # number of ensemble members
 N_iter = 8 # number of EKI iterations
 # initial parameters: N_params x N_ens
-initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
-ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
+initial_params = EnsembleKalmanProcessModule.construct_initial_ensemble(priors, N_ens; rng_seed=6)
+ekiobj = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
                    Inversion(), Δt=0.1)
 
 
@@ -178,7 +178,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
+    EnsembleKalmanProcessModule.update_ensemble!(ekiobj, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
