@@ -40,9 +40,9 @@ uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.6+5"
 
 [[CalibrateEmulateSample]]
-deps = ["Conda", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "GaussianProcesses", "LinearAlgebra", "PyCall", "Random", "ScikitLearn", "Statistics", "StatsBase"]
-git-tree-sha1 = "2c62d131e12813363e998d2d1d6c49f9e1fcec7f"
-repo-rev = "orad/ces-deps"
+deps = ["Conda", "Distributions", "DocStringExtensions", "GaussianProcesses", "LinearAlgebra", "PyCall", "Random", "ScikitLearn", "Statistics", "StatsBase"]
+git-tree-sha1 = "1bcaf3bd051a138cd51bda04a2446f736bdb5a91"
+repo-rev = "master"
 repo-url = "https://github.com/CliMA/CalibrateEmulateSample.jl"
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
 version = "0.1.0"
@@ -406,9 +406,9 @@ version = "7.7.1"
 
 [[NNlib]]
 deps = ["ChainRulesCore", "Compat", "LinearAlgebra", "Pkg", "Requires", "Statistics"]
-git-tree-sha1 = "df42d0816edfc24f5b82a728f46381613c4dff79"
+git-tree-sha1 = "5ce2e4b2bfe3811811e7db4b6a148439806fd2f8"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.7.14"
+version = "0.7.16"
 
 [[NaNMath]]
 git-tree-sha1 = "bfe47e760d60b82b66b61d2d44128b62e3a369fb"
@@ -640,9 +640,9 @@ version = "0.10.3"
 
 [[Static]]
 deps = ["IfElse"]
-git-tree-sha1 = "718958214486a81557e87f09762352239042d948"
+git-tree-sha1 = "e59fea643e12d4fa39098c833bd07cd0cd950297"
 uuid = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
-version = "0.2.2"
+version = "0.2.3"
 
 [[StaticArrays]]
 deps = ["LinearAlgebra", "Random", "Statistics"]

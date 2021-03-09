@@ -104,9 +104,9 @@ uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
 [[CalibrateEmulateSample]]
-deps = ["Conda", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "GaussianProcesses", "LinearAlgebra", "PyCall", "Random", "ScikitLearn", "Statistics", "StatsBase"]
-git-tree-sha1 = "2c62d131e12813363e998d2d1d6c49f9e1fcec7f"
-repo-rev = "orad/ces-deps"
+deps = ["Conda", "Distributions", "DocStringExtensions", "GaussianProcesses", "LinearAlgebra", "PyCall", "Random", "ScikitLearn", "Statistics", "StatsBase"]
+git-tree-sha1 = "1bcaf3bd051a138cd51bda04a2446f736bdb5a91"
+repo-rev = "master"
 repo-url = "https://github.com/CliMA/CalibrateEmulateSample.jl"
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
 version = "0.1.0"
@@ -508,9 +508,9 @@ version = "0.3.0"
 
 [[GeometryBasics]]
 deps = ["EarCut_jll", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "82853ebc70db4f5a3084853738c68fd497b22c7c"
+git-tree-sha1 = "c7f81b22b6c255861be4007a16bfdeb60e1c7f9b"
 uuid = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
-version = "0.3.10"
+version = "0.3.11"
 
 [[GeometryTypes]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "StaticArrays"]
