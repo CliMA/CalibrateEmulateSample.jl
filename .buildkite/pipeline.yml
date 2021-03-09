@@ -1,0 +1,89 @@
+env:
+  JULIA_VERSION: "1.5.2"
+  OPENBLAS_NUM_THREADS: 1
+  GKSwstype: nul
+
+steps:
+  - label: "init project env"
+    key: "init_project_env"
+    command:
+      - "echo $JULIA_DEPOT_PATH"
+      - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
+      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
+    env:
+      - PYTHON: ""
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+
+  - wait
+
+  - label: "Lorenz"
+    key: "lorenz"
+    command: |
+      mkdir examples/Lorenz/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot;$$JULIA_DEPOT_PATH"
+      julia --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg
+        Pkg.activate("examples/Lorenz")
+        Pkg.instantiate()
+        println("+++ Running Lorenz")
+        include("examples/Lorenz/Lorenz_example.jl")'
+    artifact_paths:
+      - "examples/Lorenz/Lorenz_outputs/*.png"
+    env:
+      - PYTHON: "$JULIA_DEPOT_PATH/conda/3/bin/python"
+      - PYTHONHOME: "$JULIA_DEPOT_PATH/conda/3/bin"
+      - CONDA_JL_HOME: "$JULIA_DEPOT_PATH/conda/3"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+  
+  - label: "Gaussian Process Emulator"
+    key: "gaussian_process_emulator"
+    command: |
+      mkdir examples/GaussianProcessEmulator/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot;$JULIA_DEPOT_PATH"
+      julia --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg
+        Pkg.activate("examples/GaussianProcessEmulator")
+        Pkg.instantiate()
+        println("+++ Running GaussianProcessEmulator")
+        include("examples/GaussianProcessEmulator/plot_GP.jl")'
+    artifact_paths:
+      - "examples/GaussianProcessEmulator/*.png"
+    env:
+      - PYTHON: "$JULIA_DEPOT_PATH/conda/3/bin/python"
+      - PYTHONHOME: "$JULIA_DEPOT_PATH/conda/3/bin"
+      - CONDA_JL_HOME: "$JULIA_DEPOT_PATH/conda/3"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+ 
+  - label: "Cloudy"
+    key: "cloudy"
+    command: |
+      mkdir examples/Cloudy/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot"
+      julia --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg
+        Pkg.activate("examples/Cloudy")
+        Pkg.instantiate()
+        println("+++ Running Cloudy")
+        include("examples/Cloudy/Cloudy_example.jl")'
+    env:
+      - PYTHON: "$JULIA_DEPOT_PATH/conda/3/bin/python"
+      - PYTHONHOME: "$JULIA_DEPOT_PATH/conda/3/bin"
+      - CONDA_JL_HOME: "$JULIA_DEPOT_PATH/conda/3"
+    artifact_paths:
+      - "examples/Cloudy/*.png"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1

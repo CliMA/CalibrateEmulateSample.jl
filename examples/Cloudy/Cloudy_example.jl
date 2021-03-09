@@ -22,7 +22,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.DataStorage
 
 # Import the module that runs Cloudy
-include("GModel.jl")
+include(joinpath(@__DIR__, "GModel.jl"))
 using .GModel
 
 ################################################################################

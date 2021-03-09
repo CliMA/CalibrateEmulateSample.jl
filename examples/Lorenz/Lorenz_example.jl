@@ -1,5 +1,5 @@
 # Import modules
-include("GModel.jl") # Contains Lorenz 96 source code
+include(joinpath(@__DIR__, "GModel.jl")) # Contains Lorenz 96 source code
 
 # Import modules
 using Distributions  # probability distributions and associated functions

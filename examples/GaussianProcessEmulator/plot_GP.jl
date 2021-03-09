@@ -190,5 +190,4 @@ for y_i in 1:d
     savefig("GP_test_y"*string(y_i)*"_difference_truth_prediction.png")
 end
 
-
 Plots.scalefontsizes(1/1.3)
