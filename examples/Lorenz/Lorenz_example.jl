@@ -10,12 +10,6 @@ using Plots
 using Random
 using JLD2
 
-#EKP
-#using EnsembleKalmanProcesses.EnsembleKalmanProcessModule
-#using EnsembleKalmanProcesses.ParameterDistributionStorage
-#using EnsembleKalmanProcesses.DataStorage
-#using EnsembleKalmanProcesses.Observations
-
 # CES 
 using CalibrateEmulateSample.GaussianProcessEmulator
 using CalibrateEmulateSample.MarkovChainMonteCarlo
