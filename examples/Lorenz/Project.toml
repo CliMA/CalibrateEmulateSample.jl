@@ -1,9 +1,8 @@
 [deps]
-CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
+Conda = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-EnsembleKalmanProcesses = "aa8a2aa5-91d8-4396-bcef-d4f2ec43552d"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 GaussianProcesses = "891a1506-143c-57d2-908e-e1f8e92e6de9"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
