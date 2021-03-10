@@ -1,3 +1,6 @@
+# Reference the in-tree version of CalibrateEmulateSample on Julias load path
+push!(LOAD_PATH, joinpath(@__DIR__, "..", ".."))
+
 # Import modules
 using Random
 using Distributions
