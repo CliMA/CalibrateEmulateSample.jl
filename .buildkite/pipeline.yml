@@ -32,6 +32,7 @@ steps:
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
+        Pkg.instantiate()
         Pkg.activate("examples/Lorenz")
         Pkg.instantiate()
         println("+++ Running Lorenz")
@@ -55,6 +56,7 @@ steps:
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
+        Pkg.instantiate()
         Pkg.activate("examples/GaussianProcessEmulator")
         Pkg.instantiate()
         println("+++ Running Learn Noise")
@@ -84,6 +86,7 @@ steps:
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
+        Pkg.instantiate()
         Pkg.activate("examples/Cloudy")
         Pkg.instantiate()
         println("+++ Running Cloudy")
