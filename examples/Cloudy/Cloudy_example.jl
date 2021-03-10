@@ -62,6 +62,11 @@ using .GModel
 rng_seed = 41
 Random.seed!(rng_seed)
 
+output_directory = joinpath(@__DIR__, "output")
+if !isdir(output_directory)
+    mkdir(output_directory)
+end
+
 ###
 ###  Define the (true) parameters and their priors
 ###
@@ -283,5 +288,5 @@ for idx in 1:n_params
     plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
     plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
     title!(param_names[idx])
-    StatsPlots.savefig("posterior_" * param_names[idx] * ".png")
+    StatsPlots.savefig(joinpath(output_directory, "posterior_" * param_names[idx] * ".png"))
 end

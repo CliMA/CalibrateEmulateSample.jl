@@ -26,14 +26,14 @@ rng_seed = 4137
 Random.seed!(rng_seed)
 
 # Output figure save directory
-homedir = pwd()
-println(homedir)
-figure_save_directory = homedir*"/output/"
-data_save_directory = homedir*"/output/"
-if ~isdir(figure_save_directory)
+example_directory = @__DIR__
+println(example_directory)
+figure_save_directory = joinpath(example_directory, "output")
+data_save_directory = joinpath(example_directory, "output", "data")
+if !isdir(figure_save_directory)
     mkdir(figure_save_directory)
 end
-if ~isdir(data_save_directory)
+if !isdir(data_save_directory)
     mkdir(data_save_directory)
 end
 

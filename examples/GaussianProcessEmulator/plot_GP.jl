@@ -52,6 +52,11 @@ end
 rng_seed = 41
 Random.seed!(rng_seed)
 
+output_directory = joinpath(@__DIR__, "output")
+if !isdir(output_directory)
+    mkdir(output_directory)
+end
+
 gppackage = GPJL()
 pred_type = YType()
 
@@ -84,19 +89,19 @@ Y = gx .+ noise_samples
 p1 = plot(X[1,:], X[2,:], g1x, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y1nonoise.png")
+savefig(joinpath(output_directory, "GP_test_observed_y1nonoise.png"))
 p2 = plot(X[1,:], X[2,:], g2x, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y2nonoise.png")
+savefig(joinpath(output_directory, "GP_test_observed_y2nonoise.png"))
 p1 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y1.png")
+savefig(joinpath(output_directory, "GP_test_observed_y1.png"))
 p2 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y2.png")
+savefig(joinpath(output_directory, "GP_test_observed_y2.png"))
 
 
 iopairs = PairedDataContainer(X,Y,data_are_columns=true)
@@ -151,7 +156,7 @@ for y_i in 1:d
               zguidefontrotation=90)
 
     plot(p1, p2, layout=(1, 2), legend=false)
-    savefig("GP_test_y"*string(y_i)*"_predictions.png")
+    savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_predictions.png"))
 end
 
 # Plot the true components of G(x1, x2)
@@ -160,7 +165,7 @@ g1_true_grid = reshape(g1_true, n_pts, n_pts)
 p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
           zguidefontrotation=90)
-savefig("GP_test_true_g1.png")
+savefig(joinpath(output_directory, "GP_test_true_g1.png"))
 
 g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
@@ -168,7 +173,7 @@ p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(-30, 30), c=:cividis,
           xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
           zguidefontrotation=90)
 g_true_grids = [g1_true_grid, g2_true_grid]
-savefig("GP_test_true_g2.png")
+savefig(joinpath(output_directory, "GP_test_true_g2.png"))
 
 
 # Plot the difference between the truth and the mean of the predictions
@@ -187,7 +192,7 @@ for y_i in 1:d
               xlabel="x1", ylabel="x2", 
               zguidefontrotation=90)
 
-    savefig("GP_test_y"*string(y_i)*"_difference_truth_prediction.png")
+    savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_difference_truth_prediction.png"))
 end
 
 Plots.scalefontsizes(1/1.3)
