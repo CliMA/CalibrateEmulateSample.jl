@@ -9,8 +9,8 @@ steps:
     command:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
-      - "julia --project -e 'using Pkg; Pkg.precompile()"
       - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
+      - "julia --project -e 'using Pkg; Pkg.precompile()'"
     env:
       PYTHON: ""
     agents:
