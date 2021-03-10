@@ -36,7 +36,7 @@ steps:
         println("+++ Running Lorenz")
         include("examples/Lorenz/Lorenz_example.jl")'
     artifact_paths:
-      - "examples/Lorenz/Lorenz_outputs/*.png"
+      - "examples/Lorenz/output/*.png"
     agents:
       config: cpu
       queue: central
@@ -56,10 +56,12 @@ steps:
         using Pkg
         Pkg.activate("examples/GaussianProcessEmulator")
         Pkg.instantiate()
-        println("+++ Running GaussianProcessEmulator")
+        println("+++ Running Learn Noise")
+        include("examples/GaussianProcessEmulator/learn_noise.jl")'
+        println("+++ Running PlotGP")
         include("examples/GaussianProcessEmulator/plot_GP.jl")'
     artifact_paths:
-      - "examples/GaussianProcessEmulator/*.png"
+      - "examples/GaussianProcessEmulator/output/*.png"
     env:
       PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
       PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
@@ -86,7 +88,7 @@ steps:
         println("+++ Running Cloudy")
         include("examples/Cloudy/Cloudy_example.jl")'
     artifact_paths:
-      - "examples/Cloudy/*.png"
+      - "examples/Cloudy/output/*.png"
     agents:
       config: cpu
       queue: central
