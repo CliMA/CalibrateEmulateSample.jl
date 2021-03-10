@@ -18,4 +18,4 @@
 
 ### Project Mind map
 The latest code structure is found at:
-https://miro.com/welcomeonboard/j4n8NPSihwQ3X7wjEH7kkitUi6I9deUa5veFV15dCndrTNRZkczGGyIviVjnuAhZ
+https://miro.com/app/board/o9J_kkm8OGU=/
