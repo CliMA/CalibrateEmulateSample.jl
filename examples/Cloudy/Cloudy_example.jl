@@ -1,5 +1,5 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
-push!(LOAD_PATH, joinpath(@__DIR__, "..", ".."))
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
 
 # This example requires Cloudy to be installed.
 #using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
