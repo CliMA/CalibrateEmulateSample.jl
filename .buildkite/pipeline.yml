@@ -10,7 +10,6 @@ steps:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
       - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
-      - "julia --project -e 'using Pkg; Pkg.precompile()'"
     env:
       PYTHON: ""
     agents:
@@ -60,7 +59,7 @@ steps:
         Pkg.activate("examples/GaussianProcessEmulator")
         Pkg.instantiate()
         println("+++ Running Learn Noise")
-        include("examples/GaussianProcessEmulator/learn_noise.jl")'
+        include("examples/GaussianProcessEmulator/learn_noise.jl")
         println("+++ Running PlotGP")
         include("examples/GaussianProcessEmulator/plot_GP.jl")'
     artifact_paths:
