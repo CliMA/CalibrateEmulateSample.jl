@@ -3,6 +3,7 @@ prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
 
 # Import modules
 include(joinpath(@__DIR__, "GModel.jl")) # Contains Lorenz 96 source code
+include(joinpath(@__DIR__, "linkfig.jl"))
 
 # Import modules
 using Distributions  # probability distributions and associated functions
@@ -29,7 +30,7 @@ Random.seed!(rng_seed)
 example_directory = @__DIR__
 println(example_directory)
 figure_save_directory = joinpath(example_directory, "output")
-data_save_directory = joinpath(example_directory, "output", "data")
+data_save_directory = joinpath(example_directory, "output")
 if !isdir(figure_save_directory)
     mkdir(figure_save_directory)
 end
@@ -366,8 +367,10 @@ for idx in 1:n_params
     plot!(xlims=xbounds)
 
     title!(param)
-    savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
-    #StatsPlots.savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
+    
+    figpath = joinpath(figure_save_directory, "posterior_$(param)_T_$(T)_w_$(ω_true).png")
+    savefig(figpath)
+    linkfig(figpath)
 end
 
 # Save data

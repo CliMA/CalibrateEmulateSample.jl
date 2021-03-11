@@ -28,6 +28,8 @@ using CalibrateEmulateSample.DataStorage
 include(joinpath(@__DIR__, "GModel.jl"))
 using .GModel
 
+include(joinpath(@__DIR__, "linkfig.jl"))
+
 ################################################################################
 #                                                                              #
 #                      Cloudy Calibrate-Emulate-Sample Example                 #
@@ -288,5 +290,7 @@ for idx in 1:n_params
     plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
     plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
     title!(param_names[idx])
-    StatsPlots.savefig(joinpath(output_directory, "posterior_" * param_names[idx] * ".png"))
+    figpath = joinpath(output_directory, "posterior_" * param_names[idx] * ".png")
+    StatsPlots.savefig(figpath)
+    linkfig(figpath)
 end

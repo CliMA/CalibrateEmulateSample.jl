@@ -29,12 +29,12 @@ steps:
 
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
-
+      
       julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
-        using Pkg
+        using Pkg;
         Pkg.instantiate()
-        Pkg.activate("examples/Lorenz")
+        Pkg.activate("examples/GaussianProcessEmulator")
         Pkg.instantiate()
         println("+++ Running Lorenz")
         include("examples/Lorenz/Lorenz_example.jl")'
@@ -57,7 +57,7 @@ steps:
 
       julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
-        using Pkg
+        using Pkg;
         Pkg.instantiate()
         Pkg.activate("examples/GaussianProcessEmulator")
         Pkg.instantiate()
@@ -88,10 +88,10 @@ steps:
 
       julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
-        using Pkg
+        using Pkg;
         Pkg.instantiate()
-        Pkg.activate("examples/Cloudy")
-        Pkg.instantiate()
+        Pkg.activate("examples/GaussianProcessEmulator")
+        Pkg.instantiate()'
         println("+++ Running Cloudy")
         include("examples/Cloudy/Cloudy_example.jl")'
     artifact_paths:
