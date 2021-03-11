@@ -139,7 +139,9 @@ gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj,
                                                   inputs, 
                                                   transform_to_real=true)
 println("end predictions at ", n_pts*n_pts, " points")
+
 println("start plotting...")
+include(joinpath(@__DIR__, "show_savefig.jl"))
 
 #plot predictions
 for y_i in 1:d
@@ -158,7 +160,7 @@ for y_i in 1:d
               zguidefontrotation=90)
 
     plot(p1, p2, layout=(1, 2), legend=false)
-    savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_predictions.png"))
+    show_savefig(output_directory, "GP_test_y"*string(y_i)*"_predictions.png")
 end
 
 # Plot the true components of G(x1, x2)
@@ -167,7 +169,7 @@ g1_true_grid = reshape(g1_true, n_pts, n_pts)
 p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
           zguidefontrotation=90)
-savefig(joinpath(output_directory, "GP_test_true_g1.png"))
+show_savefig(joinpath(output_directory, "GP_test_true_g1.png"))
 
 g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
@@ -175,7 +177,7 @@ p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(-30, 30), c=:cividis,
           xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
           zguidefontrotation=90)
 g_true_grids = [g1_true_grid, g2_true_grid]
-savefig(joinpath(output_directory, "GP_test_true_g2.png"))
+show_savefig(joinpath(output_directory, "GP_test_true_g2.png"))
 
 
 # Plot the difference between the truth and the mean of the predictions
@@ -194,7 +196,7 @@ for y_i in 1:d
               xlabel="x1", ylabel="x2", 
               zguidefontrotation=90)
 
-    savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_difference_truth_prediction.png"))
+    show_savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_difference_truth_prediction.png"))
 end
 
 Plots.scalefontsizes(1/1.3)
