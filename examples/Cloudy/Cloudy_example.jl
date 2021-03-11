@@ -1,5 +1,6 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 
 # This example requires Cloudy to be installed.
 #using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
@@ -27,8 +28,6 @@ using CalibrateEmulateSample.DataStorage
 # Import the module that runs Cloudy
 include(joinpath(@__DIR__, "GModel.jl"))
 using .GModel
-
-include(joinpath(@__DIR__, "linkfig.jl"))
 
 ################################################################################
 #                                                                              #

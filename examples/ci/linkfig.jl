@@ -3,6 +3,7 @@ function linkfig(figpath)
     if get(ENV, "BUILDKITE", "") == "true"
         artifact_url = join(split(figpath, '/')[end-3:end], '/')
         alt = split(splitdir(figpath)[2], '.')[1]
-        print("\033]1338;url='$(artifact_url)';alt=$(alt);\a\n")
+        @info "Linking Figure: $artifact_url"
+        print("\033]1338;url='$(artifact_url)';alt='$(alt)';\a\n")
     end
 end

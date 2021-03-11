@@ -1,5 +1,6 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 
 # Import modules
 using Random
@@ -11,7 +12,6 @@ using CalibrateEmulateSample.DataStorage
 
 using Plots; pyplot(size=(1500, 700))
 Plots.scalefontsizes(1.3)
-include(joinpath(@__DIR__, "linkfig.jl"))
 
 ###############################################################################
 #                                                                             #
