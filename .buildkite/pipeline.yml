@@ -10,6 +10,7 @@ steps:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
       - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
+      - "julia --project -e 'using Conda; Conda.add(\"matplotlib\")'"
     env:
       PYTHON: ""
     agents:
@@ -29,7 +30,7 @@ steps:
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
 
-      julia --color=yes --project -e '
+      julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
         Pkg.instantiate()
@@ -54,7 +55,7 @@ steps:
       mkdir examples/GaussianProcessEmulator/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot:$JULIA_DEPOT_PATH"
 
-      julia --color=yes --project -e '
+      julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
         Pkg.instantiate()
@@ -85,7 +86,7 @@ steps:
       mkdir examples/Cloudy/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot:$$JULIA_DEPOT_PATH"
 
-      julia --color=yes --project -e '
+      julia --compiled-modules=no --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
         Pkg.instantiate()
