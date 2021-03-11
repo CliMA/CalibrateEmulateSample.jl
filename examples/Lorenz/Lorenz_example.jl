@@ -1,5 +1,9 @@
+# Reference the in-tree version of CalibrateEmulateSample on Julias load path
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+
 # Import modules
-include("GModel.jl") # Contains Lorenz 96 source code
+include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
+include(joinpath(@__DIR__, "GModel.jl")) # Contains Lorenz 96 source code
 
 # Import modules
 using Distributions  # probability distributions and associated functions
@@ -23,14 +27,14 @@ rng_seed = 4137
 Random.seed!(rng_seed)
 
 # Output figure save directory
-homedir = pwd()
-println(homedir)
-figure_save_directory = homedir*"/output/"
-data_save_directory = homedir*"/output/"
-if ~isdir(figure_save_directory)
+example_directory = @__DIR__
+println(example_directory)
+figure_save_directory = joinpath(example_directory, "output")
+data_save_directory = joinpath(example_directory, "output")
+if !isdir(figure_save_directory)
     mkdir(figure_save_directory)
 end
-if ~isdir(data_save_directory)
+if !isdir(data_save_directory)
     mkdir(data_save_directory)
 end
 
@@ -363,8 +367,10 @@ for idx in 1:n_params
     plot!(xlims=xbounds)
 
     title!(param)
-    savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
-    #StatsPlots.savefig(save_directory*"posterior_"*param*"_T_"*string(T)*"_w_"*string(ω_true)*".png")
+    
+    figpath = joinpath(figure_save_directory, "posterior_$(param)_T_$(T)_w_$(ω_true).png")
+    savefig(figpath)
+    linkfig(figpath)
 end
 
 # Save data

@@ -3,12 +3,15 @@ module CalibrateEmulateSample
 using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
 # imported modules from EKP.
-import EnsembleKalmanProcesses
-EnsembleKalmanProcessModule = EnsembleKalmanProcesses.EnsembleKalmanProcessModule 
-Observations = EnsembleKalmanProcesses.Observations
-ParameterDistributionStorage = EnsembleKalmanProcesses.ParameterDistributionStorage
-DataStorage = EnsembleKalmanProcesses.DataStorage
+import EnsembleKalmanProcesses: EnsembleKalmanProcessModule,
+                                ParameterDistributionStorage,
+                                Observations,
+                                DataStorage
 
+export EnsembleKalmanProcessModule,
+       ParameterDistributionStorage,
+       Observations,
+       DataStorage
 
 # No internal deps, heavy external deps
 include("GaussianProcessEmulator.jl")

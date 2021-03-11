@@ -97,14 +97,6 @@ git-tree-sha1 = "215a9aa4a1f23fbd05b92769fdd62559488d70e9"
 uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
 version = "0.4.1"
 
-[[CalibrateEmulateSample]]
-deps = ["Conda", "Distributions", "DocStringExtensions", "GaussianProcesses", "LinearAlgebra", "PyCall", "Random", "ScikitLearn", "Statistics", "StatsBase"]
-git-tree-sha1 = "1bcaf3bd051a138cd51bda04a2446f736bdb5a91"
-repo-rev = "master"
-repo-url = "https://github.com/CliMA/CalibrateEmulateSample.jl"
-uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
-version = "0.1.0"
-
 [[CanonicalTraits]]
 deps = ["MLStyle"]
 git-tree-sha1 = "f959d0e7164fb0262b02abecb93cf42b9a9f3188"
@@ -357,14 +349,6 @@ deps = ["LinearAlgebra", "MacroTools", "PDMats"]
 git-tree-sha1 = "5157c93fe9431a041e4cd84265dfce3d53a52323"
 uuid = "2904ab23-551e-5aed-883f-487f97af5226"
 version = "0.2.2"
-
-[[EnsembleKalmanProcesses]]
-deps = ["Distributions", "DocStringExtensions", "LinearAlgebra", "Random", "Statistics", "StatsBase"]
-git-tree-sha1 = "4b8328fecf09cb427e18b319edaf9989f8389fed"
-repo-rev = "main"
-repo-url = "https://github.com/CliMA/EnsembleKalmanProcesses.jl"
-uuid = "aa8a2aa5-91d8-4396-bcef-d4f2ec43552d"
-version = "0.1.0"
 
 [[ExponentialUtilities]]
 deps = ["LinearAlgebra", "Printf", "Requires", "SparseArrays"]
@@ -630,6 +614,7 @@ uuid = "1d6d02ad-be62-4b6b-8a6d-2f90e265016e"
 version = "0.1.2"
 
 [[LibGit2]]
+deps = ["Printf"]
 uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
 
 [[LibVPX_jll]]
@@ -866,7 +851,7 @@ uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "1.0.16"
 
 [[Pkg]]
-deps = ["Dates", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Test", "UUIDs"]
+deps = ["Dates", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "UUIDs"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PlotThemes]]

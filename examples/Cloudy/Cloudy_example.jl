@@ -1,3 +1,7 @@
+# Reference the in-tree version of CalibrateEmulateSample on Julias load path
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
+
 # This example requires Cloudy to be installed.
 #using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
 using Cloudy
@@ -22,7 +26,7 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.DataStorage
 
 # Import the module that runs Cloudy
-include("GModel.jl")
+include(joinpath(@__DIR__, "GModel.jl"))
 using .GModel
 
 ################################################################################
@@ -58,6 +62,11 @@ using .GModel
 
 rng_seed = 41
 Random.seed!(rng_seed)
+
+output_directory = joinpath(@__DIR__, "output")
+if !isdir(output_directory)
+    mkdir(output_directory)
+end
 
 ###
 ###  Define the (true) parameters and their priors
@@ -280,5 +289,7 @@ for idx in 1:n_params
     plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
     plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
     title!(param_names[idx])
-    StatsPlots.savefig("posterior_" * param_names[idx] * ".png")
+    figpath = joinpath(output_directory, "posterior_" * param_names[idx] * ".png")
+    StatsPlots.savefig(figpath)
+    linkfig(figpath)
 end

@@ -1,10 +1,9 @@
 [deps]
-CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
 Cloudy = "9e3b23bb-e7cc-4b94-886c-65de2234ba87"
+Conda = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-EnsembleKalmanProcesses = "aa8a2aa5-91d8-4396-bcef-d4f2ec43552d"
 GaussianProcesses = "891a1506-143c-57d2-908e-e1f8e92e6de9"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"

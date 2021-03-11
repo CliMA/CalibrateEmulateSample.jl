@@ -1,0 +1,102 @@
+env:
+  JULIA_VERSION: "1.5.2"
+  OPENBLAS_NUM_THREADS: 1
+  GKSwstype: nul
+
+steps:
+  - label: "init project env"
+    key: "init_project_env"
+    command:
+      - "echo $$JULIA_DEPOT_PATH"
+      - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
+      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'"
+      - "julia --project -e 'using Conda; Conda.add(\"matplotlib\")'"
+    env:
+      PYTHON: ""
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+
+  - wait
+
+  - label: "Lorenz"
+    key: "lorenz"
+    command: |
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
+
+      mkdir examples/Lorenz/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
+      
+      julia --compiled-modules=no --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg;
+        Pkg.instantiate()
+        Pkg.activate("examples/Lorenz")
+        Pkg.instantiate()
+        println("+++ Running Lorenz")
+        include("examples/Lorenz/Lorenz_example.jl")'
+    artifact_paths:
+      - "examples/Lorenz/output/*.png"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+  
+  - label: "Gaussian Process Emulator"
+    key: "gaussian_process_emulator"
+    command: |
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
+
+      mkdir examples/GaussianProcessEmulator/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot:$JULIA_DEPOT_PATH"
+
+      julia --compiled-modules=no --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg;
+        Pkg.instantiate()
+        Pkg.activate("examples/GaussianProcessEmulator")
+        Pkg.instantiate()
+        println("+++ Running Learn Noise")
+        include("examples/GaussianProcessEmulator/learn_noise.jl")
+        println("+++ Running PlotGP")
+        include("examples/GaussianProcessEmulator/plot_GP.jl")'
+    artifact_paths:
+      - "examples/GaussianProcessEmulator/output/*.png"
+    env:
+      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
+      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+ 
+  - label: "Cloudy"
+    key: "cloudy"
+    command: |
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
+
+      mkdir examples/Cloudy/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot:$$JULIA_DEPOT_PATH"
+
+      julia --compiled-modules=no --color=yes --project -e '
+        println("--- Instantiating Project")
+        using Pkg;
+        Pkg.instantiate()
+        Pkg.activate("examples/Cloudy")
+        Pkg.instantiate()
+        println("+++ Running Cloudy")
+        include("examples/Cloudy/Cloudy_example.jl")'
+    artifact_paths:
+      - "examples/Cloudy/output/*.png"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1

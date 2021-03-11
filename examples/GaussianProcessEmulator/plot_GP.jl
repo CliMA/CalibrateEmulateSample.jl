@@ -1,13 +1,17 @@
+# Reference the in-tree version of CalibrateEmulateSample on Julias load path
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 
 # Import modules
 using Random
 using Distributions
 using Statistics
-using Plots; pyplot(size=(1500, 700))
-Plots.scalefontsizes(1.3)
 using LinearAlgebra
 using CalibrateEmulateSample.GaussianProcessEmulator
 using CalibrateEmulateSample.DataStorage
+
+using Plots; pyplot(size=(1500, 700))
+Plots.scalefontsizes(1.3)
 
 ###############################################################################
 #                                                                             #
@@ -52,6 +56,11 @@ end
 rng_seed = 41
 Random.seed!(rng_seed)
 
+output_directory = joinpath(@__DIR__, "output")
+if !isdir(output_directory)
+    mkdir(output_directory)
+end
+
 gppackage = GPJL()
 pred_type = YType()
 
@@ -84,20 +93,30 @@ Y = gx .+ noise_samples
 p1 = plot(X[1,:], X[2,:], g1x, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y1nonoise.png")
+figpath = joinpath(output_directory, "GP_test_observed_y1nonoise.png")
+savefig(figpath)
+linkfig(figpath)
+
 p2 = plot(X[1,:], X[2,:], g2x, st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y2nonoise.png")
+figpath = joinpath(output_directory, "GP_test_observed_y2nonoise.png")
+savefig(figpath)
+linkfig(figpath)
+
 p1 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y1.png")
+figpath = joinpath(output_directory, "GP_test_observed_y1.png")
+savefig(figpath)
+linkfig(figpath)
+
 p2 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(-30, 30), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
-savefig("GP_test_observed_y2.png")
-
+figpath = joinpath(output_directory, "GP_test_observed_y2.png")
+savefig(figpath)
+linkfig(figpath)
 
 iopairs = PairedDataContainer(X,Y,data_are_columns=true)
 @assert get_inputs(iopairs) == X
@@ -132,6 +151,7 @@ gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj,
                                                   inputs, 
                                                   transform_to_real=true)
 println("end predictions at ", n_pts*n_pts, " points")
+
 println("start plotting...")
 
 #plot predictions
@@ -151,7 +171,10 @@ for y_i in 1:d
               zguidefontrotation=90)
 
     plot(p1, p2, layout=(1, 2), legend=false)
-    savefig("GP_test_y"*string(y_i)*"_predictions.png")
+
+    figpath = joinpath(output_directory, "GP_test_y"*string(y_i)*"_predictions.png")
+    savefig(figpath)
+    linkfig(figpath)
 end
 
 # Plot the true components of G(x1, x2)
@@ -160,7 +183,9 @@ g1_true_grid = reshape(g1_true, n_pts, n_pts)
 p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(-30, 30), c=:cividis, 
           xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
           zguidefontrotation=90)
-savefig("GP_test_true_g1.png")
+figpath = joinpath(output_directory, "GP_test_true_g1.png")
+savefig(figpath)
+linkfig(figpath)
 
 g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
@@ -168,7 +193,9 @@ p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(-30, 30), c=:cividis,
           xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
           zguidefontrotation=90)
 g_true_grids = [g1_true_grid, g2_true_grid]
-savefig("GP_test_true_g2.png")
+figpath = joinpath(output_directory, "GP_test_true_g2.png")
+savefig(figpath)
+linkfig(figpath)
 
 
 # Plot the difference between the truth and the mean of the predictions
@@ -187,8 +214,9 @@ for y_i in 1:d
               xlabel="x1", ylabel="x2", 
               zguidefontrotation=90)
 
-    savefig("GP_test_y"*string(y_i)*"_difference_truth_prediction.png")
+    figpath = joinpath(output_directory, "GP_test_y"*string(y_i)*"_difference_truth_prediction.png")
+    savefig(figpath)
+    linkfig(figpath)
 end
-
 
 Plots.scalefontsizes(1/1.3)
