@@ -27,7 +27,8 @@ steps:
       export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
 
       mkdir examples/Lorenz/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot;$$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
+
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
@@ -51,7 +52,8 @@ steps:
       export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
 
       mkdir examples/GaussianProcessEmulator/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot;$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot:$JULIA_DEPOT_PATH"
+
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
@@ -81,7 +83,8 @@ steps:
       export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
 
       mkdir examples/Cloudy/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot"
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot:$$JULIA_DEPOT_PATH"
+
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg
