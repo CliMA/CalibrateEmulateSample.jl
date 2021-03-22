@@ -1,9 +1,13 @@
+# Reference the in-tree version of CalibrateEmulateSample on Julias load path
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+
 # Import modules
 using Random
 using Distributions
 using Statistics
 using LinearAlgebra
 using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.DataStorage
 
 ###############################################################################
 #                                                                             #
@@ -57,17 +61,18 @@ n = 200  # number of training points
 p = 2   # input dim 
 d = 2   # output dim
 
-X = 2.0 * π * rand(n, p)
+X = 2.0 * π * rand(p, n)
 
 # G(x1, x2)
-g1x = sin.(X[:, 1]) .+ cos.(X[:, 2])
-g2x = sin.(X[:, 1]) .- cos.(X[:, 2])
-gx = [g1x g2x]
-
+g1x = sin.(X[1, :]) .+ cos.(X[2, :])
+g2x = sin.(X[1, :]) .- cos.(X[2, :])
+gx = zeros(2,n)
+gx[1,:] = g1x
+gx[2,:] = g2x
 # Add noise η
 μ = zeros(d) 
 Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
-noise_samples = rand(MvNormal(μ, Σ), n)' 
+noise_samples = rand(MvNormal(μ, Σ), n)
 
 # y = G(x) + η
 Y = gx .+ noise_samples
@@ -82,7 +87,11 @@ Y = gx .+ noise_samples
 # in the training phase via an optimization procedure.
 # Because of the SVD transformation applied to the output, we expect the 
 # learned noise to be close to 1.
-gpobj1 = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
+iopairs = PairedDataContainer(X,Y,data_are_columns=true)
+@assert get_inputs(iopairs) == X
+@assert get_outputs(iopairs) == Y
+
+gpobj1 = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
                normalized=true, noise_learn=true, prediction_type=pred_type)
 
 println("\n-----------")
@@ -109,7 +118,7 @@ println("------------------------------------------------------------------\n")
 # For comparison: When noise_learn is set to false, the observational noise
 # is set to 1.0 and is not learned/optimized during the training. But thanks
 # to the SVD, 1.0 is the correct value to use.
-gpobj2 = GaussianProcess(X, Y, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
+gpobj2 = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
                normalized=true, noise_learn=false, prediction_type=pred_type)
 
 println("\n-----------")

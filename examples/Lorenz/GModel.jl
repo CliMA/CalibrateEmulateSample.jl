@@ -79,10 +79,10 @@ end
 
 Run the forward model G for an array of parameters by iteratively
 calling run_G for each of the N_ensemble parameter values.
-Return g_ens, an array of size N_ensemble x N_data, where
-g_ens[j,:] = G(params[j,:])
+Return g_ens, an array of size N_data x N_ensemble, where
+g_ens[:,j] = G(params[:,j])
 
- - `params` - array of size N_ensemble x N_parameters containing the
+ - `params` - array of size N_parameters x N_ensemble containing the
               parameters for which G will be run
  - `settings` - a GSetttings struct
 
@@ -91,7 +91,7 @@ function run_G_ensemble(params::Array{FT, 2},
                         settings::LSettings,
                         rng_seed=42) where {FT<:AbstractFloat}
     # Initilize ensemble
-    N_ens = size(params, 1) # params is N_ens x N_params
+    N_ens = size(params, 2) # params is N_params x N_ens
     if settings.stats_type == 1
 	    nd = 2
     elseif settings.stats_type == 2
@@ -103,17 +103,17 @@ function run_G_ensemble(params::Array{FT, 2},
     elseif settings.stats_type == 5
 	    nd = Int64(settings.T/settings.Ts/settings.Tfit)
     end
-    g_ens = zeros(N_ens, nd)
+    g_ens = zeros(nd, N_ens)
     # Lorenz parameters
     #Fp = rand(Normal(0.0, 0.01), N); # Initial perturbation
-    F = params[:, 1] # Forcing
+    F = params[1, :] # Forcing
     if settings.dynamics==2
-        A = params[:, 2] # Transience amplitude
+        A = params[2, :] # Transience amplitude
     else
         A = F .* 0. # Set to zero, it is not used
     end
     if settings.ω_fixed==false;
-    	ω = params[:, 3] # Transience frequency
+    	ω = params[3, :] # Transience frequency
     end
 
     Random.seed!(rng_seed)
@@ -124,7 +124,7 @@ function run_G_ensemble(params::Array{FT, 2},
 	elseif settings.ω_fixed==true
 	    lorenz_params = GModel.LParams(F[i], settings.ω_true, A[i])
 	end
-	g_ens[i, :] = lorenz_forward(settings, lorenz_params) 
+	g_ens[:, i] = lorenz_forward(settings, lorenz_params) 
     end
 
     return g_ens

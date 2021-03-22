@@ -1,7 +1,8 @@
 status = [
   'test-linux',
   'test-macos',
-  'test-windows'
+  'test-windows',
+  'buildkite/calibrateemulatesample-ci'
 ]
 delete_merged_branches = true
 timeout_sec = 3600

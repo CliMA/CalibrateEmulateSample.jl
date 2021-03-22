@@ -4,35 +4,43 @@ using LinearAlgebra
 using Statistics
 using Random
 using ..Observations
-using ..EnsembleKalmanProcesses
+using ..EnsembleKalmanProcessModule
+EnsembleKalmanProcess = EnsembleKalmanProcessModule.EnsembleKalmanProcess
+using ..DataStorage
 
 export get_training_points
 export get_obs_sample
 export orig2zscore
 export zscore2orig
 
+
 """
-    extract_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_ek_it::IT) where {FT,IT, P}
+    extract_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_train_iterations::IT) where {FT,IT, P}
 
 Extract the training points needed to train the Gaussian Process Regression.
 
  - `ekp` - EnsembleKalmanProcess holding the parameters and the data that were produced
              during the Ensemble Kalman (EK) process
- - `N_ek_iter` - Number of EK layers/iterations to train on
+ - `N_train_iterations` - Number of EK layers/iterations to train on
 
 """
-function get_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_ek_it::IT) where {FT, IT, P}
+function get_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_train_iterations::IT) where {FT, IT, P}
 
     # Note u[end] does not have an equivalent g
-    u_tp = ekp.u[end-N_ek_it:end-1] # N_ek_it x [N_ensemble x N_parameters]
-    g_tp = ekp.g[end-N_ek_it+1:end] # N_ek_it x [N_ensemble x N_data]
+    iter_range = get_N_iterations(ekp) - N_train_iterations + 1 : get_N_iterations(ekp)
 
-    # u does not require reduction, g does:
-    # g_tp[j] is jth iteration of ensembles
-    u_tp = cat(u_tp..., dims=1) # [(N_ek_it x N_ensemble) x N_parameters]
-    g_tp = cat(g_tp..., dims=1) # [(N_ek_it x N_ensemble) x N_data]
+    u_tp=[]
+    g_tp=[]
+    for i in iter_range
+        push!(u_tp, get_u(ekp, i)) #N_parameters x N_ens
+        push!(g_tp, get_g(ekp, i)) #N_data x N_ens
+    end
+    u_tp = hcat(u_tp...) # N_parameters x (N_ek_it x N_ensemble)]
+    g_tp = hcat(g_tp...) # N_data x (N_ek_it x N_ensemble)
 
-    return u_tp, g_tp
+    training_points = PairedDataContainer(u_tp,g_tp,data_are_columns=true)
+    
+    return training_points
 end
 
 

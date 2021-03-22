@@ -24,12 +24,9 @@ end
         end
     end
 
-    for submodule in ["EnsembleKalmanProcesses",
-		      "GaussianProcessEmulator",
+    for submodule in ["GaussianProcessEmulator",
 		      "MarkovChainMonteCarlo",
-		      "Observations",
-		      "Utilities",
-                      "ParameterDistribution"]
+		      "Utilities"]
 
         if all_tests || has_submodule(submodule) || "CalibrateEmulateSample" in ARGS
             include_test(submodule)

@@ -2,12 +2,18 @@ module CalibrateEmulateSample
 
 using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
-# No internal deps, light external deps
-include("Observations.jl")
-include("ParameterDistribution.jl")
+# imported modules from EKP.
+import EnsembleKalmanProcesses: EnsembleKalmanProcessModule,
+                                ParameterDistributionStorage,
+                                Observations,
+                                DataStorage
+
+export EnsembleKalmanProcessModule,
+       ParameterDistributionStorage,
+       Observations,
+       DataStorage
 
 # No internal deps, heavy external deps
-include("EnsembleKalmanProcesses.jl")
 include("GaussianProcessEmulator.jl")
 
 # Internal deps, light external deps
