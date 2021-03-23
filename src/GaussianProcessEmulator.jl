@@ -103,7 +103,11 @@ function GaussianProcess(
     models = Any[]
     # Number of models (We are fitting one model per output dimension)
     N_models = output_dim
-    
+   
+
+    # TO DO: Standardize the data here
+    # Can use the full time median or some user define function?
+
     # Normalize the inputs if normalized==true 
     input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1) #column vector
     sqrt_inv_input_cov = nothing
@@ -114,6 +118,7 @@ function GaussianProcess(
     else
         GPinputs = get_inputs(input_output_pairs)
     end
+    
     
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, transformed_data is equal to data)
     transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), obs_noise_cov)
@@ -457,12 +462,32 @@ Note: If F::SVD is the factorization object, U, S, V and Vt can be obtained via
 F.U, F.S, F.V and F.Vt, such that A = U * Diagonal(S) * Vt. The singular values 
 in S are sorted in descending order.
 """
-
+# TO DO: Add truncate_svd as an input flag here
 function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
     if obs_noise_cov != nothing
-        decomposition = svd(obs_noise_cov)
-        sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-        transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+        # MFH, 3/22/21: Truncate the SVD as a form of regularization
+	if truncate_svd # this variable needs to be provided to this function
+            # Perform SVD
+            decomposition = svd(obs_noise_cov)
+            # Find cutoff
+            σ = decomposition.S
+            σ_cumsum = cumsum(σ) / sum(σ);
+            P_cutoff = 0.95;
+            ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
+            println("SVD truncated at k:")
+            println(k)
+            # Apply truncated SVD
+            n = size(obs_noise_cov)[1]
+            decomposition.S[k+1:n] = zeros(n-k)
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD_local.S))
+            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+            transformed_data = transformed_data[1:k, :];
+            transformed_data = convert(Matrix{Float64},transformed_data');
+	else
+            decomposition = svd(obs_noise_cov)
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
+            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+        end
     else
         decomposition = nothing
         transformed_data = data
@@ -472,10 +497,30 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
 end
 
 function svd_transform(data::Vector{FT}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
-    if obs_noise_cov != nothing
-        decomposition = svd(obs_noise_cov)
-        sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-        transformed_data =  sqrt_singular_values_inv * decomposition.Vt * data
+     if obs_noise_cov != nothing
+        # MFH, 3/22/21: Truncate the SVD as a form of regularization
+	if truncate_svd # this variable needs to be provided to this function
+            # Perform SVD
+            decomposition = svd(obs_noise_cov)
+            # Find cutoff
+            σ = decomposition.S
+            σ_cumsum = cumsum(σ) / sum(σ);
+            P_cutoff = 0.95;
+            ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
+            println("SVD truncated at k:")
+            println(k)
+            # Apply truncated SVD
+            n = size(obs_noise_cov)[1]
+            decomposition.S[k+1:n] = zeros(n-k)
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD_local.S))
+            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+            transformed_data = transformed_data[1:k, :];
+            transformed_data = convert(Matrix{Float64},transformed_data');
+	else
+            decomposition = svd(obs_noise_cov)
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
+            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+        end
     else
         decomposition = nothing
         transformed_data = data
@@ -483,6 +528,7 @@ function svd_transform(data::Vector{FT}, obs_noise_cov::Union{Array{FT, 2}, Noth
 
     return transformed_data, decomposition
 end
+
 """
 svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::{Array{FT, 2}, decomposition::SVD) where {FT}
 
