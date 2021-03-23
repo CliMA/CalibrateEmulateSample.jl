@@ -1,5 +1,4 @@
 # ignore the following patterns
-*.jl.cov
 *.vtk
 *.dat
 *.csv
@@ -8,12 +7,10 @@
 *.swp
 *.png
 !docs/src/assets/*.png
-*.DS_Store
 docs/build/
 data/
 docs/site/
 *.jl.*.cov
 *.jl.mem
-deps/deps.jl
-Manifest.toml
 *.vscode*
+*.DS_Store

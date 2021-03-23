@@ -28,6 +28,25 @@ cd CalibrateEmulateSample.jl
 
 Install all the project dependencies.  Given that CES depends on python packages it is easiest to set the project to use it's own conda environment
 
+
+## Building CES Documentation
+
+You need to first build the toplevel project before building the documentation:
+
+```
+cd CalibrateEmulateSample.jl
+julia --project -e 'using Pkg; Pkg.instantiate()
+```
+
+Then you can build the project documentation under the `docs/` sub-project:
+
+```
+julia --project=docs/ -e 'using Pkg; Pkg.instantiate()'
+julia --project=docs/ docs/make.jl
+```
+
+The locally rendered HTML documentation can be viewed at `docs/build/index.html`
+
 ### Project Mind map
 The latest code structure is found at:
 https://miro.com/app/board/o9J_kkm8OGU=/
