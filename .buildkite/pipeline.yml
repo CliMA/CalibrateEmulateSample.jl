@@ -1,5 +1,5 @@
 env:
-  JULIA_VERSION: "1.5.2"
+  JULIA_VERSION: "1.5.4"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
@@ -30,7 +30,7 @@ steps:
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
       
-      julia --compiled-modules=no --color=yes --project -e '
+      julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg;
         Pkg.instantiate()
@@ -55,7 +55,7 @@ steps:
       mkdir examples/GaussianProcessEmulator/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot:$JULIA_DEPOT_PATH"
 
-      julia --compiled-modules=no --color=yes --project -e '
+      julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg;
         Pkg.instantiate()
@@ -86,7 +86,7 @@ steps:
       mkdir examples/Cloudy/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Cloudy/depot:$$JULIA_DEPOT_PATH"
 
-      julia --compiled-modules=no --color=yes --project -e '
+      julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg;
         Pkg.instantiate()
