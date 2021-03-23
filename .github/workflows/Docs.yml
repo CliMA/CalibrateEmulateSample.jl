@@ -1,6 +1,12 @@
 name: Documentation
 
 on:
+  push:
+    branches:
+      - master
+      - trying
+      - staging
+    tags: '*'
   pull_request:
     paths:
       - 'docs/**'
