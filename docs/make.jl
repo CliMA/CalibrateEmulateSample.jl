@@ -6,10 +6,18 @@ using Documenter
 # using DocumenterCitations
 
 #----------
+api = ["CalibrateEmulateSample" => [
+         "GPEmulator" => "API/GaussianProcessEmulator.md",
+				 "MarkovChainMonteCarlo" => "API/MarkovChainMonteCarlo.md", 
+				 "Utilities" => "API/Utilities.md"
+         ],
+]
+    
 
 pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
+    "API" => api,
 ]
 
 #----------
