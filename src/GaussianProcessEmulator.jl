@@ -49,7 +49,7 @@ struct FType <: PredictionType end
 """
     GaussianProcess{FT<:AbstractFloat}
 
-Structure holding training input and the fitted Gaussian Process Regression
+    Structure holding training input and the fitted Gaussian Process Regression
 models.
 
 # Fields
@@ -570,7 +570,6 @@ elements on the main diagonal (i.e., the variances), we return the full
 covariance at each point, as a vector of length N_predicted_points, where 
 each element is a matrix of size output_dim × output_dim
 """
-
 function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, decomposition::SVD) where {FT}
 
     output_dim, N_predicted_points = size(σ2)
