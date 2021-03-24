@@ -23,16 +23,14 @@ function read_mopex(;url=nothing)
 	replace_nan(v::Float64) = v == -99.0 ? NaN : v
 
 	# parse each line
-	nline = 1
-	for line in readlines(fh)
+	for (nline, line) in enumerate(readlines(fh))
 	    # parse date
-	    #@show line[1:4], line[5:6], line[7:8]
 	    year = parse(Int, line[1:4])  
 	    month = parse(Int, line[5:6])
 	    day = parse(Int, line[7:8])
 	    datetime[nline] = DateTime(year, month, day)
 	    # parse numeric values
-	    _precip, _pet, _flow, _min_temp, _max_temp = 
+	    _precip, _pet, _flow, _max_temp, _min_temp = 
 	    	map(x -> parse(Float64, x), split(line[9:end]))
 	    # precip mm / day
 	    precip[nline] = replace_nan(_precip)
@@ -42,8 +40,7 @@ function read_mopex(;url=nothing)
 	    flow[nline] = replace_nan(_flow)
 	    # mean daily temp C
 	    temp[nline] = (replace_nan(_min_temp) + replace_nan(_max_temp)) / 2.0
-	    nline += 1
     	end	
-    	return (datetime=datetime, precip=precip, flow=flow, temp=temp)
+    	return (datetime=datetime, precip=precip, pet=pet, flow=flow, temp=temp)
     end
 end
