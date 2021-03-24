@@ -74,16 +74,26 @@ function MCMC(
     param_init::Vector{FT},
     max_iter::IT,
     algtype::String,
-    burnin::IT;
-    svdflag=true) where {FT<:AbstractFloat, IT<:Int}
+    burnin::IT,
+    norm_factors::Union{Array{FT, 1}, Nothing};
+    svdflag=true,
+    standardize=false,
+    truncate_svd=1.0) where {FT<:AbstractFloat, IT<:Int}
 
     
     param_init_copy = deepcopy(param_init)
     
+    # Standardize MCMC input?
+    if standardize
+        obs_sample = obs_sample ./ norm_factors
+	cov_norm_factor = norm_factor .* norm_factor;
+	obs_noise_cov = obs_noise_cov ./ cov_norm_factor;
+    end
+
     # We need to transform obs_sample into the correct space 
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov)
+        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
     else
         println("Assuming independent outputs.")
     end
@@ -173,8 +183,15 @@ function log_likelihood(mcmc::MCMC{FT},
         diff = g - mcmc.obs_sample
         log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
     else
-        log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
-        diff = g - mcmc.obs_sample
+	# det(log(Γ))
+	# Ill-posed numerically for ill-conditioned covariance matrices with det≈0
+        #log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
+	# Well-posed numerically for ill-conditioned covariance matrices with det≈0
+	full_cov = Diagonal(gvar)
+	eigs = eigvals(full_cov)
+	log_gpfidelity = -FT(0.5) * sum(log.(eigs))
+	# Combine got log_rho
+	diff = g - mcmc.obs_sample
         log_rho[1] = -FT(0.5) * diff' * (Diagonal(gvar) \ diff) + log_gpfidelity
     end
     return log_rho[1]

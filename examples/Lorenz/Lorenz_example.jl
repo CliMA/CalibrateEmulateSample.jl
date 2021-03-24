@@ -246,8 +246,15 @@ end
 ###  Emulate: Gaussian Process Regression
 ###
 
+# Emulate-sample settings
+standardize = false
+truncate_svd = 1.0
+
 gppackage = GaussianProcessEmulator.GPJL()
 pred_type = GaussianProcessEmulator.YType()
+
+# Standardize the output data
+norm_factor = get_standardizing_factors(yt) 
 
 # Get training points from the EKP iteration number in the second input term  
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
@@ -256,7 +263,10 @@ normalized = true
 # Default kernel
 gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage; 
 			 obs_noise_cov=Γy, normalized=normalized,
-                         noise_learn=false, prediction_type=pred_type)
+                         noise_learn=false, 
+			 truncate_svd=truncate_svd, standardize=standardize,
+			 prediction_type=pred_type,
+			 norm_factor=norm_factor)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
@@ -294,7 +304,8 @@ step = 0.1 # first guess
 max_iter = 2000
 yt_sample = truth_sample
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
-                         mcmc_alg, burnin, svdflag=true)
+                         mcmc_alg, burnin, norm_factor;
+                         svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd)
 new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
 
 # Now begin the actual MCMC
@@ -305,7 +316,8 @@ burnin = 2000
 max_iter = 100000
 
 mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, 
-                    mcmc_alg, burnin, svdflag=true)
+                    mcmc_alg, burnin, norm_factor;
+                    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd)
 MarkovChainMonteCarlo.sample_posterior!(mcmc, gpobj, max_iter)
 
 println("Posterior size")

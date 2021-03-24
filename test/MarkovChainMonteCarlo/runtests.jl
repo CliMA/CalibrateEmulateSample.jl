@@ -58,8 +58,10 @@ using CalibrateEmulateSample.DataStorage
     burnin = 0
     step = 0.5 # first guess
     max_iter = 5000
+    norm_factors=nothing
     mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                        mcmc_alg, burnin)
+                        mcmc_alg, burnin, norm_factors; svdflag=true, standardize=false,
+			truncate_svd=1.0)
     new_step = find_mcmc_step!(mcmc_test, gp)
 
     # reset parameters 
@@ -68,7 +70,8 @@ using CalibrateEmulateSample.DataStorage
 
     # Now begin the actual MCMC
     mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                   mcmc_alg, burnin, svdflag=true)
+                   mcmc_alg, burnin, norm_factors; svdflag=true, standardize=false,
+                   truncate_svd=1.0)
     sample_posterior!(mcmc, gp, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]

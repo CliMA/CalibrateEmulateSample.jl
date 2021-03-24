@@ -49,7 +49,8 @@ using CalibrateEmulateSample.DataStorage
    
     gp1 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
-                   prediction_type=pred_type)
+		   truncate_svd=1.0, standardize=false,
+                   prediction_type=pred_type, norm_factor=nothing)
     μ1, σ1² = GaussianProcessEmulator.predict(gp1, new_inputs)
     
     @test gp1.input_output_pairs == iopairs
@@ -63,7 +64,9 @@ using CalibrateEmulateSample.DataStorage
     # Check if normalization works
     gp1_norm = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, 
                         obs_noise_cov=nothing, normalized=true, 
-                        noise_learn=true, prediction_type=pred_type)
+                        noise_learn=true, truncate_svd=1.0,
+			standardize=false, prediction_type=pred_type,
+			norm_factor=nothing)
     @test gp1_norm.sqrt_inv_input_cov ≈ [sqrt(1.0 / Statistics.var(x))] atol=1e-4
 
 
@@ -71,7 +74,8 @@ using CalibrateEmulateSample.DataStorage
     pred_type = FType()
     gp2 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
-                   prediction_type=pred_type)
+		   truncate_svd=1.0, standardize=false,
+                   prediction_type=pred_type, norm_factor=nothing)
     μ2, σ2² = GaussianProcessEmulator.predict(gp2, new_inputs)
     # predict_y and predict_f should give the same mean
     @test μ2 ≈ μ1 atol=1e-6
@@ -87,7 +91,8 @@ using CalibrateEmulateSample.DataStorage
 
     gp3 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
                    normalized=false, noise_learn=true, 
-                   prediction_type=pred_type)
+		   truncate_svd=1.0, standardize=false,
+                   prediction_type=pred_type, norm_factor=nothing)
    
     μ3, σ3² = GaussianProcessEmulator.predict(gp3, new_inputs)
     @test vec(μ3) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol=0.3
@@ -127,15 +132,16 @@ using CalibrateEmulateSample.DataStorage
     @test get_inputs(iopairs2) == X
     @test get_outputs(iopairs2) == Y
 
-    transformed_Y, decomposition = svd_transform(Y, Σ)
+    transformed_Y, decomposition = svd_transform(Y, Σ, truncate_svd=1.0)
     @test size(transformed_Y) == size(Y)
-    transformed_Y, decomposition = svd_transform(Y[:, 1], Σ)
+    transformed_Y, decomposition = svd_transform(Y[:, 1], Σ, truncate_svd=1.0)
     @test size(transformed_Y) == size(Y[:, 1])
 
     
     gp4 = GaussianProcess(iopairs2, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
                           normalized=true, noise_learn=true, 
-                          prediction_type=pred_type)
+		          truncate_svd=1.0, standardize=false,
+                          prediction_type=pred_type, norm_factor=nothing)
 
     new_inputs = zeros(2, 4)
     new_inputs[:, 2] = [π/2, π]

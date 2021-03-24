@@ -21,7 +21,7 @@ export predict
 
 export GPJL, SKLJL
 export YType, FType
-export svd_transform, svd_reverse_transform_mean_cov
+export svd_transform, svd_reverse_transform_mean_cov, get_standardizing_factors
 
 """
     GaussianProcessesPackage
@@ -71,6 +71,8 @@ struct GaussianProcess{FT<:AbstractFloat, GPM}
     normalized::Bool
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
     prediction_type::Union{Nothing, PredictionType}
+    "Standardization factors (characteristic values of the problem)"
+    norm_factors::Union{Array{FT}, Nothing}
 end
 
 
@@ -89,7 +91,10 @@ function GaussianProcess(
     obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing,
     normalized::Bool=true,
     noise_learn::Bool=true,
-    prediction_type::PredictionType=YType()) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
+    truncate_svd::FT=1.0,
+    standardize::Bool=false,
+    prediction_type::PredictionType=YType(),
+    norm_factor::Union{Array{FT,1}, Nothing}=nothing) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
 
     # Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
@@ -107,6 +112,10 @@ function GaussianProcess(
 
     # TO DO: Standardize the data here
     # Can use the full time median or some user define function?
+    if standardize
+        #norm_factors = get_standarizing_factors() 
+	obs_noise_cov = obs_noise_cov ./ (norm_factor .* norm_factor')
+    end
 
     # Normalize the inputs if normalized==true 
     input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1) #column vector
@@ -121,7 +130,8 @@ function GaussianProcess(
     
     
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, transformed_data is equal to data)
-    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), obs_noise_cov)
+    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), 
+						    obs_noise_cov, truncate_svd=truncate_svd)
 
     # Use a default kernel unless a kernel was supplied to GaussianProcess
     if GPkernel==nothing
@@ -193,7 +203,8 @@ function GaussianProcess(
                                                models,
                                                decomposition,
                                                normalized,
-                                               prediction_type)
+                                               prediction_type,
+					       norm_factor)
 end
 
 
@@ -211,7 +222,10 @@ function GaussianProcess(
     obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing,
     normalized::Bool=true,
     noise_learn::Bool=true,
-    prediction_type::PredictionType=YType()) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
+    truncate_svd::FT=1.0,
+    standardize::Bool=false,
+    prediction_type::PredictionType=YType(),
+    norm_factor::Union{Array{FT,1}, Nothing}=nothing) where {FT<:AbstractFloat, K<:Kernel, KPy<:PyObject}
 
     # Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
@@ -226,6 +240,14 @@ function GaussianProcess(
     # Number of models (We are fitting one model per output dimension)
     N_models = output_dim
 
+    # TO DO: Standardize the data here
+    # Can use the full time median or some user define function?
+    if standardize
+        #norm_factors = get_standarizing_factors() 
+	obs_noise_cov = obs_noise_cov ./ (norm_factor .* norm_factor')
+    end
+
+    
     # Normalize the inputs if normalized==true
     # Note that contrary to the GaussianProcesses.jl (GPJL) GPE, the 
     # ScikitLearn (SKLJL) GaussianProcessRegressor requires inputs to be of 
@@ -241,7 +263,8 @@ function GaussianProcess(
 
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, 
     # transformed_data is equal to data)
-    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), obs_noise_cov)
+    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), 
+						    obs_noise_cov, truncate_svd=truncate_svd)
 
     if GPkernel==nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
@@ -302,7 +325,8 @@ function GaussianProcess(
                                                 models,
                                                 decomposition,
                                                 normalized,
-                                                YType())
+                                                YType(),
+						norm_factor)
 end
 
 
@@ -463,16 +487,17 @@ F.U, F.S, F.V and F.Vt, such that A = U * Diagonal(S) * Vt. The singular values
 in S are sorted in descending order.
 """
 # TO DO: Add truncate_svd as an input flag here
-function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
+function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}; 
+		       truncate_svd::FT=1.0) where {FT}
     if obs_noise_cov != nothing
         # MFH, 3/22/21: Truncate the SVD as a form of regularization
-	if truncate_svd # this variable needs to be provided to this function
+	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
             decomposition = svd(obs_noise_cov)
             # Find cutoff
             σ = decomposition.S
             σ_cumsum = cumsum(σ) / sum(σ);
-            P_cutoff = 0.95;
+            P_cutoff = truncate_svd;
             ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
             println("SVD truncated at k:")
             println(k)
@@ -496,16 +521,18 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
     return transformed_data, decomposition
 end
 
-function svd_transform(data::Vector{FT}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
+function svd_transform(data::Vector{FT}, 
+		       obs_noise_cov::Union{Array{FT, 2}, Nothing};
+		       truncate_svd::FT=1.0) where {FT}
      if obs_noise_cov != nothing
         # MFH, 3/22/21: Truncate the SVD as a form of regularization
-	if truncate_svd # this variable needs to be provided to this function
+	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
             decomposition = svd(obs_noise_cov)
             # Find cutoff
             σ = decomposition.S
             σ_cumsum = cumsum(σ) / sum(σ);
-            P_cutoff = 0.95;
+            P_cutoff = truncate_svd;
             ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
             println("SVD truncated at k:")
             println(k)
@@ -561,5 +588,13 @@ function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, dec
 
     return transformed_μ, transformed_σ2
 end
+
+function get_standardizing_factors(data::Array{FT,2}) where {FT}
+    # Input: data size: N_data x N_ensembles
+    # Ensemble median of the data
+    norm_factor = median(data,dims=2)
+    return norm_factor
+end
+
 
 end 
