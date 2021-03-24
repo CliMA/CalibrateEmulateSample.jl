@@ -89,7 +89,8 @@ end
 #logmean_A, logstd_A = logmean_and_logstd(A_true, 0.2*A_true)
 
 if dynamics == 2
-	prior_means = [F_true+1.0, A_true+0.5]
+	#prior_means = [F_true+0.5, A_true+0.5]
+	prior_means = [F_true, A_true]
 	prior_stds = [2.0, 0.5*A_true]
 	d1 = Parameterized(Normal(prior_means[1], prior_stds[1]))
 	d2 = Parameterized(Normal(prior_means[2], prior_stds[2]))
@@ -219,6 +220,7 @@ ekiobj = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_params,
 # EKI iterations
 println("EKP inversion error:")
 err = zeros(N_iter) 
+err_params = zeros(N_iter) 
 for i in 1:N_iter
     if log_normal==false
         params_i = get_u_final(ekiobj)
@@ -227,8 +229,10 @@ for i in 1:N_iter
     end
     g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
     EnsembleKalmanProcessModule.update_ensemble!(ekiobj, g_ens) 
-    err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
-    println("Iteration: "*string(i)*", Error: "*string(err[i]))
+    err[i] = get_error(ekiobj)[end] 
+    err_params[i] = mean((params_true - mean(params_i,dims=2)).^2)
+    println("Iteration: "*string(i)*", Error (data): "*string(err[i]))
+    println("Iteration: "*string(i)*", Error (params): "*string(err_params[i]))
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -255,6 +259,8 @@ pred_type = GaussianProcessEmulator.YType()
 
 # Standardize the output data
 norm_factor = get_standardizing_factors(yt) 
+println(size(norm_factor))
+norm_factor = vcat(norm_factor...)
 
 # Get training points from the EKP iteration number in the second input term  
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
@@ -297,6 +303,7 @@ println("initial parameters: ", u0)
 
 # MCMC parameters    
 mcmc_alg = "rwm" # random walk Metropolis
+svd_flag = true
 
 # First let's run a short chain to determine a good step size
 burnin = 0
