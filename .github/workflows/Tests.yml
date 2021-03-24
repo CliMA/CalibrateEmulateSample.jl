@@ -16,7 +16,7 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.6.0
+      uses: styfle/cancel-workflow-action@0.8.0
       with:
         access_token: ${{ github.token }}
 
@@ -26,7 +26,7 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.5
+        version: 1.5.4
  
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
@@ -34,25 +34,25 @@ jobs:
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.instantiate()'
+        julia --project -e 'using Pkg; Pkg.instantiate()'
 
     - name: Install SciKitLearn Conda Package
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Conda; Conda.add("scikit-learn")'
+        julia --project -e 'using Conda; Conda.add("scikit-learn")'
 
     - name: Run Unit Tests
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.test(coverage=true)'
+        julia --project -e 'using Pkg; Pkg.test(coverage=true)'
 
     - name: Generate coverage file
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.add("Coverage");
-                               using Coverage;
-                               LCOV.writefile("coverage-lcov.info", Codecov.process_folder())'
+        julia --project -e 'using Pkg; Pkg.add("Coverage");
+                            using Coverage;
+                            LCOV.writefile("coverage-lcov.info", Codecov.process_folder())'
       if: success()
 
     - name: Submit coverage
@@ -70,7 +70,7 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.6.0
+      uses: styfle/cancel-workflow-action@0.8.0
       with:
         access_token: ${{ github.token }}
 
@@ -80,25 +80,25 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.5
+        version: 1.5.4
  
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.instantiate()'
+        julia --project -e 'using Pkg; Pkg.instantiate()'
 
     - name: Install SciKitLearn Conda Package
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Conda; Conda.add("scikit-learn")'
+        julia --project -e 'using Conda; Conda.add("scikit-learn")'
 
     - name: Run Unit Tests
       env:
         PYTHON: ""
       run: |
-        LD_LIBRARY_PATH=$HOME/.julia/conda/3/lib julia --project=@. -e 'using Pkg; Pkg.test()'
+        LD_LIBRARY_PATH=$HOME/.julia/conda/3/lib julia --project -e 'using Pkg; Pkg.test()'
 
   test-windows:
     timeout-minutes: 60
@@ -109,7 +109,7 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.6.0
+      uses: styfle/cancel-workflow-action@0.8.0
       with:
         access_token: ${{ github.token }}
 
@@ -119,22 +119,22 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.5
+        version: 1.5.4
  
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.instantiate()'
+        julia --project -e 'using Pkg; Pkg.instantiate()'
 
     - name: Install SciKitLearn Conda Package
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Conda; Conda.add(\"scikit-learn\")'
+        julia --project -e 'using Conda; Conda.add(\"scikit-learn\")'
 
     - name: Run Unit Tests
       env:
         PYTHON: ""
       run: |
-        julia --project=@. -e 'using Pkg; Pkg.test()'
+        julia --project -e 'using Pkg; Pkg.test()'
