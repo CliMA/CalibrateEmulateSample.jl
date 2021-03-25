@@ -12,7 +12,7 @@ export get_training_points
 export get_obs_sample
 export orig2zscore
 export zscore2orig
-
+export get_standardizing_factors
 
 """
     extract_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_train_iterations::IT) where {FT,IT, P}
@@ -112,5 +112,21 @@ function zscore2orig(Z::AbstractMatrix{FT},
     end
     return X
 end
+
+function get_standardizing_factors(data::Array{FT,2}) where {FT}
+    # Input: data size: N_data x N_ensembles
+    # Ensemble median of the data
+    norm_factor = median(data,dims=2)
+    return norm_factor
+end
+
+function get_standardizing_factors(data::Array{FT,1}) where {FT}
+    # Input: data size: N_data*N_ensembles (splatted)
+    # Ensemble median of the data
+    norm_factor = median(data)
+    return norm_factor
+end
+
+
 
 end # module

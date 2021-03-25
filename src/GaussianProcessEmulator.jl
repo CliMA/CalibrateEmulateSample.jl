@@ -21,7 +21,7 @@ export predict
 
 export GPJL, SKLJL
 export YType, FType
-export svd_transform, svd_reverse_transform_mean_cov, get_standardizing_factors
+export svd_transform, svd_reverse_transform_mean_cov
 
 """
     GaussianProcessesPackage
@@ -106,15 +106,18 @@ function GaussianProcess(
 
     # Initialize vector of GP models
     models = Any[]
-    # Number of models (We are fitting one model per output dimension)
-    N_models = output_dim
    
 
     # TO DO: Standardize the data here
     # Can use the full time median or some user define function?
     if standardize
         #norm_factors = get_standarizing_factors() 
+	println(size(get_outputs(input_output_pairs)))
+	output_values = get_outputs(input_output_pairs) ./ norm_factor
 	obs_noise_cov = obs_noise_cov ./ (norm_factor .* norm_factor')
+	println(size(output_values))
+    else
+	output_values = get_outputs(input_output_pairs)
     end
 
     # Normalize the inputs if normalized==true 
@@ -123,16 +126,31 @@ function GaussianProcess(
     if normalized
         # Normalize (NB the inputs have to be of) size [input_dim × N_samples] to pass to GPE())
         sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(input_output_pairs), dims=2))))
-        GPinputs = sqrt_inv_input_cov * (get_inputs(input_output_pairs).-input_mean) 
+        GPinputs = sqrt_inv_input_cov * (get_inputs(input_output_pairs).-input_mean)
     else
         GPinputs = get_inputs(input_output_pairs)
     end
     
     
-    # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, transformed_data is equal to data)
-    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), 
+    # Transform data if obs_noise_cov available 
+    # (if obs_noise_cov==nothing, transformed_data is equal to data)
+    transformed_data, decomposition = svd_transform(output_values, 
 						    obs_noise_cov, truncate_svd=truncate_svd)
+    println(size(transformed_data))
+    #println(transformed_data)
 
+    # Overwrite the input-output pairs because of the size discrepency
+    if truncate_svd<1.0
+	# Overwrite the input_output_pairs structure
+	input_output_pairs_old = deepcopy(input_output_pairs)
+	input_output_pairs = PairedDataContainer(get_inputs(input_output_pairs_old),
+					      transformed_data, data_are_columns=true)
+        input_dim, output_dim = size(input_output_pairs, 1)
+    end
+
+    # Number of models (We are fitting one model per output dimension)
+    N_models = output_dim; #size(transformed_data)[1]
+    
     # Use a default kernel unless a kernel was supplied to GaussianProcess
     if GPkernel==nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
@@ -244,7 +262,10 @@ function GaussianProcess(
     # Can use the full time median or some user define function?
     if standardize
         #norm_factors = get_standarizing_factors() 
+	output_values = get_outputs(input_output_pairs) ./ norm_factor
 	obs_noise_cov = obs_noise_cov ./ (norm_factor .* norm_factor')
+    else
+	output_values = get_outputs(input_output_pairs)
     end
 
     
@@ -263,7 +284,7 @@ function GaussianProcess(
 
     # Transform data if obs_noise_cov available (if obs_noise_cov==nothing, 
     # transformed_data is equal to data)
-    transformed_data, decomposition = svd_transform(get_outputs(input_output_pairs), 
+    transformed_data, decomposition = svd_transform(output_values, 
 						    obs_noise_cov, truncate_svd=truncate_svd)
 
     if GPkernel==nothing
@@ -504,10 +525,10 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
             # Apply truncated SVD
             n = size(obs_noise_cov)[1]
             decomposition.S[k+1:n] = zeros(n-k)
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD_local.S))
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
             transformed_data = transformed_data[1:k, :];
-            transformed_data = convert(Matrix{Float64},transformed_data');
+            #transformed_data = convert(Matrix{Float64},transformed_data');
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
@@ -539,10 +560,10 @@ function svd_transform(data::Vector{FT},
             # Apply truncated SVD
             n = size(obs_noise_cov)[1]
             decomposition.S[k+1:n] = zeros(n-k)
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(SVD_local.S))
+            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-            transformed_data = transformed_data[1:k, :];
-            transformed_data = convert(Matrix{Float64},transformed_data');
+            transformed_data = transformed_data[1:k];
+	    #transformed_data = permutedims(transformed_data, [2, 1]);
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
@@ -586,13 +607,6 @@ function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, dec
     end
 
     return transformed_μ, transformed_σ2
-end
-
-function get_standardizing_factors(data::Array{FT,2}) where {FT}
-    # Input: data size: N_data x N_ensembles
-    # Ensemble median of the data
-    norm_factor = median(data,dims=2)
-    return norm_factor
 end
 
 

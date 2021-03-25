@@ -75,7 +75,7 @@ function MCMC(
     max_iter::IT,
     algtype::String,
     burnin::IT,
-    norm_factors::Union{Array{FT, 1}, Nothing};
+    norm_factor::Union{Array{FT, 1}, Nothing};
     svdflag=true,
     standardize=false,
     truncate_svd=1.0) where {FT<:AbstractFloat, IT<:Int}
@@ -84,11 +84,15 @@ function MCMC(
     param_init_copy = deepcopy(param_init)
     
     # Standardize MCMC input?
+    println(obs_sample)
+    println(obs_noise_cov)
     if standardize
-        obs_sample = obs_sample ./ norm_factors
+        obs_sample = obs_sample ./ norm_factor;
 	cov_norm_factor = norm_factor .* norm_factor;
 	obs_noise_cov = obs_noise_cov ./ cov_norm_factor;
     end
+    println(obs_sample)
+    println(obs_noise_cov)
 
     # We need to transform obs_sample into the correct space 
     if svdflag
@@ -97,6 +101,7 @@ function MCMC(
     else
         println("Assuming independent outputs.")
     end
+    println(obs_sample)
     
     # first row is param_init
     posterior = zeros(length(param_init_copy),max_iter + 1)

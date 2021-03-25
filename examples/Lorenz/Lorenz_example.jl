@@ -23,7 +23,9 @@ using CalibrateEmulateSample.ParameterDistributionStorage
 using CalibrateEmulateSample.DataStorage
 using CalibrateEmulateSample.Observations
 
-rng_seed = 4137
+#rng_seed = 4137
+#rng_seed = 413798
+rng_seed = 2413798
 Random.seed!(rng_seed)
 
 # Output figure save directory
@@ -45,7 +47,7 @@ end
 dynamics = 2 # Transient is 2
 # Statistics integration length
 # This has to be less than 360 and 360 must be divisible by Ts_days
-Ts_days = 90. # Integration length in days
+Ts_days = 30. # Integration length in days
 # Stats type, which statistics to construct from the L96 system
 # 4 is a linear fit over a batch of length Ts_days
 # 5 is the mean over a batch of length Ts_days
@@ -91,7 +93,7 @@ end
 if dynamics == 2
 	#prior_means = [F_true+0.5, A_true+0.5]
 	prior_means = [F_true, A_true]
-	prior_stds = [2.0, 0.5*A_true]
+	prior_stds = [3.0, 0.5*A_true]
 	d1 = Parameterized(Normal(prior_means[1], prior_stds[1]))
 	d2 = Parameterized(Normal(prior_means[2], prior_stds[2]))
 	prior_distns = [d1, d2]
@@ -125,11 +127,12 @@ dt = 1/64.
 # Start of integration
 t_start = 800.
 # Data collection length
-if dynamics==1
-    T = 2.
-else
-    T = 360. / τc
-end
+#if dynamics==1
+#    T = 2.
+#else
+#    T = 360. / τc
+#end
+T = 360. / τc
 # Batch length
 Ts = 5. / τc # Nondimensionalize by L96 timescale
 # Integration length
@@ -163,6 +166,7 @@ lorenz_params = GModel.LParams(F_true, ω_true, A_true)
 gt = dropdims(GModel.run_G_ensemble(params_true, lorenz_settings), dims=2)
 
 # Compute internal variability covariance
+n_samples = 50 
 if var_prescribe==true
     n_samples = 100
     yt = zeros(length(gt),n_samples)
@@ -175,7 +179,6 @@ if var_prescribe==true
     end
 else
     println("Using truth values to compute covariance")
-    n_samples = 20 
     yt = zeros(length(gt), n_samples)
     for i in 1:n_samples
 	    lorenz_settings_local = GModel.LSettings(dynamics, stats_type, t_start+T*(i-1), 
@@ -189,12 +192,19 @@ else
     Γy = cov(yt, dims=2)
     
     println(Γy)
+    println(size(Γy))
+    println(rank(Γy))
 end
 
 
 # Construct observation object
 truth = Observations.Obs(yt, Γy, data_names)
+# Truth sample for EKP
 truth_sample = truth.mean
+#sample_ind=randperm!(collect(1:n_samples))[1]
+#truth_sample = yt[:,sample_ind]
+#println("Truth sample:")
+#println(sample_ind)
 ###
 ###  Calibrate: Ensemble Kalman Inversion
 ###
@@ -251,18 +261,24 @@ end
 ###
 
 # Emulate-sample settings
-standardize = false
-truncate_svd = 1.0
+standardize = true
+truncate_svd = 0.95
 
 gppackage = GaussianProcessEmulator.GPJL()
 pred_type = GaussianProcessEmulator.YType()
 
 # Standardize the output data
-norm_factor = get_standardizing_factors(yt) 
+# Use median over all data since all data are the same type
+yt_norm = vcat(yt...)
+norm_factor = get_standardizing_factors(yt_norm) 
 println(size(norm_factor))
-norm_factor = vcat(norm_factor...)
+#norm_factor = vcat(norm_factor...)
+norm_factor = fill(norm_factor, size(truth_sample))
+println("Standardization factors")
+println(norm_factor)
 
 # Get training points from the EKP iteration number in the second input term  
+N_iter = 5;
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
 
@@ -276,23 +292,28 @@ gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage;
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-if log_normal==false
-    y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, :, 1), 
-                                   transform_to_real=true)
-else
-	y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(log.(params_true), :, 1), 
-                                   transform_to_real=true)
+if truncate_svd==1.0
+    if log_normal==false
+        y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, :, 1), 
+                                       transform_to_real=true)
+    else
+    	y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(log.(params_true), :, 1), 
+                                       transform_to_real=true)
+    end
+    
+    println("GP prediction on true parameters: ")
+    println(vec(y_mean))
+    println(" GP variance")
+    println(diag(y_var[1],0))
+    println("true data: ")
+    if standardize
+        println(truth.mean ./ norm_factor)
+    else
+        println(truth.mean)
+    end
+    println("GP MSE: ")
+    println(mean((truth.mean - vec(y_mean)).^2))
 end
-
-println("GP prediction on true parameters: ")
-println(vec(y_mean))
-println(" GP variance")
-println(diag(y_var[1],0))
-println("true data: ")
-println(truth.mean)
-println("GP MSE: ")
-println(mean((truth.mean - vec(y_mean)).^2))
-
 ###
 ###  Sample: Markov Chain Monte Carlo
 ###
@@ -354,11 +375,11 @@ save_directory = figure_save_directory*y_folder
 for idx in 1:n_params
     if idx == 1
         param = "F"
-	xbounds = [7.95, 8.05]
+	xbounds = [F_true-1.0, F_true+1.0]
 	xs = collect(xbounds[1]:(xbounds[2]-xbounds[1])/100:xbounds[2])
     elseif idx == 2
         param = "A"
-	xbounds = [2.45, 2.55]
+	xbounds = [A_true-1.0, A_true+1.0]
 	xs = collect(xbounds[1]:(xbounds[2]-xbounds[1])/100:xbounds[2])
     elseif idx == 3
         param = "ω"

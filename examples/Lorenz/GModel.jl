@@ -5,7 +5,8 @@ using DocStringExtensions
 using Random
 using Distributions
 using LinearAlgebra
-using DifferentialEquations
+#using DifferentialEquations
+using OrdinaryDiffEq
 using FFTW
 
 export run_G
