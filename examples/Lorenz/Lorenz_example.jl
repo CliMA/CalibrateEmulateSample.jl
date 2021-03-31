@@ -28,6 +28,22 @@ using CalibrateEmulateSample.Observations
 rng_seed = 2413798
 Random.seed!(rng_seed)
 
+
+function get_standardizing_factors(data::Array{FT,2}) where {FT}
+    # Input: data size: N_data x N_ensembles
+    # Ensemble median of the data
+    norm_factor = median(data,dims=2)
+    return norm_factor
+end
+
+function get_standardizing_factors(data::Array{FT,1}) where {FT}
+    # Input: data size: N_data*N_ensembles (splatted)
+    # Ensemble median of the data
+    norm_factor = median(data)
+    return norm_factor
+end
+
+
 # Output figure save directory
 example_directory = @__DIR__
 println(example_directory)

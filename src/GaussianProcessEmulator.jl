@@ -591,19 +591,24 @@ elements on the main diagonal (i.e., the variances), we return the full
 covariance at each point, as a vector of length N_predicted_points, where 
 each element is a matrix of size output_dim × output_dim
 """
-function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, decomposition::SVD) where {FT}
+function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, 
+                                        decomposition::SVD;
+					truncate_svd::FT=1.0) where {FT}
+    if truncate_svd==1.0
+        output_dim, N_predicted_points = size(σ2)
+        # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
+        sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
+        transformed_μ = decomposition.V * sqrt_singular_values * μ
 
-    output_dim, N_predicted_points = size(σ2)
-    # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
-    sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
-    transformed_μ = decomposition.V * sqrt_singular_values * μ
+        transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
+        # Back transformation
 
-    transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
-    # Back transformation
-
-    for j in 1:N_predicted_points
-        σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
-        transformed_σ2[j] = σ2_j
+        for j in 1:N_predicted_points
+            σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
+            transformed_σ2[j] = σ2_j
+        end
+    else
+        println("To do")
     end
 
     return transformed_μ, transformed_σ2

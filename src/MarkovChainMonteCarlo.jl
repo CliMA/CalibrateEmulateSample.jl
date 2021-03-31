@@ -150,9 +150,10 @@ function get_posterior(mcmc::MCMC)
     
 end
 
-function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
+function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, 
+                      gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
     if mcmc.algtype == "rwm"
-        log_posterior = log_likelihood(mcmc, g, gvar) + log_prior(mcmc)
+        log_posterior = log_likelihood(mcmc, g, gcov) + log_prior(mcmc)
     end
 
     if mcmc.log_posterior[1] isa Nothing # do an accept step.
@@ -175,6 +176,10 @@ function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT
 
 end
 
+function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
+    return mcmc_sample!(mcmc, g, Diagonal(gvar))
+end
+
 function accept_ratio(mcmc::MCMC{FT}) where {FT}
     return convert(FT, mcmc.accept[1]) / mcmc.iter[1]
 end
@@ -182,23 +187,23 @@ end
 
 function log_likelihood(mcmc::MCMC{FT},
                         g::Vector{FT},
-                        gvar::Vector{FT}) where {FT}
+                        gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
     log_rho = FT[0]
-    if gvar == nothing
-        diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
-    else
+    #if gcov == nothing
+    #    diff = g - mcmc.obs_sample
+    #    log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
+    #else
 	# det(log(Γ))
 	# Ill-posed numerically for ill-conditioned covariance matrices with det≈0
         #log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
 	# Well-posed numerically for ill-conditioned covariance matrices with det≈0
-	full_cov = Diagonal(gvar)
-	eigs = eigvals(full_cov)
+	#full_cov = Diagonal(gvar)
+	eigs = eigvals(gcov)
 	log_gpfidelity = -FT(0.5) * sum(log.(eigs))
 	# Combine got log_rho
 	diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * (Diagonal(gvar) \ diff) + log_gpfidelity
-    end
+        log_rho[1] = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
+    #end
     return log_rho[1]
 end
 
