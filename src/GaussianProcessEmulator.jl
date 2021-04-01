@@ -46,6 +46,16 @@ abstract type PredictionType end
 struct YType <: PredictionType end
 struct FType <: PredictionType end
 
+
+# SVD decompsotion structure
+struct decomp_struct{FT<:AbstractFloat, IT<:Int}
+    V::Array{FT,2}
+    Vt::Array{FT,2}
+    S::Array{FT}
+    N::IT
+end
+
+
 """
     GaussianProcess{FT<:AbstractFloat}
 
@@ -66,7 +76,7 @@ struct GaussianProcess{FT<:AbstractFloat, GPM}
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
     models::Vector
     "the singular value decomposition of obs_noise_cov, such that obs_noise_cov = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt."
-    decomposition::Union{SVD, Nothing}
+    decomposition::Union{SVD, decomp_struct, Nothing}
     "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
     normalized::Bool
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
@@ -492,7 +502,6 @@ function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, trans
     return μ_pred, σ2_pred
 end
 
-
 """
 svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
 
@@ -524,11 +533,11 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
             println(k)
             # Apply truncated SVD
             n = size(obs_noise_cov)[1]
-            decomposition.S[k+1:n] = zeros(n-k)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
-            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-            transformed_data = transformed_data[1:k, :];
-            #transformed_data = convert(Matrix{Float64},transformed_data');
+	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
+            transformed_data = transformed_data;
+            decomposition = decomp_struct(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
+                                   decomposition.S[1:k], n)
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
@@ -559,11 +568,11 @@ function svd_transform(data::Vector{FT},
             println(k)
             # Apply truncated SVD
             n = size(obs_noise_cov)[1]
-            decomposition.S[k+1:n] = zeros(n-k)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
-            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-            transformed_data = transformed_data[1:k];
-	    #transformed_data = permutedims(transformed_data, [2, 1]);
+	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
+            transformed_data = transformed_data;
+            decomposition = decomp_struct(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
+                                   decomposition.S[1:k], n)
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
@@ -592,9 +601,8 @@ covariance at each point, as a vector of length N_predicted_points, where
 each element is a matrix of size output_dim × output_dim
 """
 function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, 
-                                        decomposition::SVD;
+                                        decomposition::Union{SVD, decomp_struct};
 					truncate_svd::FT=1.0) where {FT}
-    if truncate_svd==1.0
         output_dim, N_predicted_points = size(σ2)
         # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
         sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
@@ -607,9 +615,6 @@ function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2},
             σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
             transformed_σ2[j] = σ2_j
         end
-    else
-        println("To do")
-    end
 
     return transformed_μ, transformed_σ2
 end

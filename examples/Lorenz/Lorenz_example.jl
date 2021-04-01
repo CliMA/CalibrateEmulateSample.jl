@@ -308,7 +308,7 @@ gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage;
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-if truncate_svd==1.0
+#if truncate_svd==1.0
     if log_normal==false
         y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, :, 1), 
                                        transform_to_real=true)
@@ -329,7 +329,7 @@ if truncate_svd==1.0
     end
     println("GP MSE: ")
     println(mean((truth.mean - vec(y_mean)).^2))
-end
+#end
 ###
 ###  Sample: Markov Chain Monte Carlo
 ###
