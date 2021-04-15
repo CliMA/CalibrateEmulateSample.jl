@@ -22,6 +22,7 @@ export predict
 export GPJL, SKLJL
 export YType, FType
 export svd_transform, svd_reverse_transform_mean_cov
+export decomp_struct
 
 """
     GaussianProcessesPackage
@@ -47,14 +48,18 @@ struct YType <: PredictionType end
 struct FType <: PredictionType end
 
 
-# SVD decompsotion structure
+# SVD decomposition structure
 struct decomp_struct{FT<:AbstractFloat, IT<:Int}
     V::Array{FT,2}
     Vt::Array{FT,2}
     S::Array{FT}
     N::IT
 end
-
+# SVD decomposition constructor
+function decomp_struct(svd::SVD)
+	# svd.V is of type adjoint, transformed to Array with [:,:]
+	return decomp_struct(svd.V[:,:], svd.Vt, svd.S, size(svd.S)[1])
+end
 
 """
     GaussianProcess{FT<:AbstractFloat}
@@ -76,7 +81,7 @@ struct GaussianProcess{FT<:AbstractFloat, GPM}
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
     models::Vector
     "the singular value decomposition of obs_noise_cov, such that obs_noise_cov = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt."
-    decomposition::Union{SVD, decomp_struct, Nothing}
+    decomposition::Union{decomp_struct, Nothing}
     "whether to fit GP models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
     normalized::Bool
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
@@ -118,14 +123,10 @@ function GaussianProcess(
     models = Any[]
    
 
-    # TO DO: Standardize the data here
-    # Can use the full time median or some user define function?
+    # Can use the full time median or some user define function
     if standardize
-        #norm_factors = get_standarizing_factors() 
-	println(size(get_outputs(input_output_pairs)))
 	output_values = get_outputs(input_output_pairs) ./ norm_factor
 	obs_noise_cov = obs_noise_cov ./ (norm_factor .* norm_factor')
-	println(size(output_values))
     else
 	output_values = get_outputs(input_output_pairs)
     end
@@ -146,8 +147,6 @@ function GaussianProcess(
     # (if obs_noise_cov==nothing, transformed_data is equal to data)
     transformed_data, decomposition = svd_transform(output_values, 
 						    obs_noise_cov, truncate_svd=truncate_svd)
-    println(size(transformed_data))
-    #println(transformed_data)
 
     # Overwrite the input-output pairs because of the size discrepency
     if truncate_svd<1.0
@@ -268,8 +267,7 @@ function GaussianProcess(
     # Number of models (We are fitting one model per output dimension)
     N_models = output_dim
 
-    # TO DO: Standardize the data here
-    # Can use the full time median or some user define function?
+    # Can use the full time median or some user define function
     if standardize
         #norm_factors = get_standarizing_factors() 
 	output_values = get_outputs(input_output_pairs) ./ norm_factor
@@ -541,6 +539,7 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+	    decomposition = decomp_struct(svd(obs_noise_cov))
         end
     else
         decomposition = nothing
@@ -576,6 +575,7 @@ function svd_transform(data::Vector{FT},
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
+	    decomposition = decomp_struct(svd(obs_noise_cov))
         end
     else
         decomposition = nothing
