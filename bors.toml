@@ -6,5 +6,5 @@ status = [
   'buildkite/calibrateemulatesample-ci'
 ]
 delete_merged_branches = true
-timeout_sec = 3600
+timeout_sec = 4800
 block_labels = [ "do-not-merge-yet" ]
