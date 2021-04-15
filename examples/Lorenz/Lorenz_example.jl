@@ -348,8 +348,9 @@ step = 0.1 # first guess
 max_iter = 2000
 yt_sample = truth_sample
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
-                         mcmc_alg, burnin, norm_factor;
-                         svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd)
+                         mcmc_alg, burnin;
+                         svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
+			 norm_factor=norm_factor)
 new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
 
 # Now begin the actual MCMC
@@ -360,8 +361,9 @@ burnin = 2000
 max_iter = 100000
 
 mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, 
-                    mcmc_alg, burnin, norm_factor;
-                    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd)
+                    mcmc_alg, burnin;
+                    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
+		    norm_factor=norm_factor)
 MarkovChainMonteCarlo.sample_posterior!(mcmc, gpobj, max_iter)
 
 println("Posterior size")

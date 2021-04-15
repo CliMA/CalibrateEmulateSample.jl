@@ -5,6 +5,7 @@ using GaussianProcesses
 using Statistics 
 using Distributions
 using ScikitLearn
+using LinearAlgebra
 @sk_import gaussian_process : GaussianProcessRegressor
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
@@ -70,6 +71,8 @@ using CalibrateEmulateSample.DataStorage
     @test gp1_norm.sqrt_inv_input_cov ≈ [sqrt(1.0 / Statistics.var(x))] atol=1e-4
 
 
+        
+    
     # GaussianProcess 2: GPJL, predict_f
     pred_type = FType()
     gp2 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing, 
@@ -97,7 +100,7 @@ using CalibrateEmulateSample.DataStorage
     μ3, σ3² = GaussianProcessEmulator.predict(gp3, new_inputs)
     @test vec(μ3) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol=0.3
     @test vec(σ3²) ≈ [0.016, 0.002, 0.003, 0.004, 0.003] atol=1e-2
-    
+  
 
     # -------------------------------------------------------------------------
     # Test case 2: 2D input, 2D output
@@ -156,5 +159,32 @@ using CalibrateEmulateSample.DataStorage
     @test μ4[:, 4] ≈ [0.0, -2.0] atol=0.25
     @test length(σ4²) == size(new_inputs,2)
     @test size(σ4²[1]) == (d, d)
+
+    # Check if standardization works
+    norm_factor = 10.0
+    norm_factor = fill(norm_factor, size(Y[:,1])) # must be size of output dim
+    println(norm_factor)
+    gp4_standardized = GaussianProcess(iopairs2, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
+                          normalized=true, noise_learn=true, 
+		          truncate_svd=1.0, standardize=true,
+                          prediction_type=pred_type, norm_factor=norm_factor)
+    cov_est = gp4_standardized.decomposition.V * diagm(gp4_standardized.decomposition.S) *
+            gp4_standardized.decomposition.Vt
+    @test cov_est ≈ Σ ./ (norm_factor .* norm_factor') atol=1e-2
+    @test cov_est ≈ Σ ./ 100.0 atol=1e-2
+
+    # Check if truncation works
+    norm_factor = 10.0
+    norm_factor = fill(norm_factor, size(Y[:,1])) # must be size of output dim
+    println(norm_factor)
+    gp4_trunc = GaussianProcess(iopairs2, gppackage, GPkernel=nothing, obs_noise_cov=Σ, 
+                          normalized=true, noise_learn=true, 
+		          truncate_svd=0.1, standardize=true,
+                          prediction_type=pred_type, norm_factor=norm_factor)
+    μ4_trunc, σ4_trunc = GaussianProcessEmulator.predict(gp4_trunc, new_inputs, transform_to_real=false)
+    μ4_trunc_real, σ4_trunc_real = GaussianProcessEmulator.predict(gp4_trunc, new_inputs, transform_to_real=true)
+    @test size(μ4_trunc,1) == 1
+    @test size(μ4_trunc_real,1) == 2
     
+
 end

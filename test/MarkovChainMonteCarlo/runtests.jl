@@ -60,8 +60,8 @@ using CalibrateEmulateSample.DataStorage
     max_iter = 5000
     norm_factors=nothing
     mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                        mcmc_alg, burnin, norm_factors; svdflag=true, standardize=false,
-			truncate_svd=1.0)
+                        mcmc_alg, burnin; svdflag=true, standardize=false,
+			truncate_svd=1.0, norm_factor=norm_factors)
     new_step = find_mcmc_step!(mcmc_test, gp)
 
     # reset parameters 
@@ -70,8 +70,8 @@ using CalibrateEmulateSample.DataStorage
 
     # Now begin the actual MCMC
     mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                   mcmc_alg, burnin, norm_factors; svdflag=true, standardize=false,
-                   truncate_svd=1.0)
+                   mcmc_alg, burnin; svdflag=true, standardize=false,
+                   truncate_svd=1.0, norm_factor=norm_factors)
     sample_posterior!(mcmc, gp, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
@@ -88,5 +88,25 @@ using CalibrateEmulateSample.DataStorage
     @test_throws Exception MCMC(obs_sample, σ2_y, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)
     @test isapprox(posterior_mean[1] - π/2, 0.0; atol=4e-1)
+
+    # Standardization and truncation
+    norm_factor = 10.0
+    norm_factor = fill(norm_factor, size(y[:,1])) # must be size of output dim
+    gp = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
+                  normalized=false, noise_learn=true, standardize=true, truncate_svd=0.9, 
+                  prediction_type=pred_type, norm_factor=norm_factor) 
+    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
+                        mcmc_alg, burnin;
+			svdflag=true, standardize=true, norm_factor=norm_factor, truncate_svd=0.9)
+
+    # Now begin the actual MCMC
+    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
+                   mcmc_alg, burnin; svdflag=true, standardize=false,
+                   truncate_svd=1.0, norm_factor=norm_factor)
+    sample_posterior!(mcmc, gp, max_iter)
+    posterior_distribution = get_posterior(mcmc)      
+    #post_mean = mean(posterior, dims=1)[1]
+    posterior_mean2 = get_mean(posterior_distribution)
+    @test posterior_mean2 ≈ posterior_mean atol=0.1
 
 end

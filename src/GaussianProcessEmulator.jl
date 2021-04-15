@@ -516,11 +516,10 @@ Note: If F::SVD is the factorization object, U, S, V and Vt can be obtained via
 F.U, F.S, F.V and F.Vt, such that A = U * Diagonal(S) * Vt. The singular values 
 in S are sorted in descending order.
 """
-# TO DO: Add truncate_svd as an input flag here
 function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}; 
 		       truncate_svd::FT=1.0) where {FT}
     if obs_noise_cov != nothing
-        # MFH, 3/22/21: Truncate the SVD as a form of regularization
+        # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
             decomposition = svd(obs_noise_cov)
@@ -555,7 +554,7 @@ function svd_transform(data::Vector{FT},
 		       obs_noise_cov::Union{Array{FT, 2}, Nothing};
 		       truncate_svd::FT=1.0) where {FT}
      if obs_noise_cov != nothing
-        # MFH, 3/22/21: Truncate the SVD as a form of regularization
+        # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
             decomposition = svd(obs_noise_cov)

@@ -74,10 +74,10 @@ function MCMC(
     param_init::Vector{FT},
     max_iter::IT,
     algtype::String,
-    burnin::IT,
-    norm_factor::Union{Array{FT, 1}, Nothing};
+    burnin::IT;
     svdflag=true,
     standardize=false,
+    norm_factor::Union{Array{FT, 1}, Nothing}=nothing,
     truncate_svd=1.0) where {FT<:AbstractFloat, IT<:Int}
 
     
