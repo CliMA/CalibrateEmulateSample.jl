@@ -13,7 +13,6 @@ export get_obs_sample
 export orig2zscore
 export zscore2orig
 
-
 """
     extract_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_train_iterations::IT) where {FT,IT, P}
 
@@ -112,5 +111,6 @@ function zscore2orig(Z::AbstractMatrix{FT},
     end
     return X
 end
+
 
 end # module

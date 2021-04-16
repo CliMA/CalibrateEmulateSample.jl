@@ -75,18 +75,33 @@ function MCMC(
     max_iter::IT,
     algtype::String,
     burnin::IT;
-    svdflag=true) where {FT<:AbstractFloat, IT<:Int}
+    svdflag=true,
+    standardize=false,
+    norm_factor::Union{Array{FT, 1}, Nothing}=nothing,
+    truncate_svd=1.0) where {FT<:AbstractFloat, IT<:Int}
 
     
     param_init_copy = deepcopy(param_init)
     
+    # Standardize MCMC input?
+    println(obs_sample)
+    println(obs_noise_cov)
+    if standardize
+        obs_sample = obs_sample ./ norm_factor;
+	cov_norm_factor = norm_factor .* norm_factor;
+	obs_noise_cov = obs_noise_cov ./ cov_norm_factor;
+    end
+    println(obs_sample)
+    println(obs_noise_cov)
+
     # We need to transform obs_sample into the correct space 
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov)
+        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
     else
         println("Assuming independent outputs.")
     end
+    println(obs_sample)
     
     # first row is param_init
     posterior = zeros(length(param_init_copy),max_iter + 1)
@@ -135,9 +150,10 @@ function get_posterior(mcmc::MCMC)
     
 end
 
-function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
+function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, 
+                      gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
     if mcmc.algtype == "rwm"
-        log_posterior = log_likelihood(mcmc, g, gvar) + log_prior(mcmc)
+        log_posterior = log_likelihood(mcmc, g, gcov) + log_prior(mcmc)
     end
 
     if mcmc.log_posterior[1] isa Nothing # do an accept step.
@@ -160,6 +176,10 @@ function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT
 
 end
 
+function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
+    return mcmc_sample!(mcmc, g, Diagonal(gvar))
+end
+
 function accept_ratio(mcmc::MCMC{FT}) where {FT}
     return convert(FT, mcmc.accept[1]) / mcmc.iter[1]
 end
@@ -167,16 +187,23 @@ end
 
 function log_likelihood(mcmc::MCMC{FT},
                         g::Vector{FT},
-                        gvar::Vector{FT}) where {FT}
+                        gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
     log_rho = FT[0]
-    if gvar == nothing
-        diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
-    else
-        log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
-        diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * (Diagonal(gvar) \ diff) + log_gpfidelity
-    end
+    #if gcov == nothing
+    #    diff = g - mcmc.obs_sample
+    #    log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
+    #else
+	# det(log(Γ))
+	# Ill-posed numerically for ill-conditioned covariance matrices with det≈0
+        #log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
+	# Well-posed numerically for ill-conditioned covariance matrices with det≈0
+	#full_cov = Diagonal(gvar)
+	eigs = eigvals(gcov)
+	log_gpfidelity = -FT(0.5) * sum(log.(eigs))
+	# Combine got log_rho
+	diff = g - mcmc.obs_sample
+        log_rho[1] = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
+    #end
     return log_rho[1]
 end
 

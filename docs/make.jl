@@ -12,11 +12,13 @@ api = ["CalibrateEmulateSample" => [
 				 "Utilities" => "API/Utilities.md"
          ],
 ]
-    
+
+examples = ["Lorenz example" => "examples/lorenz_example.md"]
 
 pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
+    "Examples" => examples,
     "API" => api,
 ]
 
