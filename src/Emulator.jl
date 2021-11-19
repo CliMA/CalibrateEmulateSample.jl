@@ -1,12 +1,19 @@
 module Emulator
 
 using ..DataStorage
+using Statistics
+using Distributions
+using LinearAlgebra
+using DocStringExtensions
 
+export Emulator
+export Decomposition
 
+export optimize_hyperparameters
+export predict
 
-
-# SVD decomposition structure
-struct decomp_struct{FT<:AbstractFloat, IT<:Int}
+    # SVD decomposition structure
+struct Decomposition{FT<:AbstractFloat, IT<:Int}
     V::Array{FT,2}
     Vt::Array{FT,2}
     S::Array{FT}
@@ -14,14 +21,20 @@ struct decomp_struct{FT<:AbstractFloat, IT<:Int}
 end
 
 # SVD decomposition constructor
-function decomp_struct(svd::SVD)
+function Decomposition(svd::SVD)
 	# svd.V is of type adjoint, transformed to Array with [:,:]
-	return decomp_struct(svd.V[:,:], svd.Vt, svd.S, size(svd.S)[1])
+	return Decomposition(svd.V[:,:], svd.Vt, svd.S, size(svd.S)[1])
 end
 
 
+abstract type MachineLearningTool end
 
-abstract type EmulatorType end
+# now include the different subtypes
+include("GaussianProcessEmulator_new.jl") #for GaussianProcess
+# include("RandomFeatureEmulator.jl")
+# include("NeuralNetworkEmulator.jl")
+# etc.
+
 
 # We will define the different emulator types after the general statements
 
@@ -35,7 +48,7 @@ struct Emulator
     "normalized, standardized, transformed pairs given the Boolean's normalize_inputs, standardize_outputs, truncate_svd "
     training_pairs::PairedDataContainer{FT}
     "Emulator type"
-    typed_emulator_object::EmulatorType
+    machine_learning_tool::MachineLearningTool
     "mean of input; 1 × input_dim"
     input_mean::Array{FT}
     "square root of the inverse of the input covariance matrix; input_dim × input_dim"
@@ -47,13 +60,13 @@ struct Emulator
     "if standardizing: Standardization factors (characteristic values of the problem)"
     standardize_outputs_factors
     "the singular value decomposition of obs_noise_cov, such that obs_noise_cov = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt. NB: the svd may be reduced in dimensions"
-    decomposition::Union{decomp_struct, Nothing}
+    decomposition::Union{Decomposition, Nothing}
 end
 
 # Constructor for the Emulator Object
 function Emulator(
     input_output_pairs,
-    typed_emulator_object;
+    machine_learning_tool;
     noise_learn::Bool=true,
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
@@ -111,10 +124,10 @@ function Emulator(
     end
 
     # [4.] build an emulator
-    build_models(typed_emulator_object,training_pairs,noise_learn=noise_learn)
+    build_models(machine_learning_tool,training_pairs,noise_learn=noise_learn)
     
     return Emulator(training_pairs,
-                    typed_emulator_object,
+                    machine_learning_tool,
                     input_mean,
                     sqrt_inv_input_cov,
                     normalize_inputs,
@@ -125,7 +138,7 @@ end
 
 
 function optimize_hyperparameters(emulator::Emulator)
-    optimize_hyperparameters(emulator.typed_emulator_object)
+    optimize_hyperparameters(emulator.machine_learning_tool)
 end
 
 function predict(emulator::Emulator, new_inputs, transform_to_real)
@@ -141,9 +154,9 @@ function predict(emulator::Emulator, new_inputs, transform_to_real)
     normalized_new_inputs = normalize(emulator,new_inputs)
 
     # [2.]  predict. Note: ds = decorrelated, standard
-    ds_outputs, ds_output_var = predict(emulator.typed_emulator_object, normalized_new_inputs)
+    ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs)
 
-    # [3. ] transform back to real coordinates or remain in decorrelated coordinates
+    # [3.] transform back to real coordinates or remain in decorrelated coordinates
     if transform_to_real && gp.decomposition == nothing
         throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
                  but GaussianProcess.decomposition == nothing. 
@@ -156,11 +169,11 @@ function predict(emulator::Emulator, new_inputs, transform_to_real)
         if output_dim == 1
             s_output_cov = [s_output_cov[i][1] for i in 1:N_samples]
         end
-
+        # [4.] unstandardize
         return reverse_standardize(emulator, s_outputs, s_output_cov)
         
     else
-        # remain in decorrelated coordinates (cov remains diagonal)
+        # remain in decorrelated, standardized coordinates (cov remains diagonal)
         # Convert to vector of  matrices to match the format  
         # when transform_to_real=true
         ds_output_diagvar = vec([Diagonal(ds_output_cov[:, j]) for j in 1:N_samples])
@@ -168,7 +181,7 @@ function predict(emulator::Emulator, new_inputs, transform_to_real)
             ds_output_diagvar = [ds_output_diagvar[i][1] for i in 1:N_samples]
         end
 
-        return reverse_standardize(emulator, ds_outputs, ds_output_diagvar)
+        return ds_outputs, ds_output_diagvar
         
     end
 
@@ -177,7 +190,7 @@ end
 
 
 
-# Normalization, Standardization, Decorrelation
+# Normalization, Standardization, and Decorrelation
 function normalize(inputs, input_mean, sqrt_inv_input_cov)
     training_inputs = sqrt_inv_input_cov * (inputs .- input_mean)
     return training_inputs 
@@ -240,13 +253,13 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
 	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
             transformed_data = transformed_data;
-            decomposition = decomp_struct(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
+            decomposition = Decomposition(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
                                    decomposition.S[1:k], n)
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-	    decomposition = decomp_struct(svd(obs_noise_cov))
+	    decomposition = Decomposition(svd(obs_noise_cov))
         end
     else
         decomposition = nothing
@@ -276,13 +289,13 @@ function svd_transform(data::Vector{FT},
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
 	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
             transformed_data = transformed_data;
-            decomposition = decomp_struct(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
+            decomposition = Decomposition(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
                                    decomposition.S[1:k], n)
 	else
             decomposition = svd(obs_noise_cov)
             sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
             transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-	    decomposition = decomp_struct(svd(obs_noise_cov))
+	    decomposition = Decomposition(svd(obs_noise_cov))
         end
     else
         decomposition = nothing
@@ -307,7 +320,7 @@ covariance at each point, as a vector of length N_predicted_points, where
 each element is a matrix of size output_dim × output_dim
 """
 function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, 
-                                        decomposition::Union{SVD, decomp_struct};
+                                        decomposition::Union{SVD, Decomposition};
 					truncate_svd::FT=1.0) where {FT}
         output_dim, N_predicted_points = size(σ2)
         # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP

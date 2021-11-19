@@ -1,12 +1,6 @@
-module GaussianProcessEmulator
 
-using Statistics
-using Distributions
-using LinearAlgebra
 using GaussianProcesses
-using DocStringExtensions
-using ..DataStorage
-    
+   
 using PyCall
 using ScikitLearn
 const pykernels = PyNULL()
@@ -16,8 +10,8 @@ function __init__()
     copy!(pyGP, pyimport("sklearn.gaussian_process"))
 end
 
+#exports (from Emulator)
 export GaussianProcess
-export predict
 
 export GPJL, SKLJL
 export YType, FType
@@ -45,11 +39,8 @@ abstract type PredictionType end
 struct YType <: PredictionType end
 struct FType <: PredictionType end
 
-
-
-
 """
-    GaussianProcess{FT<:AbstractFloat}
+    GaussianProcess{FT<:AbstractFloat} <: MachineLearningTool
 
     Structure holding training input and the fitted Gaussian Process Regression
 models.
@@ -58,7 +49,7 @@ models.
 $(DocStringExtensions.FIELDS)
 
 """
-struct GaussianProcess{FT<:AbstractFloat, GPM}
+struct GaussianProcess{GPPackage} <: MachineLearningTool
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
     models::Vector
     "Kernel object"
@@ -85,13 +76,13 @@ function GaussianProcess(
     # Initialize vector for GP models
     models = Any[]
     
-    return GaussianProcess{FT,typeof(package)}(models, kernel, prediction_type)
+    return GaussianProcess{typeof(package)}(models, kernel, prediction_type)
 			
 end
 
-
+# First we create  the GPJL implementation
 function build_models(
-    gp::GaussianProcess,
+    gp::GaussianProcess{GPJL},
     input_output_pairs;
     noise_learn::Bool=true)
     
@@ -166,7 +157,7 @@ function build_models(
 
 end
 
-function optimize_hyperparameters(gp::GaussianProcess{FT,GPJL})
+function optimize_hyperparameters(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
         # We choose above to explicitly learn the WhiteKernel as opposed to 
@@ -177,9 +168,9 @@ function optimize_hyperparameters(gp::GaussianProcess{FT,GPJL})
     end
 end
 
-predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}) where {FT} = predict(gp, new_inputs, gp.prediction_type)
+predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}) where {FT} = predict(gp, new_inputs, gp.prediction_type)
 
-function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, ::YType) where {FT}
+function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::YType) where {FT}
 
     M = length(gp.models)
     # Predicts columns of inputs: input_dim × N_samples
@@ -194,7 +185,7 @@ end
 
 
 
-function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, ::FType) where {FT}
+function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::FType) where {FT}
 
     input_dim, output_dim = size(gp.input_output_pairs, 1)
 
@@ -212,7 +203,6 @@ end
 
 
 
-    
 """
     GaussianProcess(input_output_pairs::PairedDataContainer, package::SKLJL; kernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
 
@@ -220,8 +210,10 @@ Input-output pairs in paired data storage, storing in/out_dim × N_samples
 
  - `kernel` - ScikitLearn kernel object. If not supplied, a default Squared Exponential kernel is used.
 """
+#now we build the SKLJL implementation
+
 function build_models(
-    gp::GaussianProcess,
+    gp::GaussianProcess{SKLJL},
     input_output_pairs;
     noise_learn::Bool=true)
 
@@ -289,12 +281,12 @@ function build_models(
 end
 
 
-function optimize_hyperparameters(gp::GaussianProcess{FT,SKLJL})
+function optimize_hyperparameters(gp::GaussianProcess{SKLJL})
     println("SKlearn, already trained. continuing...")
 end
 
 
-function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}) where {FT}
+function predict(gp::GaussianProcess{SKLJL}, new_inputs::Array{FT, 2}) where {FT}
 
     M = length(gp.models)
 
@@ -451,5 +443,3 @@ function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, trans
     return μ_pred, σ2_pred
 end
 =#
-
-end 
