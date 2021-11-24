@@ -92,7 +92,7 @@ function build_models(
 
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
-    N_models = output_dim; #size(transformed_data)[1]
+    N_models = size(output_values,1); #size(transformed_data)[1]
 
 
     # Use a default kernel unless a kernel was supplied to GaussianProcess
@@ -157,14 +157,14 @@ function build_models(
 
 end
 
-function optimize_hyperparameters(gp::GaussianProcess{GPJL})
+function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
         # We choose above to explicitly learn the WhiteKernel as opposed to 
         # using the in built noise=true functionality.
         optimize!(gp.models[i], noise=false)
         println("optimized hyperparameters of GP", i)
-        println(m.kernel)
+        println(gp.models[i].kernel)
     end
 end
 
@@ -172,7 +172,9 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}) where {FT} = predic
 
 function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::YType) where {FT}
 
+
     M = length(gp.models)
+    N_samples = size(new_inputs,2)
     # Predicts columns of inputs: input_dim × N_samples
     μ = zeros(M, N_samples)
     σ2 = zeros(M, N_samples)
@@ -187,9 +189,8 @@ end
 
 function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::FType) where {FT}
 
-    input_dim, output_dim = size(gp.input_output_pairs, 1)
-
     M = length(gp.models)
+    N_samples = size(new_inputs,2)
     # Predicts columns of inputs: input_dim × N_samples
     μ = zeros(M, N_samples)
     σ2 = zeros(M, N_samples)
@@ -223,7 +224,7 @@ function build_models(
 
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
-    N_models = output_dim; #size(transformed_data)[1]
+    N_models = size(output_values,1); #size(transformed_data)[1]
 
     if gp.kernel==nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
@@ -281,7 +282,7 @@ function build_models(
 end
 
 
-function optimize_hyperparameters(gp::GaussianProcess{SKLJL})
+function optimize_hyperparameters!(gp::GaussianProcess{SKLJL})
     println("SKlearn, already trained. continuing...")
 end
 
@@ -289,7 +290,8 @@ end
 function predict(gp::GaussianProcess{SKLJL}, new_inputs::Array{FT, 2}) where {FT}
 
     M = length(gp.models)
-
+    N_samples = size(new_inputs,2)
+    
     # SKJL based on rows not columns; need to transpose inputs
     μ = zeros(M, N_samples)
     σ = zeros(M, N_samples)

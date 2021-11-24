@@ -1,4 +1,4 @@
-module Emulator
+module Emulators
 
 using ..DataStorage
 using Statistics
@@ -9,7 +9,7 @@ using DocStringExtensions
 export Emulator
 export Decomposition
 
-export optimize_hyperparameters
+export optimize_hyperparameters!
 export predict
 
     # SVD decomposition structure
@@ -44,11 +44,11 @@ include("GaussianProcessEmulator_new.jl") #for GaussianProcess
 Structure used to represent a general emulator
 """
 
-struct Emulator
-    "normalized, standardized, transformed pairs given the Boolean's normalize_inputs, standardize_outputs, truncate_svd "
-    training_pairs::PairedDataContainer{FT}
-    "Emulator type"
+struct Emulator{FT}
+    "Machine learning tool, defined as a struct of type MachineLearningTool"
     machine_learning_tool::MachineLearningTool
+     "normalized, standardized, transformed pairs given the Boolean's normalize_inputs, standardize_outputs, truncate_svd "
+    training_pairs::PairedDataContainer{FT}
     "mean of input; 1 × input_dim"
     input_mean::Array{FT}
     "square root of the inverse of the input covariance matrix; input_dim × input_dim"
@@ -65,8 +65,9 @@ end
 
 # Constructor for the Emulator Object
 function Emulator(
-    input_output_pairs,
-    machine_learning_tool;
+    machine_learning_tool::MachineLearningTool,
+    input_output_pairs::PairedDataContainer{FT};
+    obs_noise_cov=nothing,
     noise_learn::Bool=true,
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
@@ -126,22 +127,22 @@ function Emulator(
     # [4.] build an emulator
     build_models(machine_learning_tool,training_pairs,noise_learn=noise_learn)
     
-    return Emulator(training_pairs,
-                    machine_learning_tool,
-                    input_mean,
-                    sqrt_inv_input_cov,
-                    normalize_inputs,
-                    standardize_outputs,
-                    standardize_outputs_factors,
-                    decomposition)
+    return Emulator{FT}(machine_learning_tool,
+                        training_pairs,
+                        input_mean,
+                        normalize_inputs,
+                        sqrt_inv_input_cov,
+                        standardize_outputs,
+                        standardize_outputs_factors,
+                        decomposition)
 end    
 
 
-function optimize_hyperparameters(emulator::Emulator)
-    optimize_hyperparameters(emulator.machine_learning_tool)
+function optimize_hyperparameters!(emulator::Emulator{FT}) where {FT}
+    optimize_hyperparameters!(emulator.machine_learning_tool)
 end
 
-function predict(emulator::Emulator, new_inputs, transform_to_real)
+function predict(emulator::Emulator{FT}, new_inputs; transform_to_real=false) where {FT}
 
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -157,14 +158,14 @@ function predict(emulator::Emulator, new_inputs, transform_to_real)
     ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs)
 
     # [3.] transform back to real coordinates or remain in decorrelated coordinates
-    if transform_to_real && gp.decomposition == nothing
+    if transform_to_real && emulator.decomposition == nothing
         throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
                  but GaussianProcess.decomposition == nothing. 
                  Try setting transform_to_real=false"""))
     elseif transform_to_real && emulator.decomposition != nothing
         #transform back to real coords - cov becomes dense
         s_outputs, s_output_cov = svd_reverse_transform_mean_cov(
-            ds_outputs, ds_output_cov, emulator.decomposition)
+            ds_outputs, ds_output_var, emulator.decomposition)
 
         if output_dim == 1
             s_output_cov = [s_output_cov[i][1] for i in 1:N_samples]
@@ -176,7 +177,7 @@ function predict(emulator::Emulator, new_inputs, transform_to_real)
         # remain in decorrelated, standardized coordinates (cov remains diagonal)
         # Convert to vector of  matrices to match the format  
         # when transform_to_real=true
-        ds_output_diagvar = vec([Diagonal(ds_output_cov[:, j]) for j in 1:N_samples])
+        ds_output_diagvar = vec([Diagonal(ds_output_var[:, j]) for j in 1:N_samples])
         if output_dim == 1
             ds_output_diagvar = [ds_output_diagvar[i][1] for i in 1:N_samples]
         end
@@ -196,7 +197,7 @@ function normalize(inputs, input_mean, sqrt_inv_input_cov)
     return training_inputs 
 end
 
-function normalize(emulator::Emulator, inputs)
+function normalize(emulator::Emulator{FT}, inputs) where {FT}
     if emulator.normalize_inputs
         return normalize(inputs, emulator.input_mean, emulator.sqrt_inv_input_cov)
     else
@@ -205,12 +206,12 @@ function normalize(emulator::Emulator, inputs)
 end
 
 function standardize(outputs, output_cov, factors) 
-    standardized_outputs =  ./ factors
+    standardized_outputs = outputs ./ factors
     standardized_cov = output_cov ./ (factors .* factors')
     return standardized_outputs, standardized_cov
 end
 
-function reverse_standardize(emulator::Emulator, outputs, output_cov)
+function reverse_standardize(emulator::Emulator{FT}, outputs, output_cov) where {FT}
     if emulator.standardize_outputs
         return standardize(outputs, output_cov, 1. / emulator.standardize_output_factors)
     else
