@@ -68,7 +68,6 @@ function Emulator(
     machine_learning_tool::MachineLearningTool,
     input_output_pairs::PairedDataContainer{FT};
     obs_noise_cov=nothing,
-    noise_learn::Bool=true,
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
     standardize_outputs_factors::Union{Array{FT,1}, Nothing}=nothing,
@@ -121,11 +120,11 @@ function Emulator(
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         input_dim, output_dim = size(training_pairs, 1)
     else
-        training_pairs = PairedDataContainer(training_inputs, training_outputs)
+        training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
     end
 
     # [4.] build an emulator
-    build_models(machine_learning_tool,training_pairs,noise_learn=noise_learn)
+    build_models(machine_learning_tool,training_pairs)
     
     return Emulator{FT}(machine_learning_tool,
                         training_pairs,

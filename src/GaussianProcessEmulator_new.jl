@@ -54,6 +54,8 @@ struct GaussianProcess{GPPackage} <: MachineLearningTool
     models::Vector
     "Kernel object"
     kernel
+    "learn the noise with the White Noise kernel explicitly?"
+    noise_learn
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
     prediction_type::Union{Nothing, PredictionType}
 end
@@ -70,21 +72,21 @@ Input-output pairs in paired data storage, storing in/out_dim × N_samples
 function GaussianProcess(
     package;
     kernel::Union{K, KPy, Nothing}=nothing,
+    noise_learn=nothing,
     prediction_type::PredictionType=YType(),
     ) where {K<:Kernel, KPy<:PyObject}
 
     # Initialize vector for GP models
     models = Any[]
     
-    return GaussianProcess{typeof(package)}(models, kernel, prediction_type)
+    return GaussianProcess{typeof(package)}(models, kernel, noise_learn, prediction_type)
 			
 end
 
 # First we create  the GPJL implementation
 function build_models(
     gp::GaussianProcess{GPJL},
-    input_output_pairs;
-    noise_learn::Bool=true)
+    input_output_pairs)
     
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
@@ -111,7 +113,7 @@ function build_models(
         println("Using user-defined kernel", kern)
     end
 
-    if noise_learn
+    if gp.noise_learn
         # Add white noise to kernel
         white_logstd = log(1.0)
         white = Noise(white_logstd)
@@ -160,9 +162,8 @@ end
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
-        # We choose above to explicitly learn the WhiteKernel as opposed to 
-        # using the in built noise=true functionality.
-        optimize!(gp.models[i], noise=false)
+        #noise_true means we do it explicitly (thus don't need it here)
+        optimize!(gp.models[i], noise=!gp.noise_learn)
         println("optimized hyperparameters of GP", i)
         println(gp.models[i].kernel)
     end
