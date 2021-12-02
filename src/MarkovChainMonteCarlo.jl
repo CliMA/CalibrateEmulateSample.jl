@@ -50,7 +50,7 @@ struct MCMC{FT<:AbstractFloat, IT<:Int}
     iter::Array{IT}
     "number of accepted proposals"
     accept::Array{IT}
-    "MCMC algorithm to use - currently implemented: 'rmw' (random walk Metropolis)"
+    "MCMC algorithm to use - currently implemented: 'rwm' (random walk Metropolis), 'pCN' (preconditioned Crank-Nicholson)"
     algtype::String
     "Random number generator object (algorithm + seed) used for sampling and noise, for reproducibility."
     rng::Random.AbstractRNG
@@ -85,9 +85,9 @@ function MCMC(
     rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {FT<:AbstractFloat, IT<:Int}
 
-    
+
     param_init_copy = deepcopy(param_init)
-    
+
     # Standardize MCMC input?
     println(obs_sample)
     println(obs_noise_cov)
@@ -99,7 +99,7 @@ function MCMC(
     println(obs_sample)
     println(obs_noise_cov)
 
-    # We need to transform obs_sample into the correct space 
+    # We need to transform obs_sample into the correct space
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
         obs_sample, unused = Emulators.svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
@@ -107,7 +107,7 @@ function MCMC(
         println("Assuming independent outputs.")
     end
     println(obs_sample)
-    
+
     # first row is param_init
     posterior = zeros(length(param_init_copy),max_iter + 1)
     posterior[:, 1] = param_init_copy
@@ -115,8 +115,10 @@ function MCMC(
     log_posterior = [nothing]
     iter = [1]
     accept = [0]
-    if algtype != "rwm"
-        error("only random walk metropolis 'rwm' is implemented so far")
+    if !(algtype in ("rwm", "pCN"))
+        error("Unrecognized method: ", algtype,
+              "Currently implemented methods: 'rwm' = random walk metropolis, ",
+              "'pCN' = preconditioned Crank-Nicholson")
     end
     MCMC{FT,IT}(obs_sample,
                    obs_noise_cov,
@@ -154,13 +156,18 @@ function get_posterior(mcmc::MCMC)
     parameter_names = get_name(mcmc.prior) #the same parameters as in prior
     posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
     return posterior_distribution
-    
+
 end
 
-function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, 
+function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT},
                       gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
     if mcmc.algtype == "rwm"
         log_posterior = log_likelihood(mcmc, g, gcov) + log_prior(mcmc)
+    elseif mcmc.algtype == "pCN"
+        # prior factors effectively cancel in acceptance ratio, so omit
+        log_posterior = log_likelihood(mcmc, g, gcov)
+    else
+        error("Unrecognized algtype: ", mcmc.algtype)
     end
 
     if mcmc.log_posterior[1] isa Nothing # do an accept step.
@@ -221,14 +228,20 @@ end
 
 
 function proposal(mcmc::MCMC)
-
     proposal_covariance = cov(mcmc.prior)
- 
+    prop_dist = MvNormal(zeros(length(mcmc.param)), proposal_covariance)
+
     if mcmc.algtype == "rwm"
-        prop_dist = MvNormal(zeros(length(mcmc.param)), 
-                             (mcmc.step[1]^2) * proposal_covariance)
+        sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ 
+                 (mcmc.step[1] * rand(mcmc.rng, prop_dist))
+    elseif mcmc.algtype == "pCN"
+        # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
+        # inverse problems." for relating ρ to Euler stepsize:
+        ρ = (1 - mcmc.step[1]/4) / (1 + mcmc.step[1]/4)
+        sample = ρ * mcmc.posterior[:,1 + mcmc.iter[1]] .+ sqrt(1 - ρ^2) * rand(mcmc.rng, prop_dist)
+    else
+        error("Unrecognized algtype: ", mcmc.algtype)
     end
-    sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ rand(mcmc.rng, prop_dist)
     return sample
 end
 
