@@ -95,7 +95,7 @@ gx[2,:] = g2x
     
 # Add noise η
 μ = zeros(d) 
-Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
+Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
 noise_samples = rand(MvNormal(μ, Σ), n) 
 # y = G(x) + η
 Y = gx .+ noise_samples
@@ -109,28 +109,25 @@ if plot_flag
     
     figpath = joinpath(output_directory, "GP_test_observed_y1nonoise.png")
     savefig(figpath)
-    #linkfig(figpath)
     
     p2 = plot(X[1,:], X[2,:], g2x, st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
     figpath = joinpath(output_directory, "GP_test_observed_y2nonoise.png")
     savefig(figpath)
-    #linkfig(figpath)
     
     p1 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
     figpath = joinpath(output_directory, "GP_test_observed_y1.png")
     savefig(figpath)
-    #linkfig(figpath)
     
     p2 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
     figpath = joinpath(output_directory, "GP_test_observed_y2.png")
     savefig(figpath)
-    #linkfig(figpath)
+
 end
 
 iopairs = PairedDataContainer(X,Y,data_are_columns=true)
