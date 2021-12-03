@@ -12,7 +12,7 @@ export Decomposition
 export optimize_hyperparameters!
 export predict
 
-    # SVD decomposition structure
+# SVD decomposition structure
 struct Decomposition{FT<:AbstractFloat, IT<:Int}
     V::Array{FT,2}
     Vt::Array{FT,2}
@@ -29,7 +29,12 @@ end
 
 abstract type MachineLearningTool end
 
-# now include the different subtypes
+# functions for fallback
+#function build_models(<:MachineLearningTool) # no return
+#function optimize_hyperparameters!(<:MachineLearningTool) # no return
+#function predict(<:MachineLearningTool, new_inputs) #returns mean and cov predctions for new_inputs
+
+# include the different <: ML models
 include("GaussianProcessEmulator_new.jl") #for GaussianProcess
 # include("RandomFeatureEmulator.jl")
 # include("NeuralNetworkEmulator.jl")
@@ -124,7 +129,7 @@ function Emulator(
     end
 
     # [4.] build an emulator
-    build_models(machine_learning_tool,training_pairs)
+    build_models!(machine_learning_tool,training_pairs)
     
     return Emulator{FT}(machine_learning_tool,
                         training_pairs,
@@ -234,8 +239,14 @@ Note: If F::SVD is the factorization object, U, S, V and Vt can be obtained via
 F.U, F.S, F.V and F.Vt, such that A = U * Diagonal(S) * Vt. The singular values 
 in S are sorted in descending order.
 """
-function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}; 
-		       truncate_svd::FT=1.0) where {FT}
+function svd_transform(
+    data::Array{FT, 2},
+    obs_noise_cov; 
+    truncate_svd::FT=1.0) where {FT}
+
+    if obs_noise_cov != nothing
+        @assert ndims(obs_noise_cov) == 2
+    end
     if obs_noise_cov != nothing
         # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
@@ -269,10 +280,24 @@ function svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, No
     return transformed_data, decomposition
 end
 
-function svd_transform(data::Vector{FT}, 
-		       obs_noise_cov::Union{Array{FT, 2}, Nothing};
-		       truncate_svd::FT=1.0) where {FT}
-     if obs_noise_cov != nothing
+
+"""
+function svd_transform(
+    data::Vector{FT}, 
+    obs_noise_cov::Union{Array{FT, 2}, Nothing};
+    truncate_svd::FT=1.0) where {FT}
+
+"""
+function svd_transform(
+    data::Vector{FT}, 
+    obs_noise_cov;
+    truncate_svd::FT=1.0) where {FT}
+
+   
+    if obs_noise_cov != nothing
+        @assert ndims(obs_noise_cov) == 2
+    end
+    if obs_noise_cov != nothing
         # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
@@ -319,22 +344,25 @@ elements on the main diagonal (i.e., the variances), we return the full
 covariance at each point, as a vector of length N_predicted_points, where 
 each element is a matrix of size output_dim × output_dim
 """
-function svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::Array{FT, 2}, 
+function svd_reverse_transform_mean_cov(μ, σ2, 
                                         decomposition::Union{SVD, Decomposition};
 					truncate_svd::FT=1.0) where {FT}
-        output_dim, N_predicted_points = size(σ2)
-        # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
-        sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
-        transformed_μ = decomposition.V * sqrt_singular_values * μ
-
-        transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
-        # Back transformation
-
-        for j in 1:N_predicted_points
-            σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
-            transformed_σ2[j] = σ2_j
-        end
-
+    @assert ndims(μ) == 2
+    @assert ndims(σ2) == 2
+    
+    output_dim, N_predicted_points = size(σ2)
+    # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
+    sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
+    transformed_μ = decomposition.V * sqrt_singular_values * μ
+    
+    transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
+    # Back transformation
+    
+    for j in 1:N_predicted_points
+        σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:,j]) * sqrt_singular_values * decomposition.Vt
+        transformed_σ2[j] = σ2_j
+    end
+    
     return transformed_μ, transformed_σ2
 end
 

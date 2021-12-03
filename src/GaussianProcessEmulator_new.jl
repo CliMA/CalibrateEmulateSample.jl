@@ -84,7 +84,7 @@ function GaussianProcess(
 end
 
 # First we create  the GPJL implementation
-function build_models(
+function build_models!(
     gp::GaussianProcess{GPJL},
     input_output_pairs)
     
@@ -214,7 +214,7 @@ Input-output pairs in paired data storage, storing in/out_dim × N_samples
 """
 #now we build the SKLJL implementation
 
-function build_models(
+function build_models!(
     gp::GaussianProcess{SKLJL},
     input_output_pairs;
     noise_learn::Bool=true)
