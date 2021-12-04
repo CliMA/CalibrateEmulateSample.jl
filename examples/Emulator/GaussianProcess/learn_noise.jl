@@ -51,10 +51,10 @@ Random.seed!(rng_seed)
 gppackage = GPJL()
 prediction_type = YType()
 gauss_proc_1 = GaussianProcess(
-    gppackage; 
-    kernel=nothing, # use default squared exponential kernel
-    prediction_type=prediction_type, 
-    noise_learn=true
+    gppackage;
+    kernel = nothing, # use default squared exponential kernel
+    prediction_type = prediction_type,
+    noise_learn = true,
 )
 
 # Generate training data (x-y pairs, where x ∈ ℝ ᵖ, y ∈ ℝ ᵈ)
@@ -72,11 +72,11 @@ X = 2.0 * π * rand(p, n)
 # G(x1, x2)
 g1x = sin.(X[1, :]) .+ cos.(X[2, :])
 g2x = sin.(X[1, :]) .- cos.(X[2, :])
-gx = zeros(2,n)
-gx[1,:] = g1x
-gx[2,:] = g2x
+gx = zeros(2, n)
+gx[1, :] = g1x
+gx[2, :] = g2x
 # Add noise η
-μ = zeros(d) 
+μ = zeros(d)
 Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
 noise_samples = rand(MvNormal(μ, Σ), n)
 
@@ -93,16 +93,11 @@ Y = gx .+ noise_samples
 # in the training phase via an optimization procedure.
 # Because of the SVD transformation applied to the output, we expect the 
 # learned noise to be close to 1.
-iopairs = PairedDataContainer(X,Y,data_are_columns=true)
+iopairs = PairedDataContainer(X, Y, data_are_columns = true)
 @assert get_inputs(iopairs) == X
 @assert get_outputs(iopairs) == Y
 
-emulator_1 = Emulator(
-    gauss_proc_1,
-    iopairs,
-    obs_noise_cov=Σ,
-    normalize_inputs=true
-)
+emulator_1 = Emulator(gauss_proc_1, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
 println("build GP with ", n, " training points")
 #optimize the hyperparameters to best fit the GP.
 optimize_hyperparameters!(emulator_1)
@@ -121,7 +116,7 @@ println("Learned noise parameter, σ_1:")
 learned_σ_1 = sqrt(emulator_1.machine_learning_tool.models[1].kernel.kright.σ2)
 println("σ_1 = $learned_σ_1")
 # Check if the learned noise is approximately 1
-@assert(isapprox(learned_σ_1, 1.0; atol=0.1))
+@assert(isapprox(learned_σ_1, 1.0; atol = 0.1))
 
 println("\nKernel of the GP trained to predict y2 from x=(x1, x2):")
 println(emulator_1.machine_learning_tool.models[2].kernel)
@@ -129,24 +124,19 @@ println("Learned noise parameter, σ_2:")
 learned_σ_2 = sqrt(emulator_1.machine_learning_tool.models[2].kernel.kright.σ2)
 println("σ_2 = $learned_σ_2")
 # Check if the learned noise is approximately 1
-@assert(isapprox(learned_σ_2, 1.0; atol=0.1))
+@assert(isapprox(learned_σ_2, 1.0; atol = 0.1))
 println("------------------------------------------------------------------\n")
 
 # For comparison: When noise_learn is set to false, the observational noise
 # is set to 1.0 and is not learned/optimized during the training. But thanks
 # to the SVD, 1.0 is the correct value to use.
 gauss_proc_2 = GaussianProcess(
-    gppackage; 
-    kernel=nothing, # use default squared exponential kernel
-    prediction_type=prediction_type, 
-    noise_learn=false
+    gppackage;
+    kernel = nothing, # use default squared exponential kernel
+    prediction_type = prediction_type,
+    noise_learn = false,
 )
-emulator_2 = Emulator(
-    gauss_proc_2,
-    iopairs,
-    obs_noise_cov=Σ,
-    normalize_inputs=true
-)
+emulator_2 = Emulator(gauss_proc_2, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
 println("build GP with ", n, " training points")
 #optimize the hyperparameters to best fit the GP.
 optimize_hyperparameters!(emulator_2)
@@ -159,7 +149,7 @@ println("-----------")
 println("\nKernel of the GP trained to predict y1 from x=(x1, x2):")
 # Note: In contrast to the kernels of the gpobj1 models, these ones do not
 # have a white noise ("Noise") kernel component
-println(emulator_2.machine_learning_tool.models[1].kernel) 
+println(emulator_2.machine_learning_tool.models[1].kernel)
 # logNoise is given as log(sqrt(noise))
 obs_noise_1 = exp(emulator_2.machine_learning_tool.models[1].logNoise.value^2)
 println("Observational noise: $obs_noise_1")

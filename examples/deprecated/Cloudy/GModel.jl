@@ -22,53 +22,49 @@ export run_G_ensemble
 # So, the interface would ideally be something like:
 #      run_G_ensemble(params, G) where G is user-defined
 """
-    GSettings{FT<:AbstractFloat, KT, D}
+$(DocStringExtensions.TYPEDEF)
 
-Structure to hold all information to run the forward model G
+Structure to hold all information to run the forward model *G*.
 
 # Fields
-$(DocStringExtensions.FIELDS)
+$(DocStringExtensions.TYPEDFIELDS)
 """
-struct GSettings{FT<:AbstractFloat, KT, D}
-    "a kernel tensor"
+struct GSettings{FT <: AbstractFloat, KT, D}
+    "A kernel tensor."
     kernel::KT
-    "a model distribution"
+    "A model distribution."
     dist::D
-    "the moments of dist that model should return"
+    "The moments of `dist` that model should return."
     moments::Array{FT, 1}
-    "time period over which to run the model, e.g., `(0, 1)`"
+    "Time period over which to run the model, e.g., `(0, 1)`."
     tspan::Tuple{FT, FT}
 end
 
 
 """
-    run_G_ensemble(params::Array{FT, 2},
-                   settings::GSettings{FT},
-                   update_params,
-                   moment,
-                   get_src;
-                   rng_seed=42) where {FT<:AbstractFloat}
+$(DocStringExtensions.TYPEDSIGNATURES)
 
-Run the forward model G for an array of parameters by iteratively
-calling run_G for each of the N_ensemble parameter values.
-Return g_ens, an array of size N_ensemble x N_data, where
-g_ens[j,:] = G(params[j,:])
+Run the forward model *G* for an array of parameters by iteratively
+calling `run_G` for each of the *N\\_ensemble* parameter values.
 
- - `params` - array of size N_ensemble x N_parameters containing the
-              parameters for which G will be run
- - `settings` - a GSetttings struct
+- `params` - array of size (*N\\_ensemble* × *N\\_parameters*) containing the parameters for which 
+  G will be run.
+- `settings` - a [GSetttings](@ref) struct.
 
+Returns `g_ens``, an array of size (*N\\_ensemble* × *N\\_data*), where g_ens[j,:] = G(params[j,:]).
 """
-function run_G_ensemble(params::Array{FT, 2},
-                        settings::GSettings{FT},
-                        update_params,
-                        moment,
-                        get_src;
-                        rng_seed=42) where {FT<:AbstractFloat}
+function run_G_ensemble(
+    params::Array{FT, 2},
+    settings::GSettings{FT},
+    update_params,
+    moment,
+    get_src;
+    rng_seed = 42,
+) where {FT <: AbstractFloat}
 
     N_ens = size(params, 2) # params is N_ens x N_params
     n_moments = length(settings.moments)
-    g_ens = zeros(n_moments,N_ens)
+    g_ens = zeros(n_moments, N_ens)
 
     Random.seed!(rng_seed)
     for i in 1:N_ens
@@ -81,23 +77,14 @@ end
 
 
 """
-    run_G(u::Array{FT, 1},
-          settings::GSettings{FT},
-          update_params,
-          moment,
-          get_src) where {FT<:AbstractFloat}
+$(DocStringExtensions.TYPEDSIGNATURES)
 
-Return g_u = G(u), a vector of length N_data.
+- `u` - parameter vector of length *N\\_parameters*.
+- `settings` - a [GSetttings](@ref) struct.
 
- - `u` - parameter vector of length N_parameters
- - `settings` - a GSettings struct
-
+Returns `g_u` = *G(u)*, a vector of length *N\\_data*.
 """
-function run_G(u::Array{FT, 1},
-               settings::GSettings{FT},
-               update_params,
-               moment,
-               get_src) where {FT<:AbstractFloat}
+function run_G(u::Array{FT, 1}, settings::GSettings{FT}, update_params, moment, get_src) where {FT <: AbstractFloat}
 
     # generate the initial distribution
     dist = update_params(settings.dist, u)
@@ -117,7 +104,7 @@ function run_G(u::Array{FT, 1},
     rhs(M, p, t) = get_src(M, dist, settings.kernel)
     prob = ODEProblem(rhs, moments_init, settings.tspan)
     # Solve the ODE
-    sol = solve(prob, CVODE_BDF(), alg_hints=[:stiff], reltol=tol, abstol=tol)
+    sol = solve(prob, CVODE_BDF(), alg_hints = [:stiff], reltol = tol, abstol = tol)
     # Return moments at last time step
     moments_final = vcat(sol.u'...)[end, :]
 

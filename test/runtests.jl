@@ -19,18 +19,14 @@ end
     function has_submodule(sm)
         any(ARGS) do a
             a == sm && return true
-	    first(split(a, '/')) == sm && return true
-	    return false
+            first(split(a, '/')) == sm && return true
+            return false
         end
     end
 
-    for submodule in ["Emulator",
-                      "GaussianProcess",
-		      "MarkovChainMonteCarlo",
-		      "Utilities"]
-
+    for submodule in ["Emulator", "GaussianProcess", "MarkovChainMonteCarlo", "Utilities"]
         if all_tests || has_submodule(submodule) || "CalibrateEmulateSample" in ARGS
             include_test(submodule)
         end
-    end	
+    end
 end

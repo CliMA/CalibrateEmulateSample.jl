@@ -92,7 +92,7 @@ dist_true = PDistributions.Gamma(N0_true, θ_true, k_true)
 ###
 
 # Define constraints
-lbound_N0 = 0.4 * N0_true 
+lbound_N0 = 0.4 * N0_true
 lbound_θ = 1.0e-1
 lbound_k = 1.0e-4
 c1 = bounded_below(lbound_N0)
@@ -125,12 +125,12 @@ n_moments = length(moments)
 ###
 
 # Collision-coalescence kernel to be used in Cloudy
-coalescence_coeff = 1/3.14/4/100
+coalescence_coeff = 1 / 3.14 / 4 / 100
 kernel_func = x -> coalescence_coeff
 kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 100.0)
 
 # Time period over which to run Cloudy
-tspan = (0., 1.0)  
+tspan = (0.0, 1.0)
 
 
 ###
@@ -140,10 +140,15 @@ tspan = (0., 1.0)
 ###
 
 g_settings_true = GModel.GSettings(kernel, dist_true, moments, tspan)
-gt = GModel.run_G(params_true, g_settings_true, PDistributions.update_params, 
-                  PDistributions.moment, Cloudy.Sources.get_int_coalescence)
+gt = GModel.run_G(
+    params_true,
+    g_settings_true,
+    PDistributions.update_params,
+    PDistributions.moment,
+    Cloudy.Sources.get_int_coalescence,
+)
 n_samples = 100
-yt = zeros(length(gt),n_samples)
+yt = zeros(length(gt), n_samples)
 # In a perfect model setting, the "observational noise" represent the internal
 # model variability. Since Cloudy is a purely deterministic model, there is no
 # straightforward way of coming up with a covariance structure for this internal
@@ -167,9 +172,14 @@ truth_sample = truth.mean
 N_ens = 50 # number of ensemble members
 N_iter = 8 # number of EKI iterations
 # initial parameters: N_params x N_ens
-initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
-ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
-                   Inversion(), Δt=0.1)
+initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed = 6)
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(
+    initial_params,
+    truth_sample,
+    truth.obs_noise_cov,
+    Inversion(),
+    Δt = 0.1,
+)
 
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
@@ -180,24 +190,24 @@ g_settings = GModel.GSettings(kernel, dist_type, moments, tspan)
 
 # EKI iterations
 for i in 1:N_iter
-
-    params_i = mapslices(x -> transform_unconstrained_to_constrained(priors, x),
-                         get_u_final(ekiobj); dims=1)
-    g_ens = GModel.run_G_ensemble(params_i, g_settings,
-                                  PDistributions.update_params,
-                                  PDistributions.moment,
-                                  Cloudy.Sources.get_int_coalescence)
+    params_i = mapslices(x -> transform_unconstrained_to_constrained(priors, x), get_u_final(ekiobj); dims = 1)
+    g_ens = GModel.run_G_ensemble(
+        params_i,
+        g_settings,
+        PDistributions.update_params,
+        PDistributions.moment,
+        Cloudy.Sources.get_int_coalescence,
+    )
     EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
-transformed_params_true = transform_constrained_to_unconstrained(priors,
-                                                                 params_true)
+transformed_params_true = transform_constrained_to_unconstrained(priors, params_true)
 println("True parameters (transformed): ")
 println(transformed_params_true)
 
 println("\nEKI results:")
-println(mean(get_u_final(ekiobj), dims=2))
+println(mean(get_u_final(ekiobj), dims = 2))
 
 
 ###
@@ -207,25 +217,20 @@ println(mean(get_u_final(ekiobj), dims=2))
 gppackage = Emulators.GPJL()
 pred_type = Emulators.YType()
 gauss_proc = GaussianProcess(
-    gppackage; 
-    kernel=nothing, # use default squared exponential kernel
-    prediction_type=pred_type, 
-    noise_learn=false
+    gppackage;
+    kernel = nothing, # use default squared exponential kernel
+    prediction_type = pred_type,
+    noise_learn = false,
 )
 
 # Get training points
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
-emulator = Emulator(
-    gauss_proc,
-    input_output_pairs,
-    obs_noise_cov=Γy,
-    normalize_inputs=true
-)
+emulator = Emulator(gauss_proc, input_output_pairs, obs_noise_cov = Γy, normalize_inputs = true)
 optimize_hyperparameters!(emulator)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = Emulators.predict(emulator, transformed_params_true; transform_to_real=true)
+y_mean, y_var = Emulators.predict(emulator, reshape(transformed_params_true, :, 1); transform_to_real = true)
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
 println("true data: ")
@@ -237,7 +242,7 @@ println(truth.mean)
 ###
 
 # initial values
-u0 = vec(mean(get_inputs(input_output_pairs), dims=2))
+u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
 println("initial parameters: ", u0)
 
 # MCMC settings
@@ -248,16 +253,14 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 2000 # number of steps before checking acc/rej rate for step size determination
 yt_sample = truth_sample
-mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
-                         mcmc_alg, burnin, svdflag=true)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter=max_iter)
+mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, mcmc_alg, burnin, svdflag = true)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter = max_iter)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
 burnin = 1000
 max_iter = 100000
-mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
-                    burnin, svdflag=true)
+mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg, burnin, svdflag = true)
 MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
@@ -273,27 +276,33 @@ println(post_cov)
 # (in the transformed/unconstrained space)
 n_params = length(get_name(posterior))
 
-gr(size=(800,600))
-   
+gr(size = (800, 600))
+
 for idx in 1:n_params
     if idx == 1
-        xs = collect(range(5.15, stop=5.25, length=1000))
+        xs = collect(range(5.15, stop = 5.25, length = 1000))
     elseif idx == 2
-        xs = collect(range(0.0, stop=0.5, length=1000))
+        xs = collect(range(0.0, stop = 0.5, length = 1000))
     elseif idx == 3
-        xs = collect(range(-3.0, stop=-2.0, length=1000))
+        xs = collect(range(-3.0, stop = -2.0, length = 1000))
     else
         throw("not implemented")
     end
 
     label = "true " * param_names[idx]
-    posterior_samples = dropdims(get_distribution(posterior)[param_names[idx]],
-                                 dims=1)
-    histogram(posterior_samples, bins=100, normed=true, fill=:slategray,
-              thickness_scaling=2.0, lab="posterior", legend=:outertopright)
+    posterior_samples = dropdims(get_distribution(posterior)[param_names[idx]], dims = 1)
+    histogram(
+        posterior_samples,
+        bins = 100,
+        normed = true,
+        fill = :slategray,
+        thickness_scaling = 2.0,
+        lab = "posterior",
+        legend = :outertopright,
+    )
     prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
-    plot!(xs, prior_dist, w=2.6, color=:blue, lab="prior")
-    plot!([transformed_params_true[idx]], seriestype="vline", w=2.6, lab=label)
+    plot!(xs, prior_dist, w = 2.6, color = :blue, lab = "prior")
+    plot!([transformed_params_true[idx]], seriestype = "vline", w = 2.6, lab = label)
     title!(param_names[idx])
     figpath = joinpath(output_directory, "posterior_" * param_names[idx] * ".png")
     StatsPlots.savefig(figpath)
