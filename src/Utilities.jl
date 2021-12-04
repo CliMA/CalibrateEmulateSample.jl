@@ -44,18 +44,26 @@ end
 
 
 """
-    get_obs_sample(obs::Obs; rng_seed=42)
+    get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
 
 Return a random sample from the observations (for use in the MCMC)
 
  - `obs` - Obs struct with the observations (extract will pick one
-           of the sample observations to train the j
- - `rng_seed` - seed for random number generator used to pick a random
-                sample of the observations
+           of the sample observations to train the j.
+ - `rng_seed` - optional kwarg; seed for random number generator used to pick a 
+                random sample of the observations.
+- `rng` - optional kwarg; RNG object used to pick random sample. If this kwarg is
+          provided, `rng_seed` is ignored.
 
 """
-function get_obs_sample(obs::Obs; rng_seed=42)
-    sample_ind = randperm!(collect(1:length(obs.samples)))[1]
+function get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
+    # Ensuring reproducibility of the sampled parameter values
+    if rng === nothing
+        rng = Random.seed!(rng_seed)
+    end
+    # on the other hand, if we did pass an explicit rng, we seeded it already
+        
+    sample_ind = randperm!(rng, collect(1:length(obs.samples)))[1]
     yt_sample = obs.samples[sample_ind]
 
     return yt_sample
