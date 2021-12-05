@@ -109,7 +109,7 @@ using CalibrateEmulateSample.DataStorage
     pred_type = YType()
 
     # Generate training data
-    m = 80                                        # number of training points
+    m = 200                                        # number of training points
     
     p = 2   # input dim 
     d = 2   # output dim
@@ -124,7 +124,7 @@ using CalibrateEmulateSample.DataStorage
 
     # Add noise η
     μ = zeros(d) 
-    Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
+    Σ = 0.08 * [[0.8, 0.2] [0.2, 0.5]] # d x d
     noise_samples = rand(rng, MvNormal(μ, Σ), m)
     
     # y = G(x) + η

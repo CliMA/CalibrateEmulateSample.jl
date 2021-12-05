@@ -18,7 +18,7 @@ using CalibrateEmulateSample.DataStorage
     data_names = ["d1", "d2", "d3"]
     obs = Obs(arr_t, data_names) #data must be columns as default
     sample = get_obs_sample(obs; rng = rng)
-    @test sample == [3.0, 3.0, 3.0]
+    @test sample == [5.0, 5.0, 5.0]
 
     mean_arr = dropdims(mean(arr, dims=1), dims=1)
     std_arr = dropdims(std(arr, dims=1), dims=1)
