@@ -2,6 +2,7 @@ module Utilities
 
 using LinearAlgebra
 using Statistics
+using StatsBase
 using Random
 using ..Observations
 using ..EnsembleKalmanProcessModule
@@ -46,7 +47,7 @@ end
 """
     get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
 
-Return a random sample from the observations (for use in the MCMC)
+Return one random sample from the observations (for use in the MCMC)
 
  - `obs` - Obs struct with the observations (extract will pick one
            of the sample observations to train the j.
@@ -63,10 +64,8 @@ function get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, No
     end
     # on the other hand, if we did pass an explicit rng, we seeded it already
         
-    sample_ind = randperm!(rng, collect(1:length(obs.samples)))[1]
-    yt_sample = obs.samples[sample_ind]
-
-    return yt_sample
+    row_idxs = StatsBase.sample(rng, axes(obs.samples, 1), 1; replace=false, ordered=false)
+    return obs.samples[row_idxs...]
 end
 
 
