@@ -12,15 +12,14 @@ using CalibrateEmulateSample.DataStorage
 @testset "MarkovChainMonteCarlo" begin
 
     # Seed for pseudo-random number generator
-    rng_seed = 41
-    Random.seed!(rng_seed)
+    rng = Random.MersenneTwister(41)
 
     # We need a GaussianProcess to run MarkovChainMonteCarlo, so let's reconstruct the one that's tested
     # in test/GaussianProcesses/runtests.jl
     n = 20                                       # number of training points
     x = reshape(2.0 * π * rand(n), 1, n)         # predictors/features: 1 × n
     σ2_y = reshape([0.05],1,1)
-    y = sin.(x) + rand(Normal(0, σ2_y[1]), (1, n)) # predictands/targets: 1 × n
+    y = sin.(x) + rand(rng, Normal(0, σ2_y[1]), (1, n)) # predictands/targets: 1 × n
 
     iopairs = PairedDataContainer(x,y,data_are_columns=true)
 
@@ -59,9 +58,10 @@ using CalibrateEmulateSample.DataStorage
     step = 0.5 # first guess
     max_iter = 5000
     norm_factors=nothing
-    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                        mcmc_alg, burnin; svdflag=true, standardize=false,
-			truncate_svd=1.0, norm_factor=norm_factors)
+    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
+                     svdflag=true, standardize=false, truncate_svd=1.0, 
+                     norm_factor=norm_factors, rng=rng
+    )
     new_step = find_mcmc_step!(mcmc_test, gp)
 
     # reset parameters 
@@ -69,9 +69,10 @@ using CalibrateEmulateSample.DataStorage
     max_iter = 100_000
 
     # Now begin the actual MCMC
-    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                   mcmc_alg, burnin; svdflag=true, standardize=false,
-                   truncate_svd=1.0, norm_factor=norm_factors)
+    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
+                svdflag=true, standardize=false, truncate_svd=1.0, norm_factor=norm_factors,
+                rng=rng
+    )
     sample_posterior!(mcmc, gp, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
@@ -95,14 +96,16 @@ using CalibrateEmulateSample.DataStorage
     gp = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
                   normalized=false, noise_learn=true, standardize=true, truncate_svd=0.9, 
                   prediction_type=pred_type, norm_factor=norm_factor) 
-    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                        mcmc_alg, burnin;
-			svdflag=true, standardize=true, norm_factor=norm_factor, truncate_svd=0.9)
+    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin;
+			         svdflag=true, standardize=true, norm_factor=norm_factor, 
+                     truncate_svd=0.9, rng=rng
+    )
 
     # Now begin the actual MCMC
-    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
-                   mcmc_alg, burnin; svdflag=true, standardize=false,
-                   truncate_svd=1.0, norm_factor=norm_factor)
+    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
+                svdflag=true, standardize=false, truncate_svd=1.0, norm_factor=norm_factor,
+                rng=rng
+    )
     sample_posterior!(mcmc, gp, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]

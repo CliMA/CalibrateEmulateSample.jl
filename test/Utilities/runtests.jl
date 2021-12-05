@@ -10,14 +10,14 @@ using CalibrateEmulateSample.DataStorage
 
 @testset "Utilities" begin
 
-    rng_seed = 41
-    Random.seed!(rng_seed)
+    # Seed for pseudo-random number generator
+    rng = Random.MersenneTwister(41)
 
     arr = vcat([i*ones(3)' for i in 1:5]...)
     arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
     obs = Obs(arr_t, data_names) #data must be columns as default
-    sample = get_obs_sample(obs; rng_seed=rng_seed)
+    sample = get_obs_sample(obs; rng = rng)
     @test sample == [3.0, 3.0, 3.0]
 
     mean_arr = dropdims(mean(arr, dims=1), dims=1)
@@ -48,15 +48,14 @@ using CalibrateEmulateSample.DataStorage
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    initial_ensemble = randn(dim_par,n_ens)#params are cols
-    y_obs = randn(dim_obs)
+    initial_ensemble = randn(rng, dim_par,n_ens)#params are cols
+    y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I,dim_obs,dim_obs)
-    ekp = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
-    g_ens = randn(dim_obs,n_ens) # data are cols
+    ekp = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng=rng)
+    g_ens = randn(rng, dim_obs,n_ens) # data are cols
     EnsembleKalmanProcessModule.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens
-    
 
 end

@@ -15,8 +15,7 @@ using CalibrateEmulateSample.DataStorage
 @testset "GaussianProcessEmulator" begin
 
     # Seed for pseudo-random number generator
-    rng_seed = 41
-    Random.seed!(rng_seed)
+    rng = Random.MersenneTwister(41)
 
     # -------------------------------------------------------------------------
     # Test case 1: 1D input, 1D output
@@ -24,8 +23,8 @@ using CalibrateEmulateSample.DataStorage
 
     # Training data
     n = 20                                       # number of training points
-    x = reshape(2.0 * π * rand(n), 1, n)         # predictors/features: 1 x n
-    y = reshape(sin.(x) + 0.05 * randn(n)', 1, n) # predictands/targets: 1 x n
+    x = reshape(2.0 * π * rand(rng, n), 1, n)         # predictors/features: 1 x n
+    y = reshape(sin.(x) + 0.05 * randn(rng, n)', 1, n) # predictands/targets: 1 x n
 
     iopairs = PairedDataContainer(x,y,data_are_columns=true)
     # Construct kernel:
@@ -114,7 +113,7 @@ using CalibrateEmulateSample.DataStorage
     
     p = 2   # input dim 
     d = 2   # output dim
-    X = 2.0 * π * rand(p, m)
+    X = 2.0 * π * rand(rng, p, m)
     
     # G(x1, x2)
     g1x = sin.(X[1, :]) .+ cos.(X[2, :])
@@ -126,7 +125,7 @@ using CalibrateEmulateSample.DataStorage
     # Add noise η
     μ = zeros(d) 
     Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
-    noise_samples = rand(MvNormal(μ, Σ), m)
+    noise_samples = rand(rng, MvNormal(μ, Σ), m)
     
     # y = G(x) + η
     Y = gx .+ noise_samples
