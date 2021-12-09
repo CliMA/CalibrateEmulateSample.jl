@@ -72,7 +72,7 @@ Input-output pairs in paired data storage, storing in/out_dim × N_samples
 function GaussianProcess(
     package;
     kernel::Union{K, KPy, Nothing}=nothing,
-    noise_learn=nothing,
+    noise_learn=true,
     prediction_type::PredictionType=YType(),
     ) where {K<:Kernel, KPy<:PyObject}
 
@@ -216,8 +216,7 @@ Input-output pairs in paired data storage, storing in/out_dim × N_samples
 
 function build_models!(
     gp::GaussianProcess{SKLJL},
-    input_output_pairs;
-    noise_learn::Bool=true)
+    input_output_pairs)
 
       # get inputs and outputs 
     input_values = permutedims(get_inputs(input_output_pairs), (2,1))
@@ -243,7 +242,7 @@ function build_models!(
         println("Using user-defined kernel", kern)
     end
 
-    if noise_learn
+    if gp.noise_learn
         # Add white noise to kernel
         white_noise_level = 1.0
         white = pykernels.WhiteKernel(noise_level=white_noise_level,

@@ -41,22 +41,22 @@ using CalibrateEmulateSample.DataStorage
     @test size(transformed_y) == size(y)
 
     # 1D y version
-    transformed_y, decomposition = Emulators.svd_transform(y[:, 1], Σ, truncate_svd=1.0)
+    transformed_y, decomposition2 = Emulators.svd_transform(y[:, 1], Σ, truncate_svd=1.0)
     @test_throws AssertionError Emulators.svd_transform(y[:,1], Σ[:,1], truncate_svd=1.0)
     @test size(transformed_y) == size(y[:, 1])
     
     # Reverse SVD
-    y_new, y_cov_new = Emulators.svd_reverse_transform_mean_cov(reshape(transformed_y,(d,1)),ones(d,1),decomposition, truncate_svd=1.0)
-    @test_throws AssertionError Emulators.svd_reverse_transform_mean_cov(transformed_y,ones(d,1),decomposition, truncate_svd=1.0)
-    @test_throws AssertionError Emulators.svd_reverse_transform_mean_cov(reshape(transformed_y,(d,1)),ones(d),decomposition, truncate_svd=1.0)
+    y_new, y_cov_new = Emulators.svd_reverse_transform_mean_cov(reshape(transformed_y,(d,1)),ones(d,1),decomposition2, truncate_svd=1.0)
+    @test_throws AssertionError Emulators.svd_reverse_transform_mean_cov(transformed_y,ones(d,1),decomposition2, truncate_svd=1.0)
+    @test_throws AssertionError Emulators.svd_reverse_transform_mean_cov(reshape(transformed_y,(d,1)),ones(d),decomposition2, truncate_svd=1.0)
     @test size(y_new)[1] == size(y[:, 1])[1]
     @test y_new ≈ y[:,1]
     @test y_cov_new[1] ≈ Σ
     
     # Truncation
-    transformed_y, decomposition = Emulators.svd_transform(y[:, 1], Σ, truncate_svd=0.95)
-    trunc_size = size(decomposition.S)[1]
-    @test test_SVD.S[1:trunc_size] == decomposition.S
+    transformed_y, trunc_decomposition = Emulators.svd_transform(y[:, 1], Σ, truncate_svd=0.95)
+    trunc_size = size(trunc_decomposition.S)[1]
+    @test test_SVD.S[1:trunc_size] == trunc_decomposition.S
     @test size(transformed_y)[1] == trunc_size
     
     # [2.] test Normalization
@@ -76,35 +76,68 @@ using CalibrateEmulateSample.DataStorage
     
     
     
-#=    # [4.] test emulator preserves the structures
-    #build a quick dummy structure
-    struct MLTester <: Emulators.MachineLearningTool end
-    function build_models!(mlt::MLTester,iopairs) end
-    function optimize_hyperparameters!(mlt::MLTester) end
-    function predict(mlt::MLTester,new_inputs) return new_inputs end
+    # [4.] test emulator preserves the structures
 
+    #build an unknown type
+    struct MLTester <: Emulators.MachineLearningTool end
+    
     mlt = MLTester()
     
+    @test_throws ErrorException emulator = Emulator(
+        mlt,
+        iopairs,
+        obs_noise_cov=Σ,
+        normalize_inputs=true,
+        standardize_outputs=false,
+        truncate_svd=1.0)
+
+    #build a known type, with defaults
+    gp = GaussianProcess(GPJL())
+
     emulator = Emulator(
-    mlt,
-    iopairs,
-    obs_noise_cov=Σ,
-    normalize_inputs=true,
-    standardize_outputs=false,
-    truncate_svd=1.0)
+        gp,
+        iopairs,
+        obs_noise_cov=Σ,
+        normalize_inputs=false,
+        standardize_outputs=false,
+        truncate_svd=1.0)
     
-    # compare with stored emulator version
+    # compare SVD/norm/stand with stored emulator version
     test_decomp = emulator.decomposition
     @test test_decomp.V == decomposition.V #(use [:,:] to make it an array)
     @test test_decomp.Vt == decomposition.Vt
     @test test_decomp.S == decomposition.S
     @test test_decomp.N == decomposition.N
 
-    train_inputs = get_inputs(emulator.training_pairs)
-    @assert norm_inputs = train_inputs
+    emulator2 = Emulator(
+        gp,
+        iopairs,
+        obs_noise_cov=Σ,
+        normalize_inputs=true,
+        standardize_outputs=false,
+        truncate_svd=1.0)
+    train_inputs = get_inputs(emulator2.training_pairs)
+    @assert norm_inputs == train_inputs
 
-    train_inputs2 = Emulators.normalize(emulator,get_inputs(iopairs))
-    @assert norm_inputs = train_inputs
+    train_inputs2 = Emulators.normalize(emulator2,get_inputs(iopairs))
+    @assert norm_inputs == train_inputs
 
-  =#  
+    # reverse standardise
+
+    emulator3 = Emulator(
+        gp,
+        iopairs,
+        obs_noise_cov=Σ,
+        normalize_inputs=false,
+        standardize_outputs=true,
+        standardize_output_factors=norm_factors,        
+        truncate_svd=1.0)
+
+    train_outputs = get_outputs(emulator3.training_pairs)
+    @assert s_y == train_outputs
+    
+    outputs,output_cov = Emulator.reverse_standardize(emulator3,train_outputs,Diagonal(ones(size(train_outputs)[1])))
+    @assert get_outputs(iopairs) == outputs
+    @assert 1/(norm_factors.^2)*Diagonal(ones(size(train_outputs)[1])) == output_cov
+    
 end

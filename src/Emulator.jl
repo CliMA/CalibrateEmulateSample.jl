@@ -28,11 +28,13 @@ end
 
 
 abstract type MachineLearningTool end
-
-# functions for fallback
-#function build_models(<:MachineLearningTool) # no return
-#function optimize_hyperparameters!(<:MachineLearningTool) # no return
-#function predict(<:MachineLearningTool, new_inputs) #returns mean and cov predctions for new_inputs
+# defaults in error, all MachineLearningTools require these functions.
+function throw_define_mlt()
+    throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
+end
+function build_models!(mlt,iopairs) throw_define_mlt() end
+function optimize_hyperparameters!(mlt) throw_define_mlt() end
+function predict(mlt,new_inputs) throw_define_mlt() end
 
 # include the different <: ML models
 include("GaussianProcessEmulator_new.jl") #for GaussianProcess
