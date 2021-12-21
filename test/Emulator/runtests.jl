@@ -67,12 +67,12 @@ using CalibrateEmulateSample.DataStorage
     @test norm_inputs == sqrt_inv_input_cov * (get_inputs(iopairs) .- input_mean)
 
     # [3.] test Standardization
-    norm_factor = 10.0
-    norm_factor = fill(norm_factor, size(y[:,1])) # must be size of output dim
+    norm_factors = 10.0
+    norm_factors = fill(norm_factors, size(y[:,1])) # must be size of output dim
 
-    s_y, s_y_cov = Emulators.standardize(get_outputs(iopairs),Σ,norm_factor)
-    @test s_y == get_outputs(iopairs)./norm_factor
-    @test s_y_cov == Σ ./ (norm_factor.*norm_factor')
+    s_y, s_y_cov = Emulators.standardize(get_outputs(iopairs),Σ,norm_factors)
+    @test s_y == get_outputs(iopairs)./norm_factors
+    @test s_y_cov == Σ ./ (norm_factors.*norm_factors')
     
     
     
@@ -117,10 +117,10 @@ using CalibrateEmulateSample.DataStorage
         standardize_outputs=false,
         truncate_svd=1.0)
     train_inputs = get_inputs(emulator2.training_pairs)
-    @assert norm_inputs == train_inputs
+    @test norm_inputs == train_inputs
 
     train_inputs2 = Emulators.normalize(emulator2,get_inputs(iopairs))
-    @assert norm_inputs == train_inputs
+    @test norm_inputs == train_inputs
 
     # reverse standardise
 
@@ -130,14 +130,13 @@ using CalibrateEmulateSample.DataStorage
         obs_noise_cov=Σ,
         normalize_inputs=false,
         standardize_outputs=true,
-        standardize_output_factors=norm_factors,        
+        standardize_outputs_factors=norm_factors,        
         truncate_svd=1.0)
 
-    train_outputs = get_outputs(emulator3.training_pairs)
-    @assert s_y == train_outputs
-    
-    outputs,output_cov = Emulator.reverse_standardize(emulator3,train_outputs,Diagonal(ones(size(train_outputs)[1])))
-    @assert get_outputs(iopairs) == outputs
-    @assert 1/(norm_factors.^2)*Diagonal(ones(size(train_outputs)[1])) == output_cov
+    #standardized and decorrelated (sd) data
+    sd_train_outputs = get_outputs(emulator3.training_pairs)
+    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(emulator3.decomposition.S)) 
+    decorrelated_s_y = sqrt_singular_values_inv * emulator3.decomposition.Vt * s_y
+    @test decorrelated_s_y == sd_train_outputs
     
 end

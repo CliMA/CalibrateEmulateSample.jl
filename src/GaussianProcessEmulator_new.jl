@@ -262,7 +262,7 @@ function build_models!(
     
     for i in 1:N_models
         kernel_i = deepcopy(kern)
-        data_i = transformed_data[i, :]
+        data_i = output_values[i, :]
         m = pyGP.GaussianProcessRegressor(kernel=kernel_i,
                                           n_restarts_optimizer=10,
                                           alpha=regularization_noise)
