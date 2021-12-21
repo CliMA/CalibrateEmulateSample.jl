@@ -1,6 +1,6 @@
 module MarkovChainMonteCarlo
 
-using ..GaussianProcessEmulator
+using ..Emulators
 using ..ParameterDistributionStorage
 
 using Statistics
@@ -97,7 +97,7 @@ function MCMC(
     # We need to transform obs_sample into the correct space 
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        obs_sample, unused = svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
+        obs_sample, unused = Emulators.svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
     else
         println("Assuming independent outputs.")
     end
@@ -200,7 +200,7 @@ function log_likelihood(mcmc::MCMC{FT},
 	#full_cov = Diagonal(gvar)
 	eigs = eigvals(gcov)
 	log_gpfidelity = -FT(0.5) * sum(log.(eigs))
-	# Combine got log_rho
+    # Combine got log_rho
 	diff = g - mcmc.obs_sample
         log_rho[1] = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
     #end
@@ -226,7 +226,7 @@ function proposal(mcmc::MCMC)
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}; max_iter=2000) where {FT}
+function find_mcmc_step!(mcmc_test::MCMC{FT}, em::Emulator{FT}; max_iter=2000) where {FT}
     step = mcmc_test.step[1]
     mcmc_accept = false
     doubled = false
@@ -241,11 +241,11 @@ function find_mcmc_step!(mcmc_test::MCMC{FT}, gp::GaussianProcess{FT}; max_iter=
     while mcmc_accept == false
 
         param = reshape(mcmc_test.param, :, 1)
-        gp_pred, gp_predvar = predict(gp, param )
-        if ndims(gp_predvar[1]) != 0
-            mcmc_sample!(mcmc_test, vec(gp_pred), diag(gp_predvar[1]))
+        em_pred, em_predvar = predict(em, param )
+        if ndims(em_predvar[1]) != 0
+            mcmc_sample!(mcmc_test, vec(em_pred), diag(em_predvar[1]))
         else
-            mcmc_sample!(mcmc_test, vec(gp_pred), vec(gp_predvar))
+            mcmc_sample!(mcmc_test, vec(em_pred), vec(em_predvar))
         end
         it += 1
         if it % max_iter == 0
@@ -289,18 +289,18 @@ end
 
 
 function sample_posterior!(mcmc::MCMC{FT,IT},
-                           gp::GaussianProcess{FT},
+                           em::Emulator{FT},
                            max_iter::IT) where {FT,IT<:Int}
 
     for mcmcit in 1:max_iter
         param = reshape(mcmc.param, :, 1)
         # test predictions (param is 1 x N_parameters)
-        gp_pred, gp_predvar = predict(gp, param)
+        em_pred, em_predvar = predict(em, param)
 
-        if ndims(gp_predvar[1]) != 0
-            mcmc_sample!(mcmc, vec(gp_pred), diag(gp_predvar[1]))
+        if ndims(em_predvar[1]) != 0
+            mcmc_sample!(mcmc, vec(em_pred), diag(em_predvar[1]))
         else
-            mcmc_sample!(mcmc, vec(gp_pred), vec(gp_predvar))
+            mcmc_sample!(mcmc, vec(em_pred), vec(em_predvar))
         end
 
     end
