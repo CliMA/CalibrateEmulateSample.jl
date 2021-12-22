@@ -13,6 +13,11 @@ export optimize_hyperparameters!
 export predict
 
 # SVD decomposition structure
+"""
+    Decomposition{<:AbstractFloat, <:Int}
+
+Struct of SVD decomposition, containing (V,S,Vt), and the size of S, N. 
+"""
 struct Decomposition{FT<:AbstractFloat, IT<:Int}
     V::Array{FT,2}
     Vt::Array{FT,2}
@@ -26,7 +31,13 @@ function Decomposition(svd::SVD)
 	return Decomposition(svd.V[:,:], svd.Vt, svd.S, size(svd.S)[1])
 end
 
+"""
+    MachineLearningTool
 
+Type to dispatch different emulators:
+
+ - GaussianProcess <: MachineLearningTool
+"""
 abstract type MachineLearningTool end
 # defaults in error, all MachineLearningTools require these functions.
 function throw_define_mlt()
@@ -48,9 +59,8 @@ include("GaussianProcess.jl") #for GaussianProcess
 """
     Emulator
 
-Structure used to represent a general emulator
+Structure used to represent a general emulator:
 """
-
 struct Emulator{FT}
     "Machine learning tool, defined as a struct of type MachineLearningTool"
     machine_learning_tool::MachineLearningTool
@@ -143,11 +153,21 @@ function Emulator(
                         decomposition)
 end    
 
+"""
+    function optimize_hyperparameters!(emulator::Emulator)
 
+optimize the hyperparameters in the machine learning tool
+"""
 function optimize_hyperparameters!(emulator::Emulator{FT}) where {FT}
     optimize_hyperparameters!(emulator.machine_learning_tool)
 end
 
+
+"""
+    function predict(emulator::Emulator, new_inputs; transform_to_real=false) 
+
+makes a prediction using the emulator on new inputs (each new inputs given as data columns), default is to predict in the decorrelated space
+"""
 function predict(emulator::Emulator{FT}, new_inputs; transform_to_real=false) where {FT}
 
     # Check if the size of new_inputs is consistent with the GP model's input
@@ -198,11 +218,11 @@ end
 
 
 # Normalization, Standardization, and Decorrelation
-function normalize(inputs, input_mean, sqrt_inv_input_cov)
-    training_inputs = sqrt_inv_input_cov * (inputs .- input_mean)
-    return training_inputs 
-end
+"""
+    function normalize(emulator::Emulator, inputs)
 
+normalize the input data, with a normalizing function
+"""
 function normalize(emulator::Emulator{FT}, inputs) where {FT}
     if emulator.normalize_inputs
         return normalize(inputs, emulator.input_mean, emulator.sqrt_inv_input_cov)
@@ -211,12 +231,32 @@ function normalize(emulator::Emulator{FT}, inputs) where {FT}
     end
 end
 
+"""
+    function normalize(inputs, input_mean, sqrt_inv_input_cov)
+
+normalize with the empirical Gaussian distribution of points
+"""
+function normalize(inputs, input_mean, sqrt_inv_input_cov)
+    training_inputs = sqrt_inv_input_cov * (inputs .- input_mean)
+    return training_inputs 
+end
+
+"""
+    function standardize(outputs, output_cov, factors) 
+
+standardize with a vector of factors (size equal to output dimension)
+"""
 function standardize(outputs, output_cov, factors) 
     standardized_outputs = outputs ./ factors
     standardized_cov = output_cov ./ (factors .* factors')
     return standardized_outputs, standardized_cov
 end
 
+"""
+    function reverse_standardize(emulator::Emulator, outputs, output_cov)
+
+reverse a previous standardization with the stored vector of factors (size equal to output dimension)
+"""
 function reverse_standardize(emulator::Emulator{FT}, outputs, output_cov) where {FT}
     if emulator.standardize_outputs
         return standardize(outputs, output_cov, 1. / emulator.standardize_output_factors)

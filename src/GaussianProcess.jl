@@ -62,13 +62,18 @@ end
 
 
 """
-    GaussianProcess(input_output_pairs::PairedDataContainer{FT}, package::GPJL; kernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
+    function GaussianProcess(
+    package;
+    kernel::Union{K, KPy, Nothing}=nothing,
+    noise_learn=true,
+    prediction_type::PredictionType=YType(),
+    ) where {K<:Kernel, KPy<:PyObject}
 
-Input-output pairs in paired data storage, storing in/out_dim × N_samples
-
- - `kernel` - GaussianProcesses kernel object. If not supplied, a default Squared Exponential kernel is used.
+ - `package` - GaussianProcessPackage object
+ - `kernel` - GaussianProcesses kernel object. default is a Squared Exponential kernel.
+ - `noise_learn` - boolean to additionally learn white noise in decorrelated space. default is true.
+ - `prediction_type` - PredictionType object. default predicts data, not latent function (FType()).
 """
-
 function GaussianProcess(
     package;
     kernel::Union{K, KPy, Nothing}=nothing,
@@ -84,6 +89,13 @@ function GaussianProcess(
 end
 
 # First we create  the GPJL implementation
+"""
+    function build_models!(
+        gp::GaussianProcess{package},
+        input_output_pairs)
+
+method to build gaussian process models based on the package
+"""
 function build_models!(
     gp::GaussianProcess{GPJL},
     input_output_pairs)
@@ -159,6 +171,11 @@ function build_models!(
 
 end
 
+"""
+    function optimize_hyperparameters!(gp::GaussianProcess{package})
+
+optimize Gaussian Process hyperparameters using in-build package method
+"""
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
@@ -169,6 +186,11 @@ function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     end
 end
 
+"""
+    function predict(gp::GaussianProcess{package}, new_inputs::Array{FT, 2})
+
+predict means and covariances in decorrelated output space using gaussian process models
+"""
 predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}) where {FT} = predict(gp, new_inputs, gp.prediction_type)
 
 function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::YType) where {FT}
@@ -205,15 +227,7 @@ end
 
 
 
-"""
-    GaussianProcess(input_output_pairs::PairedDataContainer, package::SKLJL; kernel::Union{K, KPy, Nothing}=nothing, obs_noise_cov::Union{Array{FT, 2}, Nothing}=nothing, normalized::Bool=true, noise_learn::Bool=true, prediction_type::PredictionType=YType()) where {K<:Kernel, KPy<:PyObject}
-
-Input-output pairs in paired data storage, storing in/out_dim × N_samples
-
- - `kernel` - ScikitLearn kernel object. If not supplied, a default Squared Exponential kernel is used.
-"""
 #now we build the SKLJL implementation
-
 function build_models!(
     gp::GaussianProcess{SKLJL},
     input_output_pairs)
@@ -303,145 +317,3 @@ function predict(gp::GaussianProcess{SKLJL}, new_inputs::Array{FT, 2}) where {FT
     return μ, σ2
 end
 
-#=
-"""
-    predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, gp.prediction_type)
-
-Evaluate the GP model(s) at new inputs.
-  - `gp` - a GaussianProcess
-  - `new_inputs` - inputs for which GP model(s) is/are evaluated; input_dim × N_samples
-
-Returns the predicted mean(s) and covariance(s) at the input points. 
-Means: matrix of size output_dim × N_samples 
-Covariances: vector of length N_samples, each element is a matrix of size output_dim × output_dim. If the output is 1-dimensional, a 1 × N_samples array of scalar variances is returned rather than a vector of 1x1 matrices.
-
-Note: If gp.normalized == true, the new inputs are normalized prior to the prediction
-"""
-predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}; transform_to_real::Bool=false) where {FT} = predict(gp, new_inputs, transform_to_real, gp.prediction_type)
-
-function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::FType) where {FT}
-
-    # Check if the size of new_inputs is consistent with the GP model's input
-    # dimension. 
-    input_dim, output_dim = size(gp.input_output_pairs, 1)
-    N_samples = size(new_inputs, 2)
-    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
-
-    if gp.normalized
-        new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
-    end
-
-    M = length(gp.models)
-    # Predicts columns of inputs: input_dim × N_samples
-    μ = zeros(output_dim,N_samples)
-    σ2 = zeros(output_dim,N_samples)
-    for i in 1:M
-        μ[i,:],σ2[i,:] = predict_f(gp.models[i], new_inputs)
-    end
-
-    if transform_to_real && gp.decomposition != nothing
-        μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2,
-                                                         gp.decomposition)
-    elseif transform_to_real && gp.decomposition == nothing
-        throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
-                 but GaussianProcess.decomposition == nothing. 
-                 Try setting transform_to_real=false"""))
-    else
-        μ_pred = μ
-        # Convert to vector of (diagonal) matrices to match the format of 
-        # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_samples])
-    end
-
-    if output_dim == 1
-        σ2_pred = [σ2_pred[i][1] for i in 1:N_samples]
-    end
-
-    return μ_pred, σ2_pred
-end
-
-function predict(gp::GaussianProcess{FT, GPJL}, new_inputs::Array{FT, 2}, transform_to_real, ::YType) where {FT}
-
-    # Check if the size of new_inputs is consistent with the GP model's input
-    # dimension. 
-    input_dim, output_dim = size(gp.input_output_pairs, 1)
-
-    N_samples = size(new_inputs, 2)
-    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
-
-    if gp.normalized
-        new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
-    end
-
-    M = length(gp.models)
-    # Predicts columns of inputs: input_dim × N_samples
-    μ = zeros(output_dim,N_samples)
-    σ2 = zeros(output_dim,N_samples)
-    for i in 1:M
-        μ[i,:],σ2[i,:] = predict_f(gp.models[i], new_inputs)
-    end
-    if transform_to_real && gp.decomposition != nothing
-        μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2, 
-                                                         gp.decomposition)
-    elseif transform_to_real && gp.decomposition == nothing
-        throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
-                 but GaussianProcess.decomposition == nothing. 
-                 Try setting transform_to_real=false"""))
-    else
-        μ_pred = μ
-        # Convert to vector of (diagonal) matrices to match the format of 
-        # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_samples])
-    end
-
-    if output_dim == 1
-        σ2_pred = [σ2_pred[i][1] for i in 1:N_samples]
-    end
-
-    return μ_pred, σ2_pred
-end
-
-function predict(gp::GaussianProcess{FT, SKLJL}, new_inputs::Array{FT, 2}, transform_to_real::Bool=false) where {FT}
-
-    # Check if the size of new_inputs is consistent with the GP model's input
-    # dimension. 
-    input_dim, output_dim = size(gp.input_output_pairs, 1)
-
-    N_samples = size(new_inputs, 2)
-    size(new_inputs, 1) == input_dim || throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
-
-    if gp.normalized
-        new_inputs = gp.sqrt_inv_input_cov * (new_inputs .- gp.input_mean)  
-    end
-
-    M = length(gp.models)
-
-    # SKJL based on rows not columns; need to transpose inputs
-    μ = zeros(output_dim,N_samples)
-    σ = zeros(output_dim,N_samples)
-    for i in 1:M
-        μ[i,:],σ[i,:] = gp.models[i].predict(new_inputs', return_std=true)
-    end
-    σ2 = σ .* σ
-
-    if transform_to_real && gp.decomposition != nothing
-        μ_pred, σ2_pred = svd_reverse_transform_mean_cov(μ, σ2, 
-                                                         gp.decomposition)
-    elseif transform_to_real && gp.decomposition == nothing
-        throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
-                 but GaussianProcess.decomposition == nothing. 
-                 Try setting transform_to_real=false"""))
-    else
-        μ_pred = μ
-        # Convert to vector of (diagonal) matrices to match the format of 
-        # σ2_pred when transform_to_real=true
-        σ2_pred = vec([Diagonal(σ2[:, j]) for j in 1:N_samples])
-    end
-
-    if output_dim == 1
-        σ2_pred = reshape([σ2_pred[i][1] for i in 1:N_samples], 1,N_samples)
-    end
-
-    return μ_pred, σ2_pred
-end
-=#
