@@ -37,9 +37,9 @@ function optimize_hyperparameters!(mlt) throw_define_mlt() end
 function predict(mlt,new_inputs) throw_define_mlt() end
 
 # include the different <: ML models
-include("GaussianProcessEmulator_new.jl") #for GaussianProcess
-# include("RandomFeatureEmulator.jl")
-# include("NeuralNetworkEmulator.jl")
+include("GaussianProcess.jl") #for GaussianProcess
+# include("RandomFeature.jl")
+# include("NeuralNetwork.jl")
 # etc.
 
 

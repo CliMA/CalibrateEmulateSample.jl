@@ -12,7 +12,7 @@ using LinearAlgebra
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataStorage
 
-@testset "GaussianProcessEmulator" begin
+@testset "GaussianProcess" begin
 
     # Seed for pseudo-random number generator
     rng_seed = 41
