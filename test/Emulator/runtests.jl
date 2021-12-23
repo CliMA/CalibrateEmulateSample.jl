@@ -138,5 +138,19 @@ using CalibrateEmulateSample.DataStorage
     sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(emulator3.decomposition.S)) 
     decorrelated_s_y = sqrt_singular_values_inv * emulator3.decomposition.Vt * s_y
     @test decorrelated_s_y == sd_train_outputs
+
+
+    # truncation
+    emulator4 = Emulator(
+        gp,
+        iopairs,
+        obs_noise_cov=Σ,
+        normalize_inputs=false,
+        standardize_outputs=false,
+        truncate_svd=0.9)
+    trunc_size = size(emulator4.decomposition.S)[1]
+    @test test_SVD.S[1:trunc_size] == emulator4.decomposition.S
+
     
+
 end
