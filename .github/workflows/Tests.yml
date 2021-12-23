@@ -26,7 +26,7 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1
+        version: 1.6
  
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
