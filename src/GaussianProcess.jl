@@ -146,8 +146,8 @@ function build_models!(
     for i in 1:N_models
         # Make a copy of the kernel (because it gets altered in every 
         # iteration)
-        println("kernel in GaussianProcess")
         kernel_i = deepcopy(kern)
+        println("kernel in GaussianProcess:")
         println(kernel_i)
         data_i = output_values[i,:]
         # GPE() arguments:
@@ -164,7 +164,7 @@ function build_models!(
                 kernel_i, 
                 logstd_regularization_noise)
        
-        println("created GP", i)
+        println("created GP: ", i)
         push!(models, m)
         
     end
@@ -179,9 +179,9 @@ optimize Gaussian Process hyperparameters using in-build package method
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
-        #noise_true means we do it explicitly (thus don't need it here)
+        #noise_learn == true means we do it explicitly (thus don't need it here)
         optimize!(gp.models[i], noise=!gp.noise_learn)
-        println("optimized hyperparameters of GP", i)
+        println("optimized hyperparameters of GP: ", i)
         println(gp.models[i].kernel)
     end
 end
