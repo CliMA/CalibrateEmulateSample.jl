@@ -14,7 +14,8 @@ export EnsembleKalmanProcessModule,
        DataStorage
 
 # No internal deps, heavy external deps
-include("GaussianProcessEmulator.jl")
+#include("GaussianProcessEmulator.jl")
+include("Emulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
