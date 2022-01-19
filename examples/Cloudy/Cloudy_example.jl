@@ -18,7 +18,7 @@ using Random
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.EnsembleKalmanProcessModule
-using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
@@ -204,22 +204,31 @@ println(mean(get_u_final(ekiobj), dims=2))
 ###  Emulate: Gaussian Process Regression
 ###
 
-gppackage = GaussianProcessEmulator.GPJL()
-pred_type = GaussianProcessEmulator.YType()
+gppackage = Emulators.GPJL()
+pred_type = Emulators.YType()
+gauss_proc = GaussianProcess(
+    gppackage; 
+    kernel=nothing, # use default squared exponential kernel
+    prediction_type=pred_type, 
+    noise_learn=false
+)
 
 # Get training points
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
-normalized = true
-gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage; GPkernel=nothing, 
-                                                obs_noise_cov=Γy, normalized=normalized, 
-                                                noise_learn=false, prediction_type=pred_type)
+emulator = Emulator(
+    gauss_proc,
+    input_output_pairs,
+    obs_noise_cov=Γy,
+    normalize_inputs=true
+)
+optimize_hyperparameters!(emulator)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = GaussianProcessEmulator.predict(gpobj,
-                                                reshape(transformed_params_true, :, 1),
-                                                transform_to_real=true)
-
+y_mean, y_var = Emulators.predict(
+    emulator, reshape(transformed_params_true, :, 1);
+    transform_to_real=true
+)
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
 println("true data: ")
@@ -244,7 +253,7 @@ max_iter = 2000 # number of steps before checking acc/rej rate for step size det
 yt_sample = truth_sample
 mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
                          mcmc_alg, burnin, svdflag=true)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter=max_iter)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
@@ -252,7 +261,7 @@ burnin = 1000
 max_iter = 100000
 mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg,
                     burnin, svdflag=true)
-MarkovChainMonteCarlo.sample_posterior!(mcmc, gpobj, max_iter)
+MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
 
