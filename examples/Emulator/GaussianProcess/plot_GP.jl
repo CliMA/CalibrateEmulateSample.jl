@@ -115,13 +115,13 @@ if plot_flag
     figpath = joinpath(output_directory, "GP_test_observed_y2nonoise.png")
     savefig(figpath)
     
-    p1 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(30, 60), c=:cividis, 
+    p3 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
     figpath = joinpath(output_directory, "GP_test_observed_y1.png")
     savefig(figpath)
     
-    p2 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(30, 60), c=:cividis, 
+    p4 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2",
               zguidefontrotation=90)
     figpath = joinpath(output_directory, "GP_test_observed_y2.png")
@@ -182,17 +182,17 @@ for y_i in 1:d
    
     mean_grid = reshape(gp_mean[y_i, :], n_pts, n_pts) # 2 x 40000
     if plot_flag
-        p1 = plot(x1, x2, mean_grid, st=:surface, camera=(30, 60), c=:cividis, 
+        p5 = plot(x1, x2, mean_grid, st=:surface, camera=(30, 60), c=:cividis, 
                   xlabel="x1", ylabel="x2", zlabel="mean of y"*string(y_i),
                   zguidefontrotation=90)
     end
     var_grid = reshape(gp_var[y_i, :], n_pts, n_pts)
     if plot_flag
-        p2 = plot(x1, x2, var_grid, st=:surface, camera=(30, 60), c=:cividis,
+        p6 = plot(x1, x2, var_grid, st=:surface, camera=(30, 60), c=:cividis,
                   xlabel="x1", ylabel="x2", zlabel="var of y"*string(y_i),
                   zguidefontrotation=90)
 
-        plot(p1, p2, layout=(1, 2), legend=false)
+        plot(p5, p6, layout=(1, 2), legend=false)
 
         savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_predictions.png"))
     end
@@ -202,7 +202,7 @@ end
 g1_true = sin.(inputs[1,:]) .+ cos.(inputs[2, :])
 g1_true_grid = reshape(g1_true, n_pts, n_pts)
 if plot_flag
-    p3 = plot(x1, x2, g1_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
+    p7 = plot(x1, x2, g1_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
               zguidefontrotation=90)
     savefig(joinpath(output_directory, "GP_test_true_g1.png"))
@@ -211,7 +211,7 @@ end
 g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
 if plot_flag
-    p4 = plot(x1, x2, g2_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
+    p8 = plot(x1, x2, g2_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
               xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
               zguidefontrotation=90)
     g_true_grids = [g1_true_grid, g2_true_grid]
@@ -234,7 +234,7 @@ for y_i in 1:d
     if plot_flag
         zlabel = "1/var * (true_y"*string(y_i)*" - predicted_y"*string(y_i)*")^2"
         
-        p5 = plot(x1, x2, sqrt.(1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid).^2), 
+        p9 = plot(x1, x2, sqrt.(1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid).^2), 
                   st=:surface, camera=(30, 60), c=:magma, zlabel=zlabel,
                   xlabel="x1", ylabel="x2", 
                   zguidefontrotation=90)
