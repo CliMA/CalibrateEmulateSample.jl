@@ -110,7 +110,7 @@ function build_models!(
 
 
     # Use a default kernel unless a kernel was supplied to GaussianProcess
-    if gp.kernel==nothing
+    if gp.kernel === nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Construct kernel:
         # Note that the kernels take the signal standard deviations on a
@@ -240,7 +240,7 @@ function build_models!(
     models = gp.models
     N_models = size(output_values,1); #size(transformed_data)[1]
 
-    if gp.kernel==nothing
+    if gp.kernel === nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Create default squared exponential kernel
         const_value = 1.0
