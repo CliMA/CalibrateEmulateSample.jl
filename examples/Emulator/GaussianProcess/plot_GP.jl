@@ -1,6 +1,6 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
-include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
+include(joinpath(@__DIR__, "..", "..", "ci", "linkfig.jl"))
 
 # Import modules
 using Random
