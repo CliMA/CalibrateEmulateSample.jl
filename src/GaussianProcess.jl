@@ -179,8 +179,9 @@ optimize Gaussian Process hyperparameters using in-build package method
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
-        #noise_learn == true means we do it explicitly (thus don't need it here)
-        optimize!(gp.models[i], noise=!gp.noise_learn)
+        # always regress with noise_learn=false; if gp was created with noise_learn=true
+        # we've already explicitly added noise to the kernel
+        optimize!(gp.models[i], noise=false)
         println("optimized hyperparameters of GP: ", i)
         println(gp.models[i].kernel)
     end
