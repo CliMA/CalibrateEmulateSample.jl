@@ -192,7 +192,6 @@ function predict(emulator::Emulator{FT}, new_inputs; transform_to_real=false) wh
         #transform back to real coords - cov becomes dense
         s_outputs, s_output_cov = svd_reverse_transform_mean_cov(
             ds_outputs, ds_output_var, emulator.decomposition)
-
         if output_dim == 1
             s_output_cov = [s_output_cov[i][1] for i in 1:N_samples]
         end
@@ -259,7 +258,7 @@ reverse a previous standardization with the stored vector of factors (size equal
 """
 function reverse_standardize(emulator::Emulator{FT}, outputs, output_cov) where {FT}
     if emulator.standardize_outputs
-        return standardize(outputs, output_cov, 1. / emulator.standardize_output_factors)
+        return standardize(outputs, output_cov, 1.0 ./ emulator.standardize_outputs_factors)
     else
         return outputs, output_cov
     end
