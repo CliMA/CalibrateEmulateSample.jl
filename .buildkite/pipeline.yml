@@ -53,21 +53,21 @@ steps:
       export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
       export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
 
-      mkdir examples/GaussianProcessEmulator/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/GaussianProcessEmulator/depot:$JULIA_DEPOT_PATH"
+      mkdir examples/Emulator/GaussianProcess/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/GaussianProcess/depot:$JULIA_DEPOT_PATH"
 
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg;
         Pkg.instantiate()
-        Pkg.activate("examples/GaussianProcessEmulator")
+        Pkg.activate("examples/Emulator/GaussianProcess")
         Pkg.instantiate()
         println("+++ Running Learn Noise")
-        include("examples/GaussianProcessEmulator/learn_noise.jl")
+        include("examples/Emulator/GaussianProcess/learn_noise.jl")
         println("+++ Running PlotGP")
-        include("examples/GaussianProcessEmulator/plot_GP.jl")'
+        include("examples/Emulator/GaussianProcess/plot_GP.jl")'
     artifact_paths:
-      - "examples/GaussianProcessEmulator/output/*.png"
+      - "examples/Emulator/GaussianProcess/output/*.png"
     env:
       PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
       PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
