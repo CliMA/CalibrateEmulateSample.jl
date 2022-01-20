@@ -1,5 +1,5 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
-prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..", "..")])
 
 # Import modules
 using Random
@@ -12,7 +12,7 @@ using CalibrateEmulateSample.DataStorage
 ###############################################################################
 #                                                                             #
 #   This examples shows how to fit a Gaussian Process (GP) regression model   #
-#   using GaussianProcessEmulator and demonstrates how the GaussianProcess's built-in Singular       #
+#   using Emulator/GaussianProcess and demonstrates how the GaussianProcess's built-in Singular       #
 #   Value Decomposition (SVD) decorrelates the training data and maps into    #
 #   a space where the covariance of the observational noise is the identity.  #
 #                                                                             #
@@ -35,7 +35,7 @@ using CalibrateEmulateSample.DataStorage
 #   Two Gaussian Process models are fit, one that predicts y_i[1] from x_i    #
 #   and one that predicts y_i[2] from x_i.                                    #
 #                                                                             #
-#   The GaussianProcessEmulator module can be used as a standalone module to fit           #
+#   The GaussianProcess module can be used as a standalone module to fit      #
 #   Gaussian Process regression models, but it was originally designed as     #
 #   the "Emulate" step of the "Calibrate-Emulate-Sample" framework            #
 #   developed at CliMA.                                                       #
