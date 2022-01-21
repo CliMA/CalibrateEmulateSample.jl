@@ -93,7 +93,7 @@ function Emulator(
 
     # For Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
-    if obs_noise_cov != nothing
+    if obs_noise_cov !== nothing
         err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
         size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
     end
@@ -184,15 +184,14 @@ function predict(emulator::Emulator{FT}, new_inputs; transform_to_real=false) wh
     ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs)
 
     # [3.] transform back to real coordinates or remain in decorrelated coordinates
-    if transform_to_real && emulator.decomposition == nothing
+    if transform_to_real && emulator.decomposition === nothing
         throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
                  but GaussianProcess.decomposition == nothing. 
                  Try setting transform_to_real=false"""))
-    elseif transform_to_real && emulator.decomposition != nothing
+    elseif transform_to_real && emulator.decomposition !== nothing
         #transform back to real coords - cov becomes dense
         s_outputs, s_output_cov = svd_reverse_transform_mean_cov(
             ds_outputs, ds_output_var, emulator.decomposition)
-
         if output_dim == 1
             s_output_cov = [s_output_cov[i][1] for i in 1:N_samples]
         end
@@ -259,7 +258,7 @@ reverse a previous standardization with the stored vector of factors (size equal
 """
 function reverse_standardize(emulator::Emulator{FT}, outputs, output_cov) where {FT}
     if emulator.standardize_outputs
-        return standardize(outputs, output_cov, 1. / emulator.standardize_output_factors)
+        return standardize(outputs, output_cov, 1.0 ./ emulator.standardize_outputs_factors)
     else
         return outputs, output_cov
     end
@@ -286,10 +285,10 @@ function svd_transform(
     obs_noise_cov; 
     truncate_svd::FT=1.0) where {FT}
 
-    if obs_noise_cov != nothing
+    if obs_noise_cov !== nothing
         @assert ndims(obs_noise_cov) == 2
     end
-    if obs_noise_cov != nothing
+    if obs_noise_cov !== nothing
         # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD
@@ -336,10 +335,10 @@ function svd_transform(
     truncate_svd::FT=1.0) where {FT}
 
    
-    if obs_noise_cov != nothing
+    if obs_noise_cov !== nothing
         @assert ndims(obs_noise_cov) == 2
     end
-    if obs_noise_cov != nothing
+    if obs_noise_cov !== nothing
         # Truncate the SVD as a form of regularization
 	if truncate_svd<1.0 # this variable needs to be provided to this function
             # Perform SVD

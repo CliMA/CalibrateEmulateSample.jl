@@ -1,5 +1,6 @@
 env:
-  JULIA_VERSION: "1.5.4"
+  JULIA_VERSION: "1.6.2"
+  JULIA_MINOR_VERSION: "1.6"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
@@ -29,7 +30,7 @@ steps:
 
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
-      
+
       julia --color=yes --project -e '
         println("--- Instantiating Project")
         using Pkg;
@@ -44,7 +45,7 @@ steps:
       config: cpu
       queue: central
       slurm_ntasks: 1
-  
+
   - label: "Gaussian Process Emulator"
     key: "gaussian_process_emulator"
     command: |
@@ -59,8 +60,10 @@ steps:
         println("--- Instantiating Project")
         using Pkg;
         Pkg.instantiate()
-        Pkg.activate("examples/GaussianProcessEmulator")
+        Pkg.activate("examples/Emulator/GaussianProcess")
         Pkg.instantiate()
+        println("+++ Running Learn Noise")
+        include("examples/Emulator/GaussianProcess/learn_noise.jl")
         println("+++ Running PlotGP")
         include("examples/Emulator/GaussianProcess/plot_GP.jl")'
     artifact_paths:
@@ -73,7 +76,7 @@ steps:
       config: cpu
       queue: central
       slurm_ntasks: 1
- 
+
   - label: "Cloudy"
     key: "cloudy"
     command: |

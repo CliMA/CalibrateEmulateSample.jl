@@ -110,7 +110,7 @@ function build_models!(
 
 
     # Use a default kernel unless a kernel was supplied to GaussianProcess
-    if gp.kernel==nothing
+    if gp.kernel === nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Construct kernel:
         # Note that the kernels take the signal standard deviations on a
@@ -179,8 +179,9 @@ optimize Gaussian Process hyperparameters using in-build package method
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     N_models = length(gp.models)
     for i = 1:N_models
-        #noise_learn == true means we do it explicitly (thus don't need it here)
-        optimize!(gp.models[i], noise=!gp.noise_learn)
+        # always regress with noise_learn=false; if gp was created with noise_learn=true
+        # we've already explicitly added noise to the kernel
+        optimize!(gp.models[i], noise=false)
         println("optimized hyperparameters of GP: ", i)
         println(gp.models[i].kernel)
     end
@@ -240,7 +241,7 @@ function build_models!(
     models = gp.models
     N_models = size(output_values,1); #size(transformed_data)[1]
 
-    if gp.kernel==nothing
+    if gp.kernel === nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Create default squared exponential kernel
         const_value = 1.0
