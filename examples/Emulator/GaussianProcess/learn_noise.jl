@@ -1,18 +1,18 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
-prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
+prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..", "..")])
 
 # Import modules
 using Random
 using Distributions
 using Statistics
 using LinearAlgebra
-using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataStorage
 
 ###############################################################################
 #                                                                             #
 #   This examples shows how to fit a Gaussian Process (GP) regression model   #
-#   using GaussianProcessEmulator and demonstrates how the GaussianProcess's built-in Singular       #
+#   using Emulator/GaussianProcess and demonstrates how the GaussianProcess's built-in Singular       #
 #   Value Decomposition (SVD) decorrelates the training data and maps into    #
 #   a space where the covariance of the observational noise is the identity.  #
 #                                                                             #
@@ -35,7 +35,7 @@ using CalibrateEmulateSample.DataStorage
 #   Two Gaussian Process models are fit, one that predicts y_i[1] from x_i    #
 #   and one that predicts y_i[2] from x_i.                                    #
 #                                                                             #
-#   The GaussianProcessEmulator module can be used as a standalone module to fit           #
+#   The GaussianProcess module can be used as a standalone module to fit      #
 #   Gaussian Process regression models, but it was originally designed as     #
 #   the "Emulate" step of the "Calibrate-Emulate-Sample" framework            #
 #   developed at CliMA.                                                       #
@@ -49,7 +49,13 @@ rng_seed = 41
 Random.seed!(rng_seed)
 
 gppackage = GPJL()
-pred_type = YType()
+prediction_type = YType()
+gauss_proc_1 = GaussianProcess(
+    gppackage; 
+    kernel=nothing, # use default squared exponential kernel
+    prediction_type=prediction_type, 
+    noise_learn=true
+)
 
 # Generate training data (x-y pairs, where x ∈ ℝ ᵖ, y ∈ ℝ ᵈ)
 # x = [x1, x2]: inputs/predictors/features/parameters
@@ -91,25 +97,36 @@ iopairs = PairedDataContainer(X,Y,data_are_columns=true)
 @assert get_inputs(iopairs) == X
 @assert get_outputs(iopairs) == Y
 
-gpobj1 = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
-               normalized=true, noise_learn=true, prediction_type=pred_type)
+emulator_1 = Emulator(
+    gauss_proc_1,
+    iopairs,
+    obs_noise_cov=Σ,
+    normalize_inputs=true
+)
+println("build GP with ", n, " training points")
+#optimize the hyperparameters to best fit the GP.
+optimize_hyperparameters!(emulator_1)
+println("GP trained")
+
+# gpobj1 = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
+#                normalized=true, noise_learn=true, prediction_type=pred_type)
 
 println("\n-----------")
 println("Results of training Gaussian Process models with noise_learn=true")
 println("-----------")
 
 println("\nKernel of the GP trained to predict y1 from x=(x1, x2):")
-println(gpobj1.models[1].kernel)
+println(emulator_1.machine_learning_tool.models[1].kernel)
 println("Learned noise parameter, σ_1:")
-learned_σ_1 = sqrt(gpobj1.models[1].kernel.kright.σ2)
+learned_σ_1 = sqrt(emulator_1.machine_learning_tool.models[1].kernel.kright.σ2)
 println("σ_1 = $learned_σ_1")
 # Check if the learned noise is approximately 1
 @assert(isapprox(learned_σ_1, 1.0; atol=0.1))
 
 println("\nKernel of the GP trained to predict y2 from x=(x1, x2):")
-println(gpobj1.models[2].kernel)
+println(emulator_1.machine_learning_tool.models[2].kernel)
 println("Learned noise parameter, σ_2:")
-learned_σ_2 = sqrt(gpobj1.models[2].kernel.kright.σ2)
+learned_σ_2 = sqrt(emulator_1.machine_learning_tool.models[2].kernel.kright.σ2)
 println("σ_2 = $learned_σ_2")
 # Check if the learned noise is approximately 1
 @assert(isapprox(learned_σ_2, 1.0; atol=0.1))
@@ -118,8 +135,22 @@ println("------------------------------------------------------------------\n")
 # For comparison: When noise_learn is set to false, the observational noise
 # is set to 1.0 and is not learned/optimized during the training. But thanks
 # to the SVD, 1.0 is the correct value to use.
-gpobj2 = GaussianProcess(iopairs, gppackage, GPkernel=nothing, obs_noise_cov=Σ,
-               normalized=true, noise_learn=false, prediction_type=pred_type)
+gauss_proc_2 = GaussianProcess(
+    gppackage; 
+    kernel=nothing, # use default squared exponential kernel
+    prediction_type=prediction_type, 
+    noise_learn=false
+)
+emulator_2 = Emulator(
+    gauss_proc_2,
+    iopairs,
+    obs_noise_cov=Σ,
+    normalize_inputs=true
+)
+println("build GP with ", n, " training points")
+#optimize the hyperparameters to best fit the GP.
+optimize_hyperparameters!(emulator_2)
+println("GP trained")
 
 println("\n-----------")
 println("Results of training Gaussian Process models with noise_learn=false")
@@ -128,14 +159,14 @@ println("-----------")
 println("\nKernel of the GP trained to predict y1 from x=(x1, x2):")
 # Note: In contrast to the kernels of the gpobj1 models, these ones do not
 # have a white noise ("Noise") kernel component
-println(gpobj2.models[1].kernel) 
+println(emulator_2.machine_learning_tool.models[1].kernel) 
 # logNoise is given as log(sqrt(noise))
-obs_noise_1 = exp(gpobj2.models[1].logNoise.value^2)
+obs_noise_1 = exp(emulator_2.machine_learning_tool.models[1].logNoise.value^2)
 println("Observational noise: $obs_noise_1")
 
 println("\nKernel of the GP trained to predict y1 from x=(x1, x2):")
-println(gpobj2.models[2].kernel)
+println(emulator_2.machine_learning_tool.models[2].kernel)
 # logNoise is given as log(sqrt(noise))
-obs_noise_2 = exp(gpobj2.models[2].logNoise.value^2)
+obs_noise_2 = exp(emulator_2.machine_learning_tool.models[2].logNoise.value^2)
 println("Observational noise: $obs_noise_2")
 println("------------------------------------------------------------------")
