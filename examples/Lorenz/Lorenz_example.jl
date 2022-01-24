@@ -15,7 +15,7 @@ using Random
 using JLD2
 
 # CES 
-using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcessModule
@@ -208,8 +208,7 @@ else
     Γy = cov(yt, dims=2)
     
     println(Γy)
-    println(size(Γy))
-    println(rank(Γy))
+    println(size(Γy), " ", rank(Γy))
 end
 
 
@@ -280,8 +279,14 @@ end
 standardize = true
 truncate_svd = 0.95
 
-gppackage = GaussianProcessEmulator.GPJL()
-pred_type = GaussianProcessEmulator.YType()
+gppackage = Emulators.GPJL()
+pred_type = Emulators.YType()
+gauss_proc = GaussianProcess(
+    gppackage; 
+    kernel=nothing, # use default squared exponential kernel
+    prediction_type=pred_type, 
+    noise_learn=false
+)
 
 # Standardize the output data
 # Use median over all data since all data are the same type
@@ -297,24 +302,26 @@ println(norm_factor)
 N_iter = 5;
 input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
 normalized = true
-
-# Default kernel
-gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage; 
-			 obs_noise_cov=Γy, normalized=normalized,
-                         noise_learn=false, 
-			 truncate_svd=truncate_svd, standardize=standardize,
-			 prediction_type=pred_type,
-			 norm_factor=norm_factor)
+emulator = Emulator(
+    gauss_proc,
+    input_output_pairs;
+    obs_noise_cov=Γy,
+    normalize_inputs=normalized,
+    standardize_outputs=standardize,
+    standardize_outputs_factors=norm_factor,
+    truncate_svd=truncate_svd
+)
+optimize_hyperparameters!(emulator)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
 #if truncate_svd==1.0
     if log_normal==false
-        y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(params_true, :, 1), 
-                                       transform_to_real=true)
+        y_mean, y_var = Emulators.predict(emulator, reshape(params_true, :, 1), 
+                                         transform_to_real=true)
     else
-    	y_mean, y_var = GaussianProcessEmulator.predict(gpobj, reshape(log.(params_true), :, 1), 
-                                       transform_to_real=true)
+    	y_mean, y_var = Emulators.predict(emulator, reshape(log.(params_true), :, 1), 
+                                         transform_to_real=true)
     end
     
     println("GP prediction on true parameters: ")
@@ -322,11 +329,7 @@ gpobj = GaussianProcessEmulator.GaussianProcess(input_output_pairs, gppackage;
     println(" GP variance")
     println(diag(y_var[1],0))
     println("true data: ")
-    if standardize
-        println(truth.mean ./ norm_factor)
-    else
-        println(truth.mean)
-    end
+    println(truth.mean) # same, regardless of norm_factor
     println("GP MSE: ")
     println(mean((truth.mean - vec(y_mean)).^2))
 #end
@@ -347,11 +350,12 @@ burnin = 0
 step = 0.1 # first guess
 max_iter = 2000
 yt_sample = truth_sample
-mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, 
-                         mcmc_alg, burnin;
-                         svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
-			 norm_factor=norm_factor)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, gpobj, max_iter=max_iter)
+mcmc_test = MarkovChainMonteCarlo.MCMC(
+    yt_sample, Γy, priors, step, u0, max_iter, mcmc_alg, burnin;
+    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
+    norm_factor=norm_factor
+)
+new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter=max_iter)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
@@ -360,11 +364,12 @@ println("Begin MCMC - with step size ", new_step)
 burnin = 2000
 max_iter = 100000
 
-mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, 
-                    mcmc_alg, burnin;
-                    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
-		    norm_factor=norm_factor)
-MarkovChainMonteCarlo.sample_posterior!(mcmc, gpobj, max_iter)
+mcmc = MarkovChainMonteCarlo.MCMC(
+    yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg, burnin;
+    svdflag=svd_flag, standardize=standardize, truncate_svd=truncate_svd,
+    norm_factor=norm_factor
+)
+MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
 
 println("Posterior size")
 println(size(mcmc.posterior))

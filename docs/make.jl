@@ -7,9 +7,12 @@ using Documenter
 
 #----------
 api = ["CalibrateEmulateSample" => [
-         "GPEmulator" => "API/GaussianProcessEmulator.md",
-				 "MarkovChainMonteCarlo" => "API/MarkovChainMonteCarlo.md", 
-				 "Utilities" => "API/Utilities.md"
+    "Emulators" => [
+        "General Emulator" => "API/Emulators.md",
+        "Gaussian Process" => "API/GaussianProcess.md",
+        ],
+    "MarkovChainMonteCarlo" => "API/MarkovChainMonteCarlo.md", 
+    "Utilities" => "API/Utilities.md"
          ],
 ]
 

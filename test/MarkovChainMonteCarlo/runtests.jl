@@ -6,7 +6,7 @@ using Test
 
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributionStorage
-using CalibrateEmulateSample.GaussianProcessEmulator
+using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataStorage
 
 @testset "MarkovChainMonteCarlo" begin
@@ -16,7 +16,7 @@ using CalibrateEmulateSample.DataStorage
 
     # We need a GaussianProcess to run MarkovChainMonteCarlo, so let's reconstruct the one that's tested
     # in test/GaussianProcesses/runtests.jl
-    n = 20                                       # number of training points
+    n = 40                                       # number of training points
     x = reshape(2.0 * π * rand(n), 1, n)         # predictors/features: 1 × n
     σ2_y = reshape([0.05],1,1)
     y = sin.(x) + rand(rng, Normal(0, σ2_y[1]), (1, n)) # predictands/targets: 1 × n
@@ -33,10 +33,21 @@ using CalibrateEmulateSample.DataStorage
     # Squared exponential kernel (note that hyperparameters are on log scale)
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
+    gp = GaussianProcess(
+        gppackage;
+        kernel=GPkernel,
+        noise_learn=true,
+        prediction_type=pred_type) 
+    
+    em = Emulator(
+        gp,
+        iopairs,
+        obs_noise_cov=σ2_y,
+        normalize_inputs=false,
+        standardize_outputs=false,
+        truncate_svd=1.0)
 
-    gp = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
-                  normalized=false, noise_learn=true, 
-                  prediction_type=pred_type) 
+    Emulators.optimize_hyperparameters!(em)
 
     ### Define prior
     umin = -1.0
@@ -58,22 +69,20 @@ using CalibrateEmulateSample.DataStorage
     step = 0.5 # first guess
     max_iter = 5000
     norm_factors=nothing
-    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
-                     svdflag=true, standardize=false, truncate_svd=1.0, 
-                     norm_factor=norm_factors, rng=rng
-    )
-    new_step = find_mcmc_step!(mcmc_test, gp)
+    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
+                        mcmc_alg, burnin; svdflag=true, standardize=false,
+			truncate_svd=1.0, norm_factor=norm_factors, rng=rng)
+    new_step = find_mcmc_step!(mcmc_test, em)
 
     # reset parameters 
     burnin = 1000
     max_iter = 100_000
 
     # Now begin the actual MCMC
-    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
-                svdflag=true, standardize=false, truncate_svd=1.0, norm_factor=norm_factors,
-                rng=rng
-    )
-    sample_posterior!(mcmc, gp, max_iter)
+    mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, 
+                   mcmc_alg, burnin; svdflag=true, standardize=false,
+                   truncate_svd=1.0, norm_factor=norm_factors, rng=rng)
+    sample_posterior!(mcmc, em, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean = get_mean(posterior_distribution)
@@ -93,20 +102,17 @@ using CalibrateEmulateSample.DataStorage
     # Standardization and truncation
     norm_factor = 10.0
     norm_factor = fill(norm_factor, size(y[:,1])) # must be size of output dim
-    gp = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=σ2_y, 
-                  normalized=false, noise_learn=true, standardize=true, truncate_svd=0.9, 
-                  prediction_type=pred_type, norm_factor=norm_factor) 
-    mcmc_test = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin;
-			         svdflag=true, standardize=true, norm_factor=norm_factor, 
-                     truncate_svd=0.9, rng=rng
+    em = Emulator(
+        gp, iopairs;
+        obs_noise_cov=σ2_y, normalize_inputs=false, standardize_outputs=true,
+        truncate_svd=0.9, standardize_outputs_factors=norm_factor
     )
-
     # Now begin the actual MCMC
     mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
                 svdflag=true, standardize=false, truncate_svd=1.0, norm_factor=norm_factor,
                 rng=rng
     )
-    sample_posterior!(mcmc, gp, max_iter)
+    sample_posterior!(mcmc, em, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean2 = get_mean(posterior_distribution)

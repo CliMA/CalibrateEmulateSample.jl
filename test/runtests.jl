@@ -24,7 +24,8 @@ end
         end
     end
 
-    for submodule in ["GaussianProcessEmulator",
+    for submodule in ["Emulator",
+                      "GaussianProcess",
 		      "MarkovChainMonteCarlo",
 		      "Utilities"]
 
