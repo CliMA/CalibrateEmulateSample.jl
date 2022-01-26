@@ -1,5 +1,7 @@
 
 using GaussianProcesses
+
+using EnsembleKalmanProcesses.DataContainers
    
 using PyCall
 using ScikitLearn
@@ -51,13 +53,13 @@ $(DocStringExtensions.FIELDS)
 """
 struct GaussianProcess{GPPackage} <: MachineLearningTool
     "the Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs"
-    models::Vector
+    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}
     "Kernel object"
-    kernel
+    kernel::Union{<:Kernel, <:PyObject, Nothing} 
     "learn the noise with the White Noise kernel explicitly?"
-    noise_learn
+    noise_learn::Bool
     "prediction type (`y` to predict the data, `f` to predict the latent function)"
-    prediction_type::Union{Nothing, PredictionType}
+    prediction_type::PredictionType
 end
 
 
@@ -75,17 +77,16 @@ end
  - `prediction_type` - PredictionType object. default predicts data, not latent function (FType()).
 """
 function GaussianProcess(
-    package;
-    kernel::Union{K, KPy, Nothing}=nothing,
-    noise_learn=true,
-    prediction_type::PredictionType=YType(),
-    ) where {K<:Kernel, KPy<:PyObject}
+    package::GPPkg;
+    kernel::Union{K, KPy, Nothing} = nothing,
+    noise_learn = true,
+    prediction_type::PredictionType = YType(),
+) where {GPPkg<:GaussianProcessesPackage, K<:Kernel, KPy<:PyObject}
 
     # Initialize vector for GP models
-    models = Any[]
+    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}(undef, 0)
     
     return GaussianProcess{typeof(package)}(models, kernel, noise_learn, prediction_type)
-			
 end
 
 # First we create  the GPJL implementation
@@ -98,8 +99,8 @@ method to build gaussian process models based on the package
 """
 function build_models!(
     gp::GaussianProcess{GPJL},
-    input_output_pairs)
-    
+    input_output_pairs::PairedDataContainer{FT}
+) where {FT<:AbstractFloat}   
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
     output_values = get_outputs(input_output_pairs)
@@ -150,7 +151,7 @@ function build_models!(
         println("kernel in GaussianProcess:")
         println(kernel_i)
         data_i = output_values[i,:]
-        # GPE() arguments:
+        # GaussianProcesses.GPE() arguments:
         # input_values:    (input_dim × N_samples)
         # GPdata_i:    (N_samples,)
        
@@ -158,7 +159,7 @@ function build_models!(
         kmean = MeanZero()
 
         # Instantiate GP model
-        m = GPE(input_values,
+        m = GaussianProcesses.GPE(input_values,
                 output_values[i,:],
                 kmean,
                 kernel_i, 
@@ -187,52 +188,43 @@ function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
     end
 end
 
+# subroutine with common predict() logic
+function _predict(
+    gp::GaussianProcess, 
+    new_inputs::AbstractMatrix{FT}, 
+    predict_method::Function
+) where {FT<:AbstractFloat}
+    M = length(gp.models)
+    N_samples = size(new_inputs, 2)
+    # Predicts columns of inputs: input_dim × N_samples
+    μ = zeros(M, N_samples)
+    σ2 = zeros(M, N_samples)
+    for i in 1:M
+        μ[i,:], σ2[i,:] = predict_method(gp.models[i], new_inputs)
+    end
+    return μ, σ2
+end
+
+predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::YType) where {FT<:AbstractFloat} =
+    _predict(gp, new_inputs, GaussianProcesses.predict_y)
+
+predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) where {FT<:AbstractFloat} =
+    _predict(gp, new_inputs, GaussianProcesses.predict_f)
+
 """
-    function predict(gp::GaussianProcess{package}, new_inputs::Array{FT, 2})
+    function predict(gp::GaussianProcess{package}, new_inputs)
 
 predict means and covariances in decorrelated output space using gaussian process models
 """
-predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}) where {FT} = predict(gp, new_inputs, gp.prediction_type)
-
-function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::YType) where {FT}
-
-
-    M = length(gp.models)
-    N_samples = size(new_inputs,2)
-    # Predicts columns of inputs: input_dim × N_samples
-    μ = zeros(M, N_samples)
-    σ2 = zeros(M, N_samples)
-    for i in 1:M
-        μ[i,:],σ2[i,:] = predict_y(gp.models[i], new_inputs)
-    end
-
-    return μ, σ2
-end
-
-
-
-function predict(gp::GaussianProcess{GPJL}, new_inputs::Array{FT, 2}, ::FType) where {FT}
-
-    M = length(gp.models)
-    N_samples = size(new_inputs,2)
-    # Predicts columns of inputs: input_dim × N_samples
-    μ = zeros(M, N_samples)
-    σ2 = zeros(M, N_samples)
-    for i in 1:M
-        μ[i,:],σ2[i,:] = predict_f(gp.models[i], new_inputs)
-    end
-
-    return μ, σ2
-end
-
-
+predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT<:AbstractFloat} = 
+    predict(gp, new_inputs, gp.prediction_type)
 
 
 #now we build the SKLJL implementation
 function build_models!(
     gp::GaussianProcess{SKLJL},
-    input_output_pairs)
-
+    input_output_pairs::PairedDataContainer{FT}
+) where {FT<:AbstractFloat}
       # get inputs and outputs 
     input_values = permutedims(get_inputs(input_output_pairs), (2,1))
     output_values = get_outputs(input_output_pairs)
@@ -301,20 +293,11 @@ function optimize_hyperparameters!(gp::GaussianProcess{SKLJL})
     println("SKlearn, already trained. continuing...")
 end
 
-
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::Array{FT, 2}) where {FT}
-
-    M = length(gp.models)
-    N_samples = size(new_inputs,2)
-    
+function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{FT}) where {FT<:AbstractFloat}
     # SKJL based on rows not columns; need to transpose inputs
-    μ = zeros(M, N_samples)
-    σ = zeros(M, N_samples)
-    for i in 1:M
-        μ[i,:],σ[i,:] = gp.models[i].predict(new_inputs', return_std=true)
-    end
-    σ2 = σ .* σ
-
-    return μ, σ2
+    μ, σ = gp_model.predict(new_inputs', return_std=true)
+    return μ, (σ .* σ)
 end
+predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT<:AbstractFloat} =
+    _predict(gp, new_inputs, _SKJL_predict_function)
 

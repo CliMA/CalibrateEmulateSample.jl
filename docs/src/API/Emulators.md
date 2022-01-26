@@ -5,7 +5,6 @@ CurrentModule = CalibrateEmulateSample.Emulators
 ```
 
 ```@docs
-Decomposition
 Emulator
 optimize_hyperparameters!(::Emulator)
 predict

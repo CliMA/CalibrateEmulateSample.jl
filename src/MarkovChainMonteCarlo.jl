@@ -29,27 +29,27 @@ Structure to organize MCMC parameters and data
 # Fields
 $(DocStringExtensions.FIELDS)
 """
-struct MCMC{FT<:AbstractFloat, IT<:Int}
+mutable struct MCMC{FT<:AbstractFloat, IT<:Int}
     "a single sample from the observations. Can e.g. be picked from an Observation struct using get_obs_sample"
     obs_sample::Vector{FT}
     "covariance of the observational noise"
-    obs_noise_cov::Array{FT, 2}
+    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}}
     "array of length N_parameters with the parameters' prior distributions"
     prior::ParameterDistribution
     "MCMC step size"
-    step::Array{FT}
+    step::FT
     "Number of MCMC steps that are considered burnin"
     burnin::IT
     "the current parameters"
-    param::Vector{FT}
+    param::AbstractVector{FT}
     "Array of accepted MCMC parameter samples. The histogram of these samples gives an approximation of the posterior distribution of the parameters. param_dim x n_samples"
-    posterior::Array{FT, 2}
+    posterior::AbstractMatrix{FT}
     "the (current) value of the logarithm of the posterior (= log_likelihood + log_prior of the current parameters)"
-    log_posterior::Array{Union{FT, Nothing}}
+    log_posterior::Union{FT, Nothing}
     "iteration/step of the MCMC"
-    iter::Array{IT}
+    iter::IT
     "number of accepted proposals"
-    accept::Array{IT}
+    accept::IT
     "MCMC algorithm to use - currently implemented: 'rwm' (random walk Metropolis), 'pCN' (preconditioned Crank-Nicholson)"
     algtype::String
     "Random number generator object (algorithm + seed) used for sampling and noise, for reproducibility."
@@ -70,22 +70,20 @@ where max_iter is the number of MCMC steps to perform (e.g., 100_000)
 
 """
 function MCMC(
-    obs_sample::Vector{FT},
-    obs_noise_cov::Array{FT, 2},
+    obs_sample::AbstractVector{FT},
+    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
     prior::ParameterDistribution,
     step::FT,
-    param_init::Vector{FT},
+    param_init::AbstractVector{FT},
     max_iter::IT,
     algtype::String,
     burnin::IT;
-    svdflag=true,
-    standardize=false,
-    norm_factor::Union{Array{FT, 1}, Nothing}=nothing,
-    truncate_svd=1.0,
-    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    svdflag = true,
+    standardize = false,
+    norm_factor::Union{AbstractVector{FT}, Nothing} = nothing,
+    truncate_svd = 1.0,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG
 ) where {FT<:AbstractFloat, IT<:Int}
-
-
     param_init_copy = deepcopy(param_init)
 
     # Standardize MCMC input?
@@ -102,46 +100,47 @@ function MCMC(
     # We need to transform obs_sample into the correct space
     if svdflag
         println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        obs_sample, unused = Emulators.svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
+        obs_sample, _ = Emulators.svd_transform(obs_sample, obs_noise_cov; truncate_svd=truncate_svd)
     else
         println("Assuming independent outputs.")
     end
     println(obs_sample)
 
     # first row is param_init
-    posterior = zeros(length(param_init_copy),max_iter + 1)
+    posterior = zeros(length(param_init_copy), max_iter + 1)
     posterior[:, 1] = param_init_copy
     param = param_init_copy
-    log_posterior = [nothing]
-    iter = [1]
-    accept = [0]
+    log_posterior = nothing
+    iter = 1
+    accept = 0
     if !(algtype in ("rwm", "pCN"))
         error("Unrecognized method: ", algtype,
               "Currently implemented methods: 'rwm' = random walk metropolis, ",
               "'pCN' = preconditioned Crank-Nicholson")
     end
-    MCMC{FT,IT}(obs_sample,
-                   obs_noise_cov,
-                   prior,
-                   [step],
-                   burnin,
-                   param,
-                   posterior,
-                   log_posterior,
-                   iter,
-                   accept,
-                   algtype,
-                   rng
-                )
+    MCMC{FT,IT}(
+        obs_sample,
+        obs_noise_cov,
+        prior,
+        step,
+        burnin,
+        param,
+        posterior,
+        log_posterior,
+        iter,
+        accept,
+        algtype,
+        rng
+    )
 end
 
 
-function reset_with_step!(mcmc::MCMC{FT}, step::FT) where {FT}
+function reset_with_step!(mcmc::MCMC{FT,IT}, step::FT) where {FT<:AbstractFloat, IT<:Int}
     # reset to beginning with new stepsize
-    mcmc.step[1] = step
-    mcmc.log_posterior[1] = nothing
-    mcmc.iter[1] = 1
-    mcmc.accept[1] = 0
+    mcmc.step = step
+    mcmc.log_posterior = nothing
+    mcmc.iter = 1
+    mcmc.accept = 0
     mcmc.posterior[:,2:end] = zeros(size(mcmc.posterior[:,2:end]))
     mcmc.param[:] = mcmc.posterior[:, 1]
 end
@@ -159,8 +158,11 @@ function get_posterior(mcmc::MCMC)
 
 end
 
-function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT},
-                      gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
+function mcmc_sample!(
+    mcmc::MCMC{FT,IT}, 
+    g::AbstractVector{FT}, 
+    gcov::Union{AbstractMatrix{FT}, UniformScaling{FT}}
+) where {FT<:AbstractFloat, IT<:Int}
     if mcmc.algtype == "rwm"
         log_posterior = log_likelihood(mcmc, g, gcov) + log_prior(mcmc)
     elseif mcmc.algtype == "pCN"
@@ -170,39 +172,45 @@ function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT},
         error("Unrecognized algtype: ", mcmc.algtype)
     end
 
-    if mcmc.log_posterior[1] isa Nothing # do an accept step.
-        mcmc.log_posterior[1] = log_posterior - log(FT(0.5)) # this makes p_accept = 0.5
+    if mcmc.log_posterior === nothing # do an accept step.
+        mcmc.log_posterior = log_posterior - log(FT(0.5)) # this makes p_accept = 0.5
     end
     # Get new parameters by comparing likelihood_current * prior_current to
     # likelihood_proposal * prior_proposal - either we accept the proposed
     # parameter or we stay where we are.
-    p_accept = exp(log_posterior - mcmc.log_posterior[1])
+    p_accept = exp(log_posterior - mcmc.log_posterior)
 
     if p_accept > rand(mcmc.rng, Distributions.Uniform(0, 1))
-        mcmc.posterior[:,1 + mcmc.iter[1]] = mcmc.param
-        mcmc.log_posterior[1] = log_posterior
-        mcmc.accept[1] = mcmc.accept[1] + 1
+        mcmc.posterior[:,1 + mcmc.iter] = mcmc.param
+        mcmc.log_posterior = log_posterior
+        mcmc.accept = mcmc.accept + 1
     else
-        mcmc.posterior[:,1 + mcmc.iter[1]] = mcmc.posterior[:,mcmc.iter[1]]
+        mcmc.posterior[:, 1 + mcmc.iter[1]] = mcmc.posterior[:,mcmc.iter]
     end
-    mcmc.param[:] = proposal(mcmc)[:]
-    mcmc.iter[1] = mcmc.iter[1] + 1
+    mcmc.param = proposal(mcmc)[:]
+    mcmc.iter = mcmc.iter + 1
 
 end
 
-function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT}, gvar::Vector{FT}) where {FT}
+function mcmc_sample!(
+    mcmc::MCMC{FT,IT},
+    g::AbstractVector{FT},
+    gvar::AbstractVector{FT}
+) where {FT<:AbstractFloat, IT<:Int}
     return mcmc_sample!(mcmc, g, Diagonal(gvar))
 end
 
-function accept_ratio(mcmc::MCMC{FT}) where {FT}
-    return convert(FT, mcmc.accept[1]) / mcmc.iter[1]
+function accept_ratio(mcmc::MCMC{FT, IT}) where {FT<:AbstractFloat, IT<:Int}
+    return convert(FT, mcmc.accept) / mcmc.iter
 end
 
 
-function log_likelihood(mcmc::MCMC{FT},
-                        g::Vector{FT},
-                        gcov::Union{Matrix{FT},Diagonal{FT}}) where {FT}
-    log_rho = FT[0]
+function log_likelihood(
+    mcmc::MCMC{FT,IT},
+    g::AbstractVector{FT},
+    gcov::Union{AbstractMatrix{FT}, UniformScaling{FT}}
+) where {FT<:AbstractFloat, IT<:Int}
+    log_rho = 0.0
     #if gcov == nothing
     #    diff = g - mcmc.obs_sample
     #    log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
@@ -216,13 +224,13 @@ function log_likelihood(mcmc::MCMC{FT},
 	log_gpfidelity = -FT(0.5) * sum(log.(eigs))
     # Combine got log_rho
 	diff = g - mcmc.obs_sample
-        log_rho[1] = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
+    log_rho = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
     #end
-    return log_rho[1]
+    return log_rho
 end
 
 
-function log_prior(mcmc::MCMC{FT}) where {FT}
+function log_prior(mcmc::MCMC)
     return get_logpdf(mcmc.prior,mcmc.param)
 end
 
@@ -232,13 +240,12 @@ function proposal(mcmc::MCMC)
     prop_dist = MvNormal(zeros(length(mcmc.param)), proposal_covariance)
 
     if mcmc.algtype == "rwm"
-        sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ 
-                 (mcmc.step[1] * rand(mcmc.rng, prop_dist))
+        sample = mcmc.posterior[:,1 + mcmc.iter] .+ mcmc.step * rand(mcmc.rng, prop_dist)
     elseif mcmc.algtype == "pCN"
         # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
         # inverse problems." for relating ρ to Euler stepsize:
-        ρ = (1 - mcmc.step[1]/4) / (1 + mcmc.step[1]/4)
-        sample = ρ * mcmc.posterior[:,1 + mcmc.iter[1]] .+ sqrt(1 - ρ^2) * rand(mcmc.rng, prop_dist)
+        ρ = (1 - mcmc.step/4) / (1 + mcmc.step/4)
+        sample = ρ * mcmc.posterior[:,1 + mcmc.iter] .+ sqrt(1 - ρ^2) * rand(mcmc.rng, prop_dist)
     else
         error("Unrecognized algtype: ", mcmc.algtype)
     end
@@ -246,8 +253,8 @@ function proposal(mcmc::MCMC)
 end
 
 
-function find_mcmc_step!(mcmc_test::MCMC{FT}, em::Emulator{FT}; max_iter=2000) where {FT}
-    step = mcmc_test.step[1]
+function find_mcmc_step!(mcmc_test::MCMC{FT,IT}, em::Emulator{FT}; max_iter::IT=2000) where {FT<:AbstractFloat, IT<:Int}
+    step = mcmc_test.step
     mcmc_accept = false
     doubled = false
     halved = false
@@ -304,14 +311,15 @@ function find_mcmc_step!(mcmc_test::MCMC{FT}, em::Emulator{FT}; max_iter=2000) w
 
     end
 
-    return mcmc_test.step[1]
+    return mcmc_test.step
 end
 
 
-function sample_posterior!(mcmc::MCMC{FT,IT},
-                           em::Emulator{FT},
-                           max_iter::IT) where {FT,IT<:Int}
-
+function sample_posterior!(
+    mcmc::MCMC{FT, IT},
+    em::Emulator{FT},
+    max_iter::IT
+) where {FT<:AbstractFloat, IT<:Int}
     for mcmcit in 1:max_iter
         param = reshape(mcmc.param, :, 1)
         # test predictions (param is 1 x N_parameters)
