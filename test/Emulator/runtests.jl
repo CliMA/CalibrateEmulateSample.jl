@@ -109,6 +109,7 @@ using CalibrateEmulateSample.DataContainers
     @test test_decomp.S == decomposition.S
     @test test_decomp.N == decomposition.N
 
+    gp = GaussianProcess(GPJL())
     emulator2 = Emulator(
         gp,
         iopairs,
@@ -123,7 +124,7 @@ using CalibrateEmulateSample.DataContainers
     @test norm_inputs == train_inputs
 
     # reverse standardise
-
+    gp = GaussianProcess(GPJL())
     emulator3 = Emulator(
         gp,
         iopairs,
@@ -141,6 +142,7 @@ using CalibrateEmulateSample.DataContainers
 
 
     # truncation
+    gp = GaussianProcess(GPJL())
     emulator4 = Emulator(
         gp,
         iopairs,

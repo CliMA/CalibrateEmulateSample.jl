@@ -102,14 +102,21 @@ using CalibrateEmulateSample.DataContainers
     # Standardization and truncation
     norm_factor = 10.0
     norm_factor = fill(norm_factor, size(y[:,1])) # must be size of output dim
+    gp = GaussianProcess(
+        gppackage;
+        kernel=GPkernel,
+        noise_learn=true,
+        prediction_type=pred_type
+    ) 
     em = Emulator(
         gp, iopairs;
         obs_noise_cov=σ2_y, normalize_inputs=false, standardize_outputs=true,
         truncate_svd=0.9, standardize_outputs_factors=norm_factor
     )
-    # Now begin the actual MCMC
+    Emulators.optimize_hyperparameters!(em)
+
     mcmc = MCMC(obs_sample, σ2_y, prior, step, param_init, max_iter, mcmc_alg, burnin; 
-                svdflag=true, standardize=false, truncate_svd=1.0, norm_factor=norm_factor,
+                svdflag=true, standardize=true, truncate_svd=0.9, norm_factor=norm_factor,
                 rng=rng
     )
     sample_posterior!(mcmc, em, max_iter)
