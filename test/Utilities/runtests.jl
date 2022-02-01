@@ -17,7 +17,7 @@ using CalibrateEmulateSample.DataContainers
     arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
     obs = Observation(arr_t, data_names) #data must be columns as default
-    sample = get_obs_sample(obs; rng = rng)
+    sample = get_obs_sample(rng, obs)
     @test sample == [5.0, 5.0, 5.0]
 
     mean_arr = dropdims(mean(arr, dims=1), dims=1)

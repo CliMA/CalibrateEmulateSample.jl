@@ -58,16 +58,15 @@ Return one random sample from the observations (for use in the MCMC)
 
 """
 function get_obs_sample(obs::Observation; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
-    # Ensuring reproducibility of the sampled parameter values
-    if rng === nothing
-        rng = Random.seed!(rng_seed)
-    end
-    # on the other hand, if we did pass an explicit rng, we seeded it already
-        
+    # Ensuring reproducibility of the sampled parameter values: re-seed GLOBAL_RNG if we're
+    # given a seed, but if we got an explicit rng, we shouldn't re-seed it
+    rng = isnothing(rng) ? Random.seed!(rng_seed) : rng
+
     row_idxs = StatsBase.sample(rng, axes(obs.samples, 1), 1; replace=false, ordered=false)
     return obs.samples[row_idxs...]
 end
-
+get_obs_sample(rng::Random.AbstractRNG, obs::Observation; kwargs...) =
+    get_obs_sample(obs; rng = rng, kwargs...)
 
 function orig2zscore(X::AbstractVector{FT},
                      mean::AbstractVector{FT},
