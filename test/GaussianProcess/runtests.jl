@@ -10,7 +10,7 @@ using LinearAlgebra
 @sk_import gaussian_process.kernels : (RBF, WhiteKernel, ConstantKernel)
 
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.DataContainers
 
 @testset "GaussianProcess" begin
 

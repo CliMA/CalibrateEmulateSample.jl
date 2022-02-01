@@ -18,9 +18,9 @@ using JLD2
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.EnsembleKalmanProcessModule
-using CalibrateEmulateSample.ParameterDistributionStorage
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.ParameterDistributions
+using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Observations
 
 #rng_seed = 4137
@@ -213,7 +213,7 @@ end
 
 
 # Construct observation object
-truth = Observations.Obs(yt, Γy, data_names)
+truth = Observations.Observation(yt, Γy, data_names)
 # Truth sample for EKP
 truth_sample = truth.mean
 #sample_ind=randperm!(collect(1:n_samples))[1]
@@ -237,7 +237,7 @@ N_iter = 5 # number of EKI iterations
 # initial parameters: N_params x N_ens
 initial_params = construct_initial_ensemble(priors, N_ens; rng_seed=rng_seed)
 
-ekiobj = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_params, 
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, 
 						           truth_sample, 
 						           truth.obs_noise_cov,
 						           Inversion())
@@ -253,7 +253,7 @@ for i in 1:N_iter
         params_i = exp_transform(get_u_final(ekiobj))
     end
     g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
-    EnsembleKalmanProcessModule.update_ensemble!(ekiobj, g_ens) 
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens) 
     err[i] = get_error(ekiobj)[end] 
     err_params[i] = mean((params_true - mean(params_i,dims=2)).^2)
     println("Iteration: "*string(i)*", Error (data): "*string(err[i]))
@@ -376,8 +376,8 @@ println(size(mcmc.posterior))
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc)      
 
-post_mean = get_mean(posterior)
-post_cov = get_cov(posterior)
+post_mean = mean(posterior)
+post_cov = cov(posterior)
 println("post_mean")
 println(post_mean)
 println("post_cov")

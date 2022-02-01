@@ -1,7 +1,7 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
-using ..ParameterDistributionStorage
+using ..ParameterDistributions
 
 using Statistics
 using Distributions
@@ -30,7 +30,7 @@ Structure to organize MCMC parameters and data
 $(DocStringExtensions.FIELDS)
 """
 struct MCMC{FT<:AbstractFloat, IT<:Int}
-    "a single sample from the observations. Can e.g. be picked from an Obs struct using get_obs_sample"
+    "a single sample from the observations. Can e.g. be picked from an Observation struct using get_obs_sample"
     obs_sample::Vector{FT}
     "covariance of the observational noise"
     obs_noise_cov::Array{FT, 2}
@@ -222,7 +222,7 @@ end
 
 function proposal(mcmc::MCMC)
 
-    proposal_covariance = get_cov(mcmc.prior)
+    proposal_covariance = cov(mcmc.prior)
  
     if mcmc.algtype == "rwm"
         prop_dist = MvNormal(zeros(length(mcmc.param)), 

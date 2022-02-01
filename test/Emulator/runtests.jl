@@ -6,7 +6,7 @@ using Distributions
 using LinearAlgebra
 
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.DataContainers
 
 @testset "Emulators" begin
 

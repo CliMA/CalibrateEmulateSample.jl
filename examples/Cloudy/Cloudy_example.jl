@@ -17,13 +17,13 @@ using Plots
 using Random
 
 # Import Calibrate-Emulate-Sample modules
-using CalibrateEmulateSample.EnsembleKalmanProcessModule
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
-using CalibrateEmulateSample.ParameterDistributionStorage
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.ParameterDistributions
+using CalibrateEmulateSample.DataContainers
 
 # Import the module that runs Cloudy
 include(joinpath(@__DIR__, "GModel.jl"))
@@ -157,7 +157,7 @@ for i in 1:n_samples
     yt[:, i] = gt .+ rand(MvNormal(μ, Γy))
 end
 
-truth = Observations.Obs(yt, Γy, data_names)
+truth = Observations.Observation(yt, Γy, data_names)
 truth_sample = truth.mean
 ###
 ###  Calibrate: Ensemble Kalman Inversion
@@ -167,8 +167,8 @@ truth_sample = truth.mean
 N_ens = 50 # number of ensemble members
 N_iter = 8 # number of EKI iterations
 # initial parameters: N_params x N_ens
-initial_params = EnsembleKalmanProcessModule.construct_initial_ensemble(priors, N_ens; rng_seed=6)
-ekiobj = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
+initial_params = EnsembleKalmanProcesses.construct_initial_ensemble(priors, N_ens; rng_seed=6)
+ekiobj = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_params, truth_sample, truth.obs_noise_cov,
                    Inversion(), Δt=0.1)
 
 
@@ -187,7 +187,7 @@ for i in 1:N_iter
                                   PDistributions.update_params,
                                   PDistributions.moment,
                                   Cloudy.Sources.get_int_coalescence)
-    EnsembleKalmanProcessModule.update_ensemble!(ekiobj, g_ens)
+    EnsembleKalmanProcesses.update_ensemble!(ekiobj, g_ens)
 end
 
 # EKI results: Has the ensemble collapsed toward the truth?
@@ -265,8 +265,8 @@ MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
 
-post_mean = get_mean(posterior)
-post_cov = get_cov(posterior)
+post_mean = mean(posterior)
+post_cov = cov(posterior)
 println("posterior mean")
 println(post_mean)
 println("posterior covariance")

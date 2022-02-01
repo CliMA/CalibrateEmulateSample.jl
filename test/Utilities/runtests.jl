@@ -5,8 +5,8 @@ using LinearAlgebra
 
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Observations
-using CalibrateEmulateSample.EnsembleKalmanProcessModule
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.DataContainers
 
 @testset "Utilities" begin
 
@@ -16,7 +16,7 @@ using CalibrateEmulateSample.DataStorage
     arr = vcat([i*ones(3)' for i in 1:5]...)
     arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
-    obs = Obs(arr_t, data_names) #data must be columns as default
+    obs = Observation(arr_t, data_names) #data must be columns as default
     sample = get_obs_sample(obs; rng = rng)
     @test sample == [5.0, 5.0, 5.0]
 
@@ -51,9 +51,9 @@ using CalibrateEmulateSample.DataStorage
     initial_ensemble = randn(rng, dim_par,n_ens)#params are cols
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I,dim_obs,dim_obs)
-    ekp = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng=rng)
+    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng=rng)
     g_ens = randn(rng, dim_obs,n_ens) # data are cols
-    EnsembleKalmanProcessModule.update_ensemble!(ekp, g_ens)
+    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens

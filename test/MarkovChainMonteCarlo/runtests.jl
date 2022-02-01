@@ -5,9 +5,9 @@ using GaussianProcesses
 using Test
 
 using CalibrateEmulateSample.MarkovChainMonteCarlo
-using CalibrateEmulateSample.ParameterDistributionStorage
+using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.DataContainers
 
 @testset "MarkovChainMonteCarlo" begin
 
@@ -85,7 +85,7 @@ using CalibrateEmulateSample.DataStorage
     sample_posterior!(mcmc, em, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
-    posterior_mean = get_mean(posterior_distribution)
+    posterior_mean = mean(posterior_distribution)
     # We had svdflag=true, so the MCMC stores a transformed sample, 
     # 1.0/sqrt(0.05) * obs_sample ≈ 4.472
     @test mcmc.obs_sample ≈ [4.472] atol=1e-2
@@ -94,7 +94,7 @@ using CalibrateEmulateSample.DataStorage
     @test mcmc.algtype == mcmc_alg
     @test mcmc.iter[1] == max_iter + 1
     @test get_n_samples(posterior_distribution)[prior_name] == max_iter - burnin + 1
-    @test get_total_dimension(posterior_distribution) == length(param_init)
+    @test ndims(posterior_distribution) == length(param_init)
     @test_throws Exception MCMC(obs_sample, σ2_y, prior, step, param_init, 
                                    max_iter, "gibbs", burnin)
     @test isapprox(posterior_mean[1] - π/2, 0.0; atol=4e-1)
@@ -115,7 +115,7 @@ using CalibrateEmulateSample.DataStorage
     sample_posterior!(mcmc, em, max_iter)
     posterior_distribution = get_posterior(mcmc)      
     #post_mean = mean(posterior, dims=1)[1]
-    posterior_mean2 = get_mean(posterior_distribution)
+    posterior_mean2 = mean(posterior_distribution)
     @test posterior_mean2 ≈ posterior_mean atol=0.1
 
 end

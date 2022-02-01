@@ -5,9 +5,9 @@ using Statistics
 using StatsBase
 using Random
 using ..Observations
-using ..EnsembleKalmanProcessModule
-EnsembleKalmanProcess = EnsembleKalmanProcessModule.EnsembleKalmanProcess
-using ..DataStorage
+using ..EnsembleKalmanProcesses
+EnsembleKalmanProcess = EnsembleKalmanProcesses.EnsembleKalmanProcess
+using ..DataContainers
 
 export get_training_points
 export get_obs_sample
@@ -45,11 +45,11 @@ end
 
 
 """
-    get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
+    get_obs_sample(obs::Observation; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
 
 Return one random sample from the observations (for use in the MCMC)
 
- - `obs` - Obs struct with the observations (extract will pick one
+ - `obs` - Observation struct with the observations (extract will pick one
            of the sample observations to train the j.
  - `rng_seed` - optional kwarg; seed for random number generator used to pick a 
                 random sample of the observations.
@@ -57,7 +57,7 @@ Return one random sample from the observations (for use in the MCMC)
           provided, `rng_seed` is ignored.
 
 """
-function get_obs_sample(obs::Obs; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
+function get_obs_sample(obs::Observation; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
     # Ensuring reproducibility of the sampled parameter values
     if rng === nothing
         rng = Random.seed!(rng_seed)
