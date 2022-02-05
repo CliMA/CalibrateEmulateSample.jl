@@ -45,28 +45,30 @@ end
 
 
 """
-    get_obs_sample(obs::Observation; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
+    get_obs_sample(rng::AbstractRNG, obs::Observation; rng_seed::Union{IT, Nothing} = nothing)
 
 Return one random sample from the observations (for use in the MCMC)
 
+ - `rng` - optional RNG object used to pick random sample; defaults to `Random.GLOBAL_RNG`.
  - `obs` - Observation struct with the observations (extract will pick one
-           of the sample observations to train the j.
- - `rng_seed` - optional kwarg; seed for random number generator used to pick a 
-                random sample of the observations.
-- `rng` - optional kwarg; RNG object used to pick random sample. If this kwarg is
-          provided, `rng_seed` is ignored.
-
+           of the sample observations to train).
+ - `rng_seed` - optional kwarg; if provided, used to re-seed `rng` before sampling.
 """
-function get_obs_sample(obs::Observation; rng_seed=42, rng::Union{Random.AbstractRNG, Nothing} = nothing)
-    # Ensuring reproducibility of the sampled parameter values: re-seed GLOBAL_RNG if we're
-    # given a seed, but if we got an explicit rng, we shouldn't re-seed it
-    rng = isnothing(rng) ? Random.seed!(rng_seed) : rng
-
+function get_obs_sample(
+    rng::Random.AbstractRNG, 
+    obs::Observation; 
+    rng_seed::Union{IT, Nothing} = nothing,
+) where {IT <: Int}
+    # Ensuring reproducibility of the sampled parameter values: 
+    # re-seed the rng *only* if we're given a seed
+    if rng_seed !== nothing
+        rng = Random.seed!(rng, rng_seed)
+    end
     row_idxs = StatsBase.sample(rng, axes(obs.samples, 1), 1; replace=false, ordered=false)
     return obs.samples[row_idxs...]
 end
-get_obs_sample(rng::Random.AbstractRNG, obs::Observation; kwargs...) =
-    get_obs_sample(obs; rng = rng, kwargs...)
+# first arg optional; defaults to GLOBAL_RNG (as in Random, StatsBase)
+get_obs_sample(obs::Observation; kwargs...) = get_obs_sample(Random.GLOBAL_RNG, obs; kwargs...)
 
 function orig2zscore(X::AbstractVector{FT},
                      mean::AbstractVector{FT},
