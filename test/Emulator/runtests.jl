@@ -6,7 +6,7 @@ using Distributions
 using LinearAlgebra
 
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.DataStorage
+using CalibrateEmulateSample.DataContainers
 
 @testset "Emulators" begin
 
@@ -109,6 +109,7 @@ using CalibrateEmulateSample.DataStorage
     @test test_decomp.S == decomposition.S
     @test test_decomp.N == decomposition.N
 
+    gp = GaussianProcess(GPJL())
     emulator2 = Emulator(
         gp,
         iopairs,
@@ -123,7 +124,7 @@ using CalibrateEmulateSample.DataStorage
     @test norm_inputs == train_inputs
 
     # reverse standardise
-
+    gp = GaussianProcess(GPJL())
     emulator3 = Emulator(
         gp,
         iopairs,
@@ -141,6 +142,7 @@ using CalibrateEmulateSample.DataStorage
 
 
     # truncation
+    gp = GaussianProcess(GPJL())
     emulator4 = Emulator(
         gp,
         iopairs,
