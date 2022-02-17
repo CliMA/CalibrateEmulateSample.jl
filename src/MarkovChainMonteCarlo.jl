@@ -1,13 +1,12 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
-using ..ParameterDistributions
+using ..ParameterDistributionStorage
 
 using Statistics
 using Distributions
 using LinearAlgebra
 using DocStringExtensions
-using Random
 
 export MCMC
 export mcmc_sample!
@@ -30,7 +29,7 @@ Structure to organize MCMC parameters and data
 $(DocStringExtensions.FIELDS)
 """
 struct MCMC{FT<:AbstractFloat, IT<:Int}
-    "a single sample from the observations. Can e.g. be picked from an Observation struct using get_obs_sample"
+    "a single sample from the observations. Can e.g. be picked from an Obs struct using get_obs_sample"
     obs_sample::Vector{FT}
     "covariance of the observational noise"
     obs_noise_cov::Array{FT, 2}
@@ -52,8 +51,6 @@ struct MCMC{FT<:AbstractFloat, IT<:Int}
     accept::Array{IT}
     "MCMC algorithm to use - currently implemented: 'rmw' (random walk Metropolis)"
     algtype::String
-    "Random number generator object (algorithm + seed) used for sampling and noise, for reproducibility."
-    rng::Random.AbstractRNG
 end
 
 """
@@ -81,9 +78,7 @@ function MCMC(
     svdflag=true,
     standardize=false,
     norm_factor::Union{Array{FT, 1}, Nothing}=nothing,
-    truncate_svd=1.0,
-    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
-) where {FT<:AbstractFloat, IT<:Int}
+    truncate_svd=1.0) where {FT<:AbstractFloat, IT<:Int}
 
     
     param_init_copy = deepcopy(param_init)
@@ -128,9 +123,7 @@ function MCMC(
                    log_posterior,
                    iter,
                    accept,
-                   algtype,
-                   rng
-                )
+                   algtype)
 end
 
 
@@ -171,7 +164,7 @@ function mcmc_sample!(mcmc::MCMC{FT}, g::Vector{FT},
     # parameter or we stay where we are.
     p_accept = exp(log_posterior - mcmc.log_posterior[1])
 
-    if p_accept > rand(mcmc.rng, Distributions.Uniform(0, 1))
+    if p_accept > rand(Distributions.Uniform(0, 1))
         mcmc.posterior[:,1 + mcmc.iter[1]] = mcmc.param
         mcmc.log_posterior[1] = log_posterior
         mcmc.accept[1] = mcmc.accept[1] + 1
@@ -222,13 +215,13 @@ end
 
 function proposal(mcmc::MCMC)
 
-    proposal_covariance = cov(mcmc.prior)
+    proposal_covariance = get_cov(mcmc.prior)
  
     if mcmc.algtype == "rwm"
         prop_dist = MvNormal(zeros(length(mcmc.param)), 
                              (mcmc.step[1]^2) * proposal_covariance)
     end
-    sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ rand(mcmc.rng, prop_dist)
+    sample = mcmc.posterior[:,1 + mcmc.iter[1]] .+ rand(prop_dist)
     return sample
 end
 

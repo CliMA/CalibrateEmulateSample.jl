@@ -5,20 +5,20 @@ using LinearAlgebra
 
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.Observations
-using CalibrateEmulateSample.EnsembleKalmanProcesses
-using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcessModule
+using CalibrateEmulateSample.DataStorage
 
 @testset "Utilities" begin
 
-    # Seed for pseudo-random number generator
-    rng = Random.MersenneTwister(41)
+    rng_seed = 41
+    Random.seed!(rng_seed)
 
     arr = vcat([i*ones(3)' for i in 1:5]...)
     arr_t = permutedims(arr,(2,1))
     data_names = ["d1", "d2", "d3"]
-    obs = Observation(arr_t, data_names) #data must be columns as default
-    sample = get_obs_sample(rng, obs)
-    @test sample == [5.0, 5.0, 5.0]
+    obs = Obs(arr_t, data_names) #data must be columns as default
+    sample = get_obs_sample(obs; rng_seed=rng_seed)
+    @test sample == [3.0, 3.0, 3.0]
 
     mean_arr = dropdims(mean(arr, dims=1), dims=1)
     std_arr = dropdims(std(arr, dims=1), dims=1)
@@ -48,14 +48,15 @@ using CalibrateEmulateSample.DataContainers
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    initial_ensemble = randn(rng, dim_par,n_ens)#params are cols
-    y_obs = randn(rng, dim_obs)
+    initial_ensemble = randn(dim_par,n_ens)#params are cols
+    y_obs = randn(dim_obs)
     Γy = Matrix{Float64}(I,dim_obs,dim_obs)
-    ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng=rng)
-    g_ens = randn(rng, dim_obs,n_ens) # data are cols
-    EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
+    ekp = EnsembleKalmanProcessModule.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion())
+    g_ens = randn(dim_obs,n_ens) # data are cols
+    EnsembleKalmanProcessModule.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens
+    
 
 end

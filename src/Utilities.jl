@@ -2,12 +2,11 @@ module Utilities
 
 using LinearAlgebra
 using Statistics
-using StatsBase
 using Random
 using ..Observations
-using ..EnsembleKalmanProcesses
-EnsembleKalmanProcess = EnsembleKalmanProcesses.EnsembleKalmanProcess
-using ..DataContainers
+using ..EnsembleKalmanProcessModule
+EnsembleKalmanProcess = EnsembleKalmanProcessModule.EnsembleKalmanProcess
+using ..DataStorage
 
 export get_training_points
 export get_obs_sample
@@ -45,30 +44,23 @@ end
 
 
 """
-    get_obs_sample(rng::AbstractRNG, obs::Observation; rng_seed::Union{IT, Nothing} = nothing)
+    get_obs_sample(obs::Obs; rng_seed=42)
 
-Return one random sample from the observations (for use in the MCMC)
+Return a random sample from the observations (for use in the MCMC)
 
- - `rng` - optional RNG object used to pick random sample; defaults to `Random.GLOBAL_RNG`.
- - `obs` - Observation struct with the observations (extract will pick one
-           of the sample observations to train).
- - `rng_seed` - optional kwarg; if provided, used to re-seed `rng` before sampling.
+ - `obs` - Obs struct with the observations (extract will pick one
+           of the sample observations to train the j
+ - `rng_seed` - seed for random number generator used to pick a random
+                sample of the observations
+
 """
-function get_obs_sample(
-    rng::Random.AbstractRNG, 
-    obs::Observation; 
-    rng_seed::Union{IT, Nothing} = nothing,
-) where {IT <: Int}
-    # Ensuring reproducibility of the sampled parameter values: 
-    # re-seed the rng *only* if we're given a seed
-    if rng_seed !== nothing
-        rng = Random.seed!(rng, rng_seed)
-    end
-    row_idxs = StatsBase.sample(rng, axes(obs.samples, 1), 1; replace=false, ordered=false)
-    return obs.samples[row_idxs...]
+function get_obs_sample(obs::Obs; rng_seed=42)
+    sample_ind = randperm!(collect(1:length(obs.samples)))[1]
+    yt_sample = obs.samples[sample_ind]
+
+    return yt_sample
 end
-# first arg optional; defaults to GLOBAL_RNG (as in Random, StatsBase)
-get_obs_sample(obs::Observation; kwargs...) = get_obs_sample(Random.GLOBAL_RNG, obs; kwargs...)
+
 
 function orig2zscore(X::AbstractVector{FT},
                      mean::AbstractVector{FT},

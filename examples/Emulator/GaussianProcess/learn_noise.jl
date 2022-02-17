@@ -7,7 +7,7 @@ using Distributions
 using Statistics
 using LinearAlgebra
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.DataStorage
 
 ###############################################################################
 #                                                                             #

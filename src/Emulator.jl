@@ -1,6 +1,6 @@
 module Emulators
 
-using ..DataContainers
+using ..DataStorage
 using Statistics
 using Distributions
 using LinearAlgebra
