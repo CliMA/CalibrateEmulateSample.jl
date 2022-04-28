@@ -17,7 +17,7 @@
 
 ## Installing CES
 
-Currently CES depends on some python dependencies including ScikitLearn.jl which requires a couple extra installation steps:
+Currently CES depends on some python dependencies via ScikitLearn.jl which requires a couple of extra installation steps:
 
 First clone the project into a new local repository
 
@@ -26,7 +26,7 @@ git clone git@github.com:Clima/CalibrateEmulateSample.jl
 cd CalibrateEmulateSample.jl
 ```
 
-Install all the project dependencies.  Given that CES depends on python packages it is easiest to set the project to use it's own conda environment
+Install all the project dependencies (see the documentation for specific details).  Given that CES depends on python packages it is easiest to set the project to use its own conda environment
 
 
 ## Building CES Documentation
@@ -48,5 +48,5 @@ julia --project=docs/ docs/make.jl
 The locally rendered HTML documentation can be viewed at `docs/build/index.html`
 
 ### Project Mind map
-The latest code structure is found at:
+The rough code structure, and its interaction with EnsembleKalmanProcesses.jl is found at:
 https://miro.com/app/board/o9J_kkm8OGU=/
