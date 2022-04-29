@@ -13,11 +13,10 @@ using CalibrateEmulateSample.DataContainers
 plot_flag = true
 if plot_flag
     using Plots
-    gr(size=(1500, 700))
+    gr(size = (1500, 700))
     Plots.scalefontsizes(1.3)
     font = Plots.font("Helvetica", 18)
-    fontdict = Dict(:guidefont=>font, :xtickfont=>font, :ytickfont=>font, 
-                    :legendfont=>font)
+    fontdict = Dict(:guidefont => font, :xtickfont => font, :ytickfont => font, :legendfont => font)
 
 end
 
@@ -53,7 +52,7 @@ end
 #                                                                             #
 ###############################################################################
 
-function meshgrid(vx::AbstractVector{T}, vy::AbstractVector{T}) where T
+function meshgrid(vx::AbstractVector{T}, vy::AbstractVector{T}) where {T}
     m, n = length(vy), length(vx)
     gx = reshape(repeat(vx, inner = m, outer = 1), m, n)
     gy = reshape(repeat(vy, inner = 1, outer = n), m, n)
@@ -72,7 +71,7 @@ end
 #create the machine learning tools: Gaussian Process
 gppackage = GPJL()
 pred_type = YType()
-gaussian_process = GaussianProcess(gppackage,noise_learn=true)
+gaussian_process = GaussianProcess(gppackage, noise_learn = true)
 
 # Generate training data (x-y pairs, where x ∈ ℝ ᵖ, y ∈ ℝ ᵈ)
 # x = [x1, x2]: inputs/predictors/features/parameters
@@ -88,48 +87,80 @@ X = 2.0 * π * rand(p, n)
 # G(x1, x2)
 g1x = sin.(X[1, :]) .+ cos.(X[2, :])
 g2x = sin.(X[1, :]) .- cos.(X[2, :])
-gx = zeros(2,n)
-gx[1,:] = g1x
-gx[2,:] = g2x
-    
+gx = zeros(2, n)
+gx[1, :] = g1x
+gx[2, :] = g2x
+
 # Add noise η
-μ = zeros(d) 
+μ = zeros(d)
 Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
-noise_samples = rand(MvNormal(μ, Σ), n) 
+noise_samples = rand(MvNormal(μ, Σ), n)
 # y = G(x) + η
 Y = gx .+ noise_samples
 
 
 #plot training data with and without noise
 if plot_flag
-    p1 = plot(X[1,:], X[2,:], g1x, st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2",
-              zguidefontrotation=90)
-    
+    p1 = plot(
+        X[1, :],
+        X[2, :],
+        g1x,
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zguidefontrotation = 90,
+    )
+
     figpath = joinpath(output_directory, "GP_test_observed_y1nonoise.png")
     savefig(figpath)
-    
-    p2 = plot(X[1,:], X[2,:], g2x, st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2",
-              zguidefontrotation=90)
+
+    p2 = plot(
+        X[1, :],
+        X[2, :],
+        g2x,
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zguidefontrotation = 90,
+    )
     figpath = joinpath(output_directory, "GP_test_observed_y2nonoise.png")
     savefig(figpath)
-    
-    p3 = plot(X[1,:], X[2,:], Y[1,:], st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2",
-              zguidefontrotation=90)
+
+    p3 = plot(
+        X[1, :],
+        X[2, :],
+        Y[1, :],
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zguidefontrotation = 90,
+    )
     figpath = joinpath(output_directory, "GP_test_observed_y1.png")
     savefig(figpath)
-    
-    p4 = plot(X[1,:], X[2,:], Y[2,:], st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2",
-              zguidefontrotation=90)
+
+    p4 = plot(
+        X[1, :],
+        X[2, :],
+        Y[2, :],
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zguidefontrotation = 90,
+    )
     figpath = joinpath(output_directory, "GP_test_observed_y2.png")
     savefig(figpath)
 
 end
 
-iopairs = PairedDataContainer(X,Y,data_are_columns=true)
+iopairs = PairedDataContainer(X, Y, data_are_columns = true)
 @assert get_inputs(iopairs) == X
 @assert get_outputs(iopairs) == Y
 
@@ -140,11 +171,7 @@ iopairs = PairedDataContainer(X,Y,data_are_columns=true)
 # exponential kernel. 
 # Setting noise_learn=true leads to the addition of white noise to the
 # kernel
-emulator = Emulator(
-    gaussian_process,
-    iopairs,
-    obs_noise_cov=Σ,
-    normalize_inputs=false)
+emulator = Emulator(gaussian_process, iopairs, obs_noise_cov = Σ, normalize_inputs = false)
 println("build GP with ", n, " training points")
 
 #optimize the hyperparameters to best fit the GP.
@@ -157,11 +184,11 @@ println("GP trained")
 # Plot mean and variance of the predicted observables y1 and y2
 # For this, we generate test points on a x1-x2 grid.
 n_pts = 50
-x1 = range(0.0, stop=2*π, length=n_pts)
-x2 = range(0.0, stop=2*π, length=n_pts) 
+x1 = range(0.0, stop = 2 * π, length = n_pts)
+x2 = range(0.0, stop = 2 * π, length = n_pts)
 X1, X2 = meshgrid(x1, x2)
 # Input for predict has to be of size N_samples x input_dim
-inputs = permutedims(hcat(X1[:], X2[:]),(2,1))
+inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
 
 #gp_mean, gp_cov = GaussianProcessEmulator.predict(gpobj, 
 #                                                  inputs, 
@@ -170,52 +197,87 @@ inputs = permutedims(hcat(X1[:], X2[:]),(2,1))
 # covariance matrices, not just the variance -- gp_cov is a vector
 # of covariance matrices)
 
-gp_mean, gp_cov = predict(emulator, inputs, transform_to_real=true)
-println("end predictions at ", n_pts*n_pts, " points")
+gp_mean, gp_cov = predict(emulator, inputs, transform_to_real = true)
+println("end predictions at ", n_pts * n_pts, " points")
 
 
 #plot predictions
 for y_i in 1:d
-
     gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
-    gp_var = permutedims(vcat([x' for x in gp_var_temp]...),(2,1)) # 2 x 40000
-   
+    gp_var = permutedims(vcat([x' for x in gp_var_temp]...), (2, 1)) # 2 x 40000
+
     mean_grid = reshape(gp_mean[y_i, :], n_pts, n_pts) # 2 x 40000
     if plot_flag
-        p5 = plot(x1, x2, mean_grid, st=:surface, camera=(30, 60), c=:cividis, 
-                  xlabel="x1", ylabel="x2", zlabel="mean of y"*string(y_i),
-                  zguidefontrotation=90)
+        p5 = plot(
+            x1,
+            x2,
+            mean_grid,
+            st = :surface,
+            camera = (30, 60),
+            c = :cividis,
+            xlabel = "x1",
+            ylabel = "x2",
+            zlabel = "mean of y" * string(y_i),
+            zguidefontrotation = 90,
+        )
     end
     var_grid = reshape(gp_var[y_i, :], n_pts, n_pts)
     if plot_flag
-        p6 = plot(x1, x2, var_grid, st=:surface, camera=(30, 60), c=:cividis,
-                  xlabel="x1", ylabel="x2", zlabel="var of y"*string(y_i),
-                  zguidefontrotation=90)
+        p6 = plot(
+            x1,
+            x2,
+            var_grid,
+            st = :surface,
+            camera = (30, 60),
+            c = :cividis,
+            xlabel = "x1",
+            ylabel = "x2",
+            zlabel = "var of y" * string(y_i),
+            zguidefontrotation = 90,
+        )
 
-        plot(p5, p6, layout=(1, 2), legend=false)
+        plot(p5, p6, layout = (1, 2), legend = false)
 
-        savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_predictions.png"))
+        savefig(joinpath(output_directory, "GP_test_y" * string(y_i) * "_predictions.png"))
     end
 end
 
 # Plot the true components of G(x1, x2)
-g1_true = sin.(inputs[1,:]) .+ cos.(inputs[2, :])
+g1_true = sin.(inputs[1, :]) .+ cos.(inputs[2, :])
 g1_true_grid = reshape(g1_true, n_pts, n_pts)
 if plot_flag
-    p7 = plot(x1, x2, g1_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2", zlabel="sin(x1) + cos(x2)",
-              zguidefontrotation=90)
+    p7 = plot(
+        x1,
+        x2,
+        g1_true_grid,
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zlabel = "sin(x1) + cos(x2)",
+        zguidefontrotation = 90,
+    )
     savefig(joinpath(output_directory, "GP_test_true_g1.png"))
 end
 
 g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
 g2_true_grid = reshape(g2_true, n_pts, n_pts)
 if plot_flag
-    p8 = plot(x1, x2, g2_true_grid, st=:surface, camera=(30, 60), c=:cividis, 
-              xlabel="x1", ylabel="x2", zlabel="sin(x1) - cos(x2)",
-              zguidefontrotation=90)
+    p8 = plot(
+        x1,
+        x2,
+        g2_true_grid,
+        st = :surface,
+        camera = (30, 60),
+        c = :cividis,
+        xlabel = "x1",
+        ylabel = "x2",
+        zlabel = "sin(x1) - cos(x2)",
+        zguidefontrotation = 90,
+    )
     g_true_grids = [g1_true_grid, g2_true_grid]
-  
+
     savefig(joinpath(output_directory, "GP_test_true_g2.png"))
 
 end
@@ -225,21 +287,29 @@ for y_i in 1:d
 
     # Reshape gp_cov to size N_samples x output_dim
     gp_var_temp = [diag(gp_cov[j]) for j in 1:length(gp_cov)] # (40000,)
-    gp_var = permutedims(vcat([x' for x in gp_var_temp]...),(2,1)) # 40000 x 2
+    gp_var = permutedims(vcat([x' for x in gp_var_temp]...), (2, 1)) # 40000 x 2
 
-    mean_grid = reshape(gp_mean[y_i,:], n_pts, n_pts)
+    mean_grid = reshape(gp_mean[y_i, :], n_pts, n_pts)
     var_grid = reshape(gp_var[y_i, :], n_pts, n_pts)
     # Compute and plot 1/variance * (truth - prediction)^2
 
     if plot_flag
-        zlabel = "1/var * (true_y"*string(y_i)*" - predicted_y"*string(y_i)*")^2"
-        
-        p9 = plot(x1, x2, sqrt.(1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid).^2), 
-                  st=:surface, camera=(30, 60), c=:magma, zlabel=zlabel,
-                  xlabel="x1", ylabel="x2", 
-                  zguidefontrotation=90)
-        
-        savefig(joinpath(output_directory, "GP_test_y"*string(y_i)*"_difference_truth_prediction.png"))
+        zlabel = "1/var * (true_y" * string(y_i) * " - predicted_y" * string(y_i) * ")^2"
+
+        p9 = plot(
+            x1,
+            x2,
+            sqrt.(1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid) .^ 2),
+            st = :surface,
+            camera = (30, 60),
+            c = :magma,
+            zlabel = zlabel,
+            xlabel = "x1",
+            ylabel = "x2",
+            zguidefontrotation = 90,
+        )
+
+        savefig(joinpath(output_directory, "GP_test_y" * string(y_i) * "_difference_truth_prediction.png"))
     end
 end
 
