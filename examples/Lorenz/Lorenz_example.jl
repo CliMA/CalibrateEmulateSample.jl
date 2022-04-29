@@ -317,11 +317,9 @@ optimize_hyperparameters!(emulator)
 # true parameters
 #if truncate_svd==1.0
     if log_normal==false
-        y_mean, y_var = Emulators.predict(emulator, reshape(params_true, :, 1), 
-                                         transform_to_real=true)
+        y_mean, y_var = Emulators.predict(emulator, params_true, transform_to_real=true)
     else
-    	y_mean, y_var = Emulators.predict(emulator, reshape(log.(params_true), :, 1), 
-                                         transform_to_real=true)
+    	y_mean, y_var = Emulators.predict(emulator, log.(params_true), transform_to_real=true)
     end
     
     println("GP prediction on true parameters: ")

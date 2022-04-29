@@ -225,10 +225,7 @@ optimize_hyperparameters!(emulator)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = Emulators.predict(
-    emulator, reshape(transformed_params_true, :, 1);
-    transform_to_real=true
-)
+y_mean, y_var = Emulators.predict(emulator, transformed_params_true; transform_to_real=true)
 println("GP prediction on true parameters: ")
 println(vec(y_mean))
 println("true data: ")

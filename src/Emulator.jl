@@ -7,29 +7,9 @@ using LinearAlgebra
 using DocStringExtensions
 
 export Emulator
-export Decomposition
 
 export optimize_hyperparameters!
 export predict
-
-# SVD decomposition structure
-"""
-    Decomposition{<:AbstractFloat, <:Int}
-
-Struct of SVD decomposition, containing (V,S,Vt), and the size of S, N. 
-"""
-struct Decomposition{FT<:AbstractFloat, IT<:Int}
-    V::Array{FT,2}
-    Vt::Array{FT,2}
-    S::Array{FT}
-    N::IT
-end
-
-# SVD decomposition constructor
-function Decomposition(svd::SVD)
-	# svd.V is of type adjoint, transformed to Array with [:,:]
-	return Decomposition(svd.V[:,:], svd.Vt, svd.S, size(svd.S)[1])
-end
 
 """
     MachineLearningTool
@@ -61,38 +41,43 @@ include("GaussianProcess.jl") #for GaussianProcess
 
 Structure used to represent a general emulator:
 """
-struct Emulator{FT}
+struct Emulator{FT<:AbstractFloat}
     "Machine learning tool, defined as a struct of type MachineLearningTool"
     machine_learning_tool::MachineLearningTool
-     "normalized, standardized, transformed pairs given the Boolean's normalize_inputs, standardize_outputs, truncate_svd "
+    "normalized, standardized, transformed pairs given the Boolean's normalize_inputs, standardize_outputs, truncate_svd "
     training_pairs::PairedDataContainer{FT}
-    "mean of input; 1 × input_dim"
-    input_mean::Array{FT}
+    "mean of input; length input_dim"
+    input_mean::AbstractVector{FT}
     "square root of the inverse of the input covariance matrix; input_dim × input_dim"
     normalize_inputs::Bool
     "whether to fit models on normalized outputs outputs / standardize_outputs_factor"
-    sqrt_inv_input_cov::Union{Nothing, Array{FT, 2}}
+    sqrt_inv_input_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing}
     " if normalizing: whether to fit models on normalized inputs ((inputs - input_mean) * sqrt_inv_input_cov)"
     standardize_outputs::Bool
     "if standardizing: Standardization factors (characteristic values of the problem)"
-    standardize_outputs_factors
+    standardize_outputs_factors::Union{AbstractVector{FT}, Nothing}
     "the singular value decomposition of obs_noise_cov, such that obs_noise_cov = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt. NB: the svd may be reduced in dimensions"
-    decomposition::Union{Decomposition, Nothing}
+    decomposition::Union{SVD, Nothing}
 end
 
 # Constructor for the Emulator Object
 function Emulator(
     machine_learning_tool::MachineLearningTool,
     input_output_pairs::PairedDataContainer{FT};
-    obs_noise_cov=nothing,
+    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
-    standardize_outputs_factors::Union{Array{FT,1}, Nothing}=nothing,
+    standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
     truncate_svd::FT=1.0
-    ) where {FT<:AbstractFloat}
+) where {FT<:AbstractFloat}
 
     # For Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
+    if isa(obs_noise_cov, UniformScaling)
+        # Cast UniformScaling to Diagonal, since UniformScaling incompatible with 
+        # SVD and standardize()
+        obs_noise_cov = Diagonal(obs_noise_cov, output_dim)
+    end
     if obs_noise_cov !== nothing
         err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
         size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
@@ -100,10 +85,10 @@ function Emulator(
 
     
     # [1.] Normalize the inputs? 
-    input_mean = reshape(mean(get_inputs(input_output_pairs), dims=2), :, 1) #column vector
+    input_mean = vec(mean(get_inputs(input_output_pairs), dims=2)) #column vector
     sqrt_inv_input_cov = nothing
     if normalize_inputs
-        # Normalize (NB the inputs have to be of) size [input_dim × N_samples] to pass to GPE())
+        # Normalize (NB the inputs have to be of) size [input_dim × N_samples] to pass to ML tool
         sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(input_output_pairs), dims=2))))
         training_inputs = normalize(
             get_inputs(input_output_pairs),
@@ -143,14 +128,16 @@ function Emulator(
     # [4.] build an emulator
     build_models!(machine_learning_tool,training_pairs)
     
-    return Emulator{FT}(machine_learning_tool,
-                        training_pairs,
-                        input_mean,
-                        normalize_inputs,
-                        sqrt_inv_input_cov,
-                        standardize_outputs,
-                        standardize_outputs_factors,
-                        decomposition)
+    return Emulator{FT}(
+        machine_learning_tool,
+        training_pairs,
+        input_mean,
+        normalize_inputs,
+        sqrt_inv_input_cov,
+        standardize_outputs,
+        standardize_outputs_factors,
+        decomposition
+    )
 end    
 
 """
@@ -158,7 +145,7 @@ end
 
 optimize the hyperparameters in the machine learning tool
 """
-function optimize_hyperparameters!(emulator::Emulator{FT}) where {FT}
+function optimize_hyperparameters!(emulator::Emulator{FT}) where {FT<:AbstractFloat}
     optimize_hyperparameters!(emulator.machine_learning_tool)
 end
 
@@ -168,8 +155,11 @@ end
 
 makes a prediction using the emulator on new inputs (each new inputs given as data columns), default is to predict in the decorrelated space
 """
-function predict(emulator::Emulator{FT}, new_inputs; transform_to_real=false) where {FT}
-
+function predict(
+    emulator::Emulator{FT}, 
+    new_inputs::AbstractMatrix{FT}; 
+    transform_to_real=false
+) where {FT<:AbstractFloat}
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
     input_dim, output_dim = size(emulator.training_pairs, 1)
@@ -222,7 +212,7 @@ end
 
 normalize the input data, with a normalizing function
 """
-function normalize(emulator::Emulator{FT}, inputs) where {FT}
+function normalize(emulator::Emulator{FT}, inputs::AbstractVecOrMat{FT}) where {FT<:AbstractFloat}
     if emulator.normalize_inputs
         return normalize(inputs, emulator.input_mean, emulator.sqrt_inv_input_cov)
     else
@@ -235,7 +225,11 @@ end
 
 normalize with the empirical Gaussian distribution of points
 """
-function normalize(inputs, input_mean, sqrt_inv_input_cov)
+function normalize(
+    inputs::AbstractVecOrMat{FT}, 
+    input_mean::AbstractVector{FT}, 
+    sqrt_inv_input_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}}
+) where {FT<:AbstractFloat}
     training_inputs = sqrt_inv_input_cov * (inputs .- input_mean)
     return training_inputs 
 end
@@ -245,33 +239,74 @@ end
 
 standardize with a vector of factors (size equal to output dimension)
 """
-function standardize(outputs, output_cov, factors) 
-    standardized_outputs = outputs ./ factors
-    standardized_cov = output_cov ./ (factors .* factors')
-    return standardized_outputs, standardized_cov
+function standardize(
+    outputs::AbstractVecOrMat{FT}, 
+    output_covs::Vector{<:Union{AbstractMatrix{FT}, UniformScaling{FT}}}, 
+    factors::AbstractVector{FT}
+) where {FT<:AbstractFloat}
+    # Case where `output_covs` is a Vector of covariance matrices
+    n = length(factors)
+    outputs = outputs ./ factors
+    cov_factors = factors .* factors'
+    for i in 1:length(output_covs)
+        if isa(output_covs[i], Matrix)
+            output_covs[i] = output_covs[i] ./ cov_factors
+        elseif isa(output_covs[i], UniformScaling)
+            # assert all elements of factors are same, otherwise can't cast back to
+            # UniformScaling
+            @assert all(y -> y == first(factors), factors) 
+            output_covs[i] = output_covs[i] / cov_factors[1,1]
+        else
+            # Diagonal, TriDiagonal etc. case
+            # need to do ./ as dense matrix and cast back to original type
+            # https://discourse.julialang.org/t/get-generic-constructor-of-parametric-type/57189/8
+            T = typeof(output_covs[i])
+            cast_T = getfield(parentmodule(T), nameof(T))
+            output_covs[i] = cast_T(Matrix(output_covs[i]) ./ cov_factors)
+        end
+    end
+    return outputs, output_covs
+end
+
+function standardize(
+    outputs::AbstractVecOrMat{FT}, 
+    output_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}}, 
+    factors::AbstractVector{FT}
+) where {FT<:AbstractFloat}
+    # Case where `output_cov` is a single covariance matrix
+    stdized_out, stdized_covs = standardize(outputs, [output_cov], factors)
+    return stdized_out, stdized_covs[1]
 end
 
 """
-    function reverse_standardize(emulator::Emulator, outputs, output_cov)
+    function reverse_standardize(emulator::Emulator, outputs, output_covs)
 
-reverse a previous standardization with the stored vector of factors (size equal to output dimension)
+reverse a previous standardization with the stored vector of factors (size equal to output 
+dimension). `output_cov` is a Vector of covariance matrices, such as is returned by
+[`svd_reverse_transform_mean_cov`](@ref).
 """
-function reverse_standardize(emulator::Emulator{FT}, outputs, output_cov) where {FT}
+function reverse_standardize(
+    emulator::Emulator{FT}, 
+    outputs::AbstractVecOrMat{FT}, 
+    output_covs::Union{AbstractMatrix{FT}, Vector{<:AbstractMatrix{FT}}}
+) where {FT<:AbstractFloat}
     if emulator.standardize_outputs
-        return standardize(outputs, output_cov, 1.0 ./ emulator.standardize_outputs_factors)
+        return standardize(outputs, output_covs, 1.0 ./ emulator.standardize_outputs_factors)
     else
-        return outputs, output_cov
+        return outputs, output_covs
     end
 end
 
 
 
 """
-svd_transform(data::Array{FT, 2}, obs_noise_cov::Union{Array{FT, 2}, Nothing}) where {FT}
+    svd_transform(data, obs_noise_cov, truncate_svd) where {FT}
 
 Apply a singular value decomposition (SVD) to the data
   - `data` - GP training data/targets; output_dim × N_samples
   - `obs_noise_cov` - covariance of observational noise
+  - `truncate_svd` - Project onto this fraction of the largest principal components. Defaults
+    to 1.0 (no truncation).
 
 Returns the transformed data and the decomposition, which is a matrix 
 factorization of type LinearAlgebra.SVD. 
@@ -281,102 +316,62 @@ F.U, F.S, F.V and F.Vt, such that A = U * Diagonal(S) * Vt. The singular values
 in S are sorted in descending order.
 """
 function svd_transform(
-    data::Array{FT, 2},
-    obs_noise_cov; 
-    truncate_svd::FT=1.0) where {FT}
-
-    if obs_noise_cov !== nothing
-        @assert ndims(obs_noise_cov) == 2
+    data::AbstractMatrix{FT}, 
+    obs_noise_cov::Union{AbstractMatrix{FT}, Nothing}; 
+    truncate_svd::FT=1.0
+) where {FT<:AbstractFloat}
+    if obs_noise_cov === nothing
+        # no-op case
+        return data, nothing
     end
-    if obs_noise_cov !== nothing
+    # actually have a matrix to take the SVD of
+    decomp = svd(obs_noise_cov)
+    sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomp.S)) 
+	if truncate_svd < 1.0
         # Truncate the SVD as a form of regularization
-	if truncate_svd<1.0 # this variable needs to be provided to this function
-            # Perform SVD
-            decomposition = svd(obs_noise_cov)
-            # Find cutoff
-            σ = decomposition.S
-            σ_cumsum = cumsum(σ) / sum(σ);
-            P_cutoff = truncate_svd;
-            ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
-            println("SVD truncated at k:")
-            println(k)
-            # Apply truncated SVD
-            n = size(obs_noise_cov)[1]
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
-	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
-            transformed_data = transformed_data;
-            decomposition = Decomposition(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
-                                   decomposition.S[1:k], n)
+        # Find cutoff
+        S_cumsum = cumsum(decomp.S) / sum(decomp.S)
+        ind = findall(x -> (x > truncate_svd), S_cumsum)
+        k = ind[1]
+        n = size(data)[1]
+        println("SVD truncated at k: ", k, "/", n)
+        # Apply truncated SVD
+	    transformed_data = sqrt_singular_values_inv[1:k, 1:k] * decomp.Vt[1:k, :] * data
+        decomposition = SVD(decomp.U[:, 1:k], decomp.S[1:k], decomp.Vt[1:k, :])
 	else
-            decomposition = svd(obs_noise_cov)
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-	    decomposition = Decomposition(svd(obs_noise_cov))
-        end
-    else
-        decomposition = nothing
-        transformed_data = data
+        transformed_data = sqrt_singular_values_inv * decomp.Vt * data
+	    decomposition = svd(obs_noise_cov)
     end
-
     return transformed_data, decomposition
 end
 
-
-"""
 function svd_transform(
-    data::Vector{FT}, 
-    obs_noise_cov::Union{Array{FT, 2}, Nothing};
-    truncate_svd::FT=1.0) where {FT}
+    data::AbstractVector{FT}, 
+    obs_noise_cov::Union{AbstractMatrix{FT}, Nothing}; 
+    truncate_svd::FT = 1.0
+) where {FT<:AbstractFloat}
+    # method for 1D data
+    transformed_data, decomposition = svd_transform(
+        reshape(data, :, 1), obs_noise_cov; truncate_svd=truncate_svd
+    )
+    return vec(transformed_data), decomposition
+end
 
-"""
 function svd_transform(
-    data::Vector{FT}, 
-    obs_noise_cov;
-    truncate_svd::FT=1.0) where {FT}
-
-   
-    if obs_noise_cov !== nothing
-        @assert ndims(obs_noise_cov) == 2
-    end
-    if obs_noise_cov !== nothing
-        # Truncate the SVD as a form of regularization
-	if truncate_svd<1.0 # this variable needs to be provided to this function
-            # Perform SVD
-            decomposition = svd(obs_noise_cov)
-            # Find cutoff
-            σ = decomposition.S
-            σ_cumsum = cumsum(σ) / sum(σ);
-            P_cutoff = truncate_svd;
-            ind = findall(x->x>P_cutoff, σ_cumsum); k = ind[1]
-            println("SVD truncated at k:")
-            println(k)
-            # Apply truncated SVD
-            n = size(obs_noise_cov)[1]
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S))
-	    transformed_data = sqrt_singular_values_inv[1:k,1:k] * decomposition.Vt[1:k,:] * data
-            transformed_data = transformed_data;
-            decomposition = Decomposition(decomposition.V[:,1:k], decomposition.Vt[1:k,:], 
-                                   decomposition.S[1:k], n)
-	else
-            decomposition = svd(obs_noise_cov)
-            sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomposition.S)) 
-            transformed_data = sqrt_singular_values_inv * decomposition.Vt * data
-	    decomposition = Decomposition(svd(obs_noise_cov))
-        end
-    else
-        decomposition = nothing
-        transformed_data = data
-    end
-
-    return transformed_data, decomposition
+    data::AbstractVecOrMat{FT}, obs_noise_cov::UniformScaling{FT}; 
+    truncate_svd::FT = 1.0
+) where {FT<:AbstractFloat}
+    # method for UniformScaling
+    return svd_transform(data, Diagonal(obs_noise_cov, size(data, 1)); truncate_svd=truncate_svd)
 end
 
 """
-svd_reverse_transform_mean_cov(μ::Array{FT, 2}, σ2::{Array{FT, 2}, decomposition::SVD) where {FT}
+svd_reverse_transform_mean_cov(μ, σ2, decomposition::SVD) where {FT}
 
 Transform the mean and covariance back to the original (correlated) coordinate system
   - `μ` - predicted mean; output_dim × N_predicted_points
   - `σ2` - predicted variance; output_dim × N_predicted_points 
+  - `decomposition` - SVD decomposition of obs_noise_cov.
 
 Returns the transformed mean (output_dim × N_predicted_points) and variance. 
 Note that transforming the variance back to the original coordinate system
@@ -385,15 +380,16 @@ elements on the main diagonal (i.e., the variances), we return the full
 covariance at each point, as a vector of length N_predicted_points, where 
 each element is a matrix of size output_dim × output_dim
 """
-function svd_reverse_transform_mean_cov(μ, σ2, 
-                                        decomposition::Union{SVD, Decomposition};
-					truncate_svd::FT=1.0) where {FT}
-    @assert ndims(μ) == 2
-    @assert ndims(σ2) == 2
+function svd_reverse_transform_mean_cov(
+    μ::AbstractMatrix{FT},
+    σ2::AbstractMatrix{FT}, 
+    decomposition::SVD
+) where {FT<:AbstractFloat}
+    @assert size(μ) == size(σ2)
     
     output_dim, N_predicted_points = size(σ2)
     # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
-    sqrt_singular_values= Diagonal(sqrt.(decomposition.S))
+    sqrt_singular_values = Diagonal(sqrt.(decomposition.S))
     transformed_μ = decomposition.V * sqrt_singular_values * μ
     
     transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
