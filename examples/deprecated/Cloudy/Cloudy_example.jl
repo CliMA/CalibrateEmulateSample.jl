@@ -1,11 +1,7 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 prepend!(LOAD_PATH, [joinpath(@__DIR__, "..", "..")])
 include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
-
-# This example requires Cloudy to be installed.
-#using Pkg; Pkg.add(PackageSpec(name="Cloudy", version="0.1.0"))
-using Cloudy
-const PDistributions = Cloudy.ParticleDistributions
+include(joinpath(@__DIR__, "GModel.jl")) # Import the module that runs Cloudy
 
 # Import modules
 using Distributions  # probability distributions and associated functions
@@ -20,14 +16,14 @@ using Random
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
-using CalibrateEmulateSample.Observations
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.Observations
 
-# Import the module that runs Cloudy
-include(joinpath(@__DIR__, "GModel.jl"))
-using .GModel
+# This example requires Cloudy to be installed.
+using Cloudy
+const PDistributions = Cloudy.ParticleDistributions
 
 ################################################################################
 #                                                                              #
@@ -245,25 +241,15 @@ println(truth.mean)
 u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
 println("initial parameters: ", u0)
 
-# MCMC settings
-mcmc_alg = "rwm" # random walk Metropolis
-
 # First let's run a short chain to determine a good step size
-burnin = 0
-step = 0.1 # first guess
-max_iter = 2000 # number of steps before checking acc/rej rate for step size determination
 yt_sample = truth_sample
-mcmc_test = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, step, u0, max_iter, mcmc_alg, burnin, svdflag = true)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter = max_iter)
+mcmc = MCMCWrapper(RWMHSampling(), yt_sample, priors, emulator; init_params = u0)
+new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-burnin = 1000
-max_iter = 100000
-mcmc = MarkovChainMonteCarlo.MCMC(yt_sample, Γy, priors, new_step, u0, max_iter, mcmc_alg, burnin, svdflag = true)
-MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
-
-posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
+chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 1_000)
+posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
 post_mean = mean(posterior)
 post_cov = cov(posterior)

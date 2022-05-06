@@ -1,331 +1,576 @@
+# refactor-Sample
 module MarkovChainMonteCarlo
 
 using ..Emulators
 using ..ParameterDistributions
 
-using Statistics
+import Distributions: sample # Reexport sample()
 using Distributions
-using LinearAlgebra
 using DocStringExtensions
+using LinearAlgebra
+using Printf
 using Random
+using Statistics
 
-export MCMC
-export mcmc_sample!
-export accept_ratio
-export reset_with_step!
-export get_posterior
-export find_mcmc_step!
-export sample_posterior!
+using MCMCChains
+import AbstractMCMC: sample # Reexport sample()
+using AbstractMCMC
+import AdvancedMH
 
+export EmulatorPosteriorModel,
+    MetropolisHastingsSampler,
+    MCMCProtocol,
+    RWMHSampling,
+    pCNMHSampling,
+    MCMCWrapper,
+    accept_ratio,
+    optimize_stepsize,
+    get_posterior,
+    sample
 
-abstract type AbstractMCMCAlgo end
-struct RandomWalkMetropolis <: AbstractMCMCAlgo end
+# ------------------------------------------------------------------------------------------
+# Output space transformations between original and SVD-decorrelated coordinates.
+# Redundant with what's in Emulators.jl, but need to reimplement since we don't have
+# access to obs_noise_cov
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Transform samples from the original (correlated) coordinate system to the SVD-decorrelated
+coordinate system used by [`Emulator`](@ref). Used in the constructor for [`MCMCWrapper`](@ref).
+"""
+function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
+    if em.standardize_outputs && em.standardize_outputs_factors !== nothing
+        # standardize() data by scale factors, if they were given
+        data = data ./ em.standardize_outputs_factors
+    end
+    decomp = em.decomposition
+    if decomp !== nothing
+        # Use SVD decomposition of obs noise cov, if given, to transform data to 
+        # decorrelated coordinates.
+        inv_sqrt_singvals = Diagonal(1.0 ./ sqrt.(decomp.S))
+        return inv_sqrt_singvals * decomp.Vt * data
+    else
+        return data
+    end
+end
+function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
+    # method for single sample
+    out_data = to_decorrelated(reshape(data, :, 1), em)
+    return vec(out_data)
+end
+
+# ------------------------------------------------------------------------------------------
+# Sampler extensions to differentiate vanilla RW and pCN algorithms
+#
+# (Strictly speaking the difference bewteen RW and pCN should be implemented at the level of
+# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
+# only change is made. We do the latter here because doing the former would require more
+# boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
 """
 $(DocStringExtensions.TYPEDEF)
 
-Structure to organize MCMC parameters and data.
-
-# Fields
-$(DocStringExtensions.TYPEDFIELDS)
+Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref) 
+constructor, corresponding to different sampling algorithms.
 """
-mutable struct MCMC{FT <: AbstractFloat, IT <: Int}
-    "A single sample from the observations. Can e.g. be picked from an `Obs` struct using `get_obs_sample`."
-    obs_sample::AbstractVector{FT}
-    "Covariance of the observational noise."
-    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}}
-    "Array of length *N\\_parameters* with the parameters' prior distributions."
-    prior::ParameterDistribution
-    "MCMC step size."
-    step::FT
-    "Number of MCMC steps that are considered burnin."
-    burnin::IT
-    "The current parameters."
-    param::AbstractVector{FT}
-    "Array of accepted MCMC parameter samples (*param\\_dim* × *n\\_samples*). The histogram of these samples gives an approximation of the posterior distribution of the parameters."
-    posterior::AbstractMatrix{FT}
-    "The current value of the logarithm of the posterior (= `log_likelihood` + `log_prior` of the current parameters)."
-    log_posterior::Union{FT, Nothing}
-    "Iteration/step of the MCMC."
-    iter::IT
-    "Number of accepted proposals."
-    accept::IT
-    "MCMC algorithm to use. Currently implemented: `'rmw'` (random walk Metropolis), `'pCN'` (preconditioned Crank-Nicholson)."
-    algtype::String
-    "Random number generator object (algorithm + seed) used for sampling and noise, for reproducibility."
-    rng::Random.AbstractRNG
+abstract type MCMCProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+    
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
+new parameters as as vanilla random walk, based on the covariance of `prior`.
+"""
+struct RWMHSampling <: MCMCProtocol end
+
+struct RWMetropolisHastings{D} <: AdvancedMH.MHSampler
+    proposal::D
+end
+# Define method needed by AdvancedMH for new Sampler
+AdvancedMH.logratio_proposal_density(
+    sampler::RWMetropolisHastings,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate,
+) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+
+function _get_proposal(prior::ParameterDistribution)
+    # *only* use covariance of prior, not full distribution
+    Σ = ParameterDistributions.cov(prior)
+    return AdvancedMH.RandomWalkProposal(MvNormal(zeros(size(Σ)[1]), Σ))
 end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Constructor for [`MCMC`](@ref).
-- `max_iter` - The number of MCMC steps to perform (e.g., 100_000).
+Constructor for all `Sampler` objects, with one method for each supported MCMC algorithm.
+
+!!! warning
+    Both currently implemented Samplers use a Gaussian approximation to the prior: 
+    specifically, new Metropolis-Hastings proposals are a scaled combination of the old 
+    parameter values and a random shift distributed as a Gaussian with the same covariance
+    as the `prior`. 
+    
+    This suffices for our current use case, in which our priors are Gaussian
+    (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
+    inference isn't prior-dominated.
 """
-function MCMC(
-    obs_sample::AbstractVector{FT},
-    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
+MetropolisHastingsSampler(::RWMHSampling, prior::ParameterDistribution) = RWMetropolisHastings(_get_proposal(prior))
+
+"""
+$(DocStringExtensions.TYPEDEF)
+    
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
+new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is 
+usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based 
+on the covariance of `prior`.
+"""
+struct pCNMHSampling <: MCMCProtocol end
+
+struct pCNMetropolisHastings{D} <: AdvancedMH.MHSampler
+    proposal::D
+end
+# Define method needed by AdvancedMH for new Sampler
+AdvancedMH.logratio_proposal_density(
+    sampler::pCNMetropolisHastings,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate,
+) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+
+MetropolisHastingsSampler(::pCNMHSampling, prior::ParameterDistribution) = pCNMetropolisHastings(_get_proposal(prior))
+
+# ------------------------------------------------------------------------------------------
+# Use emulated model in sampler
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Factory which constructs `AdvancedMH.DensityModel` objects given a prior on the model 
+parameters (`prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given 
+parameters. Together these yield the log posterior density we're attempting to sample from 
+with the MCMC, which is the role of the `DensityModel` class in the `AbstractMCMC` interface.
+"""
+function EmulatorPosteriorModel(
     prior::ParameterDistribution,
-    step::FT,
-    param_init::AbstractVector{FT},
-    max_iter::IT,
-    algtype::String,
-    burnin::IT;
-    svdflag = true,
-    standardize = false,
-    norm_factor::Union{AbstractVector{FT}, Nothing} = nothing,
-    truncate_svd = 1.0,
-    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
-) where {FT <: AbstractFloat, IT <: Int}
-    param_init_copy = deepcopy(param_init)
+    em::Emulator{FT},
+    obs_sample::AbstractVector{FT},
+) where {FT <: AbstractFloat}
+    return AdvancedMH.DensityModel(function (θ)
+        # θ: model params we evaluate at; in original coords.
+        # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
+        #
+        # Recall predict() written to return multiple N_samples: expects input to be a 
+        # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
+        # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
+        # have to reshape()/re-cast input/output; simpler to do here than add a 
+        # predict() method.
+        g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
+        return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + get_logpdf(prior, θ)
+    end)
+end
 
-    # Standardize MCMC input?
-    println(obs_sample)
-    println(obs_noise_cov)
-    if standardize
-        obs_sample = obs_sample ./ norm_factor
-        cov_norm_factor = norm_factor .* norm_factor
-        obs_noise_cov = obs_noise_cov ./ cov_norm_factor
-    end
-    println(obs_sample)
-    println(obs_noise_cov)
+# ------------------------------------------------------------------------------------------
+# Record MH accept/reject decision in MCMCState object
 
-    # We need to transform obs_sample into the correct space
-    if svdflag
-        println("Applying SVD to decorrelating outputs, if not required set svdflag=false")
-        obs_sample, _ = Emulators.svd_transform(obs_sample, obs_noise_cov; truncate_svd = truncate_svd)
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Extends the `AdvancedMH.Transition` (which encodes the current state of the MC during
+sampling) with a boolean flag to record whether this state is new (arising from accepting a
+Metropolis-Hastings proposal) or old (from rejecting a proposal).
+
+# Fields
+$(DocStringExtensions.TYPEDFIELDS)
+"""
+struct MCMCState{T, L <: Real} <: AdvancedMH.AbstractTransition
+    "Sampled value of the parameters at the current state of the MCMC chain."
+    params::T
+    "Log probability of `params`, as computed by the model using the prior."
+    log_density::L
+    "Whether this state resulted from accepting a new MH proposal."
+    accepted::Bool
+end
+
+# Boilerplate from AdvancedMH:
+# Store the new draw and its log density.
+MCMCState(model::AdvancedMH.DensityModel, params, accepted = true) =
+    MCMCState(params, logdensity(model, params), accepted)
+
+# Calculate the log density of the model given some parameterization.
+AdvancedMH.logdensity(model::AdvancedMH.DensityModel, t::MCMCState) = t.log_density
+
+# AdvancedMH.transition() is only called to create a new proposal, so create a MCMCState
+# with accepted = true since that object will only be used if proposal is accepted.
+function AdvancedMH.transition(sampler::AdvancedMH.MHSampler, model::AdvancedMH.DensityModel, params, log_density::Real)
+    return MCMCState(params, log_density, true)
+end
+
+# method extending AdvancedMH.propose() to vanilla random walk with explicitly given stepsize
+function AdvancedMH.propose(
+    rng::Random.AbstractRNG,
+    sampler::RWMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    return current_state.params + stepsize * rand(rng, sampler.proposal)
+end
+
+# method extending AdvancedMH.propose() for preconditioned Crank-Nicholson
+function AdvancedMH.propose(
+    rng::Random.AbstractRNG,
+    sampler::pCNMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
+    # inverse problems." for relating ρ to Euler stepsize:
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    return ρ * current_state.params .+ sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
+end
+
+# Copy a MCMCState and set accepted = false
+reject_transition(t::MCMCState) = MCMCState(t.params, t.log_density, false)
+
+# Metropolis-Hastings logic. We need to add 2 things to step() implementation in AdvancedMH:
+# 1) stepsize-dependent propose(); 2) record whether proposal accepted/rejected in MCMCState
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG,
+    model::AdvancedMH.DensityModel,
+    sampler::AdvancedMH.MHSampler,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+    kwargs...,
+) where {FT <: AbstractFloat}
+    # Generate a new proposal.
+    new_params = AdvancedMH.propose(rng, sampler, model, current_state; stepsize = stepsize)
+
+    # Calculate the log acceptance probability and the log density of the candidate.
+    new_log_density = AdvancedMH.logdensity(model, new_params)
+    log_α =
+        new_log_density - AdvancedMH.logdensity(model, current_state) +
+        AdvancedMH.logratio_proposal_density(sampler, current_state, new_params)
+
+    # Decide whether to return the previous params or the new one.
+    new_state = if -Random.randexp(rng) < log_α
+        # accept
+        AdvancedMH.transition(sampler, model, new_params, new_log_density)
     else
-        println("Assuming independent outputs.")
+        # reject
+        reject_transition(current_state)
     end
-    println(obs_sample)
+    # Return a 2-tuple consisting of the next sample and the the next state.
+    # In this case (MH obeying detailed balance) they are identical.
+    return new_state, new_state
+end
 
-    # first row is param_init
-    posterior = zeros(length(param_init_copy), max_iter + 1)
-    posterior[:, 1] = param_init_copy
-    param = param_init_copy
-    log_posterior = nothing
-    iter = 1
-    accept = 0
-    if !(algtype in ("rwm", "pCN"))
-        error(
-            "Unrecognized method: ",
-            algtype,
-            "Currently implemented methods: 'rwm' = random walk metropolis, ",
-            "'pCN' = preconditioned Crank-Nicholson",
-        )
+# ------------------------------------------------------------------------------------------
+# Extend the record-keeping methods defined in AdvancedMH to include the 
+# MCMCState.accepted field added above.
+
+# A basic chains constructor that works with the Transition struct we defined.
+function AbstractMCMC.bundle_samples(
+    ts::Vector{<:MCMCState},
+    model::AdvancedMH.DensityModel,
+    sampler::AdvancedMH.MHSampler,
+    state,
+    chain_type::Type{MCMCChains.Chains};
+    discard_initial = 0,
+    thinning = 1,
+    param_names = missing,
+    kwargs...,
+)
+    # Turn all the transitions into a vector-of-vectors.
+    vals = [vcat(t.params, t.log_density, t.accepted) for t in ts]
+
+    # Check if we received any parameter names.
+    if ismissing(param_names)
+        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
+    else
+        # Generate new array to be thread safe.
+        param_names = Symbol.(param_names)
     end
-    MCMC{FT, IT}(
-        obs_sample,
-        obs_noise_cov,
-        prior,
-        step,
-        burnin,
-        param,
-        posterior,
-        log_posterior,
-        iter,
-        accept,
-        algtype,
-        rng,
+    internal_names = [:log_density, :accepted]
+
+    # Bundle everything up and return a MCChains.Chains struct.
+    return MCMCChains.Chains(
+        vals,
+        vcat(param_names, internal_names),
+        (parameters = param_names, internals = internal_names);
+        start = discard_initial + 1,
+        thin = thinning,
     )
 end
 
+function AbstractMCMC.bundle_samples(
+    ts::Vector{<:Vector{<:MCMCState}},
+    model::AdvancedMH.DensityModel,
+    sampler::AdvancedMH.Ensemble,
+    state,
+    chain_type::Type{MCMCChains.Chains};
+    discard_initial = 0,
+    thinning = 1,
+    param_names = missing,
+    kwargs...,
+)
+    # Preallocate return array
+    # NOTE: requires constant dimensionality.
+    n_params = length(ts[1][1].params)
+    nsamples = length(ts)
+    # add 2 parameters for :log_density, :accepted
+    vals = Array{Float64, 3}(undef, nsamples, n_params + 2, sampler.n_walkers)
 
-function reset_with_step!(mcmc::MCMC{FT, IT}, step::FT) where {FT <: AbstractFloat, IT <: Int}
-    # reset to beginning with new stepsize
-    mcmc.step = step
-    mcmc.log_posterior = nothing
-    mcmc.iter = 1
-    mcmc.accept = 0
-    mcmc.posterior[:, 2:end] = zeros(size(mcmc.posterior[:, 2:end]))
-    mcmc.param[:] = mcmc.posterior[:, 1]
-end
+    for n in 1:nsamples
+        for i in 1:(sampler.n_walkers)
+            walker = ts[n][i]
+            for j in 1:n_params
+                vals[n, j, i] = walker.params[j]
+            end
+            vals[n, n_params + 1, i] = walker.log_density
+            vals[n, n_params + 2, i] = walker.accepted
+        end
+    end
 
-
-function get_posterior(mcmc::MCMC)
-    #Return a parameter distributions object
-    parameter_slices = batch(mcmc.prior)
-    posterior_samples = [Samples(mcmc.posterior[slice, (mcmc.burnin + 1):end]) for slice in parameter_slices]
-    flattened_constraints = get_all_constraints(mcmc.prior)
-    parameter_constraints = [flattened_constraints[slice] for slice in parameter_slices] #live in same space as prior
-    parameter_names = get_name(mcmc.prior) #the same parameters as in prior
-    posterior_distribution = ParameterDistribution(posterior_samples, parameter_constraints, parameter_names)
-    return posterior_distribution
-
-end
-
-function mcmc_sample!(
-    mcmc::MCMC{FT, IT},
-    g::AbstractVector{FT},
-    gcov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
-) where {FT <: AbstractFloat, IT <: Int}
-    if mcmc.algtype == "rwm"
-        log_posterior = log_likelihood(mcmc, g, gcov) + log_prior(mcmc)
-    elseif mcmc.algtype == "pCN"
-        # prior factors effectively cancel in acceptance ratio, so omit
-        log_posterior = log_likelihood(mcmc, g, gcov)
+    # Check if we received any parameter names.
+    if ismissing(param_names)
+        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
     else
-        error("Unrecognized algtype: ", mcmc.algtype)
+        # Generate new array to be thread safe.
+        param_names = Symbol.(param_names)
     end
+    internal_names = [:log_density, :accepted]
 
-    if mcmc.log_posterior === nothing # do an accept step.
-        mcmc.log_posterior = log_posterior - log(FT(0.5)) # this makes p_accept = 0.5
-    end
-    # Get new parameters by comparing likelihood_current * prior_current to
-    # likelihood_proposal * prior_proposal - either we accept the proposed
-    # parameter or we stay where we are.
-    p_accept = exp(log_posterior - mcmc.log_posterior)
+    # Bundle everything up and return a MCChains.Chains struct.
+    return MCMCChains.Chains(
+        vals,
+        vcat(param_names, internal_names),
+        (parameters = param_names, internals = internal_names);
+        start = discard_initial + 1,
+        thin = thinning,
+    )
+end
 
-    if p_accept > rand(mcmc.rng, Distributions.Uniform(0, 1))
-        mcmc.posterior[:, 1 + mcmc.iter] = mcmc.param
-        mcmc.log_posterior = log_posterior
-        mcmc.accept = mcmc.accept + 1
+# ------------------------------------------------------------------------------------------
+# Top-level object to contain model and sampler (but not state)
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Top-level class holding all configuration information needed for MCMC sampling: the prior, 
+emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in 
+AbstractMCMC's terminology).
+
+# Fields
+$(DocStringExtensions.TYPEDFIELDS)
+"""
+struct MCMCWrapper
+    "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
+    prior::ParameterDistribution
+    "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
+    log_posterior_map::AbstractMCMC.AbstractModel
+    "Object describing a MCMC sampling algorithm and its settings."
+    mh_proposal_sampler::AbstractMCMC.AbstractSampler
+    "NamedTuple of other arguments to be passed to `AbstractMCMC.sample()`."
+    sample_kwargs::NamedTuple
+end
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD 
+decorrelation) that was applied in the Emulator. It creates and wraps an instance of 
+[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator, and 
+[`MetropolisHastingsSampler`](@ref), for generating the MC proposals.
+
+- `mcmc_alg`: [`MCMCProtocol`](@ref) describing the MCMC sampling algorithm to use. Currently
+  implemented algorithms are:
+
+  - [`RWMHSampling`](@ref): Metropolis-Hastings sampling from a vanilla random walk with
+    fixed stepsize.
+  - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned 
+    Crank-Nicholson algorithm, which has a well-behaved small-stepsize limit.
+
+- `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
+  Observation struct using `get_obs_sample`.
+- `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
+  object containing the parameters' prior distributions.
+- `em`: [`Emulator`](@ref) to sample from. 
+- `stepsize`: MCMC step size, applied as a scaling to the prior covariance.
+- `init_params`: Starting parameter values for MCMC sampling.
+- `burnin`: Initial number of MCMC steps to discard from output (pre-convergence).
+"""
+function MCMCWrapper(
+    mcmc_alg::MCMCProtocol,
+    obs_sample::AbstractVector{FT},
+    prior::ParameterDistribution,
+    em::Emulator;
+    init_params::AbstractVector{FT},
+    burnin::IT = 0,
+    kwargs...,
+) where {FT <: AbstractFloat, IT <: Integer}
+    obs_sample = to_decorrelated(obs_sample, em)
+    log_posterior_map = EmulatorPosteriorModel(prior, em, obs_sample)
+    mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
+    sample_kwargs = (; # set defaults here
+        :init_params => deepcopy(init_params),
+        :param_names => get_name(prior),
+        :discard_initial => burnin,
+        :chain_type => MCMCChains.Chains,
+    )
+    sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
+    return MCMCWrapper(prior, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+end
+
+"""
+   $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
+
+Extends the `sample` methods of AbstractMCMC (which extends StatsBase) to sample from the 
+emulated posterior, using the MCMC sampling algorithm and [`Emulator`](@ref) configured in 
+[`MCMCWrapper`](@ref). Returns a [`MCMCChains.Chains`](https://beta.turing.ml/MCMCChains.jl/dev/) 
+object containing the samples. 
+
+Supported methods are:
+
+- `sample([rng, ]mcmc, N; kwargs...)`
+
+  Return a `MCMCChains.Chains` object containing `N` samples from the emulated posterior.
+
+- `sample([rng, ]mcmc, isdone; kwargs...)`
+
+  Sample from the `model` with the Markov chain Monte Carlo `sampler` until a convergence 
+  criterion `isdone` returns `true`, and return the samples. The function `isdone` has the 
+  signature
+
+  ```julia
+      isdone(rng, model, sampler, samples, state, iteration; kwargs...)
+  ```
+
+  where `state` and `iteration` are the current state and iteration of the sampler, 
+  respectively. It should return `true` when sampling should end, and `false` otherwise.
+
+- `sample([rng, ]mcmc, parallel_type, N, nchains; kwargs...)`
+
+  Sample `nchains` Monte Carlo Markov chains in parallel according to `parallel_type`, which
+  may be `MCMCThreads()` or `MCMCDistributed()` for thread and parallel sampling, 
+  respectively.
+"""
+function sample(rng::Random.AbstractRNG, mcmc::MCMCWrapper, args...; kwargs...)
+    # any explicit function kwargs override defaults in mcmc object
+    kwargs = merge(mcmc.sample_kwargs, NamedTuple(kwargs))
+    return AbstractMCMC.mcmcsample(rng, mcmc.log_posterior_map, mcmc.mh_proposal_sampler, args...; kwargs...)
+end
+# use default rng if none given
+sample(mcmc::MCMCWrapper, args...; kwargs...) = sample(Random.GLOBAL_RNG, mcmc, args...; kwargs...)
+
+# ------------------------------------------------------------------------------------------
+# Search for a MCMC stepsize that yields a good MH acceptance rate
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Fraction of MC proposals in `chain` which were accepted (according to Metropolis-Hastings.)
+"""
+function accept_ratio(chain::MCMCChains.Chains)
+    if :accepted in names(chain, :internals)
+        return mean(chain, :accepted)
     else
-        mcmc.posterior[:, 1 + mcmc.iter[1]] = mcmc.posterior[:, mcmc.iter]
+        throw("MH `accepted` not recorded in chain: $(names(chain, :internals)).")
     end
-    mcmc.param = proposal(mcmc)[:]
-    mcmc.iter = mcmc.iter + 1
-
 end
 
-function mcmc_sample!(
-    mcmc::MCMC{FT, IT},
-    g::AbstractVector{FT},
-    gvar::AbstractVector{FT},
-) where {FT <: AbstractFloat, IT <: Int}
-    return mcmc_sample!(mcmc, g, Diagonal(gvar))
-end
-
-function accept_ratio(mcmc::MCMC{FT, IT}) where {FT <: AbstractFloat, IT <: Int}
-    return convert(FT, mcmc.accept) / mcmc.iter
-end
-
-
-function log_likelihood(
-    mcmc::MCMC{FT, IT},
-    g::AbstractVector{FT},
-    gcov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
-) where {FT <: AbstractFloat, IT <: Int}
-    log_rho = 0.0
-    #if gcov == nothing
-    #    diff = g - mcmc.obs_sample
-    #    log_rho[1] = -FT(0.5) * diff' * (mcmc.obs_noise_cov \ diff)
-    #else
-    # det(log(Γ))
-    # Ill-posed numerically for ill-conditioned covariance matrices with det≈0
-    #log_gpfidelity = -FT(0.5) * log(det(Diagonal(gvar))) # = -0.5 * sum(log.(gvar))
-    # Well-posed numerically for ill-conditioned covariance matrices with det≈0
-    #full_cov = Diagonal(gvar)
-    eigs = eigvals(gcov)
-    log_gpfidelity = -FT(0.5) * sum(log.(eigs))
-    # Combine got log_rho
-    diff = g - mcmc.obs_sample
-    log_rho = -FT(0.5) * diff' * (gcov \ diff) + log_gpfidelity
-    #end
-    return log_rho
-end
-
-
-function log_prior(mcmc::MCMC)
-    return get_logpdf(mcmc.prior, mcmc.param)
-end
-
-
-function proposal(mcmc::MCMC)
-    proposal_covariance = cov(mcmc.prior)
-    prop_dist = MvNormal(zeros(length(mcmc.param)), proposal_covariance)
-
-    if mcmc.algtype == "rwm"
-        sample = mcmc.posterior[:, 1 + mcmc.iter] .+ mcmc.step * rand(mcmc.rng, prop_dist)
-    elseif mcmc.algtype == "pCN"
-        # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
-        # inverse problems." for relating ρ to Euler stepsize:
-        ρ = (1 - mcmc.step / 4) / (1 + mcmc.step / 4)
-        sample = ρ * mcmc.posterior[:, 1 + mcmc.iter] .+ sqrt(1 - ρ^2) * rand(mcmc.rng, prop_dist)
-    else
-        error("Unrecognized algtype: ", mcmc.algtype)
+function _find_mcmc_step_log(mcmc::MCMCWrapper)
+    str_ = @sprintf "%d starting params:" 0
+    for p in zip(mcmc.sample_kwargs.param_names, mcmc.sample_kwargs.init_params)
+        str_ *= @sprintf " %s: %.3g" p[1] p[2]
     end
-    return sample
+    println(str_)
+    flush(stdout)
 end
 
+function _find_mcmc_step_log(it, stepsize, acc_ratio, chain::MCMCChains.Chains)
+    str_ = @sprintf "%d stepsize: %.3g acc rate: %.3g\n\tparams:" it stepsize acc_ratio
+    for p in pairs(get(chain; section = :parameters)) # can't map() over Pairs
+        str_ *= @sprintf " %s: %.3g" p.first last(p.second)
+    end
+    println(str_)
+    flush(stdout)
+end
 
-function find_mcmc_step!(
-    mcmc_test::MCMC{FT, IT},
-    em::Emulator{FT};
-    max_iter::IT = 2000,
-) where {FT <: AbstractFloat, IT <: Int}
-    step = mcmc_test.step
-    mcmc_accept = false
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Uses a heuristic to return a stepsize for the `mh_proposal_sampler` element of 
+[`MCMCWrapper`](@ref) which yields fast convergence of the Markov chain.
+
+The criterion used is that Metropolis-Hastings proposals should be accepted between 15% and 
+35% of the time.
+"""
+function optimize_stepsize(
+    rng::Random.AbstractRNG,
+    mcmc::MCMCWrapper;
+    init_stepsize = 1.0,
+    N = 2000,
+    max_iter = 20,
+    sample_kwargs...,
+)
     doubled = false
     halved = false
-    countmcmc = 0
-
-    println("Begin step size search")
-    println("iteration 0; current parameters ", mcmc_test.param')
-    flush(stdout)
-    it = 0
-    local acc_ratio
-    while mcmc_accept == false
-
-        param = reshape(mcmc_test.param, :, 1)
-        em_pred, em_predvar = predict(em, param)
-        if ndims(em_predvar[1]) != 0
-            mcmc_sample!(mcmc_test, vec(em_pred), diag(em_predvar[1]))
+    stepsize = init_stepsize
+    _find_mcmc_step_log(mcmc)
+    for it in 1:max_iter
+        trial_chain = sample(rng, mcmc, N; stepsize = stepsize, sample_kwargs...)
+        acc_ratio = accept_ratio(trial_chain)
+        _find_mcmc_step_log(it, stepsize, acc_ratio, trial_chain)
+        change_step = true
+        if doubled && halved
+            stepsize = 0.75 * stepsize
+            doubled = false
+            halved = false
+        elseif acc_ratio < 0.15
+            stepsize = 0.5 * stepsize
+            halved = true
+        elseif acc_ratio > 0.35
+            stepsize = 2.0 * stepsize
+            doubled = true
         else
-            mcmc_sample!(mcmc_test, vec(em_pred), vec(em_predvar))
+            change_step = false
         end
-        it += 1
-        if it % max_iter == 0
-            countmcmc += 1
-            acc_ratio = accept_ratio(mcmc_test)
-            println("iteration ", it, "; acceptance rate = ", acc_ratio, ", current parameters ", param)
-            flush(stdout)
-            if countmcmc == 20
-                println("failed to choose suitable stepsize in ", countmcmc, "iterations")
-                exit()
-            end
-            it = 0
-            if doubled && halved
-                step *= 0.75
-                reset_with_step!(mcmc_test, step)
-                doubled = false
-                halved = false
-            elseif acc_ratio < 0.15
-                step *= 0.5
-                reset_with_step!(mcmc_test, step)
-                halved = true
-            elseif acc_ratio > 0.35
-                step *= 2.0
-                reset_with_step!(mcmc_test, step)
-                doubled = true
-            else
-                mcmc_accept = true
-            end
-            if mcmc_accept == false
-                println("new step size: ", step)
-                flush(stdout)
-            end
+        if change_step
+            @printf "Set sampler to new stepsize: %.3g\n" stepsize
+        else
+            @printf "Returning optimized stepsize: %.3g\n" stepsize
+            return stepsize
         end
-
     end
-
-    return mcmc_test.step
+    throw("Failed to choose suitable stepsize in $(max_iter) iterations.")
 end
+# use default rng if none given
+optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBAL_RNG, mcmc; kwargs...)
 
 
-function sample_posterior!(mcmc::MCMC{FT, IT}, em::Emulator{FT}, max_iter::IT) where {FT <: AbstractFloat, IT <: Int}
-    for mcmcit in 1:max_iter
-        param = reshape(mcmc.param, :, 1)
-        # test predictions (param is 1 x N_parameters)
-        em_pred, em_predvar = predict(em, param)
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
 
-        if ndims(em_predvar[1]) != 0
-            mcmc_sample!(mcmc, vec(em_pred), diag(em_predvar[1]))
-        else
-            mcmc_sample!(mcmc, vec(em_pred), vec(em_predvar))
-        end
+Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
+samples in `chain`.
 
-    end
+!!! note
+    This method does not currently support combining samples from multiple `Chains`.
+"""
+function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
+    p_names = get_name(mcmc.prior)
+    p_slices = batch(mcmc.prior)
+    flat_constraints = get_all_constraints(mcmc.prior)
+    # live in same space as prior
+    p_constraints = [flat_constraints[slice] for slice in p_slices]
+
+    # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
+    # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
+    p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
+    posterior_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
+    posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
+    return posterior_distribution
 end
 
 end # module MarkovChainMonteCarlo

@@ -31,7 +31,7 @@ function constructor_tests(
         obs_noise_cov = Σ,
         normalize_inputs = true,
         standardize_outputs = false,
-        truncate_svd = 1.0,
+        retained_svd_frac = 1.0,
     )
 
     #build a known type, with defaults
@@ -42,7 +42,7 @@ function constructor_tests(
         obs_noise_cov = Σ,
         normalize_inputs = false,
         standardize_outputs = false,
-        truncate_svd = 1.0,
+        retained_svd_frac = 1.0,
     )
 
     # compare SVD/norm/stand with stored emulator version
@@ -58,7 +58,7 @@ function constructor_tests(
         obs_noise_cov = Σ,
         normalize_inputs = true,
         standardize_outputs = false,
-        truncate_svd = 1.0,
+        retained_svd_frac = 1.0,
     )
     train_inputs = get_inputs(emulator2.training_pairs)
     @test train_inputs == norm_inputs
@@ -74,7 +74,7 @@ function constructor_tests(
         normalize_inputs = false,
         standardize_outputs = true,
         standardize_outputs_factors = norm_factors,
-        truncate_svd = 1.0,
+        retained_svd_frac = 1.0,
     )
 
     #standardized and decorrelated (sd) data
@@ -105,16 +105,16 @@ end
 
     # [1.] test SVD (2D y version)
     test_SVD = svd(Σ)
-    transformed_y, decomposition = Emulators.svd_transform(y, Σ, truncate_svd = 1.0)
-    @test_throws MethodError Emulators.svd_transform(y, Σ[:, 1], truncate_svd = 1.0)
+    transformed_y, decomposition = Emulators.svd_transform(y, Σ, retained_svd_frac = 1.0)
+    @test_throws MethodError Emulators.svd_transform(y, Σ[:, 1], retained_svd_frac = 1.0)
     @test test_SVD.V[:, :] == decomposition.V #(use [:,:] to make it an array)
     @test test_SVD.Vt == decomposition.Vt
     @test test_SVD.S == decomposition.S
     @test size(transformed_y) == size(y)
 
     # 1D y version
-    transformed_y, decomposition2 = Emulators.svd_transform(y[:, 1], Σ, truncate_svd = 1.0)
-    @test_throws MethodError Emulators.svd_transform(y[:, 1], Σ[:, 1], truncate_svd = 1.0)
+    transformed_y, decomposition2 = Emulators.svd_transform(y[:, 1], Σ, retained_svd_frac = 1.0)
+    @test_throws MethodError Emulators.svd_transform(y[:, 1], Σ[:, 1], retained_svd_frac = 1.0)
     @test size(transformed_y) == size(y[:, 1])
 
     # Reverse SVD
@@ -131,7 +131,7 @@ end
     @test y_cov_new[1] ≈ Σ
 
     # Truncation
-    transformed_y, trunc_decomposition = Emulators.svd_transform(y[:, 1], Σ, truncate_svd = 0.95)
+    transformed_y, trunc_decomposition = Emulators.svd_transform(y[:, 1], Σ, retained_svd_frac = 0.95)
     trunc_size = size(trunc_decomposition.S)[1]
     @test test_SVD.S[1:trunc_size] == trunc_decomposition.S
     @test size(transformed_y)[1] == trunc_size
@@ -155,7 +155,7 @@ end
             obs_noise_cov = Σ,
             normalize_inputs = false,
             standardize_outputs = false,
-            truncate_svd = 0.9,
+            retained_svd_frac = 0.9,
         )
         trunc_size = size(emulator4.decomposition.S)[1]
         @test test_SVD.S[1:trunc_size] == emulator4.decomposition.S
@@ -169,7 +169,7 @@ end
         noise_samples = rand(MvNormal(zeros(d), Σ), m)
         y += noise_samples
         iopairs = PairedDataContainer(x, y, data_are_columns = true)
-        _, decomposition = Emulators.svd_transform(y, Σ, truncate_svd = 1.0)
+        _, decomposition = Emulators.svd_transform(y, Σ, retained_svd_frac = 1.0)
 
         constructor_tests(iopairs, Σ, norm_factors, decomposition)
     end
@@ -182,7 +182,7 @@ end
         noise_samples = rand(MvNormal(zeros(d), Σ), m)
         y += noise_samples
         iopairs = PairedDataContainer(x, y, data_are_columns = true)
-        _, decomposition = Emulators.svd_transform(y, Σ, truncate_svd = 1.0)
+        _, decomposition = Emulators.svd_transform(y, Σ, retained_svd_frac = 1.0)
 
         constructor_tests(iopairs, Σ, norm_factors, decomposition)
     end

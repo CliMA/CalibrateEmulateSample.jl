@@ -218,7 +218,7 @@ else
     # Covariance of truth data
     Γy = cov(yt, dims = 2)
 
-    println(Γy)
+    # println(Γy)
     println(size(Γy), " ", rank(Γy))
 end
 
@@ -285,7 +285,7 @@ end
 
 # Emulate-sample settings
 standardize = true
-truncate_svd = 0.95
+retained_svd_frac = 0.95
 
 gppackage = Emulators.GPJL()
 pred_type = Emulators.YType()
@@ -317,13 +317,13 @@ emulator = Emulator(
     normalize_inputs = normalized,
     standardize_outputs = standardize,
     standardize_outputs_factors = norm_factor,
-    truncate_svd = truncate_svd,
+    retained_svd_frac = retained_svd_frac,
 )
 optimize_hyperparameters!(emulator)
 
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-#if truncate_svd==1.0
+#if retained_svd_frac==1.0
 if log_normal == false
     y_mean, y_var = Emulators.predict(emulator, reshape(params_true, :, 1), transform_to_real = true)
 else
@@ -347,58 +347,15 @@ println(mean((truth.mean - vec(y_mean)) .^ 2))
 u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
 println("initial parameters: ", u0)
 
-# MCMC parameters    
-mcmc_alg = "rwm" # random walk Metropolis
-svd_flag = true
-
 # First let's run a short chain to determine a good step size
-burnin = 0
-step = 0.1 # first guess
-max_iter = 2000
 yt_sample = truth_sample
-mcmc_test = MarkovChainMonteCarlo.MCMC(
-    yt_sample,
-    Γy,
-    priors,
-    step,
-    u0,
-    max_iter,
-    mcmc_alg,
-    burnin;
-    svdflag = svd_flag,
-    standardize = standardize,
-    truncate_svd = truncate_svd,
-    norm_factor = norm_factor,
-)
-new_step = MarkovChainMonteCarlo.find_mcmc_step!(mcmc_test, emulator, max_iter = max_iter)
+mcmc = MCMCWrapper(RWMHSampling(), yt_sample, priors, emulator; init_params = u0)
+new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-
-# reset parameters 
-burnin = 2000
-max_iter = 100000
-
-mcmc = MarkovChainMonteCarlo.MCMC(
-    yt_sample,
-    Γy,
-    priors,
-    new_step,
-    u0,
-    max_iter,
-    mcmc_alg,
-    burnin;
-    svdflag = svd_flag,
-    standardize = standardize,
-    truncate_svd = truncate_svd,
-    norm_factor = norm_factor,
-)
-MarkovChainMonteCarlo.sample_posterior!(mcmc, emulator, max_iter)
-
-println("Posterior size")
-println(size(mcmc.posterior))
-
-posterior = MarkovChainMonteCarlo.get_posterior(mcmc)
+chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
 post_mean = mean(posterior)
 post_cov = cov(posterior)

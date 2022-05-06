@@ -55,7 +55,7 @@ $(DocStringExtensions.TYPEDFIELDS)
 struct Emulator{FT <: AbstractFloat}
     "Machine learning tool, defined as a struct of type MachineLearningTool."
     machine_learning_tool::MachineLearningTool
-    "Normalized, standardized, transformed pairs given the Boolean's normalize\\_inputs, standardize\\_outputs, truncate\\_svd."
+    "Normalized, standardized, transformed pairs given the Booleans normalize\\_inputs, standardize\\_outputs, retained\\_svd\\_frac."
     training_pairs::PairedDataContainer{FT}
     "Mean of input; length *input\\_dim*."
     input_mean::AbstractVector{FT}
@@ -69,6 +69,8 @@ struct Emulator{FT <: AbstractFloat}
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing}
     "The singular value decomposition of *obs\\_noise\\_cov*, such that *obs\\_noise\\_cov* = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt. NB: the SVD may be reduced in dimensions."
     decomposition::Union{SVD, Nothing}
+    "Fraction of singular values kept in decomposition. A value of 1 implies full SVD spectrum information."
+    retained_svd_frac::FT
 end
 
 # Constructor for the Emulator Object
@@ -79,7 +81,7 @@ function Emulator(
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
-    truncate_svd::FT = 1.0,
+    retained_svd_frac::FT = 1.0,
 ) where {FT <: AbstractFloat}
 
     # For Consistency checks
@@ -119,10 +121,10 @@ function Emulator(
     #Transform data if obs_noise_cov available 
     # (if obs_noise_cov==nothing, transformed_data is equal to data)
     decorrelated_training_outputs, decomposition =
-        svd_transform(training_outputs, obs_noise_cov, truncate_svd = truncate_svd)
+        svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
 
     # write new pairs structure 
-    if truncate_svd < 1.0
+    if retained_svd_frac < 1.0
         #note this changes the dimension of the outputs
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         input_dim, output_dim = size(training_pairs, 1)
@@ -142,6 +144,7 @@ function Emulator(
         standardize_outputs,
         standardize_outputs_factors,
         decomposition,
+        retained_svd_frac,
     )
 end
 
@@ -193,7 +196,6 @@ function predict(
         end
         # [4.] unstandardize
         return reverse_standardize(emulator, s_outputs, s_output_cov)
-
     else
         # remain in decorrelated, standardized coordinates (cov remains diagonal)
         # Convert to vector of  matrices to match the format  
@@ -202,15 +204,9 @@ function predict(
         if output_dim == 1
             ds_output_diagvar = [ds_output_diagvar[i][1] for i in 1:N_samples]
         end
-
         return ds_outputs, ds_output_diagvar
-
     end
-
 end
-
-
-
 
 # Normalization, Standardization, and Decorrelation
 """
@@ -324,7 +320,7 @@ in S are sorted in descending order.
 function svd_transform(
     data::AbstractMatrix{FT},
     obs_noise_cov::Union{AbstractMatrix{FT}, Nothing};
-    truncate_svd::FT = 1.0,
+    retained_svd_frac::FT = 1.0,
 ) where {FT <: AbstractFloat}
     if obs_noise_cov === nothing
         # no-op case
@@ -333,11 +329,11 @@ function svd_transform(
     # actually have a matrix to take the SVD of
     decomp = svd(obs_noise_cov)
     sqrt_singular_values_inv = Diagonal(1.0 ./ sqrt.(decomp.S))
-    if truncate_svd < 1.0
+    if retained_svd_frac < 1.0
         # Truncate the SVD as a form of regularization
         # Find cutoff
         S_cumsum = cumsum(decomp.S) / sum(decomp.S)
-        ind = findall(x -> (x > truncate_svd), S_cumsum)
+        ind = findall(x -> (x > retained_svd_frac), S_cumsum)
         k = ind[1]
         n = size(data)[1]
         println("SVD truncated at k: ", k, "/", n)
@@ -354,20 +350,21 @@ end
 function svd_transform(
     data::AbstractVector{FT},
     obs_noise_cov::Union{AbstractMatrix{FT}, Nothing};
-    truncate_svd::FT = 1.0,
+    retained_svd_frac::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # method for 1D data
-    transformed_data, decomposition = svd_transform(reshape(data, :, 1), obs_noise_cov; truncate_svd = truncate_svd)
+    transformed_data, decomposition =
+        svd_transform(reshape(data, :, 1), obs_noise_cov; retained_svd_frac = retained_svd_frac)
     return vec(transformed_data), decomposition
 end
 
 function svd_transform(
     data::AbstractVecOrMat{FT},
     obs_noise_cov::UniformScaling{FT};
-    truncate_svd::FT = 1.0,
+    retained_svd_frac::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # method for UniformScaling
-    return svd_transform(data, Diagonal(obs_noise_cov, size(data, 1)); truncate_svd = truncate_svd)
+    return svd_transform(data, Diagonal(obs_noise_cov, size(data, 1)); retained_svd_frac = retained_svd_frac)
 end
 
 """
@@ -397,12 +394,12 @@ function svd_reverse_transform_mean_cov(
     sqrt_singular_values = Diagonal(sqrt.(decomposition.S))
     transformed_μ = decomposition.V * sqrt_singular_values * μ
 
-    transformed_σ2 = [zeros(output_dim, output_dim) for i in 1:N_predicted_points]
+    transformed_σ2 = Vector{Symmetric{FT, Matrix{FT}}}(undef, N_predicted_points)
     # Back transformation
 
     for j in 1:N_predicted_points
         σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:, j]) * sqrt_singular_values * decomposition.Vt
-        transformed_σ2[j] = σ2_j
+        transformed_σ2[j] = Symmetric(σ2_j)
     end
 
     return transformed_μ, transformed_σ2
