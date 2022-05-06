@@ -6,6 +6,11 @@ using Documenter
 # using DocumenterCitations
 
 #----------
+
+examples = ["Lorenz example" => "examples/lorenz_example.md"]
+
+design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
+
 api = [
     "CalibrateEmulateSample" => [
         "Emulators" => ["General Emulator" => "API/Emulators.md", "Gaussian Process" => "API/GaussianProcess.md"],
@@ -14,12 +19,11 @@ api = [
     ],
 ]
 
-examples = ["Lorenz example" => "examples/lorenz_example.md"]
-
 pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
     "Examples" => examples,
+    "Package Design" => design,
     "API" => api,
 ]
 

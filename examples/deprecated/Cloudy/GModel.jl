@@ -3,13 +3,15 @@ module GModel
 using DocStringExtensions
 
 # TODO: Remove build (which currently prevents segfault):
-#using Pkg; Pkg.build()
+using Pkg
+Pkg.build()
 
 using Random
-using Sundials # CVODE_BDF() solver for ODE
 using Distributions
 using LinearAlgebra
+
 using DifferentialEquations
+using Sundials # CVODE_BDF() solver for ODE
 
 export run_G
 export run_G_ensemble
