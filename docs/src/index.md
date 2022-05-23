@@ -29,7 +29,7 @@ As the name suggests, `CalibrateEmulateSample.jl` breaks this problem into a seq
 
 The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), that generates input-output pairs in high density around an optimal parameter ``u^*``. This ``u^*`` will be near a mode of the posterior distribution (Note: This the only time we interface with the forward model ``G``).
 
-The **emulate** step takes these pairs and trains a statistical surrogate model (Gaussian process), emulating the forward map ``G``
+The **emulate** step takes these pairs and trains a statistical surrogate model (Gaussian process), emulating the forward map ``G``.
 
 The **sample** step uses this surrogate in place of ``G`` in a sampling method (Markov chain Monte Carlo) to sample the posterior distribution of ``u``.
 
