@@ -571,13 +571,13 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
 
     # distributions created as atoms and pieced together
-    posterior_distribution =  combine_distributions(
-        [ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)]
-    )
-        
+    posterior_distribution = combine_distributions([
+        ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)
+    ])
 
 
-#        posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
+
+    #        posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
     return posterior_distribution
 end
 
