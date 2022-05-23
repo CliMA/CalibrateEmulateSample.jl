@@ -1,8 +1,5 @@
 [deps]
-CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-EnsembleKalmanProcesses = "aa8a2aa5-91d8-4396-bcef-d4f2ec43552d"
 
 [compat]
-EnsembleKalmanProcesses = "^0.5"
 julia = "~1.6"
