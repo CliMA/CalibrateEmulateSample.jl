@@ -175,7 +175,7 @@ function predict(
 
     N_samples = size(new_inputs, 2)
     size(new_inputs, 1) == input_dim ||
-    throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
+        throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
 
     # [1.] normalize
     normalized_new_inputs = normalize(emulator, new_inputs)
