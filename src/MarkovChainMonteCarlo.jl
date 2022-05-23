@@ -568,8 +568,16 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
-    posterior_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
-    posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
+    p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
+
+    # distributions created as atoms and pieced together
+    posterior_distribution =  combine_distributions(
+        [ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)]
+    )
+        
+
+
+#        posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
     return posterior_distribution
 end
 
