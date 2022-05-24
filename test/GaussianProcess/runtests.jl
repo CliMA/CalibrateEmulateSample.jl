@@ -36,11 +36,11 @@ using CalibrateEmulateSample.DataContainers
     # These will be the test inputs at which predictions are made
     new_inputs = reshape([0.0, π / 2, π, 3 * π / 2, 2 * π], 1, 5)
 
-    # Fit Gaussian Process Regression models. 
-    # GaussianProcesses.jl (GPJL) provides two predict functions, predict_y 
-    # (which predicts the random variable y(θ)) and predict_y (which predicts 
-    # the latent random variable f(θ)). 
-    # ScikitLearn's Gaussian process regression (SKLJL) only offers one 
+    # Fit Gaussian Process Regression models.
+    # GaussianProcesses.jl (GPJL) provides two predict functions, predict_y
+    # (which predicts the random variable y(θ)) and predict_y (which predicts
+    # the latent random variable f(θ)).
+    # ScikitLearn's Gaussian process regression (SKLJL) only offers one
     # predict function, which predicts y.
 
     ## GaussianProcess 1: GPJL, predict_y unnormalized
@@ -91,7 +91,7 @@ using CalibrateEmulateSample.DataContainers
     @test μ2 ≈ μ1 atol = 1e-6
 
 
-    # GaussianProcess 3: SKLJL 
+    # GaussianProcess 3: SKLJL
 
     gppackage = SKLJL()
     pred_type = YType()
@@ -115,7 +115,7 @@ using CalibrateEmulateSample.DataContainers
 
 
     #gp3 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing,
-    #               normalized=false, noise_learn=true, 
+    #               normalized=false, noise_learn=true,
     #	   retained_svd_frac=1.0, standardize=false,
     #               prediction_type=pred_type, norm_factor=nothing)
 
@@ -132,9 +132,9 @@ using CalibrateEmulateSample.DataContainers
     pred_type = YType()
 
     # Generate training data
-    m = 80                                        # number of training points
+    m = 100 # number of training points
 
-    p = 2   # input dim 
+    p = 2   # input dim
     d = 2   # output dim
     X = 2.0 * π * rand(p, m)
 
@@ -147,7 +147,7 @@ using CalibrateEmulateSample.DataContainers
 
     # Add noise η
     μ = zeros(d)
-    Σ = 0.1 * [[0.8, 0.2] [0.2, 0.5]] # d x d
+    Σ = 0.05 * [[0.5, 0.2] [0.2, 0.5]] # d x d
     noise_samples = rand(MvNormal(μ, Σ), m)
 
     # y = G(x) + η
@@ -177,7 +177,7 @@ using CalibrateEmulateSample.DataContainers
 
     μ4, σ4² = Emulators.predict(em4, new_inputs, transform_to_real = true)
 
-    @test μ4[:, 1] ≈ [1.0, -1.0] atol = 0.25
+    @test μ4[:, 1] ≈ [1.0, -1.0] atol = 0.3
     @test μ4[:, 2] ≈ [0.0, 2.0] atol = 0.25
     @test μ4[:, 3] ≈ [0.0, 0.0] atol = 0.25
     @test μ4[:, 4] ≈ [0.0, -2.0] atol = 0.25

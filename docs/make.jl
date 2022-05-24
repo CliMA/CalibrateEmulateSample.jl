@@ -1,5 +1,4 @@
 # reference in tree version of CalibrateEmulateSample
-prepend!(LOAD_PATH, [joinpath(@__DIR__, "..")])
 
 using CalibrateEmulateSample
 using Documenter
