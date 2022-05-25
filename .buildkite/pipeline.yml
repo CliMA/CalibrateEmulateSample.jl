@@ -1,6 +1,5 @@
 env:
-  JULIA_VERSION: "1.6.2"
-  JULIA_MINOR_VERSION: "1.6"
+  JULIA_VERSION: "1.7.2"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
@@ -31,12 +30,12 @@ steps:
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
 
-      julia --color=yes --project -e '
-        println("--- Instantiating Project")
+      julia --color=yes --project=examples/Lorenz -e '
+        println("--- Developing Project")
         using Pkg;
-        Pkg.instantiate()
-        Pkg.activate("examples/Lorenz")
-        Pkg.instantiate()
+        Pkg.develop(path=".")
+        println("--- Instantiating Project")
+        # Pkg.instantiate()
         println("+++ Running Lorenz")
         include("examples/Lorenz/Lorenz_example.jl")'
     artifact_paths:
@@ -56,12 +55,12 @@ steps:
       mkdir examples/Emulator/GaussianProcess/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/GaussianProcess/depot:$JULIA_DEPOT_PATH"
 
-      julia --color=yes --project -e '
-        println("--- Instantiating Project")
+      julia --color=yes --project=examples/Emulator/GaussianProcess -e '
+        println("--- Developing Project")
         using Pkg;
-        Pkg.instantiate()
-        Pkg.activate("examples/Emulator/GaussianProcess")
-        Pkg.instantiate()
+        Pkg.develop(path=".")
+        println("--- Instantiating Project")
+        # Pkg.instantiate()
         println("+++ Running Learn Noise")
         include("examples/Emulator/GaussianProcess/learn_noise.jl")
         println("+++ Running PlotGP")
