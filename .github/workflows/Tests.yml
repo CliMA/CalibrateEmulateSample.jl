@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: true
-      
+
     runs-on: ubuntu-latest
 
     steps:
@@ -22,12 +22,12 @@ jobs:
 
     - name: Checkout
       uses: actions/checkout@v2
-    
+
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.6
- 
+        version: 1.7.2
+
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
       # the system python (default on Linux), see the PyCall documentation
@@ -76,12 +76,12 @@ jobs:
 
     - name: Checkout
       uses: actions/checkout@v2
-    
+
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.6
- 
+        version: 1.7.2
+
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
@@ -104,7 +104,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: true
-      
+
     runs-on: windows-latest
 
     steps:
@@ -115,12 +115,12 @@ jobs:
 
     - name: Checkout
       uses: actions/checkout@v2
-    
+
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.6
- 
+        version: 1.7.2
+
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
