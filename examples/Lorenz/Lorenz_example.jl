@@ -123,7 +123,7 @@ if dynamics == 2
     priors = ParameterDistribution([prior_F, prior_A])
 
 else
-     prior_F = Dict("distribution" => Parameterized(Normal(F_true, 1)), "constraint" => no_constraint(), "name" => "F")
+    prior_F = Dict("distribution" => Parameterized(Normal(F_true, 1)), "constraint" => no_constraint(), "name" => "F")
     priors = ParameterDistribution(prior_F)
 end
 
