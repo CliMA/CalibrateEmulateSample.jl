@@ -574,10 +574,6 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     posterior_distribution = combine_distributions([
         ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)
     ])
-
-
-
-    #        posterior_distribution = ParameterDistribution(posterior_samples, p_constraints, p_names)
     return posterior_distribution
 end
 
