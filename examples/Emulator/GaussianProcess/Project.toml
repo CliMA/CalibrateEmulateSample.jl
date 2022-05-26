@@ -1,4 +1,5 @@
 [deps]
+CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
 Conda = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
