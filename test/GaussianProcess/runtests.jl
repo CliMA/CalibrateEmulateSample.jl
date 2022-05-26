@@ -178,9 +178,9 @@ using CalibrateEmulateSample.DataContainers
     μ4, σ4² = Emulators.predict(em4, new_inputs, transform_to_real = true)
 
     @test μ4[:, 1] ≈ [1.0, -1.0] atol = 0.3
-    @test μ4[:, 2] ≈ [0.0, 2.0] atol = 0.25
-    @test μ4[:, 3] ≈ [0.0, 0.0] atol = 0.25
-    @test μ4[:, 4] ≈ [0.0, -2.0] atol = 0.25
+    @test μ4[:, 2] ≈ [0.0, 2.0] atol = 0.3
+    @test μ4[:, 3] ≈ [0.0, 0.0] atol = 0.3
+    @test μ4[:, 4] ≈ [0.0, -2.0] atol = 0.3
     @test length(σ4²) == size(new_inputs, 2)
     @test size(σ4²[1]) == (d, d)
 
