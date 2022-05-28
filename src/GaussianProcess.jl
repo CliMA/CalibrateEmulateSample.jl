@@ -192,6 +192,14 @@ function _predict(
     for i in 1:M
         μ[i, :], σ2[i, :] = predict_method(gp.models[i], new_inputs)
     end
+
+    if !(gp.noise_learn)
+        σ2[:,:] = σ2[:,:] .+ 1
+    else
+        magic_number = 1e-3
+        σ2[:,:] = σ2[:,:] .+ magic_number
+    end
+    
     return μ, σ2
 end
 
