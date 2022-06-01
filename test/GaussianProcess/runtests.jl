@@ -47,11 +47,18 @@ using CalibrateEmulateSample.DataContainers
     gppackage = GPJL()
     pred_type = YType()
 
-    gp1 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
+    gp1 = GaussianProcess(
+        gppackage;
+        kernel = GPkernel,
+        noise_learn = true,
+        alg_reg_noise = 1e-4,
+        prediction_type = pred_type,
+    )
 
     @test gp1.kernel == GPkernel
     @test gp1.noise_learn == true
     @test gp1.prediction_type == pred_type
+    @test gp1.alg_reg_noise == 1e-4
 
     em1 = Emulator(
         gp1,
@@ -157,9 +164,21 @@ using CalibrateEmulateSample.DataContainers
     @test get_inputs(iopairs2) == X
     @test get_outputs(iopairs2) == Y
 
-    gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
+    # with noise learning - e.g. we add a kernel to learn the noise (even though we provide the Sigma to the emulator)
+    gp4_noise_learnt = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
+    # without noise learning, just use the SVD transform to deal with observational noise
+    em4_noise_learnt = Emulator(
+        gp4_noise_learnt,
+        iopairs2,
+        obs_noise_cov = Σ,
+        normalize_inputs = true,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
 
-    em4 = Emulator(
+    gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = false, prediction_type = pred_type)
+
+    em4_noise_from_Σ = Emulator(
         gp4,
         iopairs2,
         obs_noise_cov = Σ,
@@ -168,20 +187,33 @@ using CalibrateEmulateSample.DataContainers
         retained_svd_frac = 1.0,
     )
 
-    Emulators.optimize_hyperparameters!(em4)
+    Emulators.optimize_hyperparameters!(em4_noise_learnt)
+    Emulators.optimize_hyperparameters!(em4_noise_from_Σ)
 
     new_inputs = zeros(2, 4)
     new_inputs[:, 2] = [π / 2, π]
     new_inputs[:, 3] = [π, π / 2]
     new_inputs[:, 4] = [3 * π / 2, 2 * π]
 
-    μ4, σ4² = Emulators.predict(em4, new_inputs, transform_to_real = true)
+    μ4_noise_learnt, σ4²_noise_learnt = Emulators.predict(em4_noise_learnt, new_inputs, transform_to_real = true)
 
-    @test μ4[:, 1] ≈ [1.0, -1.0] atol = 0.3
-    @test μ4[:, 2] ≈ [0.0, 2.0] atol = 0.3
-    @test μ4[:, 3] ≈ [0.0, 0.0] atol = 0.3
-    @test μ4[:, 4] ≈ [0.0, -2.0] atol = 0.3
-    @test length(σ4²) == size(new_inputs, 2)
-    @test size(σ4²[1]) == (d, d)
+    @test μ4_noise_learnt[:, 1] ≈ [1.0, -1.0] atol = 0.2
+    @test μ4_noise_learnt[:, 2] ≈ [0.0, 2.0] atol = 0.2
+    @test μ4_noise_learnt[:, 3] ≈ [0.0, 0.0] atol = 0.2
+    @test μ4_noise_learnt[:, 4] ≈ [0.0, -2.0] atol = 0.2
+    @test length(σ4²_noise_learnt) == size(new_inputs, 2)
+    @test size(σ4²_noise_learnt[1]) == (d, d)
+
+    μ4_noise_from_Σ, σ4²_noise_from_Σ = Emulators.predict(em4_noise_from_Σ, new_inputs, transform_to_real = true)
+
+    @test μ4_noise_from_Σ[:, 1] ≈ [1.0, -1.0] atol = 0.2
+    @test μ4_noise_from_Σ[:, 2] ≈ [0.0, 2.0] atol = 0.2
+    @test μ4_noise_from_Σ[:, 3] ≈ [0.0, 0.0] atol = 0.2
+    @test μ4_noise_from_Σ[:, 4] ≈ [0.0, -2.0] atol = 0.2
+
+    # check match between the means and variances (should be similar at least
+    @test all(isapprox.(μ4_noise_from_Σ, μ4_noise_learnt, rtol = 0.05))
+    @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 0.05))
+
 
 end
