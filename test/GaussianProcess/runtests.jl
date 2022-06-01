@@ -47,11 +47,18 @@ using CalibrateEmulateSample.DataContainers
     gppackage = GPJL()
     pred_type = YType()
 
-    gp1 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
+    gp1 = GaussianProcess(
+        gppackage;
+        kernel = GPkernel,
+        noise_learn = true,
+        alg_reg_noise = 1e-4,
+        prediction_type = pred_type,
+    )
 
     @test gp1.kernel == GPkernel
     @test gp1.noise_learn == true
     @test gp1.prediction_type == pred_type
+    @test gp1.alg_reg_noise == 1e-4
 
     em1 = Emulator(
         gp1,
@@ -168,7 +175,7 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
-    
+
     gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = false, prediction_type = pred_type)
 
     em4_noise_from_Σ = Emulator(
@@ -206,8 +213,7 @@ using CalibrateEmulateSample.DataContainers
 
     # check match between the means and variances (should be similar at least
     @test all(isapprox.(μ4_noise_from_Σ, μ4_noise_learnt, rtol = 0.05))
-    @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 0.5))
+    @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 0.05))
 
-    println(σ4²_noise_from_Σ-σ4²_noise_learnt)
 
 end

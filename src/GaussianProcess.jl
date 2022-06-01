@@ -52,15 +52,18 @@ models.
 $(DocStringExtensions.TYPEDFIELDS)
 
 """
-struct GaussianProcess{GPPackage} <: MachineLearningTool
+struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
     models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}
     "Kernel object."
     kernel::Union{<:Kernel, <:PyObject, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
     noise_learn::Bool
+    "Additional observational or regularization noise in used in GP algorithims"
+    alg_reg_noise::FT
     "Prediction type (`y` to predict the data, `f` to predict the latent function)."
     prediction_type::PredictionType
+
 end
 
 
@@ -70,19 +73,27 @@ $(DocStringExtensions.TYPEDSIGNATURES)
  - `package` - GaussianProcessPackage object.
  - `kernel` - GaussianProcesses kernel object. Default is a Squared Exponential kernel.
  - `noise_learn` - Boolean to additionally learn white noise in decorrelated space. Default is true.
+ - `alg_reg_noise` - Float to fix the (small) regularization parameter of algorithms when `noise_learn = true`
  - `prediction_type` - PredictionType object. Default predicts data, not latent function (FType()).
 """
 function GaussianProcess(
     package::GPPkg;
     kernel::Union{K, KPy, Nothing} = nothing,
     noise_learn = true,
+    alg_reg_noise::FT = 1e-3,
     prediction_type::PredictionType = YType(),
-) where {GPPkg <: GaussianProcessesPackage, K <: Kernel, KPy <: PyObject}
+) where {GPPkg <: GaussianProcessesPackage, K <: Kernel, KPy <: PyObject, FT <: AbstractFloat}
 
     # Initialize vector for GP models
     models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}(undef, 0)
 
-    return GaussianProcess{typeof(package)}(models, kernel, noise_learn, prediction_type)
+    # the algorithm regularization noise is set to some small value if we are learning noise, else
+    # it is fixed to the correct value (1.0)
+    if !(noise_learn)
+        alg_reg_noise = 1.0
+    end
+
+    return GaussianProcess{typeof(package), FT}(models, kernel, noise_learn, alg_reg_noise, prediction_type)
 end
 
 # First we create  the GPJL implementation
@@ -126,17 +137,8 @@ function build_models!(
         white = Noise(white_logstd)
         kern = kern + white
         println("Learning additive white noise")
-
-        # Make the regularization small. We actually learn 
-        # total_noise = white_logstd + logstd_regularization_noise
-        magic_number = 1e-3 # magic_number << 1
-        logstd_regularization_noise = log(sqrt(magic_number))
-
-    else
-        # When not learning noise, our SVD transformation implies the 
-        # observational noise is the identity.
-        logstd_regularization_noise = log(sqrt(1.0))
     end
+    logstd_regularization_noise = log(sqrt(gp.alg_reg_noise))
 
     for i in 1:N_models
         # Make a copy of the kernel (because it gets altered in every 
@@ -193,13 +195,6 @@ function _predict(
         μ[i, :], σ2[i, :] = predict_method(gp.models[i], new_inputs)
     end
 
-    if !(gp.noise_learn)
-        σ2[:,:] = σ2[:,:] .+ 1
-    else
-        magic_number = 1e-3
-        σ2[:,:] = σ2[:,:] .+ magic_number
-    end
-    
     return μ, σ2
 end
 
@@ -251,16 +246,9 @@ function build_models!(
         white = pykernels.WhiteKernel(noise_level = white_noise_level, noise_level_bounds = (1e-05, 10.0))
         kern = kern + white
         println("Learning additive white noise")
-
-        # Make the regularization small. We actually learn 
-        # total_noise = white_noise_level + regularization_noise
-        magic_number = 1e-3 # magic_number << 1
-        regularization_noise = 1e-3
-    else
-        # When not learning noise, our SVD transformation implies the 
-        # observational noise is the identity.
-        regularization_noise = 1.0
     end
+
+    regularization_noise = gp.alg_reg_noise
 
     for i in 1:N_models
         kernel_i = deepcopy(kern)
@@ -291,5 +279,12 @@ function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{F
     μ, σ = gp_model.predict(new_inputs', return_std = true)
     return μ, (σ .* σ)
 end
-predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat} =
-    _predict(gp, new_inputs, _SKJL_predict_function)
+function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+    μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
+
+    # for SKLJL does not return the observational noise (even if return_std = true)
+    # we must add contribution depending on whether we learnt the noise or not.
+    σ2[:, :] = σ2[:, :] .+ gp.alg_reg_noise
+
+    return μ, σ2
+end
