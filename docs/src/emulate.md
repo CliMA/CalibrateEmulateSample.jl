@@ -6,13 +6,12 @@ This is performed with construction of an `Emulator` object, which has two parts
 
 ## Typical construction from `Lorenz_example.jl`
 
-First, obtain data in a `PairedDataContainer`, for example, from the result of the `Calibrate` stage, or see the constructor [here](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl)
+First, obtain data in a `PairedDataContainer`, for example, get this from `ekpobj` resulting from the `Calibrate` stage, or see the constructor [here](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl)
 ```julia
 using CalibrateEmulateSample.Utilities
-input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
+input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iterations as data
 ```
-Then create a specific emulator, for example, a Gaussian process `gauss_proc`.
-The emulator can then be built:
+Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc`, the `Emulator` can then be built:
 
 ```julia
 emulator = Emulator(
