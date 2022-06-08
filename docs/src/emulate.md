@@ -26,6 +26,21 @@ emulator = Emulator(
 ```
 The optional arguments above relate to the data processing.
 
+### Emulator Training
+
+The emulator is trained when we combine the machine learning tool and the data into the `Emulator` above. 
+For any machine learning tool, we must also optimize the hyperparameters:
+```julia
+optimize_hyperparameters!(emulator)
+```
+In the Lorenz example, this line learns the hyperparameters of the Gaussian process, which depend on the choice of [kernel](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/#kernels).
+Predictions at new inputs can then be made using
+```julia
+y, cov = Emulator.predict(emulator, new_inputs)
+```
+This returns both a mean value and a covariance.
+
+
 ## Data processing
 
 Some effects of the following are outlined in a practical setting in the results and appendices of [Howland, Dunbar, Schneider, (2022)](https://doi.org/10.1029/2021MS002735).
