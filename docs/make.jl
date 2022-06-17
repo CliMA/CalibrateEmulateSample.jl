@@ -22,6 +22,7 @@ pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
     "Contributing" => "contributing.md",
+    "Emulator" => "emulate.md",
     "Examples" => examples,
     "Package Design" => design,
     "API" => api,
