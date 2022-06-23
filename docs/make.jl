@@ -26,6 +26,7 @@ pages = [
     "Examples" => examples,
     "Package Design" => design,
     "API" => api,
+    "Glossary" => "glossary.md",
 ]
 
 #----------
