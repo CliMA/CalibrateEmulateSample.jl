@@ -1,12 +1,12 @@
-# The Emulator struct
+# The Emulate stage
 
-This is performed with construction of an `Emulator` object, which has two parts
+Emulation is performed through the construction of an `Emulator` object, which has two components
 1. A wrapper for any statistical emulator,
-2. Data-processing and dimension reduction.
+2. Data-processing and dimensionality reduction functionality.
 
 ## Typical construction from `Lorenz_example.jl`
 
-First, obtain data in a `PairedDataContainer`, for example, get this from `ekpobj` resulting from the `Calibrate` stage, or see the constructor [here](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl)
+First, obtain data in a `PairedDataContainer`, for example, get this from an `EnsembleKalmanProcess` `ekpobj` generated during the `Calibrate` stage, or see the constructor [here](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl)
 ```julia
 using CalibrateEmulateSample.Utilities
 input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iterations as data
@@ -28,7 +28,7 @@ The optional arguments above relate to the data processing.
 
 ## Data processing
 
-Some effects of the following are outlined in a practical setting in the results and appendices of ([Howland, Dunbar, Schneider, 2022](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021MS002735))
+Some effects of the following are outlined in a practical setting in the results and appendices of [Howland, Dunbar, Schneider, (2022)](https://doi.org/10.1029/2021MS002735).
 
 ### Diagonalization and output dimension reduction
 
@@ -36,7 +36,7 @@ This arises from the optional arguments
 - `obs_noise_cov = Γy` (default: `nothing`)
 We always use singular value decomposition to diagonalize the output space, requiring output covariance `Γy`. *Why?* If we need to train a $$\mathbb{R}^{10} \to \mathbb{R}^{100}$$ emulator, diagonalization allows us to instead train 100 $$\mathbb{R}^{10} \to \mathbb{R}^{1}$$ emulators (far cheaper).
 - `retained_svd_frac = 0.95` (default `1.0`)
-Performance is increased further by throwing away less informative output dimensions, if 95% of the information is in the first 40 diagonalized output dimensions then setting `retained_svd_frac=0.95` will train only 40 emulators.
+Performance is increased further by throwing away less informative output dimensions, if 95% of the information (i.e., variance) is in the first 40 diagonalized output dimensions then setting `retained_svd_frac=0.95` will train only 40 emulators.
 
 !!! note
     Diagonalization is an approximation. It is however a good approximation when the observational covariance varies slowly in the parameter space.
