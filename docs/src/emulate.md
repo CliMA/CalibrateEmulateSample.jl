@@ -51,7 +51,7 @@ This arises from the optional arguments
 We normalize the input data in a standard way by centering, and scaling with the empirical covariance
 - `standardize_outputs = true` (default: `false`)
 - `standardize_outputs_factors = factor_vector` (default: `nothing`)
-To help with poor conditioning of the covariance matrix, users can also standardize each ouput dimenion with by a multiplicative factor given by the elements of `factor_vector`
+To help with poor conditioning of the covariance matrix, users can also standardize each output dimension with by a multiplicative factor given by the elements of `factor_vector`
 
 ## Modular interface
 
