@@ -83,7 +83,7 @@ calling `run_G` for each of the *N\\_ensemble* parameter values.
 Returns `g_ens`, an array of size (*N\\_ensemble* × *N\\_data*), where g_ens[j,:] = G(params[j,:]).
 """
 function run_G_ensemble(params::Array{FT, 2}, settings::LSettings, rng_seed = 42) where {FT <: AbstractFloat}
-    # Initilize ensemble
+    # Initialize ensemble
     N_ens = size(params, 2) # params is N_params x N_ens
     if settings.stats_type == 1
         nd = 2

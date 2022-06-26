@@ -26,7 +26,7 @@ git clone git@github.com:Clima/CalibrateEmulateSample.jl
 cd CalibrateEmulateSample.jl
 ```
 
-Install all the project dependencies (see the documentation for specific details).  Given that CES depends on python packages it is easiest to set the project to use its own conda environment
+Install all the project dependencies (see the documentation for specific details).  Given that CES depends on python packages it is easiest to set the project to use its own conda environment.
 
 
 ## Building CES Documentation
@@ -45,7 +45,7 @@ julia --project=docs/ -e 'using Pkg; Pkg.instantiate()'
 julia --project=docs/ docs/make.jl
 ```
 
-The locally rendered HTML documentation can be viewed at `docs/build/index.html`
+The locally rendered HTML documentation can be viewed at `docs/build/index.html`.
 
 ### Project Mind map
 The rough code structure, and its interaction with EnsembleKalmanProcesses.jl is found at:

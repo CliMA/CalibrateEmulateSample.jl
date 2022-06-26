@@ -63,7 +63,7 @@ end
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
 #
-# (Strictly speaking the difference bewteen RW and pCN should be implemented at the level of
+# (Strictly speaking the difference between RW and pCN should be implemented at the level of
 # the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
 # only change is made. We do the latter here because doing the former would require more
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).

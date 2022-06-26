@@ -59,7 +59,7 @@ struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     kernel::Union{<:Kernel, <:PyObject, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
     noise_learn::Bool
-    "Additional observational or regularization noise in used in GP algorithims"
+    "Additional observational or regularization noise in used in GP algorithms"
     alg_reg_noise::FT
     "Prediction type (`y` to predict the data, `f` to predict the latent function)."
     prediction_type::PredictionType

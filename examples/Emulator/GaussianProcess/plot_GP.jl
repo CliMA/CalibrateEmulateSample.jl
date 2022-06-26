@@ -33,7 +33,7 @@ end
 #   and one that predicts y_i[2] from x_i. Fitting separate models for        #
 #   y_i[1] and y_i[2] requires the outputs to be independent - since this     #
 #   cannot be assumed to be the case a priori, the training data are          #
-#   decorrelated by perfoming a Singular Value Decomposition (SVD) on the     #
+#   decorrelated by performing a Singular Value Decomposition (SVD) on the     #
 #   noise covariance Σ, and each model is then trained in the decorrelated    #
 #   space.                                                                    #
 #                                                                             #
