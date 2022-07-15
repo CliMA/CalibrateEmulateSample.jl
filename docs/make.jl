@@ -25,6 +25,7 @@ pages = [
     "Calibrate" => "calibrate.md",
     "Emulate" => "emulate.md",
     "Examples" => examples,
+    "Gaussian Process" => "GaussianProcessEmulator.md",
     "Package Design" => design,
     "API" => api,
     "Glossary" => "glossary.md",
