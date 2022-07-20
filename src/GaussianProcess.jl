@@ -168,13 +168,16 @@ end
 $(DocStringExtensions.TYPEDSIGNATURES)
 
 Optimize Gaussian process hyperparameters using in-build package method.
+
+Warning: if one uses `GPJL()` and wishes to modify positional arguments. The first positional argument must be the `Optim` method (default `LBGFS()`).
 """
-function optimize_hyperparameters!(gp::GaussianProcess{GPJL})
+function optimize_hyperparameters!(gp::GaussianProcess{GPJL}, args...; kwargs...)
     N_models = length(gp.models)
     for i in 1:N_models
         # always regress with noise_learn=false; if gp was created with noise_learn=true
         # we've already explicitly added noise to the kernel
-        optimize!(gp.models[i], noise = false)
+
+        optimize!(gp.models[i], args...; noise = false, kwargs...)
         println("optimized hyperparameters of GP: ", i)
         println(gp.models[i].kernel)
     end
@@ -270,7 +273,7 @@ function build_models!(
 end
 
 
-function optimize_hyperparameters!(gp::GaussianProcess{SKLJL})
+function optimize_hyperparameters!(gp::GaussianProcess{SKLJL}, args...; kwargs...)
     println("SKlearn, already trained. continuing...")
 end
 
