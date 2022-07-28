@@ -153,8 +153,8 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Optimizes the hyperparameters in the machine learning tool.
 """
-function optimize_hyperparameters!(emulator::Emulator{FT}) where {FT <: AbstractFloat}
-    optimize_hyperparameters!(emulator.machine_learning_tool)
+function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) where {FT <: AbstractFloat}
+    optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
 
