@@ -23,11 +23,11 @@ it is easiest to set the project to use its own
 ```
 
 
-The `scikit-learn` package then has to be installed if using a Julia project-specific 
-Conda environment:
+The `scikit-learn` package (along with `scipy`) then has to be installed if using a Julia project-specific Conda environment:
 
 ```
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.8.1")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.1.1")'
 
 ```
 
