@@ -43,7 +43,8 @@ jobs:
           PYTHON: ""
         run: |
           julia --color=yes --project -e 'using Pkg; Pkg.instantiate()'
-          julia --color=yes --project -e 'using Conda; Conda.add("scikit-learn")'
+          julia --project -e 'using Conda; Conda.add("scipy=1.8.1")'
+          julia --color=yes --project -e 'using Conda; Conda.add("scikit-learn=1.1.1")'
           julia --color=yes --project=docs/ -e 'using Pkg; Pkg.instantiate()'
           julia --color=yes --project=docs/ -e 'using Pkg; Pkg.precompile()'
       - name: Build and deploy
