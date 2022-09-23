@@ -19,26 +19,33 @@ it is easiest to set the project to use its own
 (set by exporting the ENV variable `PYTHON=""`).
 
 ```
-> PYTHON="" julia --project -e 'using Pkg; Pkg.instantiate()
+> PYTHON="" julia --project -e 'using Pkg; Pkg.instantiate()'
 ```
 
 
 The `scikit-learn` package (along with `scipy`) then has to be installed if using a Julia project-specific Conda environment:
 
 ```
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.8.1")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.8.1", channel="conda-forge")'
 > PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.1.1")'
 
 ```
 
 See the [PyCall.jl documentation](https://github.com/JuliaPy/PyCall.jl#specifying-the-python-version) 
-for more information about how to configure the local Julia / Conda / Python environment.
+for more information about how to configure the local Julia / Conda / Python environment. Typically it will require building in the 
+REPL via
+```julia
+> julia --project
+julia> using Pkg
+julia> Pkg.build("PyCall")
+```
 
 To test that the package is working:
 
 ```
 > julia --project -e 'using Pkg; Pkg.test()'
 ```
+
 
 ### Building the documentation locally
 
