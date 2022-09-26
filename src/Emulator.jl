@@ -37,7 +37,7 @@ end
 
 # include the different <: ML models
 include("GaussianProcess.jl") #for GaussianProcess
-# include("RandomFeature.jl")
+include("RandomFeature.jl")
 # include("NeuralNetwork.jl")
 # etc.
 
