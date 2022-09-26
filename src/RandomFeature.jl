@@ -210,7 +210,7 @@ function build_models!(
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
-    output_values = get_outputs(input_output_pairs)
+    output_values = get_outputs(input_output_pairs)  
     n_rfms, n_data = size(output_values)
     noise_sd = 1.0
     
@@ -227,12 +227,14 @@ function build_models!(
     n_train = Int(floor(0.8 * n_data))
     n_test = n_data - n_train
     n_features_opt = Int(floor(1.2 * n_test)) #we take a specified number of features for optimization.
-
+    idx_shuffle= randperm(rng, n_data)
+        
     for i = 1:n_rfms
        
-        io_pairs_i = PairedDataContainer(
-            input_values,
-            reshape(output_values[i,:],1,size(output_values,2)),
+        
+        io_pairs_opt = PairedDataContainer(
+            input_values[:,idx_shuffle],
+            reshape(output_values[i,idx_shuffle],1,size(output_values,2)),
         )
         
         # [2.] Estimate covariance at mean value
@@ -244,7 +246,7 @@ function build_models!(
             1.0,
             n_features_opt,
             batch_sizes,
-            io_pairs_i,
+            io_pairs_opt,
             cov_samples,
         )
         
@@ -258,8 +260,7 @@ function build_models!(
         N_iter = 30
         
         initial_params = construct_initial_ensemble(rng, hyper_prior, N_ens)
-        params_init = transform_unconstrained_to_constrained(hyper_prior, initial_params)[1, :]
-        data = vcat(get_outputs(io_pairs_i)[(n_train + 1):end], noise_sd^2 * ones(n_test), 0.0)
+        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], noise_sd^2 * ones(n_test), 0.0)
         ekiobj = EKP.EnsembleKalmanProcess(initial_params, data, Γ, Inversion(), rng = rng)
         err = zeros(N_iter)
 
@@ -274,7 +275,7 @@ function build_models!(
                 1.0,
                 n_features_opt,
                 batch_sizes,
-                io_pairs_i,
+                io_pairs_opt,
             )
             EKP.update_ensemble!(ekiobj, g_ens)
             err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
@@ -284,6 +285,11 @@ function build_models!(
         # [5.] extract optimal hyperparameters
         l_optimal =  mean(transform_unconstrained_to_constrained(hyper_prior, get_u_final(ekiobj)), dims = 2)
         println("RFM $i, learnt hyperparameters: $(l_optimal)")
+
+        io_pairs_i = PairedDataContainer(
+            input_values,
+            reshape(output_values[i,:],1,size(output_values,2)),
+        )
         # Now, fit new RF model with the optimized hyperparameters
         n_features = get_n_features(srfi)
         
