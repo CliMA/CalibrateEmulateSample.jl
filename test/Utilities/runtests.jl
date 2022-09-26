@@ -60,4 +60,17 @@ using CalibrateEmulateSample.DataContainers
     @test get_inputs(training_points) ≈ initial_ensemble
     @test get_outputs(training_points) ≈ g_ens
 
+    #positive definiteness
+    mat = reshape(collect(-3:(-3 + 10^2 - 1)), 10, 10)
+    tol = 1e12 * eps()
+    @test !isposdef(mat)
+
+    pdmat = posdef_correct(mat)
+    @test isposdef(pdmat)
+    @test minimum(eigvals(pdmat)) >= (1 - 1e-4) * 1e8 * eps() #eigvals is approximate so need a bit of give here  
+
+    pdmat2 = posdef_correct(mat, tol = tol)
+    @test isposdef(pdmat2)
+    @test minimum(eigvals(pdmat2)) >= (1 - 1e-4) * tol
+
 end

@@ -14,12 +14,13 @@ import EnsembleKalmanProcesses: EnsembleKalmanProcesses, ParameterDistributions,
 
 export EnsembleKalmanProcesses, ParameterDistributions, Observations, DataContainers
 
-# No internal deps, heavy external deps
-#include("GaussianProcessEmulator.jl")
-include("Emulator.jl")
 
 # Internal deps, light external deps
 include("Utilities.jl")
+
+# No internal deps, heavy external deps
+#include("GaussianProcessEmulator.jl")
+include("Emulator.jl")
 
 # Internal deps, light external deps
 include("MarkovChainMonteCarlo.jl")

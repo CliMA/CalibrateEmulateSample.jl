@@ -214,7 +214,7 @@ using CalibrateEmulateSample.DataContainers
     @test μ4_noise_from_Σ[:, 3] ≈ [0.0, 0.0] atol = tol_mu
     @test μ4_noise_from_Σ[:, 4] ≈ [0.0, -2.0] atol = tol_mu
 
-    # check match between the means and variances (should be similar at least
+    # check match between the variances (should be similar at least)
     @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 2 * tol_mu))
 
 

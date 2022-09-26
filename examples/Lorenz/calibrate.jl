@@ -39,7 +39,7 @@ function main()
     dynamics = 2 # Transient is 2
     # Statistics integration length
     # This has to be less than 360 and 360 must be divisible by Ts_days
-    Ts_days = 90.0 # Integration length in days
+    Ts_days = 30.0 # Integration length in days
     # Stats type, which statistics to construct from the L96 system
     # 4 is a linear fit over a batch of length Ts_days
     # 5 is the mean over a batch of length Ts_days
@@ -150,8 +150,9 @@ function main()
     else
         println("Using truth values to compute covariance")
         n_samples = 20
-        yt = zeros(length(gt), n_samples)
-        for i in 1:n_samples
+        nthreads = Threads.nthreads()
+        yt = zeros(nthreads, length(gt), n_samples)
+        Threads.@threads for i in 1:n_samples
             lorenz_settings_local = GModel.LSettings(
                 dynamics,
                 stats_type,
@@ -167,8 +168,10 @@ function main()
                 ω_fixed,
                 ω_true,
             )
-            yt[:, i] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
+            tid = Threads.threadid()
+            yt[tid, :, i] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
         end
+        yt = dropdims(sum(yt, dims = 1), dims = 1)
         # Variance of truth data
         #Γy = convert(Array, Diagonal(dropdims(mean((yt.-mean(yt,dims=1)).^2,dims=1),dims=1)))
         # Covariance of truth data
@@ -190,7 +193,7 @@ function main()
 
     # EKP parameters
     N_ens = 20 # number of ensemble members
-    N_iter = 5 # number of EKI iterations
+    N_iter = 6 # number of EKI iterations
     # initial parameters: N_params x N_ens
     initial_params = EKP.construct_initial_ensemble(priors, N_ens; rng_seed = rng_seed)
 

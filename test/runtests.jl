@@ -24,7 +24,7 @@ end
         end
     end
 
-    for submodule in ["Emulator", "GaussianProcess", "MarkovChainMonteCarlo", "Utilities"]
+    for submodule in ["Emulator", "GaussianProcess", "RandomFeature", "MarkovChainMonteCarlo", "Utilities"]
         if all_tests || has_submodule(submodule) || "CalibrateEmulateSample" in ARGS
             include_test(submodule)
         end

@@ -165,7 +165,10 @@ function EmulatorPosteriorModel(
             # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
             # have to reshape()/re-cast input/output; simpler to do here than add a 
             # predict() method.
-            g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
+            g, g_cov =
+                Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
+            #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
+
             if isa(g_cov[1], Real)
                 return logpdf(MvNormal(obs_sample, g_cov[1] * I), vec(g)) + get_logpdf(prior, θ)
             else
