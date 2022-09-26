@@ -289,14 +289,15 @@ standardize = true
 retained_svd_frac = 0.95
 
 # setup random features
-n_features = 200 
+n_features = 300
+batch_sizes = Dict("train" => 100, "test" => 100, "feature" => 100)
 
 # hyperparameter prior
 μ_l = 5.0
 σ_l = 10.0
 
 prior_lengthscale = constrained_gaussian("lengthscale", μ_l, σ_l, 0.0, Inf, repeats = size(params_true,1))
-srfi = ScalarRandomFeatureInterface(n_features,prior_lengthscale)
+srfi = ScalarRandomFeatureInterface(n_features,prior_lengthscale, batch_sizes=batch_sizes)
 
 # Standardize the output data
 # Use median over all data since all data are the same type
