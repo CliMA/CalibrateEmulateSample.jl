@@ -68,9 +68,9 @@ if !isdir(output_directory)
 end
 
 #create the machine learning tools: Gaussian Process
-gppackage = GPJL()
+gppackage = SKLJL()
 pred_type = YType()
-gaussian_process = GaussianProcess(gppackage, noise_learn = true)
+gaussian_process = GaussianProcess(gppackage, noise_learn = false)
 
 # Generate training data (x-y pairs, where x ∈ ℝ ᵖ, y ∈ ℝ ᵈ)
 # x = [x1, x2]: inputs/predictors/features/parameters
@@ -92,7 +92,7 @@ gx[2, :] = g2x
 
 # Add noise η
 μ = zeros(d)
-Σ = 0.1 * [[0.8, 0.0] [0.0, 0.5]] # d x d
+Σ = 0.1 * [[0.8, 0.1] [0.1, 0.5]] # d x d
 noise_samples = rand(MvNormal(μ, Σ), n)
 # y = G(x) + η
 Y = gx .+ noise_samples
@@ -182,9 +182,9 @@ println("GP trained")
 
 # Plot mean and variance of the predicted observables y1 and y2
 # For this, we generate test points on a x1-x2 grid.
-n_pts = 50
-x1 = range(0.0, stop = 2 * π, length = n_pts)
-x2 = range(0.0, stop = 2 * π, length = n_pts)
+n_pts = 200
+x1 = range(0.0, stop = (4.0/5.0) * 2 * π, length = n_pts)
+x2 = range(0.0, stop = (4.0/5.0) * 2 * π, length = n_pts)
 X1, X2 = meshgrid(x1, x2)
 # Input for predict has to be of size N_samples x input_dim
 inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
