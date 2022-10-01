@@ -155,18 +155,25 @@ function EmulatorPosteriorModel(
     em::Emulator{FT},
     obs_sample::AbstractVector{FT},
 ) where {FT <: AbstractFloat}
-    return AdvancedMH.DensityModel(function (θ)
-        # θ: model params we evaluate at; in original coords.
-        # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
-        #
-        # Recall predict() written to return multiple N_samples: expects input to be a 
-        # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
-        # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
-        # have to reshape()/re-cast input/output; simpler to do here than add a 
-        # predict() method.
-        g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
-        return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + get_logpdf(prior, θ)
-    end)
+    return AdvancedMH.DensityModel(
+        function (θ)
+            # θ: model params we evaluate at; in original coords.
+            # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
+            #
+            # Recall predict() written to return multiple N_samples: expects input to be a 
+            # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
+            # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
+            # have to reshape()/re-cast input/output; simpler to do here than add a 
+            # predict() method.
+            g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
+            if isa(g_cov[1], Real)
+                return logpdf(MvNormal(obs_sample, g_cov[1] * I), vec(g)) + get_logpdf(prior, θ)
+            else
+                return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + get_logpdf(prior, θ)
+            end
+
+        end,
+    )
 end
 
 # ------------------------------------------------------------------------------------------
@@ -514,28 +521,38 @@ function optimize_stepsize(
     max_iter = 20,
     sample_kwargs...,
 )
-    doubled = false
-    halved = false
+    increase = false
+    decrease = false
     stepsize = init_stepsize
+    factor = [1.0]
+    step_history = [true, true]
     _find_mcmc_step_log(mcmc)
     for it in 1:max_iter
         trial_chain = sample(rng, mcmc, N; stepsize = stepsize, sample_kwargs...)
         acc_ratio = accept_ratio(trial_chain)
         _find_mcmc_step_log(it, stepsize, acc_ratio, trial_chain)
+
         change_step = true
-        if doubled && halved
-            stepsize = 0.75 * stepsize
-            doubled = false
-            halved = false
-        elseif acc_ratio < 0.15
-            stepsize = 0.5 * stepsize
-            halved = true
+        if acc_ratio < 0.15
+            decrease = true
         elseif acc_ratio > 0.35
-            stepsize = 2.0 * stepsize
-            doubled = true
+            increase = true
         else
             change_step = false
         end
+
+        if increase && decrease
+            factor[1] /= 2
+            increase = false
+            decrease = false
+        end
+
+        if acc_ratio < 0.15
+            stepsize *= 2^(-factor[1])
+        elseif acc_ratio > 0.35
+            stepsize *= 2^(factor[1])
+        end
+
         if change_step
             @printf "Set sampler to new stepsize: %.3g\n" stepsize
         else
