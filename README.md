@@ -2,7 +2,6 @@
 Implements a derivative-free machine-learning accelerated pipeline for uncertainty quantification.
 
 
-|||
 | **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]             |
 |---------------------:|:-------------------------------------------------|
 | **Docs Build**       | [![docs build][docs-bld-img]][docs-bld-url]      |
