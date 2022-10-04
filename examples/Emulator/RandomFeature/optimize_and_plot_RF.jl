@@ -121,14 +121,14 @@ if plot_flag
 end
 
 # setup random features
-n_features = 200 
+n_features = 200
 
 # hyperparameter prior
 μ_l = 5.0
 σ_l = 5.0
 prior_lengthscale = constrained_gaussian("lengthscale", μ_l, σ_l, 0.0, Inf, repeats = p)
 
-srfi = ScalarRandomFeatureInterface(n_features,prior_lengthscale)
+srfi = ScalarRandomFeatureInterface(n_features, prior_lengthscale)
 
 emulator = Emulator(srfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
 println("build RF with $n training points and $(n_features) random features.")
@@ -138,8 +138,8 @@ optimize_hyperparameters!(emulator) # although RF already optimized
 # Plot mean and variance of the predicted observables y1 and y2
 # For this, we generate test points on a x1-x2 grid.
 n_pts = 200
-x1 = range(0.0, stop = 4.0/5.0* 2 * π, length = n_pts)
-x2 = range(0.0, stop = 4.0/5.0* 2 * π, length = n_pts)
+x1 = range(0.0, stop = 4.0 / 5.0 * 2 * π, length = n_pts)
+x2 = range(0.0, stop = 4.0 / 5.0 * 2 * π, length = n_pts)
 X1, X2 = meshgrid(x1, x2)
 # Input for predict has to be of size N_samples x input_dim
 inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
@@ -259,7 +259,3 @@ for y_i in 1:d
         savefig(joinpath(output_directory, "RF_test_y" * string(y_i) * "_difference_truth_prediction.png"))
     end
 end
-
-
-
-

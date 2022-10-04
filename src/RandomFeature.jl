@@ -9,13 +9,7 @@ using Random
 
 
 export ScalarRandomFeatureInterface
-export
-    get_rfms,
-    get_fitted_features,
-    get_hyper_prior,
-    get_batch_sizes,
-    get_n_features,
-    get_rng
+export get_rfms, get_fitted_features, get_hyper_prior, get_batch_sizes, get_n_features, get_rng
 
 
 struct ScalarRandomFeatureInterface <: MachineLearningTool
@@ -26,9 +20,9 @@ struct ScalarRandomFeatureInterface <: MachineLearningTool
     "hyperparameter priors"
     hyper_prior::ParameterDistribution
     "batch sizes"
-    batch_sizes::Union{Dict,Nothing}
+    batch_sizes::Union{Dict, Nothing}
     "n_features"
-    n_features::Union{Int,Nothing}
+    n_features::Union{Int, Nothing}
     "rng"
     rng::AbstractRNG
 end
@@ -43,19 +37,13 @@ get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
 function ScalarRandomFeatureInterface(
     n_features::Int,
     hyper_prior::ParameterDistribution;
-    batch_sizes::Union{Dict,Nothing}=nothing,
-    rng = Random.GLOBAL_RNG)
-   # Initialize vector for GP models
-    rfms = Vector{Union{RF.Methods.RandomFeatureMethod, Nothing}}(undef, 0) 
+    batch_sizes::Union{Dict, Nothing} = nothing,
+    rng = Random.GLOBAL_RNG,
+)
+    # Initialize vector for GP models
+    rfms = Vector{Union{RF.Methods.RandomFeatureMethod, Nothing}}(undef, 0)
     fitted_features = Vector{Union{RF.Methods.Fit, Nothing}}(undef, 0)
-    return ScalarRandomFeatureInterface(
-        rfms,
-        fitted_features,
-        hyper_prior,
-        batch_sizes,
-        n_features,
-        rng
-    )
+    return ScalarRandomFeatureInterface(rfms, fitted_features, hyper_prior, batch_sizes, n_features, rng)
 end
 
 
@@ -64,7 +52,7 @@ function RFM_from_hyperparameters(
     l::Union{Real, AbstractVecOrMat},
     regularizer::Real,
     n_features::Int,
-    batch_sizes::Union{Dict,Nothing},
+    batch_sizes::Union{Dict, Nothing},
     input_dim::Int,
 )
 
@@ -92,7 +80,7 @@ function RFM_from_hyperparameters(
     feature_sampler = RF.Samplers.FeatureSampler(pd, rng = rng)
     # Learn hyperparameters for different feature types
 
-    sf = RF.Features.ScalarFourierFeature(n_features, feature_sampler, hyper_fixed = Dict("sigma" => 1))
+    sf = RF.Features.ScalarFourierFeature(n_features, feature_sampler)
     if isnothing(batch_sizes)
         return RF.Methods.RandomFeatureMethod(sf, regularization = regularizer)
     else
@@ -106,7 +94,7 @@ function calculate_mean_cov_and_coeffs(
     l::Union{Real, AbstractVecOrMat},
     noise_sd::Real,
     n_features::Int,
-    batch_sizes::Union{Dict,Nothing},
+    batch_sizes::Union{Dict, Nothing},
     io_pairs::PairedDataContainer,
 )
 
@@ -142,7 +130,7 @@ function estimate_mean_cov_and_coeffnorm_covariance(
     l::Union{Real, AbstractVecOrMat},
     noise_sd::Real,
     n_features::Int,
-    batch_sizes::Union{Dict,Nothing},
+    batch_sizes::Union{Dict, Nothing},
     io_pairs::PairedDataContainer,
     n_samples::Int;
     repeats::Int = 1,
@@ -173,7 +161,7 @@ function calculate_ensemble_mean_cov_and_coeffnorm(
     lvecormat::AbstractVecOrMat,
     noise_sd::Real,
     n_features::Int,
-    batch_sizes::Union{Dict,Nothing},
+    batch_sizes::Union{Dict, Nothing},
     io_pairs::PairedDataContainer;
     repeats::Int = 1,
 )
@@ -210,12 +198,12 @@ function build_models!(
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
-    output_values = get_outputs(input_output_pairs)  
+    output_values = get_outputs(input_output_pairs)
     n_rfms, n_data = size(output_values)
     noise_sd = 1.0
-    
-    input_dim = size(input_values,1)
-    
+
+    input_dim = size(input_values, 1)
+
     rfms = get_rfms(srfi)
     fitted_features = get_fitted_features(srfi)
     hyper_prior = get_hyper_prior(srfi)
@@ -227,18 +215,18 @@ function build_models!(
     n_train = Int(floor(0.8 * n_data))
     n_test = n_data - n_train
     n_features_opt = Int(floor(1.2 * n_test)) #we take a specified number of features for optimization.
-    idx_shuffle= randperm(rng, n_data)
-        
-    for i = 1:n_rfms
-       
-        
+    idx_shuffle = randperm(rng, n_data)
+
+    for i in 1:n_rfms
+
+
         io_pairs_opt = PairedDataContainer(
-            input_values[:,idx_shuffle],
-            reshape(output_values[i,idx_shuffle],1,size(output_values,2)),
+            input_values[:, idx_shuffle],
+            reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
         )
-        
+
         # [2.] Estimate covariance at mean value
-        μ_hp = transform_unconstrained_to_constrained(hyper_prior,mean(hyper_prior))
+        μ_hp = transform_unconstrained_to_constrained(hyper_prior, mean(hyper_prior))
         cov_samples = 2 * Int(floor(n_test))
         internal_Γ, approx_σ2 = estimate_mean_cov_and_coeffnorm_covariance(
             rng,
@@ -249,50 +237,41 @@ function build_models!(
             io_pairs_opt,
             cov_samples,
         )
-        
+
         Γ = internal_Γ
         Γ[1:n_test, 1:n_test] += approx_σ2
         Γ[(n_test + 1):(2 * n_test), (n_test + 1):(2 * n_test)] += I
         Γ[(2 * n_test + 1):end, (2 * n_test + 1):end] += I
-        
+
         # [3.] set up EKP optimization
         N_ens = 20 * input_dim
         N_iter = 30
-        
+
         initial_params = construct_initial_ensemble(rng, hyper_prior, N_ens)
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], noise_sd^2 * ones(n_test), 0.0)
         ekiobj = EKP.EnsembleKalmanProcess(initial_params, data, Γ, Inversion(), rng = rng)
         err = zeros(N_iter)
 
         # [4.] optimize with EKP
-        for i = 1:N_iter
-            
+        for i in 1:N_iter
+
             #get parameters:
             lvec = transform_unconstrained_to_constrained(hyper_prior, get_u_final(ekiobj))
-            g_ens, _ = calculate_ensemble_mean_cov_and_coeffnorm(
-                rng,
-                lvec,
-                1.0,
-                n_features_opt,
-                batch_sizes,
-                io_pairs_opt,
-            )
+            g_ens, _ =
+                calculate_ensemble_mean_cov_and_coeffnorm(rng, lvec, 1.0, n_features_opt, batch_sizes, io_pairs_opt)
             EKP.update_ensemble!(ekiobj, g_ens)
             err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
-            
+
         end
-        
+
         # [5.] extract optimal hyperparameters
-        l_optimal =  mean(transform_unconstrained_to_constrained(hyper_prior, get_u_final(ekiobj)), dims = 2)
+        l_optimal = mean(transform_unconstrained_to_constrained(hyper_prior, get_u_final(ekiobj)), dims = 2)
         println("RFM $i, learnt hyperparameters: $(l_optimal)")
 
-        io_pairs_i = PairedDataContainer(
-            input_values,
-            reshape(output_values[i,:],1,size(output_values,2)),
-        )
+        io_pairs_i = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
         # Now, fit new RF model with the optimized hyperparameters
         n_features = get_n_features(srfi)
-        
+
         μ_c = 0.0
         if size(l_optimal, 1) == 1
             σ_c = repeat([l_optimal[1, 1]], input_dim)
@@ -307,19 +286,19 @@ function build_models!(
             ),
         )
         feature_sampler = RF.Samplers.FeatureSampler(pd, rng = copy(rng))
-        sigma_fixed = Dict("sigma" => 1.0)
-        sff = RF.Features.ScalarFourierFeature(n_features, feature_sampler, hyper_fixed = sigma_fixed) #build scalar fourier features
+
+        sff = RF.Features.ScalarFourierFeature(n_features, feature_sampler) #build scalar fourier features
         if isnothing(batch_sizes)#setup random feature method
-            rfm_i = RF.Methods.RandomFeatureMethod(sff, regularization = 1.0) 
+            rfm_i = RF.Methods.RandomFeatureMethod(sff, regularization = 1.0)
         else
             rfm_i = RF.Methods.RandomFeatureMethod(sff, batch_sizes = batch_sizes, regularization = 1.0)
         end
         fitted_features_i = RF.Methods.fit(rfm_i, io_pairs_i, decomposition_type = "svd") #fit features
-        
+
         push!(rfms, rfm_i)
         push!(fitted_features, fitted_features_i)
     end
-    
+
 end
 
 function optimize_hyperparameters!(srfi::ScalarRandomFeatureInterface, args...; kwargs...)
@@ -327,25 +306,19 @@ function optimize_hyperparameters!(srfi::ScalarRandomFeatureInterface, args...; 
 end
 
 
-function predict(
-    srfi::ScalarRandomFeatureInterface,
-    new_inputs::AbstractMatrix{FT},
-) where {FT <: AbstractFloat}
+function predict(srfi::ScalarRandomFeatureInterface, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
     M = length(get_rfms(srfi))
     N_samples = size(new_inputs, 2)
     # Predicts columns of inputs: input_dim × N_samples
     μ = zeros(M, N_samples)
     σ2 = zeros(M, N_samples)
     for i in 1:M
-        μ[i, :], σ2[i, :] = RF.Methods.predict(
-            get_rfms(srfi)[i],
-            get_fitted_features(srfi)[i],
-            DataContainer(new_inputs),
-        )
+        μ[i, :], σ2[i, :] =
+            RF.Methods.predict(get_rfms(srfi)[i], get_fitted_features(srfi)[i], DataContainer(new_inputs))
     end
 
     # add the noise contribution from the regularization
-   σ2[:,:] = σ2[:,:] .+ 1.0
-    
+    σ2[:, :] = σ2[:, :] .+ 1.0
+
     return μ, σ2
 end
