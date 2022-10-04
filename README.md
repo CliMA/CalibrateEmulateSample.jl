@@ -4,10 +4,14 @@ Implements a derivative-free machine-learning accelerated pipeline for uncertain
 
 | **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]             |
 |---------------------:|:-------------------------------------------------|
+| **DOI**              | [![DOI][zenodo-img]][zenodo-latest-url]          |
 | **Docs Build**       | [![docs build][docs-bld-img]][docs-bld-url]      |
 | **Unit tests**       | [![unit tests][unit-tests-img]][unit-tests-url]  |
 | **Code Coverage**    | [![codecov][codecov-img]][codecov-url]           |
 | **Bors**             | [![Bors enabled][bors-img]][bors-url]            |
+
+[zenodo-img]: https://zenodo.org/badge/179573047.svg
+[zenodo-latest-url]: https://zenodo.org/badge/latestdoi/179573047
 
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
 [docs-dev-url]: https://CliMA.github.io/CalibrateEmulateSample.jl/dev/
