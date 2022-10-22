@@ -332,7 +332,7 @@ function svd_transform(
     if retained_svd_frac < 1.0
         # Truncate the SVD as a form of regularization
         # Find cutoff
-        S_cumsum = cumsum(decomp.S) / sum(decomp.S)
+        S_cumsum = cumsum(decomp.S .^ 2) / sum(decomp.S .^ 2)
         ind = findall(x -> (x > retained_svd_frac), S_cumsum)
         k = ind[1]
         n = size(data)[1]
