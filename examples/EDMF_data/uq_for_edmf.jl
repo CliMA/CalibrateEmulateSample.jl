@@ -131,13 +131,7 @@ function main()
         LoadError("prior file \"prior.jld2\" not found in directory \"" * exp_dir * "/\"")
     else
         prior_dict_raw = load(prior_filepath) #using JLD2
-        marginal_priors =
-            ParameterDistributions.ParameterDistribution.(
-                prior_dict_raw["distributions"],
-                prior_dict_raw["constraints"],
-                prior_dict_raw["u_names"],
-            )
-        prior = ParameterDistributions.combine_distributions(marginal_priors)
+        prior = prior_dict_raw["prior"]
     end
 
     # Option (ii) load EKP object
