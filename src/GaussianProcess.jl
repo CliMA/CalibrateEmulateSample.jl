@@ -1,5 +1,6 @@
 
 using GaussianProcesses
+import GaussianProcesses: predict
 
 using EnsembleKalmanProcesses.DataContainers
 
