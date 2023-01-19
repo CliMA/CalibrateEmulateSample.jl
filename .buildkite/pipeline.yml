@@ -62,10 +62,10 @@ steps:
         Pkg.develop(path=".")
         println("--- Instantiating Project")
         # Pkg.instantiate()
-        println("+++ Running Learn Noise")
-        include("examples/Emulator/GaussianProcess/learn_noise.jl")
         println("+++ Running PlotGP")
         include("examples/Emulator/GaussianProcess/plot_GP.jl")'
+        println("+++ Running Learn Noise")
+        include("examples/Emulator/GaussianProcess/learn_noise.jl")
     artifact_paths:
       - "examples/Emulator/GaussianProcess/output/*.png"
     env:
