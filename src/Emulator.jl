@@ -21,6 +21,13 @@ Type to dispatch different emulators:
  - GaussianProcess <: MachineLearningTool
 """
 abstract type MachineLearningTool end
+
+# include the different <: ML models
+include("GaussianProcess.jl") #for GaussianProcess
+# include("RandomFeature.jl")
+# include("NeuralNetwork.jl")
+# etc.
+
 # defaults in error, all MachineLearningTools require these functions.
 function throw_define_mlt()
     throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
@@ -35,11 +42,6 @@ function predict(mlt, new_inputs)
     throw_define_mlt()
 end
 
-# include the different <: ML models
-include("GaussianProcess.jl") #for GaussianProcess
-# include("RandomFeature.jl")
-# include("NeuralNetwork.jl")
-# etc.
 
 
 # We will define the different emulator types after the general statements
