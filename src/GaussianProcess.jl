@@ -1,4 +1,5 @@
 
+import GaussianProcesses: predict
 using GaussianProcesses
 
 using EnsembleKalmanProcesses.DataContainers
@@ -9,8 +10,8 @@ using ScikitLearn
 const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
-    copy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
-    copy!(pyGP, pyimport("sklearn.gaussian_process"))
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.1.1"))
+    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.1.1"))
 end
 
 #exports (from Emulator)
