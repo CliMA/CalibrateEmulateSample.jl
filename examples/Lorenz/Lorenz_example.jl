@@ -421,7 +421,7 @@ for idx in 1:n_params
 
     figpath = joinpath(figure_save_directory, "posterior_$(param)_T_$(T)_w_$(ω_true).png")
     savefig(figpath)
-    linkfig(figpath)
+    # linkfig(figpath)
 end
 
 # Save data

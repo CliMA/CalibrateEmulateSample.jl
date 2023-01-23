@@ -1,0 +1,2 @@
+             JOBID   PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+          10831144     skx-dev tap_jupy  youngin  R    1:34:51      1 c506-004

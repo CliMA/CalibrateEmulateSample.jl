@@ -1,0 +1,19 @@
+
+-----------------------------------------------------------------
+          Welcome to the Stampede2 Supercomputer                 
+-----------------------------------------------------------------
+
+No reservation for this job
+--> Verifying valid submit host (login1)...OK
+--> Verifying valid jobname...OK
+--> Enforcing max jobs per user...OK
+--> Verifying availability of your home dir (/home1/09033/youngin)...OK
+--> Verifying availability of your work2 dir (/work2/09033/youngin/stampede2)...OK
+--> Verifying availability of your scratch dir (/scratch/09033/youngin)...OK
+--> Verifying valid ssh keys...OK
+--> Verifying access to desired queue (skx-normal)...OK
+--> Verifying job request is within current queue limits...OK
+--> Checking available allocation (TG-ATM170028)...OK
+--> Verifying that quota for filesystem /home1/09033/youngin is at 88.93% allocated...OK
+--> Verifying that quota for filesystem /work2/09033/youngin/stampede2 is at 41.38% allocated...OK
+Submitted batch job 10831353
