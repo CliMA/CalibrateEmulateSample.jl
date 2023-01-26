@@ -42,7 +42,7 @@ function main()
     A_true = 2.5 # Transient F amplitude
     ω_true = 2.0 * π / (360.0 / τc) # Frequency of the transient F
     ####
-    
+
     exp_name = "Lorenz_histogram_F$(F_true)_A$(A_true)-w$(ω_true)"
     rng_seed = 44009
     Random.seed!(rng_seed)
@@ -51,10 +51,14 @@ function main()
     println(homedir)
     figure_save_directory = joinpath(homedir, "output/")
     data_save_directory = joinpath(homedir, "output/")
-    data_save_file = joinpath(data_save_directory,"calibrate_results.jld2")
+    data_save_file = joinpath(data_save_directory, "calibrate_results.jld2")
 
     if !isfile(data_save_file)
-        throw(ErrorException("data file $data_save_file not found. \n First run: \n > julia --project calibrate.jl \n and store results $data_save_file"))
+        throw(
+            ErrorException(
+                "data file $data_save_file not found. \n First run: \n > julia --project calibrate.jl \n and store results $data_save_file",
+            ),
+        )
     end
 
     ekiobj = load(data_save_file)["eki"]
@@ -62,7 +66,7 @@ function main()
     truth_sample = load(data_save_file)["truth_sample"]
     truth_sample_mean = load(data_save_file)["truth_sample_mean"]
     truth_params_constrained = load(data_save_file)["truth_input_constrained"] #true parameters in constrained space
-    truth_params = transform_constrained_to_unconstrained(priors,truth_params_constrained)
+    truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
     Γy = ekiobj.obs_noise_cov
     ###
     ###  Emulate: Gaussian Process Regression
@@ -92,11 +96,11 @@ function main()
     println(norm_factor)
 
     # Get training points from the EKP iteration number in the second input term  
-    N_iter = 5;
+    N_iter = 5
     input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
     # Save data
     @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
-    
+
     normalized = true
     emulator = Emulator(
         gauss_proc,
@@ -113,7 +117,7 @@ function main()
     # true parameters
     #if retained_svd_frac==1.0
     y_mean, y_var = Emulators.predict(emulator, reshape(truth_params, :, 1), transform_to_real = true)
-    
+
     println("GP prediction on true parameters: ")
     println(vec(y_mean))
     println(" GP variance")
@@ -122,7 +126,7 @@ function main()
     println(truth_sample_mean) # same, regardless of norm_factor
     println("GP MSE: ")
     println(mean((truth_sample_mean - vec(y_mean)) .^ 2))
-    
+
     #end
     ###
     ###  Sample: Markov Chain Monte Carlo
@@ -151,7 +155,7 @@ function main()
     println(det(inv(post_cov)))
     println(" ")
 
-    
+
     # Plot the posteriors together with the priors and the true parameter values (in the constrained space)
     n_params = length(truth_params)
     save_directory = joinpath(figure_save_directory)
@@ -180,27 +184,27 @@ function main()
         end
 
         label = "true " * param
-        
-        histogram(
-            posterior_samples[idx, :],
-            bins = 100,
-            normed = true,
-            fill = :slategray,
-            lab = "posterior",
-        )
+
+        histogram(posterior_samples[idx, :], bins = 100, normed = true, fill = :slategray, lab = "posterior")
         prior_plot = get_distribution(mcmc.prior)
-        
+
         # This requires StatsPlots
-        xs_rows = permutedims(repeat(xs,1,size(posterior_samples,1)),(2,1)) # This hack will enable us to apply the transformation using the full prior
-        xs_rows_unconstrained = transform_constrained_to_unconstrained(priors,xs_rows)
-        plot!(xs, pdf.(prior_plot[param_names[idx]], xs_rows_unconstrained[idx,:]), w = 2.6, color = :blue, lab = "prior")
+        xs_rows = permutedims(repeat(xs, 1, size(posterior_samples, 1)), (2, 1)) # This hack will enable us to apply the transformation using the full prior
+        xs_rows_unconstrained = transform_constrained_to_unconstrained(priors, xs_rows)
+        plot!(
+            xs,
+            pdf.(prior_plot[param_names[idx]], xs_rows_unconstrained[idx, :]),
+            w = 2.6,
+            color = :blue,
+            lab = "prior",
+        )
         #plot!(xs, mcmc.prior[idx].dist, w=2.6, color=:blue, lab="prior")
         plot!([truth_params[idx]], seriestype = "vline", w = 2.6, lab = label)
         plot!(xlims = xbounds)
 
         title!(param)
 
-        figpath = joinpath(figure_save_directory, "posterior_$(param)_"*exp_name*".png")
+        figpath = joinpath(figure_save_directory, "posterior_$(param)_" * exp_name * ".png")
         savefig(figpath)
         linkfig(figpath)
     end

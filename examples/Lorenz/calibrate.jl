@@ -110,7 +110,7 @@ function main()
     # Integration length
     Tfit = Ts_days / τc
     # Initial perturbation
-    Fp = rand(Normal(0.0, 0.01), N);
+    Fp = rand(Normal(0.0, 0.01), N)
     kmax = 1
     # Prescribe variance or use a number of forward passes to define true interval variability
     var_prescribe = false
@@ -120,7 +120,7 @@ function main()
     # Settings
     # Constructs an LSettings structure, see GModel.jl for the descriptions
     lorenz_settings =
-        GModel.LSettings(dynamics, stats_type, t_start, T, Ts, Tfit, Fp, N, dt, t_start + T, kmax, ω_fixed, ω_true);
+        GModel.LSettings(dynamics, stats_type, t_start, T, Ts, Tfit, Fp, N, dt, t_start + T, kmax, ω_fixed, ω_true)
     lorenz_params = GModel.LParams(F_true, ω_true, A_true)
 
     ###
@@ -179,14 +179,14 @@ function main()
 
 
     # Construct observation object
-    truth = Observations.Observation(yt,Γy,data_names)
+    truth = Observations.Observation(yt, Γy, data_names)
     truth_sample = truth.mean
     ###
     ###  Calibrate: Ensemble Kalman Inversion
     ###
 
     # L96 settings for the forward model in the EKP. Here, the forward model for the EKP settings can be set distinctly from the truth runs
-    lorenz_settings_G = lorenz_settings; # initialize to truth settings
+    lorenz_settings_G = lorenz_settings # initialize to truth settings
 
     # EKP parameters
     N_ens = 20 # number of ensemble members
@@ -218,14 +218,21 @@ function main()
     g_stored = EKP.get_g(ekiobj, return_array = false)
 
     save(
-        joinpath(data_save_directory,"calibrate_results.jld2"),
-        "inputs", u_stored,
-        "outputs", g_stored,
-        "priors", priors,
-        "eki", ekiobj,
-        "truth_sample", truth_sample,
-        "truth_sample_mean", truth.mean,
-        "truth_input_constrained", params_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
+        joinpath(data_save_directory, "calibrate_results.jld2"),
+        "inputs",
+        u_stored,
+        "outputs",
+        g_stored,
+        "priors",
+        priors,
+        "eki",
+        ekiobj,
+        "truth_sample",
+        truth_sample,
+        "truth_sample_mean",
+        truth.mean,
+        "truth_input_constrained",
+        params_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
     )
 end
 
