@@ -39,7 +39,7 @@ steps:
         Pkg.instantiate()
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
-        include("examples/Lorenz/calibrate.jl")'
+        include("examples/Lorenz/emulate_sample.jl")'
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
