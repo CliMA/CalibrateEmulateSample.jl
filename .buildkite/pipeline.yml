@@ -9,7 +9,7 @@ steps:
     command:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
-      - "julia --project -e 'using Conda; Conda.add(\"scipy=1.8.1\")'"
+      - "julia --project -e 'using Conda; Conda.add(\"scipy=1.8.1\", channel=\"conda-forge\")'"
       - "julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.1.1\")'"
       - "julia --project -e 'using Conda; Conda.add(\"matplotlib\")'"
     env:
@@ -24,9 +24,9 @@ steps:
   - label: "Lorenz"
     key: "lorenz"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/bin/python"
-      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64"
 
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
@@ -51,9 +51,9 @@ steps:
   - label: "Gaussian Process Emulator"
     key: "gaussian_process_emulator"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/bin/python"
-      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/bin"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3"
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
 
       mkdir examples/Emulator/GaussianProcess/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/GaussianProcess/depot:$JULIA_DEPOT_PATH"

@@ -5,6 +5,7 @@ using GaussianProcesses
 using Test
 
 using CalibrateEmulateSample.MarkovChainMonteCarlo
+const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
@@ -92,8 +93,8 @@ function mcmc_test_template(
     # First let's run a short chain to determine a good step size
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000)
 
-    # Now begin the actual MCMC
-    chain = sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 1000)
+    # Now begin the actual MCMC, sample is multiply exported so we qualify
+    chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 1000)
     posterior_distribution = get_posterior(mcmc, chain)
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean = mean(posterior_distribution)
