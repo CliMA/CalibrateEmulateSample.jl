@@ -12,7 +12,11 @@ design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
 
 api = [
     "CalibrateEmulateSample" => [
-        "Emulators" => ["General Emulator" => "API/Emulators.md", "Gaussian Process" => "API/GaussianProcess.md"],
+        "Emulators" => [
+            "General Interface" => "API/Emulators.md",
+            "Gaussian Process" => "API/GaussianProcess.md",
+            "Random Features" => "API/RandomFeatures.md",
+        ],
         "MarkovChainMonteCarlo" => "API/MarkovChainMonteCarlo.md",
         "Utilities" => "API/Utilities.md",
     ],
