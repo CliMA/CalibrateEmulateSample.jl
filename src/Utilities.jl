@@ -14,7 +14,7 @@ export get_training_points
 export get_obs_sample
 export orig2zscore
 export zscore2orig
-
+export posdef_correct
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
@@ -22,13 +22,20 @@ Extract the training points needed to train the Gaussian process regression.
 
 - `ekp` - EnsembleKalmanProcess holding the parameters and the data that were produced
   during the Ensemble Kalman (EK) process.
-- `N_train_iterations` - Number of EK layers/iterations to train on.
+- `train_iterations` - Number (or indices) EK layers/iterations to train on.
 
 """
-function get_training_points(ekp::EnsembleKalmanProcess{FT, IT, P}, N_train_iterations::IT) where {FT, IT, P}
+function get_training_points(
+    ekp::EnsembleKalmanProcess{FT, IT, P},
+    train_iterations::Union{IT, AbstractVector{IT}},
+) where {FT, IT, P}
 
-    # Note u[end] does not have an equivalent g
-    iter_range = (get_N_iterations(ekp) - N_train_iterations + 1):get_N_iterations(ekp)
+    if !isa(train_iterations, AbstractVector)
+        # Note u[end] does not have an equivalent g
+        iter_range = (get_N_iterations(ekp) - train_iterations + 1):get_N_iterations(ekp)
+    else
+        iter_range = train_iterations
+    end
 
     u_tp = []
     g_tp = []
@@ -112,6 +119,32 @@ function zscore2orig(Z::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::Abstr
     end
     return X
 end
+
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Makes square matrix `mat` positive definite, by symmetrizing and bounding the minimum eigenvalue below by `tol`
+"""
+function posdef_correct(mat::AbstractMatrix; tol::Real = 1e8 * eps())
+    if !issymmetric(mat)
+        out = 0.5 * (mat + permutedims(mat, (2, 1))) #symmetrize
+        if isposdef(out)
+            # very often, small numerical errors cause asymmetry, so cheaper to add this branch
+            return out
+        end
+    else
+        out = mat
+    end
+
+    nugget = abs(minimum(eigvals(out)))
+    for i in 1:size(out, 1)
+        out[i, i] += nugget + tol #add to diag
+    end
+    return out
+end
+
+
 
 
 end # module

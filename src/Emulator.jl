@@ -7,9 +7,11 @@ using Statistics
 using Distributions
 using LinearAlgebra
 using DocStringExtensions
+using Random
 
 export Emulator
 
+export build_models!
 export optimize_hyperparameters!
 export predict
 
@@ -24,7 +26,7 @@ abstract type MachineLearningTool end
 
 # include the different <: ML models
 include("GaussianProcess.jl") #for GaussianProcess
-# include("RandomFeature.jl")
+include("RandomFeature.jl")
 # include("NeuralNetwork.jl")
 # etc.
 
@@ -75,6 +77,8 @@ struct Emulator{FT <: AbstractFloat}
     retained_svd_frac::FT
 end
 
+get_machine_learning_tool(emulator::Emulator) = emulator.machine_learning_tool
+
 # Constructor for the Emulator Object
 function Emulator(
     machine_learning_tool::MachineLearningTool,
@@ -83,6 +87,7 @@ function Emulator(
     normalize_inputs::Bool = true,
     standardize_outputs::Bool = false,
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
+    decorrelate::Bool = true,
     retained_svd_frac::FT = 1.0,
 ) where {FT <: AbstractFloat}
 
@@ -118,24 +123,35 @@ function Emulator(
         training_outputs = get_outputs(input_output_pairs)
     end
 
-    # [3.] Decorrelating the outputs [always performed]
+    # [3.] Decorrelating the outputs, not performed for vector RF
+    if decorrelate
+        #Transform data if obs_noise_cov available 
+        # (if obs_noise_cov==nothing, transformed_data is equal to data)
+        decorrelated_training_outputs, decomposition =
+            svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
 
-    #Transform data if obs_noise_cov available 
-    # (if obs_noise_cov==nothing, transformed_data is equal to data)
-    decorrelated_training_outputs, decomposition =
-        svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
+        # write new pairs structure 
+        if retained_svd_frac < 1.0
+            #note this changes the dimension of the outputs
+            training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
+            input_dim, output_dim = size(training_pairs, 1)
+        else
+            training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
+        end
 
-    # write new pairs structure 
-    if retained_svd_frac < 1.0
-        #note this changes the dimension of the outputs
-        training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
-        input_dim, output_dim = size(training_pairs, 1)
+        # [4.] build an emulator
+        build_models!(machine_learning_tool, training_pairs)
     else
-        training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
+        if decorrelate || !isa(machine_learning_tool, VectorRandomFeatureInterface)
+            throw(ArgumentError("$machine_learning_tool is incompatible with option Emulator(...,decorrelate = false)"))
+        end
+        decomposition = nothing
+        training_pairs = PairedDataContainer(training_inputs, training_outputs)
+
+        # [4.] build an emulator - providing the noise covariance as a Tikhonov regularizer
+        build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov)
     end
 
-    # [4.] build an emulator
-    build_models!(machine_learning_tool, training_pairs)
 
     return Emulator{FT}(
         machine_learning_tool,
@@ -170,6 +186,7 @@ function predict(
     emulator::Emulator{FT},
     new_inputs::AbstractMatrix{FT};
     transform_to_real = false,
+    vector_rf_unstandardize = true,
 ) where {FT <: AbstractFloat}
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -177,7 +194,7 @@ function predict(
 
     N_samples = size(new_inputs, 2)
     size(new_inputs, 1) == input_dim ||
-        throw(ArgumentError("GP object and input observations do not have consistent dimensions"))
+        throw(ArgumentError("Emulator object and input observations do not have consistent dimensions"))
 
     # [1.] normalize
     normalized_new_inputs = normalize(emulator, new_inputs)
@@ -186,28 +203,68 @@ function predict(
     ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs)
 
     # [3.] transform back to real coordinates or remain in decorrelated coordinates
-    if transform_to_real && emulator.decomposition === nothing
-        throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
-                 but GaussianProcess.decomposition == nothing. 
-                 Try setting transform_to_real=false"""))
-    elseif transform_to_real && emulator.decomposition !== nothing
-        #transform back to real coords - cov becomes dense
-        s_outputs, s_output_cov = svd_reverse_transform_mean_cov(ds_outputs, ds_output_var, emulator.decomposition)
-        if output_dim == 1
-            s_output_cov = [s_output_cov[i][1] for i in 1:N_samples]
+    if !isa(get_machine_learning_tool(emulator), VectorRandomFeatureInterface)
+        if transform_to_real && emulator.decomposition === nothing
+            throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
+                     but GaussianProcess.decomposition == nothing. 
+                     Try setting transform_to_real=false"""))
+        elseif transform_to_real && emulator.decomposition !== nothing
+
+            #transform back to real coords - cov becomes dense
+            s_outputs, s_output_cov = svd_reverse_transform_mean_cov(ds_outputs, ds_output_var, emulator.decomposition)
+            if output_dim == 1
+                s_output_cov = reshape([s_output_cov[i][1] for i in 1:N_samples], 1, :)
+            end
+
+            # [4.] unstandardize
+            return reverse_standardize(emulator, s_outputs, s_output_cov)
+        else
+            # remain in decorrelated, standardized coordinates (cov remains diagonal)
+            # Convert to vector of  matrices to match the format  
+            # when transform_to_real=true
+            ds_output_diagvar = vec([Diagonal(ds_output_var[:, j]) for j in 1:N_samples])
+            if output_dim == 1
+                ds_output_diagvar = reshape([ds_output_diagvar[i][1] for i in 1:N_samples], 1, :)
+            end
+            return ds_outputs, ds_output_diagvar
         end
-        # [4.] unstandardize
-        return reverse_standardize(emulator, s_outputs, s_output_cov)
     else
-        # remain in decorrelated, standardized coordinates (cov remains diagonal)
-        # Convert to vector of  matrices to match the format  
-        # when transform_to_real=true
-        ds_output_diagvar = vec([Diagonal(ds_output_var[:, j]) for j in 1:N_samples])
-        if output_dim == 1
-            ds_output_diagvar = [ds_output_diagvar[i][1] for i in 1:N_samples]
+        # create a vector of covariance matrices
+        ds_output_covvec = vec([ds_output_var[:, :, j] for j in 1:N_samples])
+
+        if emulator.decomposition === nothing # without applying SVD    
+            if vector_rf_unstandardize
+                # [4.] unstandardize
+                return reverse_standardize(emulator, ds_outputs, ds_output_covvec)
+            else
+                return ds_outputs, ds_output_covvec
+            end
+
+        else #if we applied SVD               
+            if transform_to_real # ...and want to return coordinates
+                s_outputs, s_output_cov =
+                    svd_reverse_transform_mean_cov(ds_outputs, ds_output_covvec, emulator.decomposition)
+                if output_dim == 1
+                    s_output_cov = reshape([s_output_cov[i][1] for i in 1:N_samples], 1, :)
+                end
+                # [4.] unstandardize
+                return reverse_standardize(emulator, s_outputs, s_output_cov)
+            else #... and want to stay in decorrelated standardized coordinates
+                diag_out_flag = get_diagonalize_output(get_machine_learning_tool(emulator))
+                if diag_out_flag
+                    ds_output_diagvar = vec([Diagonal(ds_output_covvec[j]) for j in 1:N_samples]) # extracts diagonal
+                    if output_dim == 1
+                        ds_output_diagvar = ([ds_output_covvec[i][1, 1] for i in 1:N_samples], 1, :) # extracts value
+                    end
+                    return ds_outputs, ds_output_diagvar
+                else
+                    return ds_outputs, ds_output_covvec
+                end
+            end
         end
-        return ds_outputs, ds_output_diagvar
+
     end
+
 end
 
 # Normalization, Standardization, and Decorrelation
@@ -244,10 +301,14 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Standardize with a vector of factors (size equal to output dimension).
 """
 function standardize(
-    outputs::AbstractVecOrMat{FT},
-    output_covs::Vector{<:Union{AbstractMatrix{FT}, UniformScaling{FT}}},
-    factors::AbstractVector{FT},
-) where {FT <: AbstractFloat}
+    outputs::VorM,
+    output_covs::VofMUS,
+    factors::V,
+) where {
+    VorM <: AbstractVecOrMat,
+    VofMUS <: Union{AbstractVector{<:AbstractMatrix}, AbstractVector{<:UniformScaling}},
+    V <: AbstractVector,
+}
     # Case where `output_covs` is a Vector of covariance matrices
     n = length(factors)
     outputs = outputs ./ factors
@@ -273,10 +334,15 @@ function standardize(
 end
 
 function standardize(
-    outputs::AbstractVecOrMat{FT},
-    output_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
-    factors::AbstractVector{FT},
-) where {FT <: AbstractFloat}
+    outputs::VorM,
+    output_cov::MorVorUS,
+    factors::V,
+) where {
+    VorM <: AbstractVecOrMat,
+    MorVorUS <: Union{AbstractMatrix, AbstractVector{<:AbstractFloat}, UniformScaling}, # must be vector of floats or could cause inf. loop with other method definition.
+    V <: AbstractVector,
+}
+
     # Case where `output_cov` is a single covariance matrix
     stdized_out, stdized_covs = standardize(outputs, [output_cov], factors)
     return stdized_out, stdized_covs[1]
@@ -291,9 +357,13 @@ dimension). `output_cov` is a Vector of covariance matrices, such as is returned
 """
 function reverse_standardize(
     emulator::Emulator{FT},
-    outputs::AbstractVecOrMat{FT},
-    output_covs::Union{AbstractMatrix{FT}, Vector{<:AbstractMatrix{FT}}},
-) where {FT <: AbstractFloat}
+    outputs::VorM,
+    output_covs::VorMtwo,
+) where {
+    VorM <: AbstractVecOrMat,
+    VorMtwo <: AbstractVecOrMat, # can be different type
+    FT <: AbstractFloat,
+}
     if emulator.standardize_outputs
         return standardize(outputs, output_covs, 1.0 ./ emulator.standardize_outputs_factors)
     else
@@ -375,6 +445,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Transform the mean and covariance back to the original (correlated) coordinate system
   - `μ` - predicted mean; size *output\\_dim* × *N\\_predicted\\_points*.
   - `σ2` - predicted variance; size *output\\_dim* × *N\\_predicted\\_points*.
+         - predicted covariance; size *N\\_predicted\\_points* array of size *output\\_dim* × *output\\_dim*.
   - `decomposition` - SVD decomposition of *obs\\_noise\\_cov*.
 
 Returns the transformed mean (size *output\\_dim* × *N\\_predicted\\_points*) and variance. 
@@ -386,12 +457,20 @@ each element is a matrix of size *output\\_dim* × *output\\_dim*.
 """
 function svd_reverse_transform_mean_cov(
     μ::AbstractMatrix{FT},
-    σ2::AbstractMatrix{FT},
+    σ2::AbstractVector,# vector of output_dim x output_dim matrices
     decomposition::SVD,
 ) where {FT <: AbstractFloat}
-    @assert size(μ) == size(σ2)
 
-    output_dim, N_predicted_points = size(σ2)
+    N_predicted_points = length(σ2)
+    if !(eltype(σ2) <: AbstractMatrix)
+        throw(
+            ArgumentError(
+                "input σ2 must be a vector of eltype <: AbstractMatrix, instead  eltype(σ2) = ",
+                string(eltype(σ2)),
+            ),
+        )
+    end
+
     # We created meanvGP = D_inv * Vt * mean_v so meanv = V * D * meanvGP
     sqrt_singular_values = Diagonal(sqrt.(decomposition.S))
     transformed_μ = decomposition.V * sqrt_singular_values * μ
@@ -400,12 +479,26 @@ function svd_reverse_transform_mean_cov(
     # Back transformation
 
     for j in 1:N_predicted_points
-        σ2_j = decomposition.V * sqrt_singular_values * Diagonal(σ2[:, j]) * sqrt_singular_values * decomposition.Vt
+        σ2_j = decomposition.V * sqrt_singular_values * σ2[j] * sqrt_singular_values * decomposition.Vt
         transformed_σ2[j] = Symmetric(σ2_j)
     end
 
     return transformed_μ, transformed_σ2
+
 end
+
+function svd_reverse_transform_mean_cov(
+    μ::AbstractMatrix{FT},
+    σ2::AbstractMatrix{FT},
+    decomposition::SVD,
+) where {FT <: AbstractFloat}
+    @assert size(μ) == size(σ2)
+    output_dim, N_predicted_points = size(σ2)
+    σ2_as_cov = vec([Diagonal(σ2[:, j]) for j in 1:N_predicted_points])
+
+    return svd_reverse_transform_mean_cov(μ, σ2_as_cov, decomposition)
+end
+
 
 
 

@@ -1,0 +1,36 @@
+#!/bin/bash                      
+#Submit this script with: sbatch thefilename                                                                                      
+#SBATCH --time=6:00:00   # walltime                                                                                              
+#SBATCH --ntasks-per-node=1   # number of processor cores (i.e. tasks)                                                                     
+#SBATCH --cpus-per-task=28
+#SBATCH --mem-per-cpu=6000
+#SBATCH -J "emulate_sample"   # job name                                                                                               
+#SBATCH --output=output/out_err/slurm_%j.out                                                                                      
+#SBATCH --error=output/out_err/slurm_%j.err                                                                                       
+
+#general
+set -euo pipefail #kill job if anything fails\
+#set -x #
+
+#modules (not automatically loaded with session)
+module load julia/1.8.5
+
+#julia package management
+
+export JULIA_PROJECT=@.
+#precompiling is now done manually before
+#julia -e 'using Pkg; Pkg.instantiate(); Pkg.API.precompile()'
+
+#run code
+start=$(date +%s)
+
+
+julia --project -t 28 emulate_sample_script.jl
+
+end=$(date +%s)
+runtime=$((end-start))
+echo "********************"
+echo "run time: $runtime"
+echo "********************"
+
+
