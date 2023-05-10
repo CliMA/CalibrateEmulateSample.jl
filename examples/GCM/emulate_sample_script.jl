@@ -8,12 +8,10 @@ using Random
 using JLD2
 # CES 
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
-@time begin
-
+function main()
     rng_seed = 2413798
     Random.seed!(rng_seed)
 
@@ -65,9 +63,6 @@ using CalibrateEmulateSample.DataContainers
     outputs = outputs[:, data_mask, iter_mask]
     obs_noise_cov = obs_noise_cov[data_mask, data_mask]
     truth = truth[data_mask]
-
-    # priorfile = "priors.jld2"
-    # prior = load(priorfile)["prior"]
 
     # derived quantities
     N_ens, input_dim, N_iter = size(inputs)
@@ -230,9 +225,67 @@ using CalibrateEmulateSample.DataContainers
                 println("plot saved at " * figpath)
             end
         end
-
     end
 
+### Sample
+# Load the prior from file
+    priorfile = "priors.jld2"
+    prior = load(priorfile)["prior"]
+
+    # Initialize and adapt the sampling scheme
+    # initial values
+    u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
+    println("initial parameters: ", u0)
+    
+    # First let's run a short chain to determine a good step size
+    mcmc = MCMCWrapper(RWMHSampling(), truth, prior, emulator; init_params = u0)
+    new_step = optimize_stepsize(mcmc; init_stepsize = 1.0, N = 2000, discard_initial = 0)
+    
+    # The actual MCMC
+    println("Begin MCMC - with step size ", new_step)
+    chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+    posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
+    
+    post_mean = mean(posterior)
+    post_cov = cov(posterior)
+    println("post_mean")
+    println(post_mean)
+    println("post_cov")
+    println(post_cov)
+    println("trace and determinant of inverse posterior covariance ")
+    println(tr(inv(post_cov)), " ",det(inv(post_cov)))
+
+constrained_truth_params = transform_unconstrained_to_constrained(posterior, truth_params)
+param_names = get_name(posterior)
+
+        posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
+        constrained_posterior_samples =
+            mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
+
+        gr(dpi = 300, size = (300, 300))
+        p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true)
+        plot!(p.subplots[1], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
+        plot!(p.subplots[3], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
+        plot!(p.subplots[2], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
+        plot!(p.subplots[2], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
+        figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".png")
+        savefig(figpath)
 
 
+        # Save data
+        save(
+            joinpath(data_save_directory, "posterior_$(expname).jld2"),
+            "posterior",
+            posterior,
+            "input_output_pairs",
+            input_output_pairs,
+            "truth_params",
+            truth_params,
+        )
+
+
+end
+
+@time begin
+    main()
 end # for @time
