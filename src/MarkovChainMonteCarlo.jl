@@ -170,9 +170,9 @@ function EmulatorPosteriorModel(
             #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
 
             if isa(g_cov[1], Real)
-                return logpdf(MvNormal(obs_sample, g_cov[1] * I), vec(g)) + get_logpdf(prior, θ)
+                return logpdf(MvNormal(obs_sample, g_cov[1] * I), vec(g)) + logpdf(prior, θ)
             else
-                return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + get_logpdf(prior, θ)
+                return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + logpdf(prior, θ)
             end
 
         end,

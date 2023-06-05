@@ -40,7 +40,7 @@ end
 function optimize_hyperparameters!(mlt)
     throw_define_mlt()
 end
-function predict(mlt, new_inputs)
+function predict(mlt, new_inputs; mlt_kwargs...)
     throw_define_mlt()
 end
 
@@ -187,6 +187,7 @@ function predict(
     new_inputs::AbstractMatrix{FT};
     transform_to_real = false,
     vector_rf_unstandardize = true,
+    mlt_kwargs...,
 ) where {FT <: AbstractFloat}
     # Check if the size of new_inputs is consistent with the GP model's input
     # dimension. 
@@ -200,7 +201,7 @@ function predict(
     normalized_new_inputs = normalize(emulator, new_inputs)
 
     # [2.]  predict. Note: ds = decorrelated, standard
-    ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs)
+    ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs, mlt_kwargs...)
 
     # [3.] transform back to real coordinates or remain in decorrelated coordinates
     if !isa(get_machine_learning_tool(emulator), VectorRandomFeatureInterface)

@@ -126,8 +126,14 @@ end
 
 # setup random features
 n_features = 180
+optimizer_options = Dict("n_iteration" => 20, "prior_in_scale" => 0.1, "verbose" => true) #"Max" iterations (may do less)
 
-srfi = ScalarRandomFeatureInterface(n_features, p, diagonalize_input = diagonalize_input)
+srfi = ScalarRandomFeatureInterface(
+    n_features,
+    p,
+    diagonalize_input = diagonalize_input,
+    optimizer_options = optimizer_options,
+)
 emulator = Emulator(srfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
 println("build RF with $n training points and $(n_features) random features.")
 

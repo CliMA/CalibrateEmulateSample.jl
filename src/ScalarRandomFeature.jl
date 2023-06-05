@@ -107,9 +107,11 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
  - `optimizer_options = nothing` - Dict of options to pass into EKI optimization of hyperparameters (defaults created in `ScalarRandomFeatureInterface` constructor):
      - "prior":  the prior for the hyperparameter optimization 
+     - "prior_in_scale": use this to tune the input prior scale
      - "n_ensemble":  number of ensemble members
      - "n_iteration":  number of eki iterations
-     - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 1.0)
+     - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 1.0)  
+     - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
      - "tikhonov":  tikhonov regularization parameter if >0
      - "inflation":  additive inflation ∈ [0,1] with 0 being no inflation
      - "train_fraction":  e.g. 0.8 (default)  means 80:20 train - test split
@@ -129,15 +131,18 @@ function ScalarRandomFeatureInterface(
     rfms = Vector{RF.Methods.RandomFeatureMethod}(undef, 0)
     fitted_features = Vector{RF.Methods.Fit}(undef, 0)
 
-
-    n_hp = calculate_n_hyperparameters(input_dim, diagonalize_input)
-    prior = build_default_prior(input_dim, diagonalize_input)
-
+    if !isnothing(optimizer_options)
+        prior_in_scale = "prior_in_scale" ∈ keys(optimizer_options) ? optimizer_options["prior_in_scale"] : 1.0
+    else
+        prior_in_scale = 1.0
+    end
+    prior = build_default_prior(input_dim, diagonalize_input, in_scale = prior_in_scale)
     # default optimizer settings
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
+        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping,
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
@@ -335,10 +340,20 @@ function build_models!(
         n_ensemble = optimizer_options["n_ensemble"]
         n_iteration = optimizer_options["n_iteration"]
         opt_verbose_flag = optimizer_options["verbose"]
+        scheduler = optimizer_options["scheduler"]
+
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
         min_complexity = log(det(regularization))
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
-        ekiobj = EKP.EnsembleKalmanProcess(initial_params, data, Γ, Inversion(), rng = rng, verbose = opt_verbose_flag)
+        ekiobj = EKP.EnsembleKalmanProcess(
+            initial_params,
+            data,
+            Γ,
+            Inversion(),
+            scheduler = scheduler,
+            rng = rng,
+            verbose = opt_verbose_flag,
+        )
         err = zeros(n_iteration)
 
         # [4.] optimize with EKP
@@ -362,16 +377,41 @@ function build_models!(
             )
             inflation = optimizer_options["inflation"]
             if inflation > 0
-                EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+                terminated =
+                    EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
             else
-                EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
+                terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
             end
+            if !isnothing(terminated)
+                break # if the timestep was terminated due to timestepping condition
+            end
+
             err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
         end
 
         # [5.] extract optimal hyperparameters
         hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
+
+        if opt_verbose_flag
+            names = get_name(prior)
+            hp_optimal_batch = [hp_optimal[b] for b in batch(prior)]
+            hp_optimal_range =
+                [(minimum(hp_optimal_batch[i]), maximum(hp_optimal_batch[i])) for i in 1:length(hp_optimal_batch)] #the min and max of the hparams
+            prior_conf_interval = [mean(prior) .- 3 * sqrt.(var(prior)), mean(prior) .+ 3 * sqrt.(var(prior))]
+            pci_constrained = [transform_unconstrained_to_constrained(prior, prior_conf_interval[i]) for i in 1:2]
+            pcic = [(pci_constrained[1][i], pci_constrained[2][i]) for i in 1:length(pci_constrained[1])]
+            pcic_batched = [pcic[b][1] for b in batch(prior)]
+            @info("EKI Optimization result:")
+            println(
+                display(
+                    [
+                        "name" "number of hyperparameters" "optimized value range" "99% prior mass"
+                        names length.(hp_optimal_batch) hp_optimal_range pcic_batched
+                    ],
+                ),
+            )
+        end
 
         io_pairs_i = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
         # Now, fit new RF model with the optimized hyperparameters
@@ -407,14 +447,16 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
 """
-function predict(srfi::ScalarRandomFeatureInterface, new_inputs::MM) where {MM <: AbstractMatrix}
+function predict(
+    srfi::ScalarRandomFeatureInterface,
+    new_inputs::MM;
+    multithread = "ensemble",
+) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))
     N_samples = size(new_inputs, 2)
     # Predicts columns of inputs: input_dim × N_samples
     μ = zeros(M, N_samples)
     σ2 = zeros(M, N_samples)
-    optimizer_options = get_optimizer_options(srfi)
-    multithread = optimizer_options["multithread"]
     if multithread == "ensemble"
         tullio_threading = false
     elseif multithread == "tullio"

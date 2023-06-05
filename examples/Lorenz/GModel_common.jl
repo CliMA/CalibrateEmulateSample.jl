@@ -128,22 +128,25 @@ end
 # tend: End of simulation Float64(1), nstep: 
 function lorenz_solve(settings::LSettings, params::LParams)
     # Initialize
-    nstep = Int32(ceil(settings.tend / settings.dt))
+    nstep = Int32(ceil((settings.tend - settings.t_start) / settings.dt))
     xn = zeros(Float64, settings.N, nstep)
     t = zeros(Float64, nstep)
     # Initial perturbation
     X = fill(Float64(0.0), settings.N)
     X = X + settings.Fp
+    Xbuffer = zeros(4, settings.N)
     # March forward in time
     for j in 1:nstep
-        t[j] = settings.dt * j
+        t[j] = settings.t_start + settings.dt * j
+        #use view to update a slice
+        # RK4! modifies first and last arguments
         if settings.dynamics == 1
-            X = RK4(X, settings.dt, settings.N, params.F)
+            RK4!(X, settings.dt, settings.N, params.F, Xbuffer)
         elseif settings.dynamics == 2
             F_local = params.F + params.A * sin(params.ω * t[j])
-            X = RK4(X, settings.dt, settings.N, F_local)
+            RK4!(X, settings.dt, settings.N, F_local, Xbuffer)
         end
-        xn[:, j] = X
+        xn[:, j] += X
     end
     # Output
     return xn, t
@@ -151,33 +154,38 @@ function lorenz_solve(settings::LSettings, params::LParams)
 end
 
 # Lorenz 96 system
-# f = dx/dt
+# f = dx/dt overwriting first argument
 # Inputs: x: state, N: longitude steps, F: forcing
-function f(x, N, F)
-    f = zeros(Float64, N)
+function f!(xnew, x, N, F)
+
     # Loop over N positions
     for i in 3:(N - 1)
-        f[i] = -x[i - 2] * x[i - 1] + x[i - 1] * x[i + 1] - x[i] + F
+        xnew[i] = -x[i - 2] * x[i - 1] + x[i - 1] * x[i + 1] - x[i] + F
     end
     # Periodic boundary conditions
-    f[1] = -x[N - 1] * x[N] + x[N] * x[2] - x[1] + F
-    f[2] = -x[N] * x[1] + x[1] * x[3] - x[2] + F
-    f[N] = -x[N - 2] * x[N - 1] + x[N - 1] * x[1] - x[N] + F
+    xnew[1] = -x[N - 1] * x[N] + x[N] * x[2] - x[1] + F
+    xnew[2] = -x[N] * x[1] + x[1] * x[3] - x[2] + F
+    xnew[N] = -x[N - 2] * x[N - 1] + x[N - 1] * x[1] - x[N] + F
     # Output
-    return f
+    return nothing
 end
 
-# RK4 solve
-function RK4(xold, dt, N, F)
-    # Predictor steps
-    k1 = f(xold, N, F)
-    k2 = f(xold + k1 * dt / 2.0, N, F)
-    k3 = f(xold + k2 * dt / 2.0, N, F)
-    k4 = f(xold + k3 * dt, N, F)
+# RK4 solve, overwriting first argument
+function RK4!(xold, dt, N, F, buffer)
+    #buffer is 4 x N zeros
+    @assert size(buffer) == (4, N)
+
+    # Predictor steps updates the final argument
+    # must use view to update a slice in-place
+    f!(view(buffer, 1, :), xold, N, F) #k1
+    f!(view(buffer, 2, :), xold + buffer[1, :] * dt / 2.0, N, F) #k2
+    f!(view(buffer, 3, :), xold + buffer[2, :] * dt / 2.0, N, F) #k3
+    f!(view(buffer, 4, :), xold + buffer[3, :] * dt, N, F) #k4
     # Step
-    xnew = xold + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-    # Output
-    return xnew
+    #xnew = xold + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    xold .+= (dt / 6.0) * (buffer[1, :] + 2.0 * buffer[2, :] + 2.0 * buffer[3, :] + buffer[4, :])
+
+    return nothing
 end
 
 function regression(X, y)
@@ -216,7 +224,8 @@ end
 ###############################
 function stats(settings, xn, t)
     # Define averaging indices range
-    indices = findall(x -> (x > settings.t_start) && (x < settings.t_start + settings.T), t)
+    indices = findall(x -> (x > settings.t_start) && (x < settings.tend), t)
+
     # Define statistics of interest
     if settings.stats_type == 1 # Mean
         # Average in time and over longitude
@@ -317,25 +326,15 @@ function stats(settings, xn, t)
         var_slide = zeros(N)
         t_slide = zeros(nt, N)
         for i in 1:N
-            var_slide[i] = var(vcat(xn[:, indices[((i - 1) * nt + 1):(i * nt)]]...))
+            var_slide[i] = var(xn[:, indices[((i - 1) * nt + 1):(i * nt)]])
             t_slide[:, i] = t[((i - 1) * nt + 1):(i * nt)]
         end
-        # Polynomial fit over a batch of sliding windows
-        Tfit = Int64(settings.Tfit)
+        Tfit = Int64(settings.Tfit) # (a multiple of Ts)
         NT = Int64(N / Tfit)
-        a1 = zeros(NT)
-        a2 = zeros(NT)
-        t_start = zeros(NT)
-        y = zeros(Tfit, NT)
-        ty = zeros(Tfit, NT)
         ym = zeros(NT)
         for i in 1:NT
             ind_low = (i - 1) * Tfit + 1
             ind_high = i * Tfit
-            t_start[i] = t_slide[1, ind_low]
-            ty[:, i] = t_slide[1, ind_low:ind_high] .- t_start[i]
-            a1[i], a2[i] = regression(ty[:, i], var_slide[ind_low:ind_high])
-            y[:, i] = a1[i] .* ty[:, i] .+ a2[i]
             ym[i] = mean(var_slide[ind_low:ind_high])
         end
         # Combine

@@ -145,15 +145,17 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
  - `rng = Random.GLOBAL_RNG` - random number generator 
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
  - `optimizer_options = nothing` - Dict of options to pass into EKI optimization of hyperparameters (defaults created in `VectorRandomFeatureInterface` constructor):
-      - "prior": the prior for the hyperparameter optimization 
+      - "prior": the prior for the hyperparameter optimization
+      - "prior_in_scale"/"prior_out_scale": use these to tune the input/output prior scale.
       - "n_ensemble": number of ensemble members
       - "n_iteration": number of eki iterations
+      - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
       - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 1.0) 
       - "tikhonov": tikhonov regularization parameter if > 0
       - "inflation": additive inflation ∈ [0,1] with 0 being no inflation
       - "train_fraction": e.g. 0.8 (default)  means 80:20 train - test split
       - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
-      - "verbose" => false, verbose optimizer statements
+      - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
 
 """
 function VectorRandomFeatureInterface(
@@ -174,13 +176,26 @@ function VectorRandomFeatureInterface(
     regularization = Vector{Union{Matrix, UniformScaling, Nothing}}(undef, 0)
 
     #Optimization Defaults    
-    n_hp = calculate_n_hyperparameters(input_dim, output_dim, diagonalize_input, diagonalize_output)
-    prior = build_default_prior(input_dim, output_dim, diagonalize_input, diagonalize_output)
-
+    if !isnothing(optimizer_options)
+        prior_in_scale = "prior_in_scale" ∈ keys(optimizer_options) ? optimizer_options["prior_in_scale"] : 1.0
+        prior_out_scale = "prior_out_scale" ∈ keys(optimizer_options) ? optimizer_options["prior_out_scale"] : 1.0
+    else
+        prior_in_scale = 1.0
+        prior_out_scale = 1.0
+    end
+    prior = build_default_prior(
+        input_dim,
+        output_dim,
+        diagonalize_input,
+        diagonalize_output,
+        in_scale = prior_in_scale,
+        out_scale = prior_out_scale,
+    )
     optimizer_opts = Dict(
-        "prior" => prior, #the hyperparameter_prior
+        "prior" => prior, #the hyperparameter_prior (note scalings have already been applied)
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
+        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
         "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
@@ -448,14 +463,22 @@ function build_models!(
     n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
     n_iteration = optimizer_options["n_iteration"]
     opt_verbose_flag = optimizer_options["verbose"]
-
+    scheduler = optimizer_options["scheduler"]
     if !isposdef(Γ)
         Γ = posdef_correct(Γ)
     end
 
     initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
 
-    ekiobj = EKP.EnsembleKalmanProcess(initial_params, data[:], Γ, Inversion(), rng = rng, verbose = opt_verbose_flag)
+    ekiobj = EKP.EnsembleKalmanProcess(
+        initial_params,
+        data[:],
+        Γ,
+        Inversion(),
+        scheduler = scheduler,
+        rng = rng,
+        verbose = opt_verbose_flag,
+    )
     err = zeros(n_iteration)
 
     # [4.] optimize with EKP
@@ -489,10 +512,15 @@ function build_models!(
         end
         inflation = optimizer_options["inflation"]
         if inflation > 0
-            EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+            terminated =
+                EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
         else
-            EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
+            terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
         end
+        if !isnothing(terminated)
+            break # if the timestep was terminated due to timestepping condition
+        end
+
         err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
     end
@@ -500,7 +528,25 @@ function build_models!(
     # [5.] extract optimal hyperparameters
     hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
     # Now, fit new RF model with the optimized hyperparameters
-
+    if opt_verbose_flag
+        names = get_name(prior)
+        hp_optimal_batch = [hp_optimal[b] for b in batch(prior)]
+        hp_optimal_range =
+            [(minimum(hp_optimal_batch[i]), maximum(hp_optimal_batch[i])) for i in 1:length(hp_optimal_batch)] #the min and max of the hparams
+        prior_conf_interval = [mean(prior) .- 3 * sqrt.(var(prior)), mean(prior) .+ 3 * sqrt.(var(prior))]
+        pci_constrained = [transform_unconstrained_to_constrained(prior, prior_conf_interval[i]) for i in 1:2]
+        pcic = [(pci_constrained[1][i], pci_constrained[2][i]) for i in 1:length(pci_constrained[1])]
+        pcic_batched = [pcic[b][1] for b in batch(prior)]
+        @info("EKI Optimization result:")
+        println(
+            display(
+                [
+                    "name" "number of hyperparameters" "optimized value range" "99% prior mass"
+                    names length.(hp_optimal_batch) hp_optimal_range pcic_batched
+                ],
+            ),
+        )
+    end
     rfm_tmp = RFM_from_hyperparameters(
         vrfi,
         rng,
