@@ -5,6 +5,7 @@ using LinearAlgebra, Distributions
 
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributions
 using RandomFeatures
 
@@ -27,11 +28,7 @@ rng = Random.MersenneTwister(seed)
         # input:  γ₁*(Cholesky_factor + γ₂ * I )
         # output: γ₃
         # where γᵢ positive
-        prior = combine_distributions([
-            constrained_gaussian("input_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_input_hp - 2),
-            constrained_gaussian("input_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2),
-            constrained_gaussian("output_prior", 1.0, 1.0, 0.0, Inf),
-        ])
+        prior = build_default_prior(input_dim, diagonalize_input)
 
         optimizer_options = Dict(
             "prior" => prior,
@@ -42,6 +39,7 @@ rng = Random.MersenneTwister(seed)
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
             "verbose" => false,
+            "scheduler" => DataMisfitController(),
         )
 
         srfi = ScalarRandomFeatureInterface(
@@ -67,8 +65,12 @@ rng = Random.MersenneTwister(seed)
         @test get_batch_sizes(srfi2) === nothing
         @test get_rng(srfi2) == Random.GLOBAL_RNG
         @test get_diagonalize_input(srfi2) == false
-        @test get_optimizer_options(srfi2) == optimizer_options # we just set the defaults above
-
+        # currently the "scheduler" doesn't always satisfy X() = X(), bug so we need to remove this for now 
+        for key in keys(optimizer_options)
+            if !(key == "scheduler")
+                @test get_optimizer_options(srfi2)[key] == optimizer_options[key] # we just set the defaults above
+            end
+        end
     end
 
     @testset "VectorRandomFeatureInterface" begin
@@ -89,12 +91,7 @@ rng = Random.MersenneTwister(seed)
         # input:  γ₁*(Cholesky_factor_in + γ₂ * I)
         # output: γ₃*(Cholesky_factor_out + γ₄ * I)
         # where γᵢ positive
-        prior = combine_distributions([
-            constrained_gaussian("input_prior_diagonal", 1.0, 1.0, 0.0, Inf, repeats = n_input_hp - 2),
-            constrained_gaussian("input_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2),
-            constrained_gaussian("output_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_output_hp - 2),
-            constrained_gaussian("output_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2),
-        ])
+        prior = build_default_prior(input_dim, output_dim, diagonalize_input, diagonalize_output)
 
         optimizer_options = Dict(
             "prior" => prior,
@@ -106,6 +103,7 @@ rng = Random.MersenneTwister(seed)
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
             "verbose" => false,
+            "scheduler" => DataMisfitController(),
         )
 
         #build interfaces
@@ -139,7 +137,11 @@ rng = Random.MersenneTwister(seed)
         @test get_rng(vrfi2) == Random.GLOBAL_RNG
         @test get_diagonalize_input(vrfi2) == true
         @test get_diagonalize_output(vrfi2) == false
-        @test get_optimizer_options(vrfi2) == optimizer_options # we just set the defaults above
+        for key in keys(optimizer_options)
+            if !(key == "scheduler")
+                @test get_optimizer_options(vrfi2)[key] == optimizer_options[key] # we just set the defaults above
+            end
+        end
 
     end
 

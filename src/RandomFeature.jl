@@ -8,6 +8,8 @@ using ..Utilities
 using StableRNGs
 using Random
 
+export calculate_n_hyperparameters, build_default_prior
+
 abstract type RandomFeatureInterface <: MachineLearningTool end
 
 abstract type MultithreadType end
@@ -94,51 +96,89 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Builds a prior over the hyperparameters (i.e. the cholesky/diagaonal or individaul entries of the input/output covariances).
 For example, the case where the input covariance ``U = γ_1 * (LL^T + γ_2 I)``, 
 we set priors for the entries of the lower triangular matrix  ``L`` as normal, and constant scalings ``γ_i`` as log-normal to retain positivity.
+
+priors can be scaled by a constant factor by using the in_scale and out_scale keywords
 """
-function build_default_prior(input_dim::Int, output_dim::Int, diagonalize_input::Bool, diagonalize_output::Bool)
+function build_default_prior(
+    input_dim::Int,
+    output_dim::Int,
+    diagonalize_input::Bool,
+    diagonalize_output::Bool;
+    in_scale = 1.0,
+    out_scale = 1.0,
+)
     n_hp_in = n_hyperparameters_cov(input_dim, diagonalize_input)
     n_hp_out = n_hyperparameters_cov(output_dim, diagonalize_output)
 
+    # aspect ratio for mean:sd for positive parameters in constrained_gaussian()
+    # 10 seems to give a decent range, this isn't very tuneable so the alternative would be to use the basic constructor 
+    pos_asp_ratio = 10
     # if dim = 1 , positive constant
     # elseif diagonalized, positive on diagonal and positive scalings
     # else chol factor, and positive scalings
     if input_dim > 1
         if diagonalize_input
-            param_diag = constrained_gaussian("input_prior_diagonal", 1.0, 1.0, 0.0, Inf, repeats = n_hp_in - 2)
-            param_scaling = constrained_gaussian("input_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2)
+            param_diag =
+                constrained_gaussian("input_prior_diagonal", 1.0, pos_asp_ratio, 0.0, Inf, repeats = n_hp_in - 2)
+            param_scaling =
+                constrained_gaussian("input_prior_scaling", in_scale, in_scale * pos_asp_ratio, 0.0, Inf, repeats = 2)
             input_prior = combine_distributions([param_diag, param_scaling])
         else
             param_chol = constrained_gaussian("input_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_hp_in - 2)
-            param_scaling = constrained_gaussian("input_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2)
+            param_scaling =
+                constrained_gaussian("input_prior_scaling", in_scale, in_scale * pos_asp_ratio, 0.0, Inf, repeats = 2)
             input_prior = combine_distributions([param_chol, param_scaling])
         end
     else
-        input_prior = constrained_gaussian("input_prior", 1.0, 1.0, 0.0, Inf)
+        input_prior = constrained_gaussian("input_prior", in_scale, in_scale, 0.0, Inf)
     end
 
     if output_dim > 1
         if diagonalize_output
-            param_diag = constrained_gaussian("output_prior_diagonal", 1.0, 1.0, 0.0, Inf, repeats = n_hp_out - 2)
-            param_scaling = constrained_gaussian("output_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2)
+            param_diag =
+                constrained_gaussian("output_prior_diagonal", 1.0, pos_asp_ratio, 0.0, Inf, repeats = n_hp_out - 2)
+            param_scaling = constrained_gaussian(
+                "output_prior_scaling",
+                out_scale,
+                out_scale * pos_asp_ratio,
+                0.0,
+                Inf,
+                repeats = 2,
+            )
             output_prior = combine_distributions([param_diag, param_scaling])
         else
             param_chol = constrained_gaussian("output_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_hp_out - 2)
-            param_scaling = constrained_gaussian("output_prior_scaling", 1.0, 1.0, 0.0, Inf, repeats = 2)
+            param_scaling = constrained_gaussian(
+                "output_prior_scaling",
+                out_scale,
+                out_scale * pos_asp_ratio,
+                0.0,
+                Inf,
+                repeats = 2,
+            )
             output_prior = combine_distributions([param_chol, param_scaling])
         end
     else
-        output_prior = constrained_gaussian("output_prior", 1.0, 1.0, 0.0, Inf)
+        output_prior = constrained_gaussian("output_prior", out_scale, 10 * out_scale, 0.0, Inf)
     end
 
     return combine_distributions([input_prior, output_prior])
 
 end
 
-function build_default_prior(input_dim::Int, diagonalize_input::Bool)
+function build_default_prior(input_dim::Int, diagonalize_input::Bool; in_scale = 1.0)
     #scalar case consistent with vector case
     output_dim = 1
     diagonalize_output = false
-    return build_default_prior(input_dim, output_dim, diagonalize_input, diagonalize_output)
+    out_scale = 1.0
+    return build_default_prior(
+        input_dim,
+        output_dim,
+        diagonalize_input,
+        diagonalize_output,
+        in_scale = in_scale,
+        out_scale = out_scale,
+    )
 end
 
 """

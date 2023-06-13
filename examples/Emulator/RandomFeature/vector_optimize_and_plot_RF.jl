@@ -133,18 +133,37 @@ function main()
 
         # setup random features
         n_features = 200
+        if case ∈ ["svd-diag", "svd-nondiag"]
+            optimizer_options =
+                Dict("n_iteration" => 20, "prior_in_scale" => 0.01, "prior_out_scale" => 1.0, "verbose" => true) #"Max" iterations (may do less)
+        else # without svd 
+            optimizer_options =
+                Dict("n_iteration" => 20, "prior_in_scale" => 0.01, "prior_out_scale" => 0.01, "verbose" => true) #"Max" iterations (may do less)
+        end
 
         if case == "svd-diag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d, diagonalize_output = true)
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                diagonalize_output = true,
+                optimizer_options = optimizer_options,
+            )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
         elseif case == "svd-nondiag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d)
+            vrfi = VectorRandomFeatureInterface(n_features, p, d, optimizer_options = optimizer_options)
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
         elseif case == "nosvd-diag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d, diagonalize_output = true)
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                diagonalize_output = true,
+                optimizer_options = optimizer_options,
+            )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
         elseif case == "nosvd-nondiag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d)
+            vrfi = VectorRandomFeatureInterface(n_features, p, d, optimizer_options = optimizer_options)
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
         end
         println("build RF with $n training points and $(n_features) random features.")

@@ -47,13 +47,23 @@ function main()
 
     #### CHOOSE YOUR CASE: 
     mask = 2:7
-    for case in cases[mask]
-
+    # One day we can use good heuristics here
+    # Currently set so that learnt hyperparameters stays relatively far inside the prior. (use "verbose" => true in optimizer overrides to see this info)
+    prior_scalings = [[0.0, 0.0], [1e-2, 0.0], [1e-1, 0.0], [1e-2, 1e-2], [1e-2, 1e-1], [1e-2, 1e-2], [1e-2, 1e-2]]
+    for (case, scaling) in zip(cases[mask], prior_scalings[mask])
 
         #case = cases[7]
         println("case: ", case)
-
-        overrides = Dict("train_fraction" => 0.6, "verbose" => true)
+        max_iter = 6 # number of EKP iterations to use data from is at most this
+        overrides = Dict(
+            "verbose" => true,
+            "train_fraction" => 0.8,
+            "n_iteration" => 40,
+            "scheduler" => DataMisfitController(),
+            "prior_in_scale" => scaling[1],
+            "prior_out_scale" => scaling[2],
+        )
+        # we do not want termination, as our priors have relatively little interpretation
 
         # Should be loaded:
         τc = 5.0
@@ -88,6 +98,7 @@ function main()
         truth_params_constrained = load(data_save_file)["truth_input_constrained"] #true parameters in constrained space
         truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
         Γy = ekiobj.obs_noise_cov
+        println(Γy)
 
         n_params = length(truth_params) # "input dim"
         output_dim = size(Γy, 1)
@@ -120,6 +131,7 @@ function main()
             # do we want to assume that the outputs are decorrelated in the machine-learning problem?
             diagonalize_output = case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ? true : false
             n_features = 300
+
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -141,17 +153,20 @@ function main()
         println(norm_factor)
 
         # Get training points from the EKP iteration number in the second input term  
-        N_iter = 6 # note we have 6 iterations stored
+        N_iter = min(max_iter, length(get_u(ekiobj)) - 1) # number of paired iterations taken from EKP
+
         input_output_pairs = Utilities.get_training_points(ekiobj, N_iter - 1) # 1:N-1
+
         input_output_pairs_test = Utilities.get_training_points(ekiobj, N_iter:N_iter) # just "next" iteration used for testing
         # Save data
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
 
-        standardize = true
+        standardize = false
         retained_svd_frac = 1.0
         normalized = true
         # do we want to use SVD to decorrelate outputs
         decorrelate = case ∈ ["RF-vector-nosvd-diag", "RF-vector-nosvd-nondiag"] ? false : true
+
 
         emulator = Emulator(
             mlt,
