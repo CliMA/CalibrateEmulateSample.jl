@@ -1,9 +1,10 @@
 #include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
-PLOT_FLAG = true
+PLOT_FLAG = false
 
 # Import modules
 using Distributions  # probability distributions and associated functions
 using LinearAlgebra
+ENV["GKSwstype"] = "100"
 using Plots
 using Random
 using JLD2
@@ -17,6 +18,7 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.Utilities
 
 rng_seed = 42424242
@@ -126,6 +128,7 @@ function main()
     end
 
     # load and create prior distributions
+    #=   
     prior_filepath = joinpath(exp_dir, "prior.jld2")
     if !isfile(prior_filepath)
         LoadError("prior file \"prior.jld2\" not found in directory \"" * exp_dir * "/\"")
@@ -133,6 +136,47 @@ function main()
         prior_dict_raw = load(prior_filepath) #using JLD2
         prior = prior_dict_raw["prior"]
     end
+    =#
+    # build prior if jld2 does not work
+    function get_prior_config(s::SS) where {SS <: AbstractString}
+        config = Dict()
+        if s == "ent-det-calibration"
+            config["constraints"] =
+                Dict("entrainment_factor" => [bounded(0.0, 1.0)], "detrainment_factor" => [bounded(0.0, 1.0)])
+            config["prior_mean"] = Dict("entrainment_factor" => 0.13, "detrainment_factor" => 0.51)
+            config["unconstrained_σ"] = 1.0
+        elseif s == "ent-det-tked-tkee-stab-calibration"
+            config["constraints"] = Dict(
+                "entrainment_factor" => [bounded(0.0, 1.0)],
+                "detrainment_factor" => [bounded(0.0, 1.0)],
+                "tke_ed_coeff" => [bounded(0.01, 1.0)],
+                "tke_diss_coeff" => [bounded(0.01, 1.0)],
+                "static_stab_coeff" => [bounded(0.01, 1.0)],
+            )
+            config["prior_mean"] = Dict(
+                "entrainment_factor" => 0.13,
+                "detrainment_factor" => 0.51,
+                "tke_ed_coeff" => 0.14,
+                "tke_diss_coeff" => 0.22,
+                "static_stab_coeff" => 0.4,
+            )
+            config["unconstrained_σ"] = 1.0
+        else
+            throw(ArgumentError("prior for experiment $s not found, please implement in uq_for_edmf.jl"))
+        end
+        return config
+    end
+    prior_config = get_prior_config(exp_name)
+    means = prior_config["prior_mean"]
+    std = prior_config["unconstrained_σ"]
+    constraints = prior_config["constraints"]
+
+
+    prior = combine_distributions([
+        ParameterDistribution(
+            Dict("name" => name, "distribution" => Parameterized(Normal(mean, std)), "constraint" => constraints[name]),
+        ) for (name, mean) in means
+    ])
 
     # Option (ii) load EKP object
     # max_ekp_it = 10 # use highest available iteration file
@@ -145,7 +189,7 @@ function main()
     # end
     # input_output_pairs = Utilities.get_training_points(ekpobj, max_ekp_it)
 
-    println("Completed calibration stage")
+    println("Completed calibration loading stage")
     println(" ")
     ##############################################
     # [3. ] Build Emulator from calibration data #
@@ -153,19 +197,82 @@ function main()
     println("Begin Emulation stage")
     # Create GP object
 
-    gppackage = Emulators.SKLJL()
-    pred_type = Emulators.YType()
-    gauss_proc = GaussianProcess(
-        gppackage;
-        kernel = nothing, # use default squared exponential kernel
-        prediction_type = pred_type,
-        noise_learn = false,
+    cases = [
+        "GP", # diagonalize, train scalar GP, assume diag inputs
+        "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
+        "RF-vector-svd-diag",
+        "RF-vector-svd-nondiag",
+        "RF-vector-svd-nonsep",
+    ]
+    case = cases[5]
+
+    overrides = Dict(
+        "verbose" => true,
+        "train_fraction" => 0.95,
+        "scheduler" => DataMisfitController(terminate_at = 100),
+        "cov_sample_multiplier" => 0.5,
+        "n_iteration" => 5,
+        #    "n_ensemble" => 20,
+        #    "localization" => SEC(0.1), # localization / sample error correction for small ensembles
     )
+    nugget = 0.01
+    rng_seed = 99330
+    rng = Random.MersenneTwister(rng_seed)
+    input_dim = size(get_inputs(input_output_pairs), 1)
+    output_dim = size(get_outputs(input_output_pairs), 1)
+    if case == "GP"
+
+        gppackage = Emulators.SKLJL()
+        pred_type = Emulators.YType()
+        mlt = GaussianProcess(
+            gppackage;
+            kernel = nothing, # use default squared exponential kernel
+            prediction_type = pred_type,
+            noise_learn = false,
+        )
+    elseif case ∈ ["RF-scalar"]
+        n_features = 100
+        kernel_structure = SeparableKernel(CholeskyFactor(nugget), OneDimFactor())
+        mlt = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    elseif case ∈ ["RF-vector-svd-diag", "RF-vector-svd-nondiag"]
+        # do we want to assume that the outputs are decorrelated in the machine-learning problem?
+        kernel_structure =
+            case ∈ ["RF-vector-svd-diag"] ? SeparableKernel(LowRankFactor(1, nugget), DiagonalFactor(nugget)) :
+            SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget))
+        n_features = 500
+
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    elseif case ∈ ["RF-vector-svd-nonsep"]
+        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        n_features = 500
+
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    end
 
     # Fit an emulator to the data
     normalized = true
 
-    emulator = Emulator(gauss_proc, input_output_pairs; obs_noise_cov = truth_cov, normalize_inputs = normalized)
+    emulator = Emulator(mlt, input_output_pairs; obs_noise_cov = truth_cov, normalize_inputs = normalized)
 
     # Optimize the GP hyperparameters for better fit
     optimize_hyperparameters!(emulator)

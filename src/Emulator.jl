@@ -132,7 +132,6 @@ function Emulator(
             svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
 
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
-
         # [4.] build an emulator
         build_models!(machine_learning_tool, training_pairs)
     else
@@ -141,7 +140,6 @@ function Emulator(
         end
         decomposition = nothing
         training_pairs = PairedDataContainer(training_inputs, training_outputs)
-
         # [4.] build an emulator - providing the noise covariance as a Tikhonov regularizer
         build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov)
     end
@@ -258,13 +256,20 @@ function predict(
                 # [4.] unstandardize
                 return reverse_standardize(emulator, s_outputs, s_output_cov)
             else #... and want to stay in decorrelated standardized coordinates
-                diag_out_flag = get_diagonalize_output(get_machine_learning_tool(emulator))
-                if diag_out_flag
-                    ds_output_diagvar = vec([Diagonal(ds_output_covvec[j]) for j in 1:N_samples]) # extracts diagonal
-                    if output_dim == 1
+
+                # special cases where you only return variances and not covariances, could be better acheived with dispatch...
+                kernel_structure = get_kernel_structure(get_machine_learning_tool(emulator))
+                if nameof(typeof(kernel_structure)) == :SeparableKernel
+                    output_cov_structure = get_output_cov_structure(kernel_structure)
+                    if nameof(typeof(output_cov_structure)) == :DiagonalFactor
+                        ds_output_diagvar = vec([Diagonal(ds_output_covvec[j]) for j in 1:N_samples]) # extracts diagonal
+                        return ds_outputs, ds_output_diagvar
+                    elseif nameof(typeof(output_cov_structure)) == :OneDimFactor
                         ds_output_diagvar = ([ds_output_covvec[i][1, 1] for i in 1:N_samples], 1, :) # extracts value
+                        return ds_outputs, ds_output_diagvar
+                    else
+                        return ds_outputs, ds_output_covvec
                     end
-                    return ds_outputs, ds_output_diagvar
                 else
                     return ds_outputs, ds_output_covvec
                 end
@@ -434,7 +439,7 @@ function svd_transform(
         decomposition = SVD(decomp.U[:, 1:k], decomp.S[1:k], decomp.Vt[1:k, :])
     else
         transformed_data = sqrt_singular_values_inv * decomp.Vt * data
-        decomposition = svd(obs_noise_cov)
+        decomposition = decomp
     end
     return transformed_data, decomposition
 end

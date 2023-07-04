@@ -4,6 +4,7 @@ include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 # Import modules
 using Distributions  # probability distributions and associated functions
 using LinearAlgebra
+ENV["GKSwstype"] = "100"
 using StatsPlots
 using Plots
 using Random
@@ -43,25 +44,22 @@ function main()
         "RF-vector-svd-nondiag",
         "RF-vector-nosvd-diag",
         "RF-vector-nosvd-nondiag",
+        "RF-vector-svd-nonsep",
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = 2:7
-    # One day we can use good heuristics here
-    # Currently set so that learnt hyperparameters stays relatively far inside the prior. (use "verbose" => true in optimizer overrides to see this info)
-    prior_scalings = [[0.0, 0.0], [1e-2, 0.0], [1e-1, 0.0], [1e-2, 1e-2], [1e-2, 1e-1], [1e-2, 1e-2], [1e-2, 1e-2]]
-    for (case, scaling) in zip(cases[mask], prior_scalings[mask])
+    mask = 2:7 # e.g. 1:8 or [7]
+    for (case) in cases[mask]
 
-        #case = cases[7]
+
         println("case: ", case)
-        max_iter = 6 # number of EKP iterations to use data from is at most this
+        min_iter = 1
+        max_iter = 5 # number of EKP iterations to use data from is at most this
         overrides = Dict(
             "verbose" => true,
-            "train_fraction" => 0.8,
-            "n_iteration" => 40,
-            "scheduler" => DataMisfitController(),
-            "prior_in_scale" => scaling[1],
-            "prior_out_scale" => scaling[2],
+            "scheduler" => DataMisfitController(terminate_at = 100.0),
+            "cov_sample_multiplier" => 1.0,
+            "n_iteration" => 20,
         )
         # we do not want termination, as our priors have relatively little interpretation
 
@@ -93,12 +91,12 @@ function main()
 
         ekiobj = load(data_save_file)["eki"]
         priors = load(data_save_file)["priors"]
-        truth_sample = load(data_save_file)["truth_sample"]
         truth_sample_mean = load(data_save_file)["truth_sample_mean"]
+        truth_sample = load(data_save_file)["truth_sample"]
         truth_params_constrained = load(data_save_file)["truth_input_constrained"] #true parameters in constrained space
         truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
         Γy = ekiobj.obs_noise_cov
-        println(Γy)
+
 
         n_params = length(truth_params) # "input dim"
         output_dim = size(Γy, 1)
@@ -108,6 +106,7 @@ function main()
 
         # Emulate-sample settings
         # choice of machine-learning tool
+        nugget = 0.001
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
@@ -118,26 +117,43 @@ function main()
                 noise_learn = false,
             )
         elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
-            n_features = 300
-            diagonalize_input = case == "RF-scalar-diagin" ? true : false
+            n_features = 100
+            kernel_structure =
+                case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
+                SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
                 rng = rng,
-                diagonalize_input = diagonalize_input,
+                kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
         elseif case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag", "RF-vector-svd-nondiag", "RF-vector-nosvd-nondiag"]
             # do we want to assume that the outputs are decorrelated in the machine-learning problem?
-            diagonalize_output = case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ? true : false
-            n_features = 300
+            kernel_structure =
+                case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ?
+                SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor(nugget)) :
+                SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(3, nugget))
+            n_features = 500
 
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 n_params,
                 output_dim,
                 rng = rng,
-                diagonalize_output = diagonalize_output, # assume outputs are decorrelated
+                kernel_structure = kernel_structure,
+                optimizer_options = overrides,
+            )
+        elseif case ∈ ["RF-vector-svd-nonsep"]
+            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+            n_features = 500
+
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                n_params,
+                output_dim,
+                rng = rng,
+                kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
         end
@@ -146,20 +162,40 @@ function main()
         # Use median over all data since all data are the same type
         truth_sample_norm = vcat(truth_sample...)
         norm_factor = get_standardizing_factors(truth_sample_norm)
-        println(size(norm_factor))
         #norm_factor = vcat(norm_factor...)
         norm_factor = fill(norm_factor, size(truth_sample))
-        println("Standardization factors")
-        println(norm_factor)
 
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekiobj)) - 1) # number of paired iterations taken from EKP
-
-        input_output_pairs = Utilities.get_training_points(ekiobj, N_iter - 1) # 1:N-1
-
-        input_output_pairs_test = Utilities.get_training_points(ekiobj, N_iter:N_iter) # just "next" iteration used for testing
+        min_iter = min(max_iter, max(1, min_iter))
+        input_output_pairs = Utilities.get_training_points(ekiobj, min_iter:(N_iter - 1))
+        input_output_pairs_test = Utilities.get_training_points(ekiobj, N_iter:(length(get_u(ekiobj)) - 1)) #  "next" iterations
         # Save data
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
+
+        # plot training points in constrained space
+        if case == cases[mask[1]]
+            gr(dpi = 300, size = (400, 400))
+            inputs_unconstrained = get_inputs(input_output_pairs)
+            inputs_constrained = transform_unconstrained_to_constrained(priors, inputs_unconstrained)
+            p = plot(
+                title = "training points",
+                xlims = extrema(inputs_constrained[1, :]),
+                xaxis = "F",
+                yaxis = "A",
+                ylims = extrema(inputs_constrained[2, :]),
+            )
+            scatter!(p, inputs_constrained[1, :], inputs_constrained[2, :], color = :magenta, label = false)
+            inputs_test_unconstrained = get_inputs(input_output_pairs_test)
+            inputs_test_constrained = transform_unconstrained_to_constrained(priors, inputs_test_unconstrained)
+
+            scatter!(p, inputs_test_constrained[1, :], inputs_test_constrained[2, :], color = :black, label = false)
+
+            vline!(p, [truth_params_constrained[1]], linestyle = :dash, linecolor = :red, label = false)
+            hline!(p, [truth_params_constrained[2]], linestyle = :dash, linecolor = :red, label = false)
+            savefig(p, joinpath(figure_save_directory, "training_points.pdf"))
+            savefig(p, joinpath(figure_save_directory, "training_points.png"))
+        end
 
         standardize = false
         retained_svd_frac = 1.0
@@ -190,11 +226,11 @@ function main()
         println("ML prediction on true parameters: ")
         println(vec(y_mean))
         println("true data: ")
-        println(truth_sample_mean) # same, regardless of norm_factor 
-        println(" ML predicted variance")
-        println(diag(y_var[1], 0))
+        println(truth_sample) # what was used as truth
+        println(" ML predicted standard deviation")
+        println(sqrt.(diag(y_var[1], 0)))
         println("ML MSE (truth): ")
-        println(mean((truth_sample_mean - vec(y_mean)) .^ 2))
+        println(mean((truth_sample - vec(y_mean)) .^ 2))
         println("ML MSE (next ensemble): ")
         println(mean((get_outputs(input_output_pairs_test) - y_mean_test) .^ 2))
 
@@ -207,13 +243,13 @@ function main()
         println("initial parameters: ", u0)
 
         # First let's run a short chain to determine a good step size
-        truth_sample = truth_sample
         mcmc = MCMCWrapper(RWMHSampling(), truth_sample, priors, emulator; init_params = u0)
         new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
         # Now begin the actual MCMC
         println("Begin MCMC - with step size ", new_step)
         chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+
         posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
         post_mean = mean(posterior)
@@ -226,7 +262,6 @@ function main()
         println(det(inv(post_cov)))
         println(" ")
 
-        constrained_truth_params = transform_unconstrained_to_constrained(posterior, truth_params)
         param_names = get_name(posterior)
 
         posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
@@ -235,10 +270,12 @@ function main()
 
         gr(dpi = 300, size = (300, 300))
         p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true)
-        plot!(p.subplots[1], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
-        plot!(p.subplots[3], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
-        plot!(p.subplots[2], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
-        plot!(p.subplots[2], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
+        plot!(p.subplots[1], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
+        plot!(p.subplots[3], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
+        plot!(p.subplots[2], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
+        plot!(p.subplots[2], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
+        figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".pdf")
+        savefig(figpath)
         figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".png")
         savefig(figpath)
 
