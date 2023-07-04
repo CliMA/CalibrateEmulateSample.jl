@@ -294,6 +294,42 @@ function calculate_mean_cov_and_coeffs(
 
 end
 
+
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Calculate the empirical covariance, additionally applying a shrinkage operator (here the Ledoit Wolf 2004 shrinkage operation). Known to have better stability properties than Monte-Carlo for low sample sizes
+"""
+function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
+    n_out, n_sample = size(sample_mat)
+
+    # de-mean (as we will use the samples directly for calculation of β)
+    sample_mat_zeromean = sample_mat .- mean(sample_mat, dims=2)
+    # Ledoit Wolf shrinkage to I
+
+    # get sample covariance
+    Γ = cov(sample_mat_zeromean, dims = 2)
+    # estimate opt shrinkage
+    μ_shrink = 1/n_out * tr(Γ)
+    δ_shrink = norm(Γ - μ_shrink*I)^2 / n_out # (scaled) frob norm of Γ_m
+    #once de-meaning, we need to correct the sample covariance with an n_sample -> n_sample-1
+    β_shrink = sum([norm(c*c'-   - Γ)^2/n_out for c in eachcol(sample_mat_zeromean)])/ (n_sample-1)^2 
+    println("μ_shrink, δ_shrink, β_shrink")
+    println("$(μ_shrink), $(δ_shrink), $(β_shrink)")
+
+    γ_shrink = min(β_shrink / δ_shrink, 1) # clipping is typically rare
+    println("Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)")
+    #  γμI + (1-γ)Γ
+    Γ .*= (1-γ_shrink)
+    for i = 1:n_out
+        Γ[i,i] += γ_shrink * μ_shrink 
+    end 
+    return Γ
+end        
+
+
+
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
@@ -377,13 +413,18 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
+    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+    shrinkage = true
+    if shrinkage
+        Γ = shrinkage_cov(sample_mat)    
+    else      
+        Γ = cov(sample_mat, dims = 2)
+    end
+
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
         approx_σ2 = posdef_correct(approx_σ2)
     end
-
-    Γ = cov(vcat(blockmeans, coeffl2norm, complexity), dims = 2)
-
 
     return Γ, approx_σ2
 
@@ -579,15 +620,26 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
+    
+    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+    shrinkage = true
+    if shrinkage
+        Γ = shrinkage_cov(sample_mat)    
+    else      
+        Γ = cov(sample_mat, dims = 2)
+    end
+
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
         approx_σ2 = posdef_correct(approx_σ2)
     end
 
-    Γ = cov(vcat(blockmeans, coeffl2norm, complexity), dims = 2)
     return Γ, approx_σ2
 
 end
+
+
+
 
 function calculate_ensemble_mean_and_coeffnorm(
     rfi::RFI,
