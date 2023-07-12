@@ -211,7 +211,7 @@ AdvancedMH.logdensity(model::AdvancedMH.DensityModel, t::MCMCState) = t.log_dens
 
 # AdvancedMH.transition() is only called to create a new proposal, so create a MCMCState
 # with accepted = true since that object will only be used if proposal is accepted.
-function AdvancedMH.transition(sampler::AdvancedMH.MHSampler, model::AdvancedMH.DensityModel, params, log_density::Real)
+function AdvancedMH.transition(sampler::MHS, model::AdvancedMH.DensityModel, params, log_density::Real) where {MHS <: Union{pCNMetropolisHastings,RWMetropolisHastings}}
     return MCMCState(params, log_density, true)
 end
 
