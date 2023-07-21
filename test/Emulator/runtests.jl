@@ -17,12 +17,11 @@ function constructor_tests(
     norm_factors,
     decomposition,
 ) where {FT <: AbstractFloat}
-    # [2.] test Normalization
-    input_mean = vec(mean(get_inputs(iopairs), dims = 2)) #column vector
-    sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(iopairs), dims = 2))))
-    norm_inputs = Emulators.normalize(get_inputs(iopairs), input_mean, sqrt_inv_input_cov)
-    @test norm_inputs == sqrt_inv_input_cov * (get_inputs(iopairs) .- input_mean)
 
+    input_mean = vec(mean(get_inputs(iopairs), dims = 2)) #column vector
+    normalization = sqrt(inv(Symmetric(cov(get_inputs(iopairs), dims = 2))))
+    normalization = Emulators.calculate_normalization(get_inputs(iopairs))
+    norm_inputs = Emulators.normalize(get_inputs(iopairs), input_mean, normalization)
     # [4.] test emulator preserves the structures
     mlt = MLTester()
     @test_throws ErrorException emulator = Emulator(
@@ -89,8 +88,9 @@ end
     #build some quick data + noise
     m = 50
     d = 6
-    x = rand(3, m) #R^3
-    y = rand(d, m) #R^5
+    p = 10
+    x = rand(p, m) #R^3
+    y = rand(d, m) #R^6
 
     # "noise"
     μ = zeros(d)
@@ -130,11 +130,37 @@ end
     @test y_new ≈ y[:, 1]
     @test y_cov_new[1] ≈ Σ
 
+
     # Truncation
     transformed_y, trunc_decomposition = Emulators.svd_transform(y[:, 1], Σ, retained_svd_frac = 0.95)
     trunc_size = size(trunc_decomposition.S)[1]
     @test test_SVD.S[1:trunc_size] == trunc_decomposition.S
     @test size(transformed_y)[1] == trunc_size
+
+    # [2.] test Normalization
+    # full rank
+    input_mean = vec(mean(get_inputs(iopairs), dims = 2)) #column vector
+    normalization = sqrt(inv(Symmetric(cov(get_inputs(iopairs), dims = 2))))
+    @test all(isapprox.(Emulators.calculate_normalization(get_inputs(iopairs)), normalization, atol = 1e-12))
+
+
+    norm_inputs = Emulators.normalize(get_inputs(iopairs), input_mean, normalization)
+    @test all(isapprox.(norm_inputs, normalization * (get_inputs(iopairs) .- input_mean), atol = 1e-12))
+    @test isapprox.(norm(cov(norm_inputs, dims = 2) - I), 0.0, atol = 1e-8)
+
+    # reduced rank
+    reduced_inputs = get_inputs(iopairs)[:, 1:(p - 1)]
+    input_mean = vec(mean(reduced_inputs, dims = 2)) #column vector
+    input_cov = cov(reduced_inputs, dims = 2)
+    r = rank(input_cov) # = p-2 
+    svd_in = svd(input_cov)
+    sqrt_inv_sv = 1 ./ sqrt.(svd_in.S[1:r])
+    normalization = Diagonal(sqrt_inv_sv) * svd_in.Vt[1:r, :] # size r x p
+    @test all(isapprox.(Emulators.calculate_normalization(reduced_inputs), normalization, atol = 1e-12))
+
+    norm_inputs = Emulators.normalize(reduced_inputs, input_mean, normalization)
+    @test size(norm_inputs) == (r, p - 1)
+    @test isapprox.(norm(cov(norm_inputs, dims = 2)[1:r, 1:r] - I(r)), 0.0, atol = 1e-12)
 
     # [3.] test Standardization
     norm_factors = 10.0

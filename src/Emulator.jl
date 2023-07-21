@@ -11,6 +11,7 @@ using Random
 
 export Emulator
 
+export calculate_normalization
 export build_models!
 export optimize_hyperparameters!
 export predict
@@ -63,11 +64,11 @@ struct Emulator{FT <: AbstractFloat}
     training_pairs::PairedDataContainer{FT}
     "Mean of input; length *input\\_dim*."
     input_mean::AbstractVector{FT}
-    "Square root of the inverse of the input covariance matrix; size *input\\_dim* × *input\\_dim*."
-    normalize_inputs::Bool
-    "Whether to fit models on normalized outputs: `outputs / standardize_outputs_factor`."
-    sqrt_inv_input_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing}
     "If normalizing: whether to fit models on normalized inputs (`(inputs - input_mean) * sqrt_inv_input_cov`)."
+    normalize_inputs::Bool
+    "(Linear) normalization transformation; size *input\\_dim* × *input\\_dim*."
+    normalization::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing}
+    "Whether to fit models on normalized outputs: `outputs / standardize_outputs_factor`."
     standardize_outputs::Bool
     "If standardizing: Standardization factors (characteristic values of the problem)."
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing}
@@ -106,11 +107,11 @@ function Emulator(
 
     # [1.] Normalize the inputs? 
     input_mean = vec(mean(get_inputs(input_output_pairs), dims = 2)) #column vector
-    sqrt_inv_input_cov = nothing
+    normalization = nothing
     if normalize_inputs
-        # Normalize (NB the inputs have to be of) size [input_dim × N_samples] to pass to ML tool
-        sqrt_inv_input_cov = sqrt(inv(Symmetric(cov(get_inputs(input_output_pairs), dims = 2))))
-        training_inputs = normalize(get_inputs(input_output_pairs), input_mean, sqrt_inv_input_cov)
+        normalization = calculate_normalization(get_inputs(input_output_pairs))
+        training_inputs = normalize(get_inputs(input_output_pairs), input_mean, normalization)
+        # new input_dim < input_dim when inputs lie in a proper linear subspace.
     else
         training_inputs = get_inputs(input_output_pairs)
     end
@@ -130,14 +131,7 @@ function Emulator(
         decorrelated_training_outputs, decomposition =
             svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
 
-        # write new pairs structure 
-        if retained_svd_frac < 1.0
-            #note this changes the dimension of the outputs
-            training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
-            input_dim, output_dim = size(training_pairs, 1)
-        else
-            training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
-        end
+        training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
 
         # [4.] build an emulator
         build_models!(machine_learning_tool, training_pairs)
@@ -158,7 +152,7 @@ function Emulator(
         training_pairs,
         input_mean,
         normalize_inputs,
-        sqrt_inv_input_cov,
+        normalization,
         standardize_outputs,
         standardize_outputs_factors,
         decomposition,
@@ -194,8 +188,21 @@ function predict(
     input_dim, output_dim = size(emulator.training_pairs, 1)
 
     N_samples = size(new_inputs, 2)
-    size(new_inputs, 1) == input_dim ||
-        throw(ArgumentError("Emulator object and input observations do not have consistent dimensions"))
+
+    # check sizing against normalization
+    if emulator.normalize_inputs
+        size(new_inputs, 1) == size(emulator.normalization, 2) || throw(
+            ArgumentError(
+                "Emulator object and input observations do not have consistent dimensions, expected $(size(emulator.normalization,2)), received $(size(new_inputs,1))",
+            ),
+        )
+    else
+        size(new_inputs, 1) == input_dim || throw(
+            ArgumentError(
+                "Emulator object and input observations do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+            ),
+        )
+    end
 
     # [1.] normalize
     normalized_new_inputs = normalize(emulator, new_inputs)
@@ -272,30 +279,42 @@ end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Normalize the input data, with a normalizing function.
+Calculate the normalization of inputs.
 """
-function normalize(emulator::Emulator{FT}, inputs::AbstractVecOrMat{FT}) where {FT <: AbstractFloat}
-    if emulator.normalize_inputs
-        return normalize(inputs, emulator.input_mean, emulator.sqrt_inv_input_cov)
-    else
-        return inputs
+function calculate_normalization(inputs::VOrM) where {VOrM <: AbstractVecOrMat}
+    input_mean = vec(mean(inputs, dims = 2))
+    input_cov = cov(inputs, dims = 2)
+
+    if rank(input_cov) == size(input_cov, 1)
+        normalization = sqrt(inv(input_cov))
+    else # if not full rank, normalize non-zero singular values
+        svd_in = svd(input_cov)
+        sqrt_inv_sv = 1 ./ sqrt.(svd_in.S[1:rank(input_cov)])
+        normalization = Diagonal(sqrt_inv_sv) * svd_in.Vt[1:rank(input_cov), :] #non-square
     end
+    return normalization
 end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Normalize with the empirical Gaussian distribution of points.
+Normalize the input data, with a normalizing function.
 """
-function normalize(
-    inputs::AbstractVecOrMat{FT},
-    input_mean::AbstractVector{FT},
-    sqrt_inv_input_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}},
-) where {FT <: AbstractFloat}
-    training_inputs = sqrt_inv_input_cov * (inputs .- input_mean)
-    return training_inputs
+function normalize(emulator::Emulator, inputs::VOrM) where {VOrM <: AbstractVecOrMat}
+    if emulator.normalize_inputs
+        return normalize(inputs, emulator.input_mean, emulator.normalization)
+    else
+        return inputs
+    end
 end
 
+function normalize(
+    inputs::VOrM,
+    input_mean::V,
+    normalization::M,
+) where {VOrM <: AbstractVecOrMat, V <: AbstractVector, M <: AbstractMatrix}
+    return normalization * (inputs .- input_mean)
+end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
