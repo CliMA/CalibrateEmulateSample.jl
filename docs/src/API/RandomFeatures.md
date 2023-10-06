@@ -31,7 +31,7 @@ get_n_features
 get_input_dim
 get_output_dim
 get_rng
-get_diagonalize_input
+get_kernel_structure
 get_feature_decomposition
 get_optimizer_options
 optimize_hyperparameters!(::ScalarRandomFeatureInterface) 

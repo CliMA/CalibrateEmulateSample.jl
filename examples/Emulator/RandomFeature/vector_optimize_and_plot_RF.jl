@@ -10,11 +10,13 @@ using LinearAlgebra
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.ParameterDistributions
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 plot_flag = true
 if plot_flag
+    ENV["GKSwstype"] = "100"
     using Plots
     gr(size = (1500, 700))
-    Plots.scalefontsizes(1.3)
+    #    Plots.scalefontsizes(1.3)
     font = Plots.font("Helvetica", 18)
     fontdict = Dict(:guidefont => font, :xtickfont => font, :ytickfont => font, :legendfont => font)
 
@@ -38,8 +40,9 @@ function main()
         mkdir(output_directory)
     end
 
-    cases = ["svd-diag", "svd-nondiag", "nosvd-diag", "nosvd-nondiag"]
-    case_mask = 1:4 # which cases to do
+    cases = ["svd-diag", "svd-nondiag", "nosvd-diag", "nosvd-nondiag", "svd-nonsep", "nosvd-nonsep"]
+    case_mask = 1:6 # which cases to do
+    nugget = 1e-12
 
     #problem
     n = 150  # number of training points
@@ -128,43 +131,67 @@ function main()
     for case in cases[case_mask]
         println("running case $case")
 
-
-
-
         # setup random features
-        n_features = 200
-        if case ∈ ["svd-diag", "svd-nondiag"]
-            optimizer_options =
-                Dict("n_iteration" => 20, "prior_in_scale" => 0.01, "prior_out_scale" => 1.0, "verbose" => true) #"Max" iterations (may do less)
-        else # without svd 
-            optimizer_options =
-                Dict("n_iteration" => 20, "prior_in_scale" => 0.01, "prior_out_scale" => 0.01, "verbose" => true) #"Max" iterations (may do less)
-        end
+        n_features = 400
+        optimizer_options =
+            Dict("n_iteration" => 5, "verbose" => true, "scheduler" => DataMisfitController(on_terminate = "continue")) #"Max" iterations (may do less)
 
         if case == "svd-diag"
             vrfi = VectorRandomFeatureInterface(
                 n_features,
                 p,
                 d,
-                diagonalize_output = true,
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor()),
                 optimizer_options = optimizer_options,
             )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
         elseif case == "svd-nondiag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d, optimizer_options = optimizer_options)
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget)),
+                optimizer_options = optimizer_options,
+            )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
+        elseif case == "svd-nonsep"
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
+                optimizer_options = optimizer_options,
+            )
+            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
+
         elseif case == "nosvd-diag"
             vrfi = VectorRandomFeatureInterface(
                 n_features,
                 p,
                 d,
-                diagonalize_output = true,
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor()), # roughly normalize output by noise
                 optimizer_options = optimizer_options,
             )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
         elseif case == "nosvd-nondiag"
-            vrfi = VectorRandomFeatureInterface(n_features, p, d, optimizer_options = optimizer_options)
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget)), # roughly normalize output by noise
+                optimizer_options = optimizer_options,
+            )
             emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
+        elseif case == "nosvd-nonsep"
+            vrfi = VectorRandomFeatureInterface(
+                n_features,
+                p,
+                d,
+                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
+                optimizer_options = optimizer_options,
+            )
+            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
+
         end
         println("build RF with $n training points and $(n_features) random features.")
 
@@ -187,7 +214,7 @@ function main()
         for y_i in 1:d
 
             rf_var_temp = [diag(rf_cov[j]) for j in 1:length(rf_cov)] # (40000,)
-            rf_var = permutedims(vcat([x' for x in rf_var_temp]...), (2, 1)) # 2 x 40000
+            rf_var = permutedims(reduce(vcat, [x' for x in rf_var_temp]), (2, 1)) # 2 x 40000
 
             mean_grid = reshape(rf_mean[y_i, :], n_pts, n_pts) # 2 x 40000
             if plot_flag

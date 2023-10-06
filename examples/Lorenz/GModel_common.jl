@@ -128,7 +128,8 @@ end
 # tend: End of simulation Float64(1), nstep: 
 function lorenz_solve(settings::LSettings, params::LParams)
     # Initialize
-    nstep = Int32(ceil((settings.tend - settings.t_start) / settings.dt))
+    # nstep = Int32(ceil((settings.tend - settings.t_start) / settings.dt))
+    nstep = Int32(ceil(settings.tend / settings.dt))
     xn = zeros(Float64, settings.N, nstep)
     t = zeros(Float64, nstep)
     # Initial perturbation
@@ -137,7 +138,7 @@ function lorenz_solve(settings::LSettings, params::LParams)
     Xbuffer = zeros(4, settings.N)
     # March forward in time
     for j in 1:nstep
-        t[j] = settings.t_start + settings.dt * j
+        t[j] = settings.dt * j
         #use view to update a slice
         # RK4! modifies first and last arguments
         if settings.dynamics == 1

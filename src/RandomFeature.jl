@@ -8,15 +8,117 @@ using ..Utilities
 using StableRNGs
 using Random
 
-export calculate_n_hyperparameters, build_default_prior
+export calculate_n_hyperparameters, hyperparameters_from_flat, build_default_prior, cov_structure_from_string
+export CovarianceStructureType, OneDimFactor, DiagonalFactor, CholeskyFactor, LowRankFactor, HierarchicalLowRankFactor
+export SeparableKernel, NonseparableKernel
+export get_input_cov_structure, get_output_cov_structure, get_cov_structure
+export get_eps
+export rank
+export shrinkage_cov
+
 
 abstract type RandomFeatureInterface <: MachineLearningTool end
 
+# Different types of threading
 abstract type MultithreadType end
 struct TullioThreading <: MultithreadType end
 struct EnsembleThreading <: MultithreadType end
 
-#common functions
+
+# Different types of covariance representation in the prior
+abstract type CovarianceStructureType end
+struct OneDimFactor <: CovarianceStructureType end
+struct DiagonalFactor{FT <: AbstractFloat} <: CovarianceStructureType
+    eps::FT
+end
+DiagonalFactor() = DiagonalFactor(Float64(1.0))
+get_eps(df::DiagonalFactor) = df.eps
+
+struct CholeskyFactor{FT <: AbstractFloat} <: CovarianceStructureType
+    eps::FT
+end
+CholeskyFactor() = CholeskyFactor(Float64(1.0))
+get_eps(cf::CholeskyFactor) = cf.eps
+
+struct LowRankFactor{FT <: AbstractFloat} <: CovarianceStructureType
+    rank::Int
+    eps::FT
+end
+LowRankFactor(r::Int) = LowRankFactor(r, Float64(1.0))
+get_eps(lrf::LowRankFactor) = lrf.eps
+
+struct HierarchicalLowRankFactor{FT <: AbstractFloat} <: CovarianceStructureType
+    #cst::CovarianceStructureType
+    rank::Int
+    eps::FT
+end
+
+HierarchicalLowRankFactor(r::Int) = HierarchicalLowRankFactor(r, Float64(1.0))
+get_eps(hlrf::HierarchicalLowRankFactor) = hlrf.eps
+
+import LinearAlgebra: rank
+rank(lrf::LowRankFactor) = lrf.rank
+rank(hlrf::HierarchicalLowRankFactor) = hlrf.rank
+
+# To add a new cov type `T`  one must define these 3 methods:
+# hyperparameters_from_flat(x::V, d::Int, t::T) where {V <: AbstractVector}
+# calculate_n_hyperparameters(d::Int, t::T)
+# build_default_prior(name::SS, d::Int, t::T) where {SS <: AbstractString}
+# and add a string id to cov_structure_from_string
+
+function cov_structure_from_string(s::S, d::Int) where {S <: AbstractString}
+    if s == "onedim"
+        return OneDimFactor()
+    elseif s == "diagonal"
+        return DiagonalFactor()
+    elseif s == "cholesky"
+        return CholeskyFactor()
+    elseif s == "lowrank"
+        return LowRankFactor(Int(ceil(sqrt(d))))
+    elseif s == "hierlowrank"
+        return HierarchicalLowRankFactor(Int(ceil(sqrt(d))))
+    else
+        throw(
+            ArgumentError(
+                "Recieved unknown `input_cov_structure` keyword $(s), \n please choose from [\"onedim\",\"diagonal\",\"cholesky\", \"lowrank\"] or provide a CovarianceStructureType",
+            ),
+        )
+    end
+end
+cov_structure_from_string(cst::CST, args...; kwargs...) where {CST <: CovarianceStructureType} = cst
+
+
+# Different types of kernel 
+abstract type KernelStructureType end
+
+struct SeparableKernel{CST1 <: CovarianceStructureType, CST2 <: CovarianceStructureType} <: KernelStructureType
+    input_cov_structure::CST1
+    output_cov_structure::CST2
+end
+get_input_cov_structure(kernel_structure::SeparableKernel) = kernel_structure.input_cov_structure
+get_output_cov_structure(kernel_structure::SeparableKernel) = kernel_structure.output_cov_structure
+
+struct NonseparableKernel{CST <: CovarianceStructureType} <: KernelStructureType
+    cov_structure::CST
+end
+get_cov_structure(kernel_structure::NonseparableKernel) = kernel_structure.cov_structure
+
+
+# calculate_n_hyperparameters
+calculate_n_hyperparameters(d::Int, odf::OneDimFactor) = 0
+calculate_n_hyperparameters(d::Int, df::DiagonalFactor) = d
+calculate_n_hyperparameters(d::Int, cf::CholeskyFactor) = Int(d * (d + 1) / 2)
+calculate_n_hyperparameters(d::Int, lrf::LowRankFactor) = Int(rank(lrf) + d * rank(lrf))
+calculate_n_hyperparameters(d::Int, hlrf::HierarchicalLowRankFactor) =
+    Int(rank(hlrf) * (rank(hlrf) + 1) / 2 + d * rank(hlrf))
+
+# build from flat 
+hyperparameters_from_flat(x::V, odf::OneDimFactor) where {V <: AbstractVector} = nothing
+
+function hyperparameters_from_flat(x::V, df::DiagonalFactor) where {V <: AbstractVector}
+    return convert(Matrix, Diagonal(x) + get_eps(df) * I)
+end
+
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
@@ -33,185 +135,234 @@ function flat_to_chol(x::V) where {V <: AbstractVector}
     return cholmat
 end
 
+function hyperparameters_from_flat(x::V, cf::CholeskyFactor) where {V <: AbstractVector}
+    chol = flat_to_chol(x)
+    return chol * permutedims(chol, (2, 1)) + get_eps(cf) * I
+
+end
+
+function hyperparameters_from_flat(x::V, lrf::LowRankFactor) where {V <: AbstractVector}
+
+    r = rank(lrf)
+    d = Int(length(x) / r - 1) # l = r + d*r
+
+    D = Diagonal(x[1:r]) # D acts like sing.vals.^2
+    U = reshape(x[(r + 1):end], d, r)
+    qrU = qr(U) # qrU.Q is semi-orthogonal in first r columns, i.e. Q^T.Q = I
+    return qrU.Q[:, 1:r] * D * qrU.Q[:, 1:r]' + get_eps(lrf) * I
+
+end
+
+function hyperparameters_from_flat(x::V, hlrf::HierarchicalLowRankFactor) where {V <: AbstractVector}
+    r = rank(hlrf)
+    d = Int(length(x) / r - (r + 1) / 2) # l = r^2 + d*r
+
+    # Ambikasaran, O'Neil, Singh 2016
+    L = flat_to_chol(x[1:Int(r * (r + 1) / 2)])
+    U = reshape(x[Int(r * (r + 1) / 2 + 1):end], d, r)
+    K = L * permutedims(L, (2, 1)) + get_eps(hlrf) * I
+
+    qrU = qr(U)
+    svdT = svd(I + qrU.R * K * qrU.R') # square so T = Q S Q^t 
+    M = svdT.V * Diagonal(sqrt.(svdT.S)) # M M^t = Q sqrt(S) (Q sqrt(S))^t = Q sqrt(S) sqrt(S) Q^t = T
+    X = M - I
+    update_factor = I + qrU.Q * X * qrU.Q'
+
+    return update_factor * update_factor'
+end
+
+
+build_default_prior(name::SS, n_hp::Int, odf::OneDimFactor) where {SS <: AbstractString} = nothing
+
+function build_default_prior(name::SS, n_hp::Int, df::DiagonalFactor) where {SS <: AbstractString}
+    return ParameterDistribution(
+        Dict(
+            "name" => "$(name)_diagonal",
+            "distribution" => VectorOfParameterized(repeat([Normal(0, 3)], n_hp)),
+            "constraint" => repeat([bounded_below(0.0)], n_hp),
+        ),
+    )
+end
+
+function build_default_prior(name::SS, n_hp::Int, df::CholeskyFactor) where {SS <: AbstractString}
+    return constrained_gaussian("$(name)_cholesky", 0.0, 5.0, -Inf, Inf, repeats = n_hp)
+end
+
+function build_default_prior(name::SS, n_hp::Int, lrf::LowRankFactor) where {SS <: AbstractString}
+    r = rank(lrf)
+    d = Int(n_hp / r - 1)
+    D = ParameterDistribution(
+        Dict(
+            "name" => "$(name)_lowrank_diagonal",
+            "distribution" => VectorOfParameterized(repeat([Normal(0, 3)], r)),
+            "constraint" => repeat([bounded_below(0.0)], r),
+        ),
+    )
+    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 100.0, -Inf, Inf, repeats = Int(d * r))
+    return combine_distributions([D, U])
+end
+
+function build_default_prior(name::SS, n_hp::Int, hlrf::HierarchicalLowRankFactor) where {SS <: AbstractString}
+    r = rank(hlrf)
+    d = Int(n_hp / r - (r + 1) / 2)
+    L = constrained_gaussian("$(name)_lowrank_Kchol", 0.0, 5.0, -Inf, Inf, repeats = Int(r * (r + 1) / 2))
+    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 100.0, -Inf, Inf, repeats = Int(d * r))
+    return combine_distributions([L, U])
+end
+
+# combining input and output spaces:
+
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Builds Covariance matrices from a flat array of hyperparameters
+Calculate number of hyperparameters required to create the default prior in the given input/output space dimensions (determined from the `CovarianceStructureType`)
 """
+function calculate_n_hyperparameters(
+    input_dim::Int,
+    output_dim::Int,
+    kernel_structure::SK,
+) where {SK <: SeparableKernel}
+
+    input_cov_structure = get_input_cov_structure(kernel_structure)
+    n_hp_in = calculate_n_hyperparameters(input_dim, input_cov_structure)
+    output_cov_structure = get_output_cov_structure(kernel_structure)
+    n_hp_out = calculate_n_hyperparameters(output_dim, output_cov_structure)
+    n_scalings = 1
+
+    # if both in and output dim are "OneDimFactors" we still learn 1 hp
+    if n_hp_in + n_hp_out == 0
+        return 1 + n_scalings
+    end
+
+    return n_hp_in + n_hp_out + n_scalings
+end
+
+function calculate_n_hyperparameters(input_dim::Int, kernel_structure::KST) where {KST <: KernelStructureType}
+    output_dim = 1
+    return calculate_n_hyperparameters(input_dim, output_dim, kernel_structure)
+end
+
+function calculate_n_hyperparameters(
+    input_dim::Int,
+    output_dim::Int,
+    kernel_structure::NK,
+) where {NK <: NonseparableKernel}
+    cov_structure = get_cov_structure(kernel_structure)
+    n_hp = calculate_n_hyperparameters(input_dim * output_dim, cov_structure)
+    n_scalings = 1
+    # if both in and output dim are "OneDimFactors" we still learn 1 hp
+    if n_hp == 0
+        return 1 + n_scalings
+    end
+
+    return n_hp + n_scalings
+end
+
+
+
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Builds a prior over the hyperparameters (i.e. the low-rank/cholesky/diagaonal or individaul entries of the input/output covariances).
+For example, the case where the input covariance ``U = γ_1 * (LL^T + γ_2 I)``, 
+we set priors for the entries of the lower triangular matrix  ``L`` as normal, and constant scalings ``γ_i`` as log-normal to retain positivity.
+"""
+function build_default_prior(input_dim::Int, output_dim::Int, kernel_structure::SK) where {SK <: SeparableKernel}
+    input_cov_structure = get_input_cov_structure(kernel_structure)
+    output_cov_structure = get_output_cov_structure(kernel_structure)
+
+    n_hp_in = calculate_n_hyperparameters(input_dim, input_cov_structure)
+    input_prior = build_default_prior("input", n_hp_in, input_cov_structure)
+    n_hp_out = calculate_n_hyperparameters(output_dim, output_cov_structure)
+    output_prior = build_default_prior("output", n_hp_out, output_cov_structure)
+
+    scaling_kern = constrained_gaussian("sigma", 1, 5, 0, Inf)
+
+    # We only use OneDimFactor values, default to input if both in and output dimension are one dimensional.Otherwise they are ignored
+    if isnothing(input_prior) && isnothing(output_prior)
+        onedim_prior = constrained_gaussian("onedim", 1.0, 1.0, 0.0, Inf)
+        return combine_distributions([onedim_prior, scaling_kern])
+    elseif isnothing(input_prior)
+        return combine_distributions([output_prior, scaling_kern])
+    elseif isnothing(output_prior)
+        return combine_distributions([input_prior, scaling_kern])
+    else
+        return combine_distributions([input_prior, output_prior, scaling_kern])
+    end
+end
+
+function build_default_prior(input_dim::Int, kernel_structure::KST) where {KST <: KernelStructureType}
+    output_dim = 1
+    return build_default_prior(input_dim, output_dim, kernel_structure)
+end
+
+function build_default_prior(input_dim::Int, output_dim::Int, kernel_structure::NK) where {NK <: NonseparableKernel}
+    cov_structure = get_cov_structure(kernel_structure)
+    n_hp = calculate_n_hyperparameters(input_dim * output_dim, cov_structure)
+    if n_hp == 0
+        pd_kern = constrained_gaussian("onedim", 1.0, 1.0, 0.0, Inf)
+    else
+        pd_kern = build_default_prior("full", n_hp, cov_structure)
+    end
+
+    scaling_kern = constrained_gaussian("sigma", 1, 5, 0, Inf)
+    return combine_distributions([pd_kern, scaling_kern])
+end
+
 function hyperparameters_from_flat(
     x::VV,
     input_dim::Int,
     output_dim::Int,
-    diagonalize_input::Bool,
-    diagonalize_output::Bool,
-) where {VV <: AbstractVector}
-    # if dim = 1 then parameters are a 1x1 matrix
-    # if we diagonalize then parameters are diagonal entries + constant
-    # if we don't diagonalize then parameters are a cholesky product + constant on diagonal.
+    kernel_structure::SK,
+) where {VV <: AbstractVector, SK <: SeparableKernel}
+    input_cov_structure = get_input_cov_structure(kernel_structure)
+    output_cov_structure = get_output_cov_structure(kernel_structure)
 
-    #input space
-    if input_dim == 1
-        in_max = 1
-        U = x[in_max] * ones(1, 1)
-    elseif diagonalize_input
-        in_max = input_dim + 2
-        U = convert(Matrix, x[in_max - 1] * (Diagonal(x[1:(in_max - 2)]) + x[in_max] * I))
-    elseif !diagonalize_input
-        in_max = Int(input_dim * (input_dim + 1) / 2) + 2
-        cholU = flat_to_chol(x[1:(in_max - 2)])
-        U = x[in_max - 1] * (cholU * permutedims(cholU, (2, 1)) + x[in_max] * I)
+    n_hp_in = calculate_n_hyperparameters(input_dim, input_cov_structure)
+    U = hyperparameters_from_flat(x[1:n_hp_in], input_cov_structure)
+    V = hyperparameters_from_flat(x[(n_hp_in + 1):end], output_cov_structure)
+
+    if isnothing(U) && isnothing(V) #i.e. both are from OneDimFactor cov structures
+        return x[1] * ones(1, 1), V
+    elseif isnothing(U)
+        return U, 0.5 * (V + permutedims(V, (2, 1)))
+    elseif isnothing(V)
+        return 0.5 * (U + permutedims(U, (2, 1))), V
+    else
+        # symmetrize (sometimes there are numerical artifacts)
+        U = 0.5 * (U + permutedims(U, (2, 1)))
+        V = 0.5 * (V + permutedims(V, (2, 1)))
+        return U, V
     end
-
-    # output_space    
-    out_min = in_max + 1
-    if output_dim == 1
-        V = x[end] * ones(1, 1)
-    elseif diagonalize_output
-        V = convert(Matrix, x[end - 1] * (Diagonal(x[out_min:(end - 2)]) + x[end] * I))
-    elseif !diagonalize_output
-        cholV = flat_to_chol(x[out_min:(end - 2)])
-        V = x[end - 1] * (cholV * permutedims(cholV, (2, 1)) + x[end] * I)
-    end
-
-    # sometimes this process does not give a (numerically) symmetric matrix
-    U = 0.5 * (U + permutedims(U, (2, 1)))
-    V = 0.5 * (V + permutedims(V, (2, 1)))
-
-    return U, V
-
 end
 
-function hyperparameters_from_flat(x::VV, input_dim::Int, diagonalize_input::Bool) where {VV <: AbstractVector}
+function hyperparameters_from_flat(
+    x::VV,
+    input_dim::Int,
+    kernel_structure::SK,
+) where {VV <: AbstractVector, SK <: SeparableKernel}
     output_dim = 1
-    diagonalize_output = false
-    U, V = hyperparameters_from_flat(x, input_dim, output_dim, diagonalize_input, diagonalize_output)
-    # Note that the scalar setting has a slight inconsistency from the 1-D output vector case
-    # We correct here by rescaling U using the single hyperparameter in V
-    return V[1, 1] * U
+    U, V = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
+
+    return U
 end
 
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Builds a prior over the hyperparameters (i.e. the cholesky/diagaonal or individaul entries of the input/output covariances).
-For example, the case where the input covariance ``U = γ_1 * (LL^T + γ_2 I)``, 
-we set priors for the entries of the lower triangular matrix  ``L`` as normal, and constant scalings ``γ_i`` as log-normal to retain positivity.
-
-priors can be scaled by a constant factor by using the in_scale and out_scale keywords
-"""
-function build_default_prior(
+function hyperparameters_from_flat(
+    x::VV,
     input_dim::Int,
     output_dim::Int,
-    diagonalize_input::Bool,
-    diagonalize_output::Bool;
-    in_scale = 1.0,
-    out_scale = 1.0,
-)
-    n_hp_in = n_hyperparameters_cov(input_dim, diagonalize_input)
-    n_hp_out = n_hyperparameters_cov(output_dim, diagonalize_output)
-
-    # aspect ratio for mean:sd for positive parameters in constrained_gaussian()
-    # 10 seems to give a decent range, this isn't very tuneable so the alternative would be to use the basic constructor 
-    pos_asp_ratio = 10
-    # if dim = 1 , positive constant
-    # elseif diagonalized, positive on diagonal and positive scalings
-    # else chol factor, and positive scalings
-    if input_dim > 1
-        if diagonalize_input
-            param_diag =
-                constrained_gaussian("input_prior_diagonal", 1.0, pos_asp_ratio, 0.0, Inf, repeats = n_hp_in - 2)
-            param_scaling =
-                constrained_gaussian("input_prior_scaling", in_scale, in_scale * pos_asp_ratio, 0.0, Inf, repeats = 2)
-            input_prior = combine_distributions([param_diag, param_scaling])
-        else
-            param_chol = constrained_gaussian("input_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_hp_in - 2)
-            param_scaling =
-                constrained_gaussian("input_prior_scaling", in_scale, in_scale * pos_asp_ratio, 0.0, Inf, repeats = 2)
-            input_prior = combine_distributions([param_chol, param_scaling])
-        end
+    kernel_structure::NK,
+) where {VV <: AbstractVector, NK <: NonseparableKernel}
+    cov_structure = get_cov_structure(kernel_structure)
+    C = hyperparameters_from_flat(x, cov_structure)
+    if isnothing(C)
+        return x[1] * ones(1, 1)
     else
-        input_prior = constrained_gaussian("input_prior", in_scale, in_scale, 0.0, Inf)
+        return 0.5 * (C + permutedims(C, (2, 1)))
     end
 
-    if output_dim > 1
-        if diagonalize_output
-            param_diag =
-                constrained_gaussian("output_prior_diagonal", 1.0, pos_asp_ratio, 0.0, Inf, repeats = n_hp_out - 2)
-            param_scaling = constrained_gaussian(
-                "output_prior_scaling",
-                out_scale,
-                out_scale * pos_asp_ratio,
-                0.0,
-                Inf,
-                repeats = 2,
-            )
-            output_prior = combine_distributions([param_diag, param_scaling])
-        else
-            param_chol = constrained_gaussian("output_prior_cholesky", 0.0, 1.0, -Inf, Inf, repeats = n_hp_out - 2)
-            param_scaling = constrained_gaussian(
-                "output_prior_scaling",
-                out_scale,
-                out_scale * pos_asp_ratio,
-                0.0,
-                Inf,
-                repeats = 2,
-            )
-            output_prior = combine_distributions([param_chol, param_scaling])
-        end
-    else
-        output_prior = constrained_gaussian("output_prior", out_scale, 10 * out_scale, 0.0, Inf)
-    end
-
-    return combine_distributions([input_prior, output_prior])
-
 end
-
-function build_default_prior(input_dim::Int, diagonalize_input::Bool; in_scale = 1.0)
-    #scalar case consistent with vector case
-    output_dim = 1
-    diagonalize_output = false
-    out_scale = 1.0
-    return build_default_prior(
-        input_dim,
-        output_dim,
-        diagonalize_input,
-        diagonalize_output,
-        in_scale = in_scale,
-        out_scale = out_scale,
-    )
-end
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-The number of hyperparameters required to characterize covariance (determined from `hyperparameters_from_flat`).
-"""
-function n_hyperparameters_cov(dim::Int, diagonalize::Bool)
-    n_hp = 0
-    n_hp += diagonalize ? dim : Int(dim * (dim + 1) / 2)     # inputs: diagonal or cholesky
-    n_hp += (dim > 1) ? 2 : 0     # add two more for constant diagonal in each case.
-    return n_hp
-end
-
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Calculate number of hyperparameters required to create the default prior in the given input/output space (determined from `hyperparameters_from_flat`)
-"""
-function calculate_n_hyperparameters(input_dim::Int, output_dim::Int, diagonalize_input::Bool, diagonalize_output::Bool)
-    n_hp_in = n_hyperparameters_cov(input_dim, diagonalize_input)
-    n_hp_out = n_hyperparameters_cov(output_dim, diagonalize_output)
-    return n_hp_in + n_hp_out
-end
-
-function calculate_n_hyperparameters(input_dim::Int, diagonalize_input::Bool)
-    #scalar case consistent with vector case
-    output_dim = 1
-    diagonalize_output = false
-    return calculate_n_hyperparameters(input_dim, output_dim, diagonalize_input, diagonalize_output)
-end
-
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -252,7 +403,7 @@ function calculate_mean_cov_and_coeffs(
     otest = get_outputs(io_pairs)[:, (n_train + 1):end]
     input_dim = size(itrain, 1)
     output_dim = size(otrain, 1)
-
+    n_test = size(itest, 2)
     # build and fit the RF
     rfm = RFM_from_hyperparameters(
         rfi,
@@ -278,11 +429,15 @@ function calculate_mean_cov_and_coeffs(
         buffer,
         tullio_threading = thread_opt,
     )
-    # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
-    scaled_coeffs = sqrt(1 / n_features) * RF.Methods.get_coeffs(fitted_features)
 
-    # we add the additional complexity term
-    # TODO only cholesky and SVD available
+    # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
+
+    ## TODO - the theory states that the following should be set:
+    # scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+    # However the convergence is much improved with setting this to zero:
+    scaled_coeffs = 0
+
+
     if decomp_type == "cholesky"
         chol_fac = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).L
         complexity = 2 * sum(log(chol_fac[i, i]) for i in 1:size(chol_fac, 1))
@@ -290,9 +445,46 @@ function calculate_mean_cov_and_coeffs(
         svd_singval = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).S
         complexity = sum(log, svd_singval) # note this is log(abs(det))
     end
+    complexity = sqrt(abs(complexity)) #abs can introduce nonconvexity, 
+
     return scaled_coeffs, complexity
 
 end
+
+
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Calculate the empirical covariance, additionally applying a shrinkage operator (here the Ledoit Wolf 2004 shrinkage operation). Known to have better stability properties than Monte-Carlo for low sample sizes
+"""
+function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
+    n_out, n_sample = size(sample_mat)
+
+    # de-mean (as we will use the samples directly for calculation of β)
+    sample_mat_zeromean = sample_mat .- mean(sample_mat, dims = 2)
+    # Ledoit Wolf shrinkage to I
+
+    # get sample covariance
+    Γ = cov(sample_mat_zeromean, dims = 2)
+    # estimate opt shrinkage
+    μ_shrink = 1 / n_out * tr(Γ)
+    δ_shrink = norm(Γ - μ_shrink * I)^2 / n_out # (scaled) frob norm of Γ_m
+    #once de-meaning, we need to correct the sample covariance with an n_sample -> n_sample-1
+    β_shrink = sum([norm(c * c' - -Γ)^2 / n_out for c in eachcol(sample_mat_zeromean)]) / (n_sample - 1)^2
+
+    γ_shrink = min(β_shrink / δ_shrink, 1) # clipping is typically rare
+    #  γμI + (1-γ)Γ
+    Γ .*= (1 - γ_shrink)
+    for i in 1:n_out
+        Γ[i, i] += γ_shrink * μ_shrink
+    end
+
+    @info "Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)\n shrinkage covariance condition number: $(cond(Γ))"
+    return Γ
+end
+
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -377,13 +569,18 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
+    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+    shrinkage = true
+    if shrinkage
+        Γ = shrinkage_cov(sample_mat)
+    else
+        Γ = cov(sample_mat, dims = 2)
+    end
+
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
         approx_σ2 = posdef_correct(approx_σ2)
     end
-
-    Γ = cov(vcat(blockmeans, coeffl2norm, complexity), dims = 2)
-
 
     return Γ, approx_σ2
 
@@ -579,15 +776,26 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
+
+    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+    shrinkage = true
+    if shrinkage
+        Γ = shrinkage_cov(sample_mat)
+    else
+        Γ = cov(sample_mat, dims = 2)
+    end
+
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
         approx_σ2 = posdef_correct(approx_σ2)
     end
 
-    Γ = cov(vcat(blockmeans, coeffl2norm, complexity), dims = 2)
     return Γ, approx_σ2
 
 end
+
+
+
 
 function calculate_ensemble_mean_and_coeffnorm(
     rfi::RFI,
@@ -622,11 +830,6 @@ function calculate_ensemble_mean_and_coeffnorm(
     println("calculating " * string(N_ens * repeats) * " ensemble members...")
 
     nthreads = Threads.nthreads()
-
-    means = zeros(output_dim, N_ens, n_test)
-    complexity = zeros(1, N_ens)
-    coeffl2norm = zeros(1, N_ens)
-
     c_list = [zeros(1, N_ens) for i in 1:nthreads]
     cp_list = [zeros(1, N_ens) for i in 1:nthreads]
     m_list = [zeros(output_dim, N_ens, n_test) for i in 1:nthreads]

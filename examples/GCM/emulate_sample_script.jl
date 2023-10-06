@@ -1,38 +1,37 @@
 # Script to run Emulation and Sampling on data from GCM
 
 # Import modules
-using Distributions  # probability distributions and associated functions
+using Distributions
 using LinearAlgebra
+ENV["GKSwstype"] = "100"
 using Plots
+using Plots.PlotMeasures # for mm
+using StatsPlots
 using Random
 using JLD2
 # CES 
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 
-@time begin
 
+function main()
     rng_seed = 2413798
     Random.seed!(rng_seed)
 
-    #    expname = "vrf-nondiag-logdet_newprior"
-    #emulator_type ∈ ["GPR","ScalarRFR","VectorRFR-svd-diag","VectorRFR-svd-nondiag", "VectorRFR-nondiag"]
-    #    emulator_type = "GPR"
-    #    expname = "gpr"
+    # CHOOSE YOUR CASE 
+    case = 6
 
-    #    emulator_type = "ScalarRFR"
-    #    expname = "srf"
+    emulator_types =
+        ["GPR", "ScalarRFR", "VectorRFR-svd-diag", "VectorRFR-svd-nondiag", "VectorRFR-nondiag", "VectorRFR-svd-nonsep"]
 
-    #    emulator_type = "VectorRFR-svd-diag"
-    #    expname = "vrf-svd-diag"
+    expnames = ["gpr", "srf", "vrf-svd-diag", "vrf-svd-nondiag", "vrf-nondiag_standardized", "vrf-svd-nonsep"]
 
-    #    emulator_type = "VectorRFR-svd-nondiag"
-    #    expname = "vrf-svd-nondiag"
-
-    emulator_type = "VectorRFR-nondiag"
-    expname = "vrf-nondiag_standardized"
+    emulator_type = emulator_types[case]
+    expname = expnames[case]
 
     # Output figure save directory
     example_directory = @__DIR__
@@ -54,11 +53,11 @@ using CalibrateEmulateSample.DataContainers
     obs_noise_cov = load(datafile)["obs_noise_cov"] # 96 x 96
 
     #take only first 400 points
-    iter_mask = 1:4
-    #data_mask = 1:32
+    iter_mask = [1, 2, 4]
+    data_mask = 1:96
     #    data_mask= 33:64
     #    data_mask= 65:96
-    data_mask = 1:96
+    #data_mask = 1:96
     #data_mask = [5*i for i = 1:Int(floor(96/5))]
 
     inputs = inputs[:, :, iter_mask]
@@ -66,8 +65,6 @@ using CalibrateEmulateSample.DataContainers
     obs_noise_cov = obs_noise_cov[data_mask, data_mask]
     truth = truth[data_mask]
 
-    # priorfile = "priors.jld2"
-    # prior = load(priorfile)["prior"]
 
     # derived quantities
     N_ens, input_dim, N_iter = size(inputs)
@@ -79,7 +76,19 @@ using CalibrateEmulateSample.DataContainers
     normalized = true
 
     # setup random features
-    eki_options_override = Dict("tikhonov" => 0, "multithread" => "ensemble") #faster than tullio multithread for training
+    eki_options_override = Dict(
+        "verbose" => true,
+        "tikhonov" => 0.0,
+        "scheduler" => DataMisfitController(on_terminate = "continue"),
+        "n_iteration" => 10,
+        "multithread" => "ensemble",
+        "train_fraction" => 0.95,
+        "inflation" => 0.0,
+        "cov_sample_multiplier" => 0.5,
+        "n_ensemble" => 50,
+        "localization" => SEC(1.0),
+    )
+
 
 
     if emulator_type == "VectorRFR-svd-nondiag" || emulator_type == "VectorRFR-nondiag"
@@ -89,23 +98,46 @@ using CalibrateEmulateSample.DataContainers
             println("Running Vector RF model - without SVD and assuming non-diagonal variance ")
         end
 
-        n_features = 80 * Int(floor(5 * sqrt(N_ens * N_iter)))
+        n_features = 20 * Int(floor(5 * sqrt(N_ens * N_iter))) #80 *
         println("build RF with $(N_ens*N_iter) training points and $(n_features) random features.")
-
-
-        mlt = VectorRandomFeatureInterface(n_features, input_dim, output_dim, optimizer_options = eki_options_override)
-
-    elseif emulator_type == "VectorRFR-svd-diag"
-
-        println("Running Vector RF model - using SVD and assuming diagonal variance")
-        n_features = 20 * Int(floor(5 * sqrt(N_ens * N_iter)))
-        println("build RF with $(N_ens*N_iter) training points and $(n_features) random features.")
+        kernel_structure = SeparableKernel(LowRankFactor(2), LowRankFactor(3))
 
         mlt = VectorRandomFeatureInterface(
             n_features,
             input_dim,
             output_dim,
-            diagonalize_output = true,
+            kernel_structure = kernel_structure,
+            optimizer_options = eki_options_override,
+        )
+    elseif emulator_type == "VectorRFR-svd-nonsep" || emulator_type == "VectorRFR-nonsep"
+        if emulator_type == "VectorRFR-svd-nondiag"
+            println("Running Vector RF model with nonseparable kernel - using SVD")
+        elseif emulator_type == "VectorRFR-nonsep"
+            println("Running Vector RF model with nonseparable kernel - without SVD")
+        end
+
+        n_features = 20 * Int(floor(5 * sqrt(N_ens * N_iter))) #80 *
+        println("build RF with $(N_ens*N_iter) training points and $(n_features) random features.")
+        kernel_structure = NonseparableKernel(LowRankFactor(5))
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            kernel_structure = kernel_structure,
+            optimizer_options = eki_options_override,
+        )
+
+    elseif emulator_type == "VectorRFR-svd-diag"
+
+        println("Running Vector RF model - using SVD and assuming diagonal variance")
+        n_features = 5 * Int(floor(5 * sqrt(N_ens * N_iter))) #20 *
+        println("build RF with $(N_ens*N_iter) training points and $(n_features) random features.")
+        kernel_structure = SeparableKernel(LowRankFactor(2), DiagonalFactor(1e-8))
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            kernel_structure = kernel_structure,
             optimizer_options = eki_options_override,
         )
 
@@ -231,8 +263,75 @@ using CalibrateEmulateSample.DataContainers
             end
         end
 
-    end
+    end # plots
+
+    ### MCMC
+
+    priorfile = "priors.jld2"
+    prior = load(priorfile)["prior"]
+
+    ##
+    ###  Sample: Markov Chain Monte Carlo
+    ###
+    # initial values
+    u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
+    println("initial parameters: ", u0)
+
+    # First let's run a short chain to determine a good step size
+    mcmc = MCMCWrapper(RWMHSampling(), truth, prior, emulator; init_params = u0)
+    new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
+
+    # Now begin the actual MCMC
+    println("Begin MCMC - with step size ", new_step)
+    chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+    posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
+
+    post_mean = mean(posterior)
+    post_cov = cov(posterior)
+    println("post_mean")
+    println(post_mean)
+    println("post_cov")
+    println(post_cov)
+    println("D util")
+    println(det(inv(post_cov)))
+    println(" ")
 
 
+    # plot posterior
 
+    truth_params = [log(0.7 / 0.3) log(7200)]' # parameter value (at truth) - unconstrained
+
+    # Save data
+    save(
+        joinpath(data_save_directory, expname * "posterior.jld2"),
+        "posterior",
+        posterior,
+        "input_output_pairs",
+        input_output_pairs,
+        "truth_params",
+        truth_params,
+    )
+
+
+    constrained_truth_params = transform_unconstrained_to_constrained(posterior, truth_params)
+    param_names = get_name(posterior)
+
+    posterior_samples = vcat([get_distribution(posterior)[name] for name in param_names]...) #samples are columns
+    constrained_posterior_samples =
+        mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
+
+    gr(dpi = 300, size = (300, 300))
+    p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true)
+    plot!(p.subplots[1], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
+    plot!(p.subplots[3], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
+    plot!(p.subplots[2], [constrained_truth_params[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
+    plot!(p.subplots[2], [constrained_truth_params[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
+    figpath = joinpath(figure_save_directory, "plot_posterior_" * expname * ".png")
+    savefig(figpath)
+
+
+end # main
+
+@time begin
+    main()
 end # for @time

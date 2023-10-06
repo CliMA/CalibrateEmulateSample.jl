@@ -6,11 +6,12 @@ $(DocStringExtensions.TYPEDEF)
 
 Structure holding the Scalar Random Feature models. 
 
-# Fields
+# FieldsWhen calibrated with ocean LES,
 $(DocStringExtensions.TYPEDFIELDS)
 
 """
-struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG} <: RandomFeatureInterface
+struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST <: KernelStructureType} <:
+       RandomFeatureInterface
     "vector of `RandomFeatureMethod`s, contains the feature structure, batch-sizes and regularization"
     rfms::Vector{RF.Methods.RandomFeatureMethod}
     "vector of `Fit`s, containing the matrix decomposition and coefficients of RF when fitted to data"
@@ -23,8 +24,8 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG} <: 
     input_dim::Int
     "choice of random number generator"
     rng::RNG
-    "Assume inputs are decorrelated for ML"
-    diagonalize_input::Bool
+    "Kernel structure type (e.g. Separable or Nonseparable)"
+    kernel_structure::KST
     "Random Feature decomposition, choose from \"svd\" or \"cholesky\" (default)"
     feature_decomposition::S
     "dictionary of options for hyperparameter optimizer"
@@ -76,9 +77,9 @@ get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-gets the diagonalize_input field
+Gets the kernel_structure field
 """
-get_diagonalize_input(srfi::ScalarRandomFeatureInterface) = srfi.diagonalize_input
+get_kernel_structure(srfi::ScalarRandomFeatureInterface) = srfi.kernel_structure
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -101,7 +102,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for the `RandomFeatures.jl` package for multi-input and single- (or decorrelated-)output emulators.
  - `n_features` - the number of random features
  - `input_dim` - the dimension of the input space
- - `diagonalize_input = false` - whether to assume independence in input space (Note, whens set `true`, this tool will approximate directly the behaviour of the scalar-valued GaussianProcess with ARD kernel)
+ - `kernel_structure` -  - a prescribed form of kernel structure
  - `batch_sizes = nothing` - Dictionary of batch sizes passed `RandomFeatures.jl` object (see definition there)
  - `rng = Random.GLOBAL_RNG` - random number generator 
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
@@ -110,7 +111,7 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "prior_in_scale": use this to tune the input prior scale
      - "n_ensemble":  number of ensemble members
      - "n_iteration":  number of eki iterations
-     - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 1.0)  
+     - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0)  
      - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
      - "tikhonov":  tikhonov regularization parameter if >0
      - "inflation":  additive inflation ∈ [0,1] with 0 being no inflation
@@ -121,22 +122,23 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
 function ScalarRandomFeatureInterface(
     n_features::Int,
     input_dim::Int;
-    diagonalize_input::Bool = false,
+    kernel_structure::Union{KST, Nothing} = nothing,
     batch_sizes::Union{Dict{S, Int}, Nothing} = nothing,
     rng::RNG = Random.GLOBAL_RNG,
     feature_decomposition::S = "cholesky",
     optimizer_options::Union{Dict{S}, Nothing} = nothing,
-) where {S <: AbstractString, RNG <: AbstractRNG}
+) where {S <: AbstractString, RNG <: AbstractRNG, KST <: KernelStructureType}
     # Initialize vector for GP models
     rfms = Vector{RF.Methods.RandomFeatureMethod}(undef, 0)
     fitted_features = Vector{RF.Methods.Fit}(undef, 0)
 
-    if !isnothing(optimizer_options)
-        prior_in_scale = "prior_in_scale" ∈ keys(optimizer_options) ? optimizer_options["prior_in_scale"] : 1.0
-    else
-        prior_in_scale = 1.0
+    if isnothing(kernel_structure)
+        kernel_structure = SeparableKernel(cov_structure_from_string("lowrank", input_dim), OneDimFactor())
     end
-    prior = build_default_prior(input_dim, diagonalize_input, in_scale = prior_in_scale)
+    KSType = typeof(kernel_structure)
+
+    prior = build_default_prior(input_dim, kernel_structure)
+
     # default optimizer settings
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior
@@ -164,23 +166,60 @@ function ScalarRandomFeatureInterface(
     end
     @info("hyperparameter optimization with EKI configured with $opt_tmp")
 
-    return ScalarRandomFeatureInterface{S, RNG}(
+    return ScalarRandomFeatureInterface{S, RNG, KSType}(
         rfms,
         fitted_features,
         batch_sizes,
         n_features,
         input_dim,
         rng,
-        diagonalize_input,
+        kernel_structure,
         feature_decomposition,
         optimizer_opts,
+    )
+end
+
+function hyperparameter_distribution_from_flat(
+    x::VV,
+    input_dim::Int,
+    kernel_structure::SK,
+) where {VV <: AbstractVector, SK <: SeparableKernel}
+
+    M = zeros(input_dim) #scalar output
+    U = hyperparameters_from_flat(x, input_dim, kernel_structure)
+    if !isposdef(U)
+        println("U not posdef - correcting")
+        U = posdef_correct(U)
+    end
+
+    dist = MvNormal(M, U)
+    pd = ParameterDistribution(
+        Dict(
+            "distribution" => Parameterized(dist),
+            "constraint" => repeat([no_constraint()], input_dim),
+            "name" => "xi",
+        ),
+    )
+
+    return pd
+end
+
+function hyperparameter_distribution_from_flat(
+    x::VV,
+    input_dim::Int,
+    kernel_structure::NK,
+) where {VV <: AbstractVector, NK <: NonseparableKernel}
+    throw(
+        ArgumentError(
+            "Scalar Kernels must be of type `Separable( *** , OneDimFactor())`, received $(kernel_structure)",
+        ),
     )
 end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Builds the random feature method from hyperparameters. We use cosine activation functions and a MatrixVariateNormal(M,U,V) distribution (from `Distributions.jl`) with mean M=0, and input covariance U built from cholesky factorization or diagonal components based on the diagonalize_input flag.
+Builds the random feature method from hyperparameters. We use cosine activation functions and a MatrixVariateNormal(M,U,V) distribution (from `Distributions.jl`) with mean M=0, and input covariance U built using a `CovarianceStructureType`.
 """
 function RFM_from_hyperparameters(
     srfi::ScalarRandomFeatureInterface,
@@ -198,33 +237,22 @@ function RFM_from_hyperparameters(
     S <: AbstractString,
     MT <: MultithreadType,
 }
-    diagonalize_input = get_diagonalize_input(srfi)
 
-    M = zeros(input_dim) #scalar output
-    U = hyperparameters_from_flat(l, input_dim, diagonalize_input)
-    if !isposdef(U)
-        println("U not posdef - correcting")
-        U = posdef_correct(U)
-    end
+    xi_hp = l[1:(end - 1)]
+    sigma_hp = l[end]
+    kernel_structure = get_kernel_structure(srfi)
+    pd = hyperparameter_distribution_from_flat(xi_hp, input_dim, kernel_structure)
 
-    dist = MvNormal(M, U)
-    pd = ParameterDistribution(
-        Dict(
-            "distribution" => Parameterized(dist),
-            "constraint" => repeat([no_constraint()], input_dim),
-            "name" => "xi",
-        ),
-    )
     feature_sampler = RF.Samplers.FeatureSampler(pd, rng = rng)
     # Learn hyperparameters for different feature types
-
-    sf = RF.Features.ScalarFourierFeature(n_features, feature_sampler)
+    feature_parameters = Dict("sigma" => sigma_hp)
+    sff = RF.Features.ScalarFourierFeature(n_features, feature_sampler, feature_parameters = feature_parameters)
     thread_opt = isa(multithread_type, TullioThreading) # if we want to multithread with tullio
     if isnothing(batch_sizes)
-        return RF.Methods.RandomFeatureMethod(sf, regularization = regularization, tullio_threading = thread_opt)
+        return RF.Methods.RandomFeatureMethod(sff, regularization = regularization, tullio_threading = thread_opt)
     else
         return RF.Methods.RandomFeatureMethod(
-            sf,
+            sff,
             regularization = regularization,
             batch_sizes = batch_sizes,
             tullio_threading = thread_opt,
@@ -254,7 +282,7 @@ RFM_from_hyperparameters(
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Builds the random feature method from hyperparameters. We use cosine activation functions and a Multivariate Normal distribution (from `Distributions.jl`) with mean M=0, and input covariance U built from cholesky factorization or diagonal components based on the diagonalize_input flag.
+Builds the random feature method from hyperparameters. We use cosine activation functions and a Multivariate Normal distribution (from `Distributions.jl`) with mean M=0, and input covariance U built with the `CovarianceStructureType`.
 """
 function build_models!(
     srfi::ScalarRandomFeatureInterface,
@@ -268,6 +296,10 @@ function build_models!(
 
     input_dim = size(input_values, 1)
 
+    kernel_structure = get_kernel_structure(srfi)
+    n_hp = calculate_n_hyperparameters(input_dim, kernel_structure)
+
+
     rfms = get_rfms(srfi)
     fitted_features = get_fitted_features(srfi)
     n_features = get_n_features(srfi)
@@ -276,15 +308,18 @@ function build_models!(
     decomp_type = get_feature_decomposition(srfi)
     optimizer_options = get_optimizer_options(srfi)
 
-    #regularization = I = 1.0 in scalar case
-    regularization = I
+
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
     train_fraction = optimizer_options["train_fraction"]
     n_train = Int(floor(train_fraction * n_data))
     n_test = n_data - n_train
-    n_features_opt = min(n_features, Int(floor(2 * n_test))) #we take a specified number of features for optimization.
+    n_features_opt = min(n_features, Int(floor(10 * n_test)))#Int(floor(2 * n_test))) #we take a specified number of features for optimization.
     idx_shuffle = randperm(rng, n_data)
+
+    #regularization = I = 1.0 in scalar case
+    regularization = I
+
 
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
@@ -311,11 +346,22 @@ function build_models!(
         end
         # [2.] Estimate covariance at mean value
         prior = optimizer_options["prior"]
+
+        # where prior space has changed we need to rebuild the priors
+        if ndims(prior) > n_hp
+
+            # comes from having a truncated output_dimension
+            # TODO not really a truncation here, resetting to default
+            @info "Original input space of dimension $(get_input_dim(srfi)) has been truncated to $(input_dim). \n Rebuilding prior... number of hyperparameters reduced from $(ndims(prior)) to $(n_hp)."
+            prior = build_default_prior(input_dim, kernel_structure)
+
+        end
+
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
 
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
         n_cov_samples_min = n_test + 2
-        n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 1.0)))
+        n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
 
         internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
             srfi,
@@ -331,9 +377,8 @@ function build_models!(
             decomp_type,
             multithread_type,
         )
-
         Γ = internal_Γ
-        Γ[1:n_test, 1:n_test] += approx_σ2
+        Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
         Γ[(n_test + 1):end, (n_test + 1):end] += I
 
         # [3.] set up EKP optimization
@@ -343,7 +388,8 @@ function build_models!(
         scheduler = optimizer_options["scheduler"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        min_complexity = log(det(regularization))
+        min_complexity = log(regularization.λ)
+        min_complexity = sqrt(abs(min_complexity))
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
         ekiobj = EKP.EnsembleKalmanProcess(
             initial_params,
@@ -415,6 +461,7 @@ function build_models!(
 
         io_pairs_i = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
         # Now, fit new RF model with the optimized hyperparameters
+
         rfm_i = RFM_from_hyperparameters(
             srfi,
             rng,

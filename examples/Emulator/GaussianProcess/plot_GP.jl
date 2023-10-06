@@ -11,6 +11,7 @@ using CalibrateEmulateSample.DataContainers
 
 plot_flag = true
 if plot_flag
+    ENV["GKSwstype"] = "100"
     using Plots
     gr(size = (1500, 700))
     Plots.scalefontsizes(1.3)
@@ -78,7 +79,7 @@ gaussian_process = GaussianProcess(gppackage, noise_learn = false)
 # The observables y are related to the parameters x by: 
 # y = G(x1, x2) + η, 
 # where G(x1, x2) := [sin(x1) + cos(x2), sin(x1) - cos(x2)], and η ~ N(0, Σ)
-n = 100  # number of training points
+n = 150  # number of training points
 p = 2   # input dim 
 d = 2   # output dim
 

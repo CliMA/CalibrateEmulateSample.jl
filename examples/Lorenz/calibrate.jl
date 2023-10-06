@@ -15,6 +15,34 @@ using CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 const PD = EKP.ParameterDistributions
 
+
+function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
+    n_out, n_sample = size(sample_mat)
+
+    # de-mean (as we will use the samples directly for calculation of β)
+    sample_mat_zeromean = sample_mat .- mean(sample_mat, dims = 2)
+    # Ledoit Wolf shrinkage to I
+
+    # get sample covariance
+    Γ = cov(sample_mat_zeromean, dims = 2)
+    # estimate opt shrinkage
+    μ_shrink = 1 / n_out * tr(Γ)
+    δ_shrink = norm(Γ - μ_shrink * I)^2 / n_out # (scaled) frob norm of Γ_m
+    #once de-meaning, we need to correct the sample covariance with an n_sample -> n_sample-1
+    β_shrink = sum([norm(c * c' - -Γ)^2 / n_out for c in eachcol(sample_mat_zeromean)]) / (n_sample - 1)^2
+
+    γ_shrink = min(β_shrink / δ_shrink, 1) # clipping is typically rare
+    #  γμI + (1-γ)Γ
+    Γ .*= (1 - γ_shrink)
+    for i in 1:n_out
+        Γ[i, i] += γ_shrink * μ_shrink
+    end
+
+    @info "Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)\n shrinkage covariance condition number: $(cond(Γ))"
+    return Γ
+end
+
+
 function main()
 
     rng_seed = 4137
@@ -63,10 +91,6 @@ function main()
     n_param = length(param_names)
     params_true = reshape(params_true, (n_param, 1))
 
-    println(n_param)
-    println(params_true)
-
-
     ###
     ###  Define the parameter priors
     ###
@@ -97,7 +121,7 @@ function main()
     N = 36
     dt = 1 / 64.0
     # Start of integration
-    t_start = 800.0
+    t_start = 100.0#800.0
     # We now rescale all the timings etc, to be in nondim-time
     # Data collection length
     if dynamics == 1
@@ -110,7 +134,7 @@ function main()
     # Integration length
     Tfit = Ts_days / τc
     # Initial perturbation
-    Fp = rand(Normal(0.0, 0.01), N)
+    Fp = rand(rng, Normal(0.0, 0.01), N)
     kmax = 1
     # Prescribe variance or use a number of forward passes to define true interval variability
     var_prescribe = false
@@ -148,40 +172,61 @@ function main()
         μ = zeros(length(gt))
         # Add noise
         for i in 1:n_samples
-            yt[:, i] = gt .+ rand(MvNormal(μ, Γy))
+            yt[:, i] = gt .+ rand(rng, MvNormal(μ, Γy))
         end
-        println(Γy)
 
     else
         println("Using truth values to compute covariance")
         n_samples = 100
-        nthreads = Threads.nthreads()
-        yt = zeros(nthreads, length(gt), n_samples)
-        Threads.@threads for i in 1:n_samples
+        yt = zeros(length(gt), n_samples)
+        for i in 1:n_samples
 
-            #=
-                        lorenz_settings_local = GModel.LSettings(
-                            dynamics,
-                            stats_type,
-                            t_start + T * (i - 1),
-                            T,
-                            Ts,
-                            Tfit,
-                            Fp,
-                            N,
-                            dt,
-                            t_start + T * (i - 1) + T,
-                            kmax,
-                            ω_fixed,
-                            ω_true,
-                        )=#
-            lorenz_settings_local = lorenz_settings
-            tid = Threads.threadid()
-            yt[tid, :, i] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
+            # Fp changes IC, then run from 0 to t_start + T,
+            # then gathering stats over [t_start, t_start+T]
+            Fp = rand(rng, Normal(0.0, 0.01), N)
+            lorenz_settings_local = GModel.LSettings(
+                dynamics,
+                stats_type,
+                t_start, # data collection start start time
+                T, #data collection length
+                Ts, # integration_length
+                Tfit, # number of Ts to fit over
+                Fp,
+                N,
+                dt,
+                t_start + T, #sim end time
+                kmax,
+                ω_fixed,
+                ω_true,
+            )
+
+            #= lorenz_settings_local = GModel.LSettings(
+                dynamics,
+                stats_type,
+                t_start + T * (i - 1), #sim start time
+                T, #data collection length
+                Ts, # integration_length
+                Tfit, # number of Ts to fit over
+                Fp,
+                N,
+                dt,
+                t_start + T * (i - 1) + T , #sim end time
+                kmax,
+                ω_fixed,
+                ω_true,
+            )=#
+            yt[:, i] = GModel.run_G_ensemble(params_true, lorenz_settings_local)
+
         end
-        yt = dropdims(sum(yt, dims = 1), dims = 1)
+        gr(dpi = 300, size = (400, 400))
+        KK = plot(yt[1:end, 1:100], legend = false)
+        savefig(KK, joinpath(figure_save_directory, "data_samples.png"))
 
-        # add a little extra variance for regularization here
+        # [1.] use shrinkage for regularization
+        Γy = shrinkage_cov(yt)
+
+        #=
+        # [2.] add fixed variance for regularization
         noise_sd = 0.1
         Γy_diag = noise_sd .^ 2 * convert(Array, I(size(yt, 1)))
         μ = zeros(size(yt, 1))
@@ -192,8 +237,8 @@ function main()
         #Γy = convert(Array, Diagonal(dropdims(mean((yt.-mean(yt,dims=1)).^2,dims=1),dims=1)))
         # Covariance of truth data
         Γy = cov(yt, dims = 2)
+        =#
 
-        println(Γy)
     end
 
 
