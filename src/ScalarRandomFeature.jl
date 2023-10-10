@@ -6,7 +6,7 @@ $(DocStringExtensions.TYPEDEF)
 
 Structure holding the Scalar Random Feature models. 
 
-# FieldsWhen calibrated with ocean LES,
+# Fields
 $(DocStringExtensions.TYPEDFIELDS)
 
 """

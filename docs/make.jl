@@ -30,6 +30,7 @@ pages = [
     "Emulate" => "emulate.md",
     "Examples" => examples,
     "Gaussian Process" => "GaussianProcessEmulator.md",
+    "Random Features" => "random_feature_emulator.md",
     "Package Design" => design,
     "API" => api,
     "Glossary" => "glossary.md",

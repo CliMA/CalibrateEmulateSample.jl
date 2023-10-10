@@ -3,6 +3,19 @@
 ```@meta
 CurrentModule = CalibrateEmulateSample.Emulators
 ```
+## Kernel and Covariance structure
+```@docs
+OneDimFactor
+DiagonalFactor
+CholeskyFactor
+LowRankFactor
+HierarchicalLowRankFactor
+SeparableKernel
+NonseparableKernel
+calculate_n_hyperparameters
+hyperparameters_from_flat
+build_default_prior
+```
 
 ## Scalar interface
 
@@ -36,4 +49,5 @@ get_feature_decomposition
 get_optimizer_options
 optimize_hyperparameters!(::ScalarRandomFeatureInterface) 
 optimize_hyperparameters!(::VectorRandomFeatureInterface) 
+shrinkage_cov
 ```
