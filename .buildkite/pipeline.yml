@@ -100,7 +100,7 @@ steps:
         println("+++ Running Vector Random Feature cases")
         include("examples/Emulator/RandomFeature/vector_optimize_and_plot_RF.jl")'
     artifact_paths:
-      - "examples/Emulator/GaussianProcess/output/*.png"
+      - "examples/Emulator/RandomFeature/output/*.png"
     env:
       PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
       PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
