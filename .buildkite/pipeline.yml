@@ -79,3 +79,34 @@ steps:
       queue: central
       slurm_ntasks: 1
 
+  - label: "Random Feature Emulator"
+    key: "random_feature_emulator"
+    command: |
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
+
+      mkdir examples/Emulator/RandomFeature/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/RandomFeature/depot:$JULIA_DEPOT_PATH"
+
+      julia --color=yes --project=examples/Emulator/RandomFeature -e '
+        println("--- Developing Project")
+        using Pkg;
+        Pkg.develop(path=".")
+        println("--- Instantiating Project")
+        Pkg.instantiate()
+        println("+++ Running Scalar Random Feature cases")
+        include("examples/Emulator/RandomFeature/scalar_optimize_and_plot_RF.jl")
+        println("+++ Running Vector Random Feature cases")
+        include("examples/Emulator/RandomFeature/vector_optimize_and_plot_RF.jl")'
+    artifact_paths:
+      - "examples/Emulator/RandomFeature/output/*.png"
+    env:
+      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
+      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+
