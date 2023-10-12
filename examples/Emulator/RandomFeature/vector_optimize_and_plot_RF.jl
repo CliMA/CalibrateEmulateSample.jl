@@ -41,7 +41,7 @@ function main()
     end
 
     cases = ["svd-diag", "svd-nondiag", "nosvd-diag", "nosvd-nondiag", "svd-nonsep", "nosvd-nonsep"]
-    case_mask = 1:6 # which cases to do
+    case_mask = 1:6 # (KEEP set to 1:6 when pushing for buildkite)
     nugget = 1e-12
 
     #problem
