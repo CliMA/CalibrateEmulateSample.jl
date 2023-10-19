@@ -1,5 +1,5 @@
 env:
-  JULIA_VERSION: "1.8.0"
+  JULIA_VERSION: "1.9.2"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
@@ -14,6 +14,9 @@ steps:
       - "julia --project -e 'using Conda; Conda.add(\"matplotlib=3.7.1\")'"
     env:
       PYTHON: ""
+      
+    artifact_paths: 
+      - "*.toml"
     agents:
       config: cpu
       queue: central
@@ -35,6 +38,7 @@ steps:
         println("--- Developing Project")
         using Pkg;
         Pkg.develop(path=".")
+        Pkg.update()
         println("--- Instantiating Project")
         Pkg.instantiate()
         println("+++ Running Lorenz")
@@ -62,6 +66,7 @@ steps:
         println("--- Developing Project")
         using Pkg;
         Pkg.develop(path=".")
+        Pkg.update()
         println("--- Instantiating Project")
         Pkg.instantiate()
         println("+++ Running PlotGP")
@@ -93,6 +98,7 @@ steps:
         println("--- Developing Project")
         using Pkg;
         Pkg.develop(path=".")
+        Pkg.update()
         println("--- Instantiating Project")
         Pkg.instantiate()
         println("+++ Running Scalar Random Feature cases")

@@ -5,10 +5,12 @@ using CairoMakie, ColorSchemes #for plots
 using JLD2
 
 # CES 
+using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
 
 function lorenz(du, u, p, t)
@@ -47,30 +49,35 @@ function main()
     # Create training pairs (with noise) from subsampling [burnin,tmax] 
     tburn = 10
     burnin = Int(floor(10 / dt))
-    n_train_pts = 400 #600 
-    ind = shuffle!(rng, Vector(burnin:(tmax / dt - 1)))[1:n_train_pts]
+    n_train_pts = 600 #600 
+    ind = Int.(shuffle!(rng, Vector(burnin:(tmax / dt - 1)))[1:n_train_pts])
     n_tp = length(ind)
     input = zeros(3, n_tp)
     output = zeros(3, n_tp)
-    Γy = 1e-6 * I(3)
+    Γy = 1e-4 * I(3)
     noise = rand(rng, MvNormal(zeros(3), Γy), n_tp)
     for i in 1:n_tp
-        input[:, i] = sol.u[i]
-        output[:, i] = sol.u[i + 1] + noise[:, i]
+        input[:, i] = sol.u[ind[i]]
+        output[:, i] = sol.u[ind[i] + 1] + noise[:, i]
     end
     iopairs = PairedDataContainer(input, output)
 
     # Emulate
-    cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-vector-svd-nonsep"]
+    cases =
+        ["GP", "RF-scalar", "RF-scalar-diagin", "RF-vector-svd-nonsep", "RF-vector-nosvd-nonsep", "RF-vector-nosvd-sep"]
 
-    case = cases[4]
+    case = cases[1]
     decorrelate = true
     nugget = Float64(1e-12)
     overrides = Dict(
         "verbose" => true,
-        "scheduler" => DataMisfitController(terminate_at = 1e4),
-        "cov_sample_multiplier" => 2.0,
-        "n_iteration" => 10,
+        "scheduler" => DefaultScheduler(1.0),#DataMisfitController(terminate_at = 1e4),
+        "cov_sample_multiplier" => 0.5,
+        "n_features_opt" => 200,
+        "n_iteration" => 20,
+        #        "n_ensemble" => 20,
+        #        "localization" => EKP.Localizers.SEC(1.0,0.1),
+        "accelerator" => NesterovAccelerator(),
     )
 
     # Build ML tools
@@ -97,9 +104,33 @@ function main()
             optimizer_options = overrides,
         )
     elseif case ∈ ["RF-vector-svd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(9, nugget))
+        kernel_structure = NonseparableKernel(LowRankFactor(6, nugget))
         n_features = 500
 
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            3,
+            3,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    elseif case ∈ ["RF-vector-nosvd-nonsep"]
+        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        n_features = 500
+        decorrelate = false # don't do SVD
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            3,
+            3,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    elseif case ∈ ["RF-vector-nosvd-sep"]
+        kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(3, nugget))
+        n_features = 500
+        decorrelate = false # don't do SVD
         mlt = VectorRandomFeatureInterface(
             n_features,
             3,
