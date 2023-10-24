@@ -1,0 +1,9 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CalibrateEmulateSample = "95e48a1f-0bec-4818-9538-3db4340308e3"
+ColorSchemes = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+GlobalSensitivityAnalysis = "1b10255b-6da3-57ce-9089-d24e8517b87e"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"

@@ -116,7 +116,9 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "tikhonov":  tikhonov regularization parameter if >0
      - "inflation":  additive inflation ∈ [0,1] with 0 being no inflation
      - "train_fraction":  e.g. 0.8 (default)  means 80:20 train - test split
+     - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
      - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
+     - "accelerator": use EKP accelerators (default is no acceleration)
      - "verbose" => false, verbose optimizer statements
 """
 function ScalarRandomFeatureInterface(
@@ -145,11 +147,13 @@ function ScalarRandomFeatureInterface(
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
         "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping,
-        "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme
+        "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
+        "n_features_opt" => n_features, # number of features for the optimization 
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
+        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
     )
 
     if !isnothing(optimizer_options)
@@ -314,7 +318,8 @@ function build_models!(
     train_fraction = optimizer_options["train_fraction"]
     n_train = Int(floor(train_fraction * n_data))
     n_test = n_data - n_train
-    n_features_opt = min(n_features, Int(floor(10 * n_test)))#Int(floor(2 * n_test))) #we take a specified number of features for optimization.
+    n_features_opt = optimizer_options["n_features_opt"]
+
     idx_shuffle = randperm(rng, n_data)
 
     #regularization = I = 1.0 in scalar case
@@ -386,6 +391,7 @@ function build_models!(
         n_iteration = optimizer_options["n_iteration"]
         opt_verbose_flag = optimizer_options["verbose"]
         scheduler = optimizer_options["scheduler"]
+        accelerator = optimizer_options["accelerator"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
         min_complexity = log(regularization.λ)
@@ -398,6 +404,7 @@ function build_models!(
             Inversion(),
             scheduler = scheduler,
             rng = rng,
+            accelerator = accelerator,
             verbose = opt_verbose_flag,
         )
         err = zeros(n_iteration)

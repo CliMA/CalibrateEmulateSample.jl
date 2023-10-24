@@ -144,7 +144,9 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "tikhonov": tikhonov regularization parameter if > 0
       - "inflation": additive inflation ∈ [0,1] with 0 being no inflation
       - "train_fraction": e.g. 0.8 (default)  means 80:20 train - test split
+      - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
       - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
+      - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
 
 """
@@ -183,9 +185,11 @@ function VectorRandomFeatureInterface(
         "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
+        "n_features_opt" => n_features, # number of features for the optimization 
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
+        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
     )
 
     if !isnothing(optimizer_options)
@@ -384,19 +388,7 @@ function build_models!(
     train_fraction = optimizer_options["train_fraction"]
     n_train = Int(floor(train_fraction * n_data)) # 20% split
     n_test = n_data - n_train
-
-    # there are less hyperparameters when we diagonalize
-    if nameof(typeof(kernel_structure)) == :SeparableKernel
-        if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
-            n_features_opt = min(n_features, Int(floor(4 * n_train))) #we take a specified number of features for optimization. MAGIC NUMBER
-        else
-            # note the n_features_opt should NOT exceed output_dim * n_train or the regularization is replaced with a diagonal approx.
-            n_features_opt = max(min(n_features, Int(floor(4 * sqrt(n_train * output_dim)))), Int(floor(1.9 * n_train)))#we take a specified number of features for optimization. MAGIC NUMBER
-        end
-    else
-        # note the n_features_opt should NOT exceed output_dim * n_train or the regularization is replaced with a diagonal approx.
-        n_features_opt = max(min(n_features, Int(floor(4 * sqrt(n_train * output_dim)))), Int(floor(1.9 * n_train)))#we take a specified number of features for optimization. MAGIC NUMBER
-    end
+    n_features_opt = optimizer_options["n_features_opt"]
 
     @info (
         "hyperparameter learning using $n_train training points, $n_test validation points and $n_features_opt features"
@@ -511,6 +503,8 @@ function build_models!(
     opt_verbose_flag = optimizer_options["verbose"]
     scheduler = optimizer_options["scheduler"]
     localization = optimizer_options["localization"]
+    accelerator = optimizer_options["accelerator"]
+
     if !isposdef(Γ)
         Γ = posdef_correct(Γ)
     end
@@ -526,6 +520,7 @@ function build_models!(
         rng = rng,
         verbose = opt_verbose_flag,
         localization_method = localization,
+        accelerator = accelerator,
     )
     err = zeros(n_iteration)
 

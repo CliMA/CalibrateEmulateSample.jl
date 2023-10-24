@@ -140,10 +140,12 @@ rng = Random.MersenneTwister(seed)
             "n_ensemble" => max(ndims(prior) + 1, 10),
             "n_iteration" => 5,
             "scheduler" => DataMisfitController(),
-            "cov_sample_multiplier" => 10.0,
+            "n_features_opt" => n_features,
+            "cov_sample_multiplier" => 2.0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
+            "accelerator" => DefaultAccelerator(),
             "verbose" => false,
         )
 
@@ -201,10 +203,12 @@ rng = Random.MersenneTwister(seed)
             "n_iteration" => 5,
             "scheduler" => DataMisfitController(),
             "cov_sample_multiplier" => 10.0,
+            "n_features_opt" => n_features,
             "tikhonov" => 0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
+            "accelerator" => DefaultAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
         )
