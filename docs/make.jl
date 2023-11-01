@@ -6,6 +6,7 @@ using Documenter
 #----------
 
 examples = [
+    "Simple example walkthrough" => "examples/sinusoid_example.md",
     "Lorenz example" => "examples/lorenz_example.md",
     "Turbulence example" => "examples/edmf_example.md",
     "Cloudy example" => "examples/Cloudy_example.md",
