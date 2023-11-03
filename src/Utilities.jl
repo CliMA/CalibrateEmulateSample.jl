@@ -14,7 +14,6 @@ export get_training_points
 export get_obs_sample
 export orig2zscore
 export zscore2orig
-export posdef_correct
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
@@ -119,32 +118,5 @@ function zscore2orig(Z::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::Abstr
     end
     return X
 end
-
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Makes square matrix `mat` positive definite, by symmetrizing and bounding the minimum eigenvalue below by `tol`
-"""
-function posdef_correct(mat::AbstractMatrix; tol::Real = 1e8 * eps())
-    if !issymmetric(mat)
-        out = 0.5 * (mat + permutedims(mat, (2, 1))) #symmetrize
-        if isposdef(out)
-            # very often, small numerical errors cause asymmetry, so cheaper to add this branch
-            return out
-        end
-    else
-        out = mat
-    end
-
-    nugget = abs(minimum(eigvals(out)))
-    for i in 1:size(out, 1)
-        out[i, i] += nugget + tol #add to diag
-    end
-    return out
-end
-
-
-
 
 end # module

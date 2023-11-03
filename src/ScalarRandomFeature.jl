@@ -394,7 +394,7 @@ function build_models!(
         accelerator = optimizer_options["accelerator"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        min_complexity = log(regularization.λ)
+        min_complexity = n_features_opt * log(regularization.λ)
         min_complexity = sqrt(abs(min_complexity))
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
         ekiobj = EKP.EnsembleKalmanProcess(
