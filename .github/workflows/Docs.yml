@@ -3,7 +3,7 @@ name: Documentation
 on:
   push:
     branches:
-      - master
+      - main
       - trying
       - staging
     tags: '*'
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1
         with:
-          version: 1.7.3
+          version: "1"
       - name: Cache artifacts
         uses: actions/cache@v1
         env:
