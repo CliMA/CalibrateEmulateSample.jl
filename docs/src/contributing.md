@@ -156,8 +156,4 @@ do not require the unit tests to be run.
 
 ### The merge process
 
-We use [`bors`](https://bors.tech/) to manage merging PR's in the the `CalibrateEmulateSample` repo.
-If you're a collaborator and have the necessary permissions, you can type
-`bors try` in a comment on a PR to have integration test suite run on that
-PR, or `bors r+` to try and merge the code.  Bors ensures that all integration tests
-for a given PR always pass before merging into `main`. The integration tests currently run example cases in `examples/`. Any breaking changes will need to also update the `examples/`, else bors will fail.
+We ensure that all unit tests across several environments, Documentation builds, and integration tests (managed by Buildkite), pass before merging any PR into `main`. The integration tests currently run some of our example cases in `examples/`.

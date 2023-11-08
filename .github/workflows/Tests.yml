@@ -3,10 +3,8 @@ name: Tests
 on:
   pull_request:
   push:
-    branches:
-      - staging
-      - trying
-      - master
+    tags: '*'
+
 jobs:
   test-linux:
     timeout-minutes: 60
