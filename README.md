@@ -8,7 +8,6 @@ Implements a derivative-free machine-learning accelerated pipeline for uncertain
 | **Docs Build**       | [![docs build][docs-bld-img]][docs-bld-url]      |
 | **Unit tests**       | [![unit tests][unit-tests-img]][unit-tests-url]  |
 | **Code Coverage**    | [![codecov][codecov-img]][codecov-url]           |
-| **Bors**             | [![Bors enabled][bors-img]][bors-url]            |
 
 [zenodo-img]: https://zenodo.org/badge/179573047.svg
 [zenodo-latest-url]: https://zenodo.org/badge/latestdoi/179573047
@@ -25,8 +24,5 @@ Implements a derivative-free machine-learning accelerated pipeline for uncertain
 
 [codecov-img]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl/branch/master/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl
-
-[bors-img]: https://bors.tech/images/badge_small.svg
-[bors-url]: https://app.bors.tech/repositories/24774
 
 
