@@ -5,13 +5,9 @@ using CairoMakie, ColorSchemes #for plots
 using JLD2
 
 # CES 
-using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
-EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
-
 
 function lorenz(du, u, p, t)
     du[1] = 10.0 * (u[2] - u[1])
@@ -21,11 +17,18 @@ end
 
 function main()
 
+    output_directory = joinpath(@__DIR__, "output")
+    if !isdir(output_directory)
+        mkdir(output_directory)
+    end
+
     # rng
     rng = MersenneTwister(1232434)
 
-    n_repeats = 1 # repeat exp with same data.
+    n_repeats = 20 # repeat exp with same data.
     println("run experiment $n_repeats times")
+
+
 
     # Run L63 from 0 -> tmax
     u0 = [1.0; 0.0; 0.0]
@@ -35,7 +38,7 @@ function main()
     prob = ODEProblem(lorenz, u0, tspan)
     sol = solve(prob, Euler(), dt = dt)
 
-    # Run L63 from end for test trajetory data
+    # Run L63 from end for test trajectory data
     tmax_test = 100
     tspan_test = (0.0, tmax_test)
     u0_test = sol.u[end]
@@ -67,7 +70,7 @@ function main()
     # Create training pairs (with noise) from subsampling [burnin,tmax] 
     tburn = 1 # NB works better with no spin-up!
     burnin = Int(floor(tburn / dt))
-    n_train_pts = 600 #600 
+    n_train_pts = 600
     sample_rand = true
     if sample_rand
         ind = Int.(shuffle!(rng, Vector(burnin:(tmax / dt - 1)))[1:n_train_pts])
@@ -87,37 +90,29 @@ function main()
 
 
     # Emulate
-    cases =
-        ["GP", "RF-scalar", "RF-scalar-diagin", "RF-vector-svd-nonsep", "RF-vector-nosvd-nonsep", "RF-vector-nosvd-sep"]
+    cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
 
-    case = cases[5]
-    decorrelate = true
+    case = cases[1]
+
     nugget = Float64(1e-12)
     u_test = []
     u_hist = []
     train_err = []
     for rep_idx in 1:n_repeats
 
-        overrides = Dict(
-            "verbose" => true,
+        rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
             "cov_sample_multiplier" => 0.5,
-            "n_features_opt" => 200,
-            "n_iteration" => 20,
-            "accelerator" => NesterovAccelerator(),
+            "n_features_opt" => 400,
+            "n_iteration" => 30,
+            "accelerator" => ConstantStepNesterovAccelerator(),
         )
 
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
-            mlt = GaussianProcess(
-                gppackage;
-                kernel = nothing, # use default squared exponential kernel
-                prediction_type = pred_type,
-                noise_learn = false,
-            )
-
+            mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
         elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
             n_features = 10 * Int(floor(sqrt(3 * n_tp)))
             kernel_structure =
@@ -128,9 +123,9 @@ function main()
                 3,
                 rng = rng,
                 kernel_structure = kernel_structure,
-                optimizer_options = overrides,
+                optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-vector-svd-nonsep"]
+        elseif case ∈ ["RF-svd-nonsep"]
             kernel_structure = NonseparableKernel(LowRankFactor(6, nugget))
             n_features = 500
 
@@ -140,35 +135,38 @@ function main()
                 3,
                 rng = rng,
                 kernel_structure = kernel_structure,
-                optimizer_options = overrides,
+                optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-vector-nosvd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        elseif case ∈ ["RF-nosvd-nonsep"]
+            kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
             n_features = 500
-            decorrelate = false # don't do SVD
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 3,
                 3,
                 rng = rng,
                 kernel_structure = kernel_structure,
-                optimizer_options = overrides,
+                optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-vector-nosvd-sep"]
+        elseif case ∈ ["RF-nosvd-sep"]
             kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(3, nugget))
             n_features = 500
-            decorrelate = false # don't do SVD
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 3,
                 3,
                 rng = rng,
                 kernel_structure = kernel_structure,
-                optimizer_options = overrides,
+                optimizer_options = rf_optimizer_overrides,
             )
         end
 
         # Emulate
+        if case ∈ ["RF-nosvd-nonsep", "RF-nosvd-sep"]
+            decorrelate = false
+        else
+            decorrelate = true
+        end
         emulator = Emulator(mlt, iopairs; obs_noise_cov = Γy, decorrelate = decorrelate)
         optimize_hyperparameters!(emulator)
 
@@ -220,8 +218,8 @@ function main()
 
             current_figure()
             # save
-            save("l63_test.png", f, px_per_unit = 3)
-            save("l63_test.pdf", f, pt_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_test.png"), f, px_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_test.pdf"), f, pt_per_unit = 3)
 
             # plot attractor
             f3 = Figure()
@@ -229,8 +227,8 @@ function main()
             lines(f3[2, 1], solplot[1, :], solplot[3, :], color = :orange)
 
             # save
-            save("l63_attr.png", f3, px_per_unit = 3)
-            save("l63_attr.pdf", f3, pt_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_attr.png"), f3, px_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_attr.pdf"), f3, pt_per_unit = 3)
 
             # plotting histograms
             f2 = Figure()
@@ -243,16 +241,16 @@ function main()
             hist!(f2[1, 3], solhist[3, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
 
             # save
-            save("l63_pdf.png", f2, px_per_unit = 3)
-            save("l63_pdf.pdf", f2, pt_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_pdf.png"), f2, px_per_unit = 3)
+            save(joinpath(output_directory, case * "_l63_pdf.pdf"), f2, pt_per_unit = 3)
         end
 
     end
 
     # save data
-    JLD2.save("l63_trainerr.jld2", "train_err", train_err)
-    JLD2.save("l63_histdata.jld2", "solhist", solhist, "uhist", u_hist)
-    JLD2.save("l63_testdata.jld2", "solplot", solplot, "uplot", u_test)
+    JLD2.save(joinpath(output_directory, case * "_l63_trainerr.jld2"), "train_err", train_err)
+    JLD2.save(joinpath(output_directory, case * "_l63_histdata.jld2"), "solhist", solhist, "uhist", u_hist)
+    JLD2.save(joinpath(output_directory, case * "_l63_testdata.jld2"), "solplot", solplot, "uplot", u_test)
 
     # compare  marginal histograms to truth - rough measure of fit
     sol_cdf = sort(solhist, dims = 2)
@@ -283,8 +281,8 @@ function main()
 
 
     # save
-    save("l63_cdfs.png", f4, px_per_unit = 3)
-    save("l63_cdfs.pdf", f4, pt_per_unit = 3)
+    save(joinpath(output_directory, case * "_l63_cdfs.png"), f4, px_per_unit = 3)
+    save(joinpath(output_directory, case * "_l63_cdfs.pdf"), f4, pt_per_unit = 3)
 
 end
 
