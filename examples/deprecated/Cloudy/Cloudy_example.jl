@@ -93,14 +93,12 @@ end
 # Define the parameters that we want to learn
 # We assume that the true particle mass distribution is a Gamma 
 # distribution with parameters N0_true, θ_true, k_true
-par_names = ["N0", "θ", "k"]
-n_par = length(par_names)
+param_names = ["N0", "θ", "k"]
+n_params = length(param_names)
 N0_true = 300.0  # number of particles (scaling factor for Gamma distribution)
 θ_true = 1.5597  # scale parameter of Gamma distribution
 k_true = 0.0817  # shape parameter of Gamma distribution
-# Note that dist_true is a Cloudy distribution, not a Distributions.jl 
-# distribution
-ϕ_true = [N0_true, θ_true, k_true]
+ϕ_true = [N0_true, θ_true, k_true] # true parameters in constrained space
 dist_true = ParticleDistributions.GammaPrimitiveParticleDistribution(ϕ_true...)
 
 
@@ -160,7 +158,7 @@ for i in 1:n_samples
 end
 
 truth = Observations.Observation(y_t, Γy, data_names)
-truth_sample = truth.mean
+truth_sample = truth.mean # TODO: should this be yt[:, end]
 
 
 ###
@@ -169,10 +167,10 @@ truth_sample = truth.mean
 
 N_ens = 50 # number of ensemble members
 N_iter = 8 # number of EKI iterations
-# initial parameters: N_par x N_ens
-initial_par = construct_initial_ensemble(rng, priors, N_ens)
+# initial parameters: n_params x N_ens
+initial_params = construct_initial_ensemble(rng, priors, N_ens)
 ekiobj = EnsembleKalmanProcess(
-    initial_par,
+    initial_params,
     truth_sample,
     truth.obs_noise_cov,
     Inversion(),
@@ -180,7 +178,7 @@ ekiobj = EnsembleKalmanProcess(
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set within `run_dyn_model`
-dummy = ones(n_par)
+dummy = ones(n_params)
 dist_type = ParticleDistributions.GammaPrimitiveParticleDistribution(dummy...)
 model_settings = DynamicalModel.ModelSettings(kernel, dist_type, moments, tspan)
 # EKI iterations
@@ -203,8 +201,25 @@ println(get_u_mean_final(ekiobj))
 
 u_stored = get_u(ekiobj, return_array = false)
 g_stored = get_g(ekiobj, return_array = false)
-@save data_save_directory * "parameter_storage_eki.jld2" u_stored
-@save data_save_directory * "data_storage_eki.jld2" g_stored
+#@save data_save_directory * "parameter_storage_eki.jld2" u_stored
+#@save data_save_directory * "data_storage_eki.jld2" g_stored
+save(
+    joinpath(data_save_directory, "cloudy_calibrate_results.jld2"),
+    "inputs",
+    u_stored,
+    "outputs",
+    g_stored,
+    "priors",
+    priors,
+    "eki",
+    ekiobj,
+    "truth_sample",
+    truth_sample,
+    "truth_sample_mean",
+    truth.mean,
+    "truth_input_constrained",
+    ϕ_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
+)
 
 #plots - unconstrained
 gr(size = (1200, 400))
@@ -327,7 +342,7 @@ pred_type = Emulators.YType()
 gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 gauss_proc = GaussianProcess(
     gppackage;
-    kernel = gp_kernel, g use default squared exponential kernel
+    kernel = gp_kernel,
     prediction_type = pred_type,
     noise_learn = false,
 )
@@ -388,8 +403,8 @@ for idx in 1:n_params
         throw("not implemented")
     end
 
-    label = "true " * par_names[idx]
-    posterior_samples = dropdims(get_distribution(posterior)[par_names[idx]], dims = 1)
+    label = "true " * param_names[idx]
+    posterior_samples = dropdims(get_distribution(posterior)[param_names[idx]], dims = 1)
     histogram(
         posterior_samples,
         bins = 100,
@@ -399,11 +414,11 @@ for idx in 1:n_params
         lab = "posterior",
         legend = :outertopright,
     )
-    prior_dist = get_distribution(mcmc.prior)[par_names[idx]]
+    prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
     plot!(xs, prior_dist, w = 2.6, color = :blue, lab = "prior")
     plot!([θ_true[idx]], seriestype = "vline", w = 2.6, lab = label)
-    title!(par_names[idx])
-    figpath = joinpath(figure_save_directory, "posterior_" * par_names[idx] * ".png")
+    title!(param_names[idx])
+    figpath = joinpath(figure_save_directory, "posterior_" * param_names[idx] * ".png")
     StatsPlots.savefig(figpath)
     linkfig(figpath)
 end
