@@ -60,8 +60,8 @@ function main()
     scatter!(axy, samples[:, 2], y[:], color = :orange)
     scatter!(axz, samples[:, 3], y[:], color = :orange)
 
-    save(joinpath(output_directory,"ishigami_slices_truth.png"), f1, px_per_unit = 3)
-    save(joinpath(output_directory,"ishigami_slices_truth.pdf"), f1, px_per_unit = 3)
+    save(joinpath(output_directory, "ishigami_slices_truth.png"), f1, px_per_unit = 3)
+    save(joinpath(output_directory, "ishigami_slices_truth.pdf"), f1, px_per_unit = 3)
 
     n_train_pts = 300
     ind = shuffle!(rng, Vector(1:n_data))[1:n_train_pts]
@@ -82,7 +82,8 @@ function main()
     decorrelate = true
     nugget = Float64(1e-12)
 
-    overrides = Dict("verbose" => true, "scheduler" => DataMisfitController(terminate_at = 1e4), "n_features_opt" => 200)
+    overrides =
+        Dict("verbose" => true, "scheduler" => DataMisfitController(terminate_at = 1e4), "n_features_opt" => 200)
     if case == "Prior"
         # don't do anything
         overrides["n_iteration"] = 0
@@ -168,7 +169,7 @@ function main()
         println("(std)  totalorder: ", totalorder_std)
     end
 
-     # plots
+    # plots
 
     f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
     axx_em = Axis(f2[1, 1], xlabel = "x1", ylabel = "f")
@@ -181,8 +182,8 @@ function main()
     scatter!(axy_em, samples[ind, 2], y[ind] + noise, color = :red, markersize = 8)
     scatter!(axz_em, samples[ind, 3], y[ind] + noise, color = :red, markersize = 8)
 
-    save(joinpath(output_directory,"ishigami_slices_$(case).png"), f2, px_per_unit = 3)
-    save(joinpath(output_directory,"ishigami_slices_$(case).pdf"), f2, px_per_unit = 3)
+    save(joinpath(output_directory, "ishigami_slices_$(case).png"), f2, px_per_unit = 3)
+    save(joinpath(output_directory, "ishigami_slices_$(case).pdf"), f2, px_per_unit = 3)
 
 
 end
