@@ -1,6 +1,7 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 include(joinpath(@__DIR__, "../..", "ci", "linkfig.jl"))
-include(joinpath(@__DIR__, "DynamicalModel.jl")) # Import the module that runs Cloudy
+# Import the module that runs Cloudy
+include(joinpath(@__DIR__, "DynamicalModel.jl"))
 
 # This example requires Cloudy to be installed (it's best to install the master
 # branch), which can be done by:
@@ -8,38 +9,25 @@ include(joinpath(@__DIR__, "DynamicalModel.jl")) # Import the module that runs C
 using Cloudy
 using Cloudy.ParticleDistributions
 using Cloudy.KernelTensors
-
-# Import the module that runs Cloudy
-#include("DynamicalModel.jl")
-#using .DynamicalModel
+using Cloudy
+const PDistributions = Cloudy.ParticleDistributions
 
 # Import modules
 using Distributions  # probability distributions and associated functions
 using StatsBase
-using GaussianProcesses
 using LinearAlgebra
 using StatsPlots
 using Plots
-using Plots.PlotMeasures # is this needed?
+#using Plots.PlotMeasures # is this needed?
 using Random
 using JLD2 # is this needed?
 
-# Import Calibrate-Emulate-Sample modules
-# For the calibration step we use the EnsembleKalmanProcesses package, and
-# for the sampling we use Markov chain Monte Carlo methods. We'll 
-# run this example twice, using first a Gaussian process emulator, and 
-# then a Random Feature emulator.
+# Import Ensemble Kalman Processes modules
 using EnsembleKalmanProcesses
 using EnsembleKalmanProcesses.Observations
 using EnsembleKalmanProcesses.ParameterDistributions
 using EnsembleKalmanProcesses.DataContainers
-using CalibrateEmulateSample.Emulators
-using CalibrateEmulateSample.MarkovChainMonteCarlo
-using CalibrateEmulateSample.Utilities
 
-# This example requires Cloudy to be installed.
-using Cloudy
-const PDistributions = Cloudy.ParticleDistributions
 
 ################################################################################
 #                                                                              #
@@ -108,10 +96,11 @@ dist_true = ParticleDistributions.GammaPrimitiveParticleDistribution(ϕ_true...)
 
 # We choose to use normal distributions to represent the prior distributions of
 # the parameters in the transformed (unconstrained) space. i.e log coordinates
-prior_N0 = constrained_gaussian(par_names[1], 400, 300, 0.4 * N0_true, Inf)
-prior_θ = constrained_gaussian(par_names[2], 1.0, 5.0, 1e-1, Inf)
-prior_k = constrained_gaussian(par_names[3], 0.2, 1.0, 1e-4, Inf)
+prior_N0 = constrained_gaussian(param_names[1], 400, 300, 0.4 * N0_true, Inf)
+prior_θ = constrained_gaussian(param_names[2], 1.0, 5.0, 1e-1, Inf)
+prior_k = constrained_gaussian(param_names[3], 0.2, 1.0, 1e-4, Inf)
 priors = combine_distributions([prior_N0, prior_θ, prior_k])
+
 
 ###
 ###  Define the data from which we want to learn the parameters
@@ -138,7 +127,8 @@ kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 300.0)
 ###  Generate (artificial) truth samples
 ###
 
-dyn_model_settings_true = DynamicalModel.ModelSettings(kernel, dist_true, moments, tspan)
+dyn_model_settings_true = DynamicalModel.ModelSettings(
+    kernel, dist_true, moments, tspan)
 
 G_t = DynamicalModel.run_dyn_model(ϕ_true, dyn_model_settings_true)
 n_samples = 100
@@ -218,10 +208,10 @@ save(
     "truth_sample_mean",
     truth.mean,
     "truth_input_constrained",
-    ϕ_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
+    ϕ_true,
 )
 
-#plots - unconstrained
+# Plots in the unconstrained space
 gr(size = (1200, 400))
 
 u_init = get_u_prior(ekiobj)
@@ -241,9 +231,11 @@ anim_eki_unconst_cloudy = @animate for i in 1:N_iter
         margin = 5mm,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
 
-    p2 = plot(u_i[2, :], u_i[3, :], seriestype = :scatter, xlims = extrema(u_init[2, :]), ylims = extrema(u_init[3, :]))
+    p2 = plot(u_i[2, :], u_i[3, :], seriestype = :scatter,
+              xlims = extrema(u_init[2, :]), ylims = extrema(u_init[3, :]))
     plot!(
         p2,
         [θ_true[2]],
@@ -256,9 +248,12 @@ anim_eki_unconst_cloudy = @animate for i in 1:N_iter
         margin = 5mm,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(u_i[3, :], u_i[1, :], seriestype = :scatter, xlims = extrema(u_init[3, :]), ylims = extrema(u_init[1, :]))
+    plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
+
+    p3 = plot(u_i[3, :], u_i[1, :], seriestype = :scatter,
+              xlims = extrema(u_init[3, :]), ylims = extrema(u_init[1, :]))
     plot!(
         p3,
         [θ_true[3]],
@@ -271,18 +266,23 @@ anim_eki_unconst_cloudy = @animate for i in 1:N_iter
         margin = 5mm,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+
+    plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
 
     p = plot(p1, p2, p3, layout = (1, 3))
 end
-gif(anim_eki_unconst_cloudy, joinpath(figure_save_directory, "eki_unconst_cloudy.gif"), fps = 1) # hide
 
-# plots - constrained
+gif(anim_eki_unconst_cloudy,
+    joinpath(figure_save_directory, "eki_unconst_cloudy.gif"), fps = 1) # hide
+
+# Plots in the constrained space
 ϕ_init = transform_unconstrained_to_constrained(priors, u_init)
 anim_eki_cloudy = @animate for i in 1:N_iter
     ϕ_i = get_ϕ(priors, ekiobj, i)
 
-    p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter, xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))
+    p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter,
+              xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))
     plot!(
         p1,
         [ϕ_true[1]],
@@ -295,9 +295,13 @@ anim_eki_cloudy = @animate for i in 1:N_iter
         label = false,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p2 = plot(ϕ_i[2, :], ϕ_i[3, :], seriestype = :scatter, xlims = extrema(ϕ_init[2, :]), ylims = extrema(ϕ_init[3, :]))
+    plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
+
+    p2 = plot(ϕ_i[2, :], ϕ_i[3, :], seriestype = :scatter,
+              xlims = extrema(ϕ_init[2, :]), ylims = extrema(ϕ_init[3, :]))
+
     plot!(
         p2,
         [ϕ_true[2]],
@@ -310,9 +314,12 @@ anim_eki_cloudy = @animate for i in 1:N_iter
         label = false,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(ϕ_i[3, :], ϕ_i[1, :], seriestype = :scatter, xlims = extrema(ϕ_init[3, :]), ylims = extrema(ϕ_init[1, :]))
+    plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
+
+    p3 = plot(ϕ_i[3, :], ϕ_i[1, :], seriestype = :scatter,
+              xlims = extrema(ϕ_init[3, :]), ylims = extrema(ϕ_init[1, :]))
     plot!(
         p3,
         [ϕ_true[3]],
@@ -325,100 +332,12 @@ anim_eki_cloudy = @animate for i in 1:N_iter
         label = false,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash,
+          linecolor = :red, label = "optimum")
 
     p = plot(p1, p2, p3, layout = (1, 3))
+
 end
-gif(anim_eki_cloudy, joinpath(figure_save_directory, "eki_cloudy.gif"), fps = 1) # hide
 
-
-###
-###  Emulate: Gaussian Process regression
-###
-
-
-gppackage = Emulators.GPJL()
-pred_type = Emulators.YType()
-gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
-gauss_proc = GaussianProcess(
-    gppackage;
-    kernel = gp_kernel,
-    prediction_type = pred_type,
-    noise_learn = false,
-)
-
-# Get training points
-input_output_pairs = Utilities.get_training_points(ekiobj, N_iter)
-emulator = Emulator(gauss_proc, input_output_pairs, obs_noise_cov = Γy, normalize_inputs = true)
-optimize_hyperparameters!(emulator)
-
-# Check how well the Gaussian Process regression predicts on the
-# true parameters
-y_mean, y_var = Emulators.predict(emulator, reshape(θ_true, :, 1); transform_to_real = true)
-println("GP prediction on true parameters: ")
-println(vec(y_mean))
-println("true data: ")
-println(truth.mean)
-
-
-###
-###  Sample: Markov Chain Monte Carlo
-###
-
-# initial values
-u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
-println("initial parameters: ", u0)
-
-# First let's run a short chain to determine a good step size
-yt_sample = truth_sample
-mcmc = MCMCWrapper(RWMHSampling(), yt_sample, priors, emulator; init_params = u0)
-new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
-
-# Now begin the actual MCMC
-println("Begin MCMC - with step size ", new_step)
-chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 1_000)
-posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
-
-post_mean = mean(posterior)
-post_cov = cov(posterior)
-println("posterior mean")
-println(post_mean)
-println("posterior covariance")
-println(post_cov)
-
-# Plot the posteriors together with the priors and the true parameter values
-# (in the transformed/unconstrained space)
-n_params = length(get_name(posterior))
-
-gr(size = (800, 600))
-
-for idx in 1:n_params
-    if idx == 1
-        xs = collect(range(5.15, stop = 5.25, length = 1000))
-    elseif idx == 2
-        xs = collect(range(0.0, stop = 0.5, length = 1000))
-    elseif idx == 3
-        xs = collect(range(-3.0, stop = -2.0, length = 1000))
-    else
-        throw("not implemented")
-    end
-
-    label = "true " * param_names[idx]
-    posterior_samples = dropdims(get_distribution(posterior)[param_names[idx]], dims = 1)
-    histogram(
-        posterior_samples,
-        bins = 100,
-        normed = true,
-        fill = :slategray,
-        thickness_scaling = 2.0,
-        lab = "posterior",
-        legend = :outertopright,
-    )
-    prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
-    plot!(xs, prior_dist, w = 2.6, color = :blue, lab = "prior")
-    plot!([θ_true[idx]], seriestype = "vline", w = 2.6, lab = label)
-    title!(param_names[idx])
-    figpath = joinpath(figure_save_directory, "posterior_" * param_names[idx] * ".png")
-    StatsPlots.savefig(figpath)
-    linkfig(figpath)
-end
+gif(anim_eki_cloudy,
+    joinpath(figure_save_directory, "eki_cloudy.gif"), fps = 1) # hide
