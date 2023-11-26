@@ -8,9 +8,6 @@ using Cloudy.KernelTensors
 using Cloudy.EquationTypes
 using Cloudy.Coalescence
 
-using Sundials # CVODE_BDF() solver for ODE
-
-
 using DifferentialEquations
 
 export ModelSettings
@@ -40,11 +37,12 @@ end
 """
     run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT<:AbstractFloat}
 
-Run the dynamical model (Cloudy) for the given parameter vector ϕ. 
+Run the dynamical model (Cloudy) for the given parameter vector ϕ=[N0,θ,k], which defines the initial distribution of droplet masses. This distribution 
+is assumed to be a (scaled) gamma distribution with scaling factor N0 (defining the number of particles), scale parameter θ, and shape parameter k.
 Return the model output, a vector of moments of the particle mass
 distribution at the end time of the simulation.
 
- - `ϕ` - parameter vector of length N_parameters
+ - `ϕ` - parameter vector 
  - `settings` - a ModelSettings struct
 
 """
@@ -64,25 +62,8 @@ function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT 
     moments_init = get_moments(dist_init)
     #dist_init = settings.dist(ϕ...)
 
-
-#    ################ below is the "original" setup" 
-#    # Numerical parameters
-     tol = FT(1e-7)
-#
-#    # Set up ODE problem: dM/dt = f(M, ϕ, t)
-#    rhs(M, par, t) = get_int_coalescence(M, par, settings.kernel)
-#    ODE_par = Dict(:dist => dist_init)  # ODE parameters
-#    prob = ODEProblem(rhs, moments_init, settings.tspan, ODE_par)
-#    # Solve the ODE
-#    sol = solve(prob, CVODE_BDF(), alg_hints = [:stiff], reltol = tol, abstol = tol)
-#    #
-#    ################ above is the "original" setup
-
-
-    ################ below is the new setup (with unreleased Cloudy code)
     # Set up ODE problem: dM/dt = f(M, ϕ, t)
     tspan = (FT(0), FT(1))
-    #kernel_func = x -> 5e-3 * (x[1] + x[2])
     coalescence_coeff = 1 / 3.14 / 4 / 100
     kernel_func = x -> coalescence_coeff
     kernel = CoalescenceTensor(kernel_func, 0, FT(100))
@@ -91,13 +72,10 @@ function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT 
         :kernel => settings.kernel,
         :dt => FT(1)
         )
-    #rhs = make_box_model_rhs(OneModeCoalStyle())
+
     rhs(m, par, t) = get_int_coalescence(OneModeCoalStyle(), m, par, par[:kernel])
     prob = ODEProblem(rhs, moments_init, settings.tspan, ODE_parameters)
-    #sol = solve(prob, SSPRK33(), dt = ODE_parameters[:dt])
-    sol = solve(prob, CVODE_BDF(), alg_hints = [:stiff], reltol = tol, abstol = tol)
-    #
-    ################ above is the new setup
+    sol = solve(prob, SSPRK33(), dt = ODE_parameters[:dt])
 
     # Return moments at last time step
     moments_final = vcat(sol.u'...)[end, :]
@@ -105,16 +83,6 @@ function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT 
     return moments_final
 end
 
-"""
-  make_box_model_rhs(coal_type::CoalescenceStyle)
-
-  `coal_type` type of coal source term function: OneModeCoalStyle, TwoModesCoalStyle, NumericalCoalStyle
-Returns a function representing the right hand side of the ODE equation containing divergence 
-of coalescence source term.
-"""
-# TODO: update the analytical coalescence style to NOT re-allocate matrices
-function make_box_model_rhs(coal_type::AnalyticalCoalStyle)
-    rhs(m, par, t) = get_int_coalescence(coal_type, m, par, par[:kernel])
 end
 
-end # module
+

@@ -2,24 +2,23 @@
 include(joinpath(@__DIR__, "../..", "ci", "linkfig.jl"))
 
 # Import modules
-using Distributions  # probability distributions and associated functions
+using Distributions
 using StatsBase
 using GaussianProcesses
 using LinearAlgebra
 using StatsPlots
 using Plots
-using Plots.PlotMeasures # is this needed?
+using Plots.PlotMeasures
 using Random
-using JLD2 # is this needed?
+using JLD2
 
 # Import Calibrate-Emulate-Sample modules
-#using EnsembleKalmanProcesses.DataContainers
-using EnsembleKalmanProcesses
-using EnsembleKalmanProcesses.ParameterDistributions
-using EnsembleKalmanProcesses.DataContainers
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
+using EnsembleKalmanProcesses
+using EnsembleKalmanProcesses.ParameterDistributions
+using EnsembleKalmanProcesses.DataContainers
 
 function get_standardizing_factors(data::Array{FT, 2}) where {FT}
     # Input: data size: N_data x N_ensembles
@@ -88,29 +87,30 @@ function main()
         # - ϕ: in constrained space
         # - θ: in unconstrained space
         ϕ_true = load(data_save_file)["truth_input_constrained"]
+        θ_true = transform_constrained_to_unconstrained(priors, ϕ_true)
 
     else
         error("File not found: $data_save_file. Please run 'Cloudy_calibrate.jl' first.")
 
     end
 
-    θ_true = transform_constrained_to_unconstrained(priors, ϕ_true)
     param_names = get_name(priors)
-    Γy = ekiobj.obs_noise_cov
     n_params = length(ϕ_true) # input dimension
-    # Save data
-    #@save joinpath(output_directory, "cloudy_input_output_pairs.jld2") input_output_pairs
+    Γy = ekiobj.obs_noise_cov
 
     cases = [
         "rf-scalar",
         "gp-gpjl"  # Veeeery slow predictions
     ]
 
+    # Specify cases to run (e.g., case_mask = [2] only runs the second case)
+    case_mask = [1, 2]
+
     # These settings are the same for all Gaussian Process cases
-    pred_type = YType()
+    pred_type = YType() # we want to predict data
 
     # These settings are the same for all Random Feature cases
-    n_features = 400
+    n_features = 600
     nugget = 1e-8
     optimizer_options = Dict(
         "verbose" => true,
@@ -119,12 +119,10 @@ function main()
         "n_iteration" => 20,
     )
 
-    # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [1]
-    println("case mask: ")
-    println(case_mask)
-    println(cases[case_mask])
-
+    # We use the same input-output-pairs and normalization factors for 
+    # Gaussian Process and Random Feature cases
+    input_output_pairs = get_training_points(ekiobj,
+                                             length(get_u(ekiobj))-1)           norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
     for case in cases[case_mask]
 
         println(" ")
@@ -135,6 +133,8 @@ function main()
 
             @warn "gp-gpjl case is very slow at prediction"
             gppackage = GPJL()
+            # Kernel is the sum of a squared exponential (SE), Matérn 5/2, and
+            # white noise
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
             gaussian_process = GaussianProcess(
                 gppackage;
@@ -143,12 +143,15 @@ function main()
                 noise_learn = false,
             )
 
-            input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj))-1)
+            # The data processing normalizes input data, and decorrelates
+            # output data with information from Γy
             emulator = Emulator(
                 gaussian_process,
                 input_output_pairs,
                 obs_noise_cov = Γy,
-                normalize_inputs = true
+                normalize_inputs = false,
+                standardize_outputs = true,
+                standardize_outputs_factors = vcat(norm_factors...),
             )
 
         elseif case == "rf-scalar"
@@ -166,20 +169,6 @@ function main()
             )
 
             retained_svd_frac = 1.0
-            min_iter = 1
-            max_iter = 5 # number of EKP iterations to use data from is at most this
-            @assert min_iter <= max_iter
-            @assert max_iter <= length(get_u(ekiobj)) - 1
-            @assert min_iter >= 1
-            N_iter = min(max_iter, length(get_u(ekiobj)) - 1) # number of paired iterations taken from EKP
-            # Get training points from the EKP iteration number in the second input term
-            min_iter = min(max_iter, max(1, min_iter))
-            input_output_pairs = get_training_points(ekiobj, min_iter:(N_iter - 1))
-            input_output_pairs_test = get_training_points(
-                ekiobj, N_iter:(length(get_u(ekiobj)) - 1)) # "next" iterations
-            norm_factors = get_standardizing_factors(
-                get_outputs(input_output_pairs)
-            )
 
             emulator = Emulator(
                 srfi,
@@ -206,15 +195,6 @@ function main()
             transform_to_real = true
         )
 
-        # Check how well the emulator predicts on the test input pairs (whose
-        # corresponding output we know, as it was calculated during EKI)
-        y_mean_test, y_var_test =
-            Emulators.predict(
-                emulator,
-                get_inputs(input_output_pairs_test),
-                transform_to_real = true
-            )
-
         println("Emulator ($(case)) prediction on true parameters: ")
         println(vec(y_mean))
         println("true data: ")
@@ -223,8 +203,7 @@ function main()
         println(sqrt.(diag(y_var[1], 0)))
         println("Emulator ($(case)) MSE (truth): ")
         println(mean((truth_sample - vec(y_mean)) .^ 2))
-        #println("Emulator ($(case)) MSE (next ensemble): ")
-        #println(mean((get_outputs(input_output_pairs_test) - y_mean_test) .^ 2))
+
 
         ###
         ###  Sample: Markov Chain Monte Carlo

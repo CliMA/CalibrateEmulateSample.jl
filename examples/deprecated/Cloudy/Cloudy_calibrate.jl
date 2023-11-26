@@ -1,26 +1,22 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 include(joinpath(@__DIR__, "../..", "ci", "linkfig.jl"))
-# Import the module that runs Cloudy
-include(joinpath(@__DIR__, "DynamicalModel.jl"))
-
-# This example requires Cloudy to be installed (it's best to install the master
-# branch), which can be done by:
-#] add Cloudy#master
-using Cloudy
-using Cloudy.ParticleDistributions
-using Cloudy.KernelTensors
-using Cloudy
-const PDistributions = Cloudy.ParticleDistributions
 
 # Import modules
-using Distributions  # probability distributions and associated functions
+using Distributions
 using StatsBase
 using LinearAlgebra
 using StatsPlots
 using Plots
-#using Plots.PlotMeasures # is this needed?
+using Plots.PlotMeasures
 using Random
-using JLD2 # is this needed?
+using JLD2
+
+# This example requires Cloudy to be installed. 
+using Cloudy
+using Cloudy.ParticleDistributions
+using Cloudy.KernelTensors
+# Import the module that runs Cloudy
+include(joinpath(@__DIR__, "DynamicalModel.jl"))
 
 # Import Ensemble Kalman Processes modules
 using EnsembleKalmanProcesses
@@ -95,7 +91,7 @@ dist_true = ParticleDistributions.GammaPrimitiveParticleDistribution(ϕ_true...)
 ###
 
 # We choose to use normal distributions to represent the prior distributions of
-# the parameters in the transformed (unconstrained) space. i.e log coordinates
+# the parameters in the transformed (unconstrained) space.
 prior_N0 = constrained_gaussian(param_names[1], 400, 300, 0.4 * N0_true, Inf)
 prior_θ = constrained_gaussian(param_names[2], 1.0, 5.0, 1e-1, Inf)
 prior_k = constrained_gaussian(param_names[3], 0.2, 1.0, 1e-4, Inf)
@@ -156,7 +152,7 @@ truth_sample = truth.mean # TODO: should this be yt[:, end]
 ###
 
 N_ens = 50 # number of ensemble members
-N_iter = 8 # number of EKI iterations
+N_iter = 15 # number of EKI iterations
 # initial parameters: n_params x N_ens
 initial_params = construct_initial_ensemble(rng, priors, N_ens)
 ekiobj = EnsembleKalmanProcess(
@@ -164,6 +160,7 @@ ekiobj = EnsembleKalmanProcess(
     truth_sample,
     truth.obs_noise_cov,
     Inversion(),
+    scheduler=DataMisfitController()
 )
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
@@ -180,6 +177,7 @@ for n in 1:N_iter
     G_ens = hcat(G_n...)  # reformat
     EnsembleKalmanProcesses.update_ensemble!(ekiobj, G_ens)
 end
+
 
 # EKI results: Has the ensemble collapsed toward the truth?
 θ_true = transform_constrained_to_unconstrained(priors, ϕ_true)
@@ -218,7 +216,8 @@ u_init = get_u_prior(ekiobj)
 anim_eki_unconst_cloudy = @animate for i in 1:N_iter
     u_i = get_u(ekiobj, i)
 
-    p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter, xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
+    p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter,
+              xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
     plot!(
         p1,
         [θ_true[1]],
