@@ -6,7 +6,7 @@ using Documenter
 
 #----------
 
-examples = ["Lorenz example" => "examples/lorenz_example.md", "Turbulence example" => "examples/edmf_example.md"]
+examples = ["Lorenz example" => "examples/lorenz_example.md", "Turbulence example" => "examples/edmf_example.md", "Cloudy example" => "examples/Cloudy_example.md"]
 
 design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
 
