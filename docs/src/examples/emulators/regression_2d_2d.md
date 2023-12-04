@@ -139,8 +139,8 @@ We then plot the predicted mean and pointwise variances, and calculate the error
 L^2 error of mean and latent truth:0.0008042391077774167
 ```
 ```@raw html
-<img src="../../../assets/gp-skljl_y1_predictions.png" width="600">
-<img src="../../../assets/gp-skljl_y2_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-gp-skljl_y1_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-gp-skljl_y2_predictions.png" width="600">
 ```
 ### Random Feature Emulator (`rf-scalar`)
 ```
@@ -148,8 +148,8 @@ L^2 error of mean and latent truth:0.0012253119679379056
 ```
 
 ```@raw html
-<img src="../../../assets/rf-scalar_y1_predictions.png" width="600">
-<img src="../../../assets/rf-scalar_y2_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-rf-scalar_y1_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-rf-scalar_y2_predictions.png" width="600">
 ```
 ### Random Feature Emulator (vector: `rf-nosvd-nonsep`)
 ```
@@ -157,6 +157,6 @@ L^2 error of mean and latent truth:0.0011094292509180393
 ```
 
 ```@raw html
-<img src="../../../assets/rf-nosvd-nonsep_y1_predictions.png" width="600">
-<img src="../../../assets/rf-nosvd-nonsep_y2_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-rf-nosvd-nonsep_y1_predictions.png" width="600">
+<img src="../../../assets/regression2d2d-rf-nosvd-nonsep_y2_predictions.png" width="600">
 ```
