@@ -104,7 +104,7 @@ function main()
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [2]
+    case_mask = [1, 2]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
@@ -172,7 +172,6 @@ function main()
             mlt,
             input_output_pairs,
             obs_noise_cov = Γy,
-            #normalize_inputs = false,
             standardize_outputs = true,
             standardize_outputs_factors = vcat(norm_factors...),
         )

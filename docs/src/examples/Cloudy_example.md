@@ -485,11 +485,16 @@ p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
 p_constr = pairplot(data_constr => (PairPlots.Scatter(),))
 ```
 
-For the scalar RF emulator, the results (shown in the constrained/physical space) look as follows:
+For the GP emulator, the results (shown in the constrained/physical space) look as follows:
 
-![joint_posterior](../assets/joint_posterior_constr_resized.png)
+![joint_posterior](../assets/joint_posterior_constr_gpjl_resized.png)
 
-In addition, we plot the marginals of the posterior distributions:
+And we can plot the same for the RF emulator:
+
+![joint_posterior](../assets/joint_posterior_constr_rf-scalar_resized.png)
+
+In addition, we plot the marginals of the posterior distributions---we are
+showing them here for the GP emulator case:
 ```julia
 for idx in 1:n_params
 
@@ -521,13 +526,15 @@ for idx in 1:n_params
     ax.xlabel = "Value"
     ax.ylabel = "Density"
 ```
-This is what the marginal distributions of the three parameters look like, again for the case of scalar RF and plotted in the constrained/physical space:
 
-![posterior_N0_rf](../assets/posterior_rf-scalar_N0_resized.png)
+This is what the marginal distributions of the three parameters look like, for
+the case of the GP emulator, and in the constrained/physical space:
 
-![posterior_theta_rf](../assets/posterior_rf-scalar_theta_resized.png)
+![posterior_N0_gpjl](../assets/posterior_gp-gpjl_N0_resized.png)
 
-![posterior_k_rf](../assets/posterior_rf-scalar_k_resized.png)
+![posterior_theta_gpjl](../assets/posterior_gp-gpjl_theta_resized.png)
+
+![posterior_k_gpjl](../assets/posterior_gp-gpjl_k_resized.png)
 
 Here, the posterior distributions are shown as orange histograms, the prior distribution are shown as grey histograms (though with the exception of the parmaeter `k`, they are barely visible), and the true parameter values are marked as vertical purple lines.
 
