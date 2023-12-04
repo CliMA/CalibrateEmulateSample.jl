@@ -1,16 +1,16 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
-include(joinpath(@__DIR__, "../..", "ci", "linkfig.jl"))
+include(joinpath(@__DIR__, "../", "ci", "linkfig.jl"))
 
 # Import modules
 using Distributions
 using StatsBase
 using GaussianProcesses
 using LinearAlgebra
-using StatsPlots
-using Plots
-using Plots.PlotMeasures
 using Random
 using JLD2
+ENV["GKSwstype"] = "100"
+using CairoMakie, PairPlots
+
 
 # Import Calibrate-Emulate-Sample modules
 using CalibrateEmulateSample.Emulators
@@ -33,10 +33,10 @@ end
 #                                                                              #
 #                                                                              #
 #     This example uses Cloudy, a microphysics model that simulates the        #
-#     coalescence of cloud droplets into bigger drops, to demonstrate how      #
-#     the full Calibrate-Emulate-Sample pipeline can be used for Bayesian      #
-#     learning and uncertainty quantification of parameters, given some        #
-#     observations.                                                            #
+#     collision and coalescence of cloud droplets into bigger drops, to        #
+#     demonstrate how the full Calibrate-Emulate-Sample pipeline can be        #
+#     used for Bayesian learning and uncertainty quantification of             #
+#     parameters, given some observations.                                     #
 #                                                                              #
 #     Specifically, this examples shows how to learn parameters of the         #
 #     initial cloud droplet mass distribution, given observations of some      #
@@ -104,7 +104,7 @@ function main()
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [1, 2]
+    case_mask = [2]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
@@ -119,10 +119,11 @@ function main()
         "n_iteration" => 20,
     )
 
-    # We use the same input-output-pairs and normalization factors for 
+    # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
     input_output_pairs = get_training_points(ekiobj,
-                                             length(get_u(ekiobj))-1)           norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
+                                             length(get_u(ekiobj))-1)
+    norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
     for case in cases[case_mask]
 
         println(" ")
@@ -136,22 +137,13 @@ function main()
             # Kernel is the sum of a squared exponential (SE), Matérn 5/2, and
             # white noise
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
-            gaussian_process = GaussianProcess(
+
+            # Define machine learning tool
+            mlt = GaussianProcess(
                 gppackage;
                 kernel = gp_kernel,
                 prediction_type = pred_type,
                 noise_learn = false,
-            )
-
-            # The data processing normalizes input data, and decorrelates
-            # output data with information from Γy
-            emulator = Emulator(
-                gaussian_process,
-                input_output_pairs,
-                obs_noise_cov = Γy,
-                normalize_inputs = false,
-                standardize_outputs = true,
-                standardize_outputs_factors = vcat(norm_factors...),
             )
 
         elseif case == "rf-scalar"
@@ -161,30 +153,29 @@ function main()
                 OneDimFactor()
             )
 
-            srfi = ScalarRandomFeatureInterface(
+            # Define machine learning tool
+            mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
                 kernel_structure = kernel_structure,
                 optimizer_options = optimizer_options,
             )
 
-            retained_svd_frac = 1.0
-
-            emulator = Emulator(
-                srfi,
-                input_output_pairs;
-                obs_noise_cov = Γy,
-                normalize_inputs = true,
-                standardize_outputs = true,
-                standardize_outputs_factors = vcat(norm_factors...),
-                retained_svd_frac = retained_svd_frac,
-                decorrelate = true # use SVD to decorrelate outputs
-            )
-
         else
             error("Case $case is not implemented yet.")
 
         end
+
+        # The data processing normalizes input data, and decorrelates
+        # output data with information from Γy
+        emulator = Emulator(
+            mlt,
+            input_output_pairs,
+            obs_noise_cov = Γy,
+            #normalize_inputs = false,
+            standardize_outputs = true,
+            standardize_outputs_factors = vcat(norm_factors...),
+        )
 
         optimize_hyperparameters!(emulator)
 
@@ -199,7 +190,7 @@ function main()
         println(vec(y_mean))
         println("true data: ")
         println(truth_sample) # what was used as truth
-        println("Emulator ($(case)) predicted standard deviation")
+        println("Emulator ($(case)) predicted standard deviation: ")
         println(sqrt.(diag(y_var[1], 0)))
         println("Emulator ($(case)) MSE (truth): ")
         println(mean((truth_sample - vec(y_mean)) .^ 2))
@@ -248,40 +239,77 @@ function main()
         println("posterior covariance")
         println(post_cov)
 
-        # Plot the posteriors together with the priors and the true parameter
-        # values (in the transformed/unconstrained space)
+        # Prior samples
+        prior_samples_unconstr = sample(rng, priors, Int(1e4))
+        prior_samples_constr = transform_unconstrained_to_constrained(
+            priors, prior_samples_unconstr)
+
+        # Posterior samples
+        posterior_samples_unconstr =
+            vcat([get_distribution(posterior)[name]
+                  for name in get_name(posterior)]...) # samples are columns
+        posterior_samples_constr =
+            mapslices(x -> transform_unconstrained_to_constrained(posterior, x),
+                      posterior_samples_unconstr, dims = 1)
+
+        # Make pair plots of the posterior distributions in the unconstrained
+        # and in the constrained space (this uses `PairPlots.jl`)
+        figpath_unconstr = joinpath(output_directory,
+                                    "joint_posterior_unconstr_" * case * ".png")
+        figpath_constr = joinpath(output_directory,
+                                  "joint_posterior_constr.png_" * case * ".png")
+        labels = get_name(posterior)
+
+        data_unconstr = (; [(Symbol(labels[i]),
+                             posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_constr = (; [(Symbol(labels[i]),
+                           posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
+
+        p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
+        p_constr = pairplot(data_constr => (PairPlots.Scatter(),))
+        save(figpath_unconstr, p_unconstr)
+        save(figpath_constr, p_constr)
+
+        # Plot the marginal posterior distributions together with the priors
+        # and the true parameter values (in the constrained space)
         n_params = length(get_name(posterior))
 
-        gr(size = (800, 600))
-
         for idx in 1:n_params
-            posterior_samples = dropdims(
-                get_distribution(posterior)[param_names[idx]], dims = 1)
 
             # Find the range of the posterior samples
-            xmin = minimum(posterior_samples)
-            xmax = maximum(posterior_samples)
-            xs = collect(range(xmin, stop = xmax, length = 1000))
+            xmin = minimum(posterior_samples_constr[idx, :])
+            xmax = maximum(posterior_samples_constr[idx, :])
 
-            label = "true " * param_names[idx]
-            histogram(
-                posterior_samples,
-                bins = 100,
-                normed = true,
-                fill = :slategray,
-                thickness_scaling = 2.0,
-                lab = "posterior",
-                legend = :outertopright,
-            )
+            # Create a figure and axis for plotting
+            fig = Figure(; size = (800, 600))
+            ax = Axis(fig[1, 1])
 
-            prior_dist = get_distribution(mcmc.prior)[param_names[idx]]
-            plot!(xs, prior_dist, w = 2.6, color = :blue, lab = "prior")
-            plot!([θ_true[idx]], seriestype = "vline", w = 2.6, lab = label)
-            title!(param_names[idx])
+            # Histogram for posterior samples
+            hist!(ax, posterior_samples_constr[idx, :], bins = 100,
+                  color = :darkorange, label = "posterior")
+
+            # Plotting the prior distribution
+            hist!(ax, prior_samples_constr[idx, :], bins = 10000,
+                  color = :slategray)
+
+            # Adding a vertical line for the true value
+            vlines!(ax, [ϕ_true[idx]], color = :indigo, linewidth = 2.6,
+                    label = "true " * param_names[idx])
+
+            xlims!(ax, xmin, xmax)
+            ylims!(ax, 0, nothing)
+
+            # Setting title and labels
+            ax.xlabel = "Value"
+            ax.ylabel = "Density"
+            ax.title = param_names[idx]
+            ax.titlesize = 20
+
+            # Save the figure (marginal posterior distribution in constrained
+            # space)
             figname = "posterior_" * case * "_" * param_names[idx] * ".png"
-            figpath = joinpath(output_directory, figname)
-            StatsPlots.savefig(figpath)
-            linkfig(figpath)
+            figpath_marg_constr = joinpath(output_directory, figname)
+            save(figpath_marg_constr, fig)
 
         end
     end

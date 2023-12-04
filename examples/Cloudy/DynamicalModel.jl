@@ -49,18 +49,8 @@ distribution at the end time of the simulation.
 function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT <: AbstractFloat}
 
     # Generate the initial distribution
-    # TODO: Obviously the GammaPrimitiveParticleDistribution should not be
-    # hard-coded here. Since update_params has been removed from
-    # ParticleDistributions.jl, I tried the following:
-    # Determine the type of the distribution, then create a new instance of
-    # that type using the desired parameters. This doesn't work; I get an
-    # error saying LoadError: MethodError: no method matching GammaPrimitiveParticleDistribution{Float64}(::Float64, ::Float64, ::Float64)
-
-    #dist_init_type = typeof(settings.dist)
-    #dist_init = dist_init_type(ϕ...)
     dist_init = GammaPrimitiveParticleDistribution(ϕ...)
     moments_init = get_moments(dist_init)
-    #dist_init = settings.dist(ϕ...)
 
     # Set up ODE problem: dM/dt = f(M, ϕ, t)
     tspan = (FT(0), FT(1))

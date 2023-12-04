@@ -1,5 +1,5 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
-include(joinpath(@__DIR__, "../..", "ci", "linkfig.jl"))
+include(joinpath(@__DIR__, "../", "ci", "linkfig.jl"))
 
 # Import modules
 using Distributions
@@ -23,6 +23,7 @@ using EnsembleKalmanProcesses
 using EnsembleKalmanProcesses.Observations
 using EnsembleKalmanProcesses.ParameterDistributions
 using EnsembleKalmanProcesses.DataContainers
+using EnsembleKalmanProcesses.PlotRecipes
 
 
 ################################################################################
@@ -31,10 +32,10 @@ using EnsembleKalmanProcesses.DataContainers
 #                                                                              #
 #                                                                              #
 #     This example uses Cloudy, a microphysics model that simulates the        #
-#     coalescence of cloud droplets into bigger drops, to demonstrate how      #
-#     the full Calibrate-Emulate-Sample pipeline can be used for Bayesian      #
-#     learning and uncertainty quantification of parameters, given some        #
-#     observations.                                                            #
+#     collision and coalescence of cloud droplets into bigger drops, to        #
+#     demonstrate how the full Calibrate-Emulate-Sample pipeline can be        #
+#     used for Bayesian learning and uncertainty quantification of             #
+#     parameters, given some observations.                                     #
 #                                                                              #
 #     Specifically, this examples shows how to learn parameters of the         #
 #     initial cloud droplet mass distribution, given observations of some      #
@@ -55,19 +56,14 @@ using EnsembleKalmanProcesses.DataContainers
 #                                                                              #
 ################################################################################
 
-
 rng_seed = 41
 Random.seed!(rng_seed)
 rng = Random.seed!(Random.GLOBAL_RNG, rng_seed)
 
 homedir = pwd()
-figure_save_directory = homedir * "/output/"
-data_save_directory = homedir * "/output/"
-if ~isdir(figure_save_directory)
-    mkdir(figure_save_directory)
-end
-if ~isdir(data_save_directory)
-    mkdir(data_save_directory)
+output_directory = homedir * "/output/"
+if ~isdir(output_directory)
+    mkdir(output_directory)
 end
 
 ###
@@ -96,7 +92,9 @@ prior_N0 = constrained_gaussian(param_names[1], 400, 300, 0.4 * N0_true, Inf)
 prior_θ = constrained_gaussian(param_names[2], 1.0, 5.0, 1e-1, Inf)
 prior_k = constrained_gaussian(param_names[3], 0.2, 1.0, 1e-4, Inf)
 priors = combine_distributions([prior_N0, prior_θ, prior_k])
-
+# Plot the priors
+p = plot(priors, constrained=false)
+savefig(p, output_directory * "cloudy_priors.png")
 
 ###
 ###  Define the data from which we want to learn the parameters
@@ -113,7 +111,6 @@ n_moments = length(moments)
 
 # Collision-coalescence kernel to be used in Cloudy
 tspan = (0.0, 1.0)
-print("tspan ", tspan)
 coalescence_coeff = 1 / 3.14 / 4 / 100
 kernel_func = x -> coalescence_coeff
 kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 300.0)
@@ -189,10 +186,8 @@ println(get_u_mean_final(ekiobj))
 
 u_stored = get_u(ekiobj, return_array = false)
 g_stored = get_g(ekiobj, return_array = false)
-#@save data_save_directory * "parameter_storage_eki.jld2" u_stored
-#@save data_save_directory * "data_storage_eki.jld2" g_stored
 save(
-    joinpath(data_save_directory, "cloudy_calibrate_results.jld2"),
+    joinpath(output_directory, "cloudy_calibrate_results.jld2"),
     "inputs",
     u_stored,
     "outputs",
@@ -213,7 +208,7 @@ save(
 gr(size = (1200, 400))
 
 u_init = get_u_prior(ekiobj)
-anim_eki_unconst_cloudy = @animate for i in 1:N_iter
+anim_eki_unconst_cloudy = @animate for i in 1:(N_iter-1)
     u_i = get_u(ekiobj, i)
 
     p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter,
@@ -273,11 +268,11 @@ anim_eki_unconst_cloudy = @animate for i in 1:N_iter
 end
 
 gif(anim_eki_unconst_cloudy,
-    joinpath(figure_save_directory, "eki_unconst_cloudy.gif"), fps = 1) # hide
+    joinpath(output_directory, "eki_unconst_cloudy.gif"), fps = 1) # hide
 
 # Plots in the constrained space
 ϕ_init = transform_unconstrained_to_constrained(priors, u_init)
-anim_eki_cloudy = @animate for i in 1:N_iter
+anim_eki_cloudy = @animate for i in 1:(N_iter-1)
     ϕ_i = get_ϕ(priors, ekiobj, i)
 
     p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter,
@@ -339,4 +334,4 @@ anim_eki_cloudy = @animate for i in 1:N_iter
 end
 
 gif(anim_eki_cloudy,
-    joinpath(figure_save_directory, "eki_cloudy.gif"), fps = 1) # hide
+    joinpath(output_directory, "eki_cloudy.gif"), fps = 1) # hide
