@@ -6,7 +6,7 @@ f(x; a, b) = (1 + bx_3^4)\sin(x_1) + a \sin(x_2), \forall x\in [-\pi,\pi]^3
 ```
 with ``a=7, b=0.1``. In this example, global sensitivity analysis refers to calculation of two Sobol indices. The first index collects proportions ``V_i`` (a.k.a `firstorder`) of the variance of ``f`` attributable to the input ``x_i``, and the second index collects proportions ``TV_i`` (a.k.a `totalorder`) of the residual variance having removed contributions attributable to inputs ``x_j`` ``\forall j\neq i``. The Ishigami function has an analytic formula for these Sobol indices, it is also known that one can obtain numerical approximation through quasi-Monto-Carlo methods by evaluating the Ishigami function on a special quasi-random Sobol sequence.
 
-To emulate the Ishigami function, the data consists of 300 pairs ``\{x,f(x)+\eta\}`` where``\eta \sim N(0,\Sigma)`` is additive noise, and the x are sampled from the Sobol sequence. The emulators are validated by evaluating the posterior mean function on the full 16000 points of the Sobol sequence and the Sobol indices are estimated. We rerun the experiment for many repeats of the random feature hyperparameter optimization and present the statistics of these indices, as well as plotting a realization of the emulator.
+To emulate the Ishigami function, the data consists of 300 pairs ``\{x,f(x)+\eta\}`` where ``\eta \sim N(0,\Sigma)`` is additive noise, and the x are sampled from the Sobol sequence. The emulators are validated by evaluating the posterior mean function on the full 16000 points of the Sobol sequence and the Sobol indices are estimated. We rerun the experiment for many repeats of the random feature hyperparameter optimization and present the statistics of these indices, as well as plotting a realization of the emulator.
 
 We use the package [GlobalSensitivityAnalysis.jl](https://github.com/lrennels/GlobalSensitivityAnalysis.jl) for many of the GSA tools.
 
@@ -64,7 +64,7 @@ for i in 1:n_tp
 end
 iopairs = PairedDataContainer(input, output)
 ```
-We have a couple of cases for the user to investigate
+We have a few cases for the user to investigate
 ```julia
 cases = [
     "Prior", # Scalar random feature emulator with no hyperparameter learning
