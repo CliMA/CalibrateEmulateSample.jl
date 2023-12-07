@@ -93,6 +93,7 @@ function main()
 
     param_names = get_name(priors)
     n_params = length(ϕ_true) # input dimension
+
     Γy = ekiobj.obs_noise_cov
 
     cases = [
@@ -217,13 +218,13 @@ function main()
 
         # Make pair plots of the posterior distributions in the unconstrained
         # and in the constrained space (this uses `PairPlots.jl`)
-        figpath_unconstr = joinpath(output_directory, "joint_posterior_unconstr_" * case * ".png")
-        figpath_constr = joinpath(output_directory, "joint_posterior_constr.png_" * case * ".png")
+        figpath_unconstr = joinpath(output_directory, "pairplot_posterior_unconstr_" * case * ".png")
+        figpath_constr = joinpath(output_directory, "pairplot_posterior_constr.png_" * case * ".png")
         labels = get_name(posterior)
 
         data_unconstr =
-            (; [(Symbol(labels[i]), pairplot_posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
-        data_constr = (; [(Symbol(labels[i]), pairplot_posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
+            (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_constr = (; [(Symbol(labels[i]), posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
 
         p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
         p_constr = pairplot(data_constr => (PairPlots.Scatter(),))
@@ -232,7 +233,6 @@ function main()
 
         # Plot the marginal posterior distributions together with the priors
         # and the true parameter values (we'll do that in the constrained space)
-        n_params = length(get_name(posterior))
 
         for idx in 1:n_params
 
