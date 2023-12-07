@@ -93,7 +93,7 @@ prior_θ = constrained_gaussian(param_names[2], 1.0, 5.0, 1e-1, Inf)
 prior_k = constrained_gaussian(param_names[3], 0.2, 1.0, 1e-4, Inf)
 priors = combine_distributions([prior_N0, prior_θ, prior_k])
 # Plot the priors
-p = plot(priors, constrained=false)
+p = plot(priors, constrained = false)
 savefig(p, output_directory * "cloudy_priors.png")
 
 ###
@@ -120,8 +120,7 @@ kernel = Cloudy.KernelTensors.CoalescenceTensor(kernel_func, 0, 300.0)
 ###  Generate (artificial) truth samples
 ###
 
-dyn_model_settings_true = DynamicalModel.ModelSettings(
-    kernel, dist_true, moments, tspan)
+dyn_model_settings_true = DynamicalModel.ModelSettings(kernel, dist_true, moments, tspan)
 
 G_t = DynamicalModel.run_dyn_model(ϕ_true, dyn_model_settings_true)
 n_samples = 100
@@ -141,7 +140,7 @@ for i in 1:n_samples
 end
 
 truth = Observations.Observation(y_t, Γy, data_names)
-truth_sample = truth.mean # TODO: should this be yt[:, end]
+truth_sample = truth.mean
 
 
 ###
@@ -157,7 +156,7 @@ ekiobj = EnsembleKalmanProcess(
     truth_sample,
     truth.obs_noise_cov,
     Inversion(),
-    scheduler=DataMisfitController()
+    scheduler = DataMisfitController(),
 )
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
@@ -208,11 +207,10 @@ save(
 gr(size = (1200, 400))
 
 u_init = get_u_prior(ekiobj)
-anim_eki_unconst_cloudy = @animate for i in 1:(N_iter-1)
+anim_eki_unconst_cloudy = @animate for i in 1:(N_iter - 1)
     u_i = get_u(ekiobj, i)
 
-    p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter,
-              xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
+    p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter, xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
     plot!(
         p1,
         [θ_true[1]],
@@ -225,11 +223,9 @@ anim_eki_unconst_cloudy = @animate for i in 1:(N_iter-1)
         margin = 5mm,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p2 = plot(u_i[2, :], u_i[3, :], seriestype = :scatter,
-              xlims = extrema(u_init[2, :]), ylims = extrema(u_init[3, :]))
+    p2 = plot(u_i[2, :], u_i[3, :], seriestype = :scatter, xlims = extrema(u_init[2, :]), ylims = extrema(u_init[3, :]))
     plot!(
         p2,
         [θ_true[2]],
@@ -243,11 +239,9 @@ anim_eki_unconst_cloudy = @animate for i in 1:(N_iter-1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(u_i[3, :], u_i[1, :], seriestype = :scatter,
-              xlims = extrema(u_init[3, :]), ylims = extrema(u_init[1, :]))
+    p3 = plot(u_i[3, :], u_i[1, :], seriestype = :scatter, xlims = extrema(u_init[3, :]), ylims = extrema(u_init[1, :]))
     plot!(
         p3,
         [θ_true[3]],
@@ -261,22 +255,19 @@ anim_eki_unconst_cloudy = @animate for i in 1:(N_iter-1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
     p = plot(p1, p2, p3, layout = (1, 3))
 end
 
-gif(anim_eki_unconst_cloudy,
-    joinpath(output_directory, "eki_unconst_cloudy.gif"), fps = 1) # hide
+gif(anim_eki_unconst_cloudy, joinpath(output_directory, "cloudy_eki_unconstr.gif"), fps = 1) # hide
 
 # Plots in the constrained space
 ϕ_init = transform_unconstrained_to_constrained(priors, u_init)
-anim_eki_cloudy = @animate for i in 1:(N_iter-1)
+anim_eki_cloudy = @animate for i in 1:(N_iter - 1)
     ϕ_i = get_ϕ(priors, ekiobj, i)
 
-    p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter,
-              xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))
+    p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter, xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))
     plot!(
         p1,
         [ϕ_true[1]],
@@ -290,11 +281,9 @@ anim_eki_cloudy = @animate for i in 1:(N_iter-1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p2 = plot(ϕ_i[2, :], ϕ_i[3, :], seriestype = :scatter,
-              xlims = extrema(ϕ_init[2, :]), ylims = extrema(ϕ_init[3, :]))
+    p2 = plot(ϕ_i[2, :], ϕ_i[3, :], seriestype = :scatter, xlims = extrema(ϕ_init[2, :]), ylims = extrema(ϕ_init[3, :]))
 
     plot!(
         p2,
@@ -309,11 +298,9 @@ anim_eki_cloudy = @animate for i in 1:(N_iter-1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(ϕ_i[3, :], ϕ_i[1, :], seriestype = :scatter,
-              xlims = extrema(ϕ_init[3, :]), ylims = extrema(ϕ_init[1, :]))
+    p3 = plot(ϕ_i[3, :], ϕ_i[1, :], seriestype = :scatter, xlims = extrema(ϕ_init[3, :]), ylims = extrema(ϕ_init[1, :]))
     plot!(
         p3,
         [ϕ_true[3]],
@@ -326,12 +313,10 @@ anim_eki_cloudy = @animate for i in 1:(N_iter-1)
         label = false,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash,
-          linecolor = :red, label = "optimum")
+    plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
     p = plot(p1, p2, p3, layout = (1, 3))
 
 end
 
-gif(anim_eki_cloudy,
-    joinpath(output_directory, "eki_cloudy.gif"), fps = 1) # hide
+gif(anim_eki_cloudy, joinpath(output_directory, "cloudy_eki_constr.gif"), fps = 1) # hide

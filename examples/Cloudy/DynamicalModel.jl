@@ -57,11 +57,7 @@ function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT 
     coalescence_coeff = 1 / 3.14 / 4 / 100
     kernel_func = x -> coalescence_coeff
     kernel = CoalescenceTensor(kernel_func, 0, FT(100))
-    ODE_parameters = Dict(
-        :dist => [dist_init],
-        :kernel => settings.kernel,
-        :dt => FT(1)
-        )
+    ODE_parameters = Dict(:dist => [dist_init], :kernel => settings.kernel, :dt => FT(1))
 
     rhs(m, par, t) = get_int_coalescence(OneModeCoalStyle(), m, par, par[:kernel])
     prob = ODEProblem(rhs, moments_init, settings.tspan, ODE_parameters)
@@ -74,5 +70,3 @@ function run_dyn_model(ϕ::Array{FT, 1}, settings::ModelSettings{FT}) where {FT 
 end
 
 end
-
-

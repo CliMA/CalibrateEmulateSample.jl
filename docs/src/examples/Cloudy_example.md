@@ -21,21 +21,13 @@ measurements of cloud properties.
 
 The following schematic gives an overview of the example:
 
-![cloudy_schematic](../assets/cloudy_ces_schematic_resized.png)
+![cloudy_schematic](../assets/cloudy_ces_schematic.png)
 
 The input to the CES algorithm consists of data ``y``, the observational covariance ``Γ``, and prior parameter distributions. The data, a vector of moments of the droplet mass distribution, are obtained by running Cloudy with the parameters set to their true values. The covariance is obtained from model output. The calibration stage is performed by an ensemble Kalman inversion (EKI), in which Cloudy has to be run once per iteration and for each ensemble member. The resulting input-output pairs ``\{\theta_i, \mathcal{G}(\theta_i)\}_i`` are used to train an emulator model. This emulator ``\widetilde{\mathcal{G}}(\theta)`` is cheap to evaluate; it replaces the original parameter-to-data map in the Markov chain Monte Carlo (MCMC) sampling, which produces (approximate) samples of the posterior parameter distribution. These samples are the final output of the CES algorithm. 
 
 [This paper](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2022MS002994) describes Cloudy in much more detail and shows results of experiments using
 CES to learn model parameters.
 
-
-### Prerequisites
-
-In order to run this example, you need to install `Cloudy.jl`. The example was
-written using Cloudy v0.3.0, which you can install as follows:
-```julia
-pkg > add https://github.com/CliMA/Cloudy.jl.git#v0.3.0
-```
 
 ### Running the example
 
@@ -140,7 +132,6 @@ The plot recipe for `ParameterDistribution` types allows for quick visualization
 ```julia
 # Plot the priors
 p = plot(priors, constrained=false)
-savefig(p, output_directory * "cloudy_priors.png")
 ```
 
 ![priors](../assets/cloudy_priors.png)
@@ -232,7 +223,7 @@ particles over subsequent iterations of the optimization, both in the
 computational (unconstrained) and physical (constrained) spaces.
 
 
-![eki_iterations_animation](../assets/eki_cloudy.gif)
+![eki_iterations_animation](../assets/cloudy_eki.gif)
 
 
 ### Walkthrough of the code: `Cloudy_emulate_sample.jl`
@@ -487,11 +478,11 @@ p_constr = pairplot(data_constr => (PairPlots.Scatter(),))
 
 For the GP emulator, the results (shown in the constrained/physical space) look as follows:
 
-![joint_posterior](../assets/joint_posterior_constr_gpjl_resized.png)
+![pairplot_posterior_gpjl](../assets/cloudy_pairplot_posterior_constr_gp-gpjl.png)
 
 And we can plot the same for the RF emulator:
 
-![joint_posterior](../assets/joint_posterior_constr_rf-scalar_resized.png)
+![pairplot_posterior_rf-scalar](../assets/cloudy_pairplot_posterior_constr_rf-scalar.png)
 
 In addition, we plot the marginals of the posterior distributions---we are
 showing them here for the GP emulator case:
@@ -530,11 +521,11 @@ for idx in 1:n_params
 This is what the marginal distributions of the three parameters look like, for
 the case of the GP emulator, and in the constrained/physical space:
 
-![posterior_N0_gpjl](../assets/posterior_gp-gpjl_N0_resized.png)
+![posterior_N0_gpjl](../assets/cloudy_marginal_posterior_constr_gp-gpjl_N0.png)
 
-![posterior_theta_gpjl](../assets/posterior_gp-gpjl_theta_resized.png)
+![posterior_theta_gpjl](../assets/cloudy_marginal_posterior_constr_gp-gpjl_theta.png)
 
-![posterior_k_gpjl](../assets/posterior_gp-gpjl_k_resized.png)
+![posterior_k_gpjl](../assets/cloudy_marginal_posterior_constr_gp-gpjl_k.png)
 
 Here, the posterior distributions are shown as orange histograms, the prior distribution are shown as grey histograms (though with the exception of the parmaeter `k`, they are barely visible), and the true parameter values are marked as vertical purple lines.
 

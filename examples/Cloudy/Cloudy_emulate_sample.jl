@@ -71,10 +71,7 @@ function main()
 
     # The calibration results must be produced by running Cloudy_calibrate.jl
     # before running Cloudy_emulate_sample.jl
-    data_save_file = joinpath(
-        output_directory,
-        "cloudy_calibrate_results.jld2"
-    )
+    data_save_file = joinpath(output_directory, "cloudy_calibrate_results.jld2")
 
     # Check if the file exists before loading
     if isfile(data_save_file)
@@ -100,7 +97,7 @@ function main()
 
     cases = [
         "rf-scalar",
-        "gp-gpjl"  # Veeeery slow predictions
+        "gp-gpjl",  # Veeeery slow predictions
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
@@ -121,8 +118,7 @@ function main()
 
     # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
-    input_output_pairs = get_training_points(ekiobj,
-                                             length(get_u(ekiobj))-1)
+    input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 1)
     norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
     for case in cases[case_mask]
 
@@ -139,19 +135,11 @@ function main()
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 
             # Define machine learning tool
-            mlt = GaussianProcess(
-                gppackage;
-                kernel = gp_kernel,
-                prediction_type = pred_type,
-                noise_learn = false,
-            )
+            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
 
         elseif case == "rf-scalar"
 
-            kernel_structure = SeparableKernel(
-                LowRankFactor(n_params, nugget),
-                OneDimFactor()
-            )
+            kernel_structure = SeparableKernel(LowRankFactor(n_params, nugget), OneDimFactor())
 
             # Define machine learning tool
             mlt = ScalarRandomFeatureInterface(
@@ -179,11 +167,7 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # Check how well the emulator predicts on the true parameters
-        y_mean, y_var = Emulators.predict(
-            emulator,
-            reshape(θ_true, :, 1);
-            transform_to_real = true
-        )
+        y_mean, y_var = Emulators.predict(emulator, reshape(θ_true, :, 1); transform_to_real = true)
 
         println("Emulator ($(case)) prediction on true parameters: ")
         println(vec(y_mean))
@@ -205,29 +189,13 @@ function main()
 
         # First let's run a short chain to determine a good step size
         yt_sample = truth_sample
-        mcmc = MCMCWrapper(
-            RWMHSampling(),
-            yt_sample,
-            priors,
-            emulator;
-            init_params = u0
-        )
+        mcmc = MCMCWrapper(RWMHSampling(), yt_sample, priors, emulator; init_params = u0)
 
-        new_step = optimize_stepsize(
-            mcmc;
-            init_stepsize = 0.1,
-            N = 2000,
-            discard_initial = 0
-        )
+        new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
         # Now begin the actual MCMC
         println("Begin MCMC - with step size ", new_step)
-        chain = MarkovChainMonteCarlo.sample(
-            mcmc,
-            100_000;
-            stepsize = new_step,
-            discard_initial = 1_000
-        )
+        chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 1_000)
 
         posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
@@ -240,29 +208,22 @@ function main()
 
         # Prior samples
         prior_samples_unconstr = sample(rng, priors, Int(1e4))
-        prior_samples_constr = transform_unconstrained_to_constrained(
-            priors, prior_samples_unconstr)
+        prior_samples_constr = transform_unconstrained_to_constrained(priors, prior_samples_unconstr)
 
         # Posterior samples
-        posterior_samples_unconstr =
-            vcat([get_distribution(posterior)[name]
-                  for name in get_name(posterior)]...) # samples are columns
+        posterior_samples_unconstr = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) # samples are columns
         posterior_samples_constr =
-            mapslices(x -> transform_unconstrained_to_constrained(posterior, x),
-                      posterior_samples_unconstr, dims = 1)
+            mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples_unconstr, dims = 1)
 
         # Make pair plots of the posterior distributions in the unconstrained
         # and in the constrained space (this uses `PairPlots.jl`)
-        figpath_unconstr = joinpath(output_directory,
-                                    "joint_posterior_unconstr_" * case * ".png")
-        figpath_constr = joinpath(output_directory,
-                                  "joint_posterior_constr.png_" * case * ".png")
+        figpath_unconstr = joinpath(output_directory, "joint_posterior_unconstr_" * case * ".png")
+        figpath_constr = joinpath(output_directory, "joint_posterior_constr.png_" * case * ".png")
         labels = get_name(posterior)
 
-        data_unconstr = (; [(Symbol(labels[i]),
-                             posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
-        data_constr = (; [(Symbol(labels[i]),
-                           posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
+        data_unconstr =
+            (; [(Symbol(labels[i]), pairplot_posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_constr = (; [(Symbol(labels[i]), pairplot_posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
 
         p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
         p_constr = pairplot(data_constr => (PairPlots.Scatter(),))
@@ -270,7 +231,7 @@ function main()
         save(figpath_constr, p_constr)
 
         # Plot the marginal posterior distributions together with the priors
-        # and the true parameter values (in the constrained space)
+        # and the true parameter values (we'll do that in the constrained space)
         n_params = length(get_name(posterior))
 
         for idx in 1:n_params
@@ -284,16 +245,13 @@ function main()
             ax = Axis(fig[1, 1])
 
             # Histogram for posterior samples
-            hist!(ax, posterior_samples_constr[idx, :], bins = 100,
-                  color = :darkorange, label = "posterior")
+            hist!(ax, posterior_samples_constr[idx, :], bins = 100, color = :darkorange, label = "posterior")
 
             # Plotting the prior distribution
-            hist!(ax, prior_samples_constr[idx, :], bins = 10000,
-                  color = :slategray)
+            hist!(ax, prior_samples_constr[idx, :], bins = 10000, color = :slategray)
 
             # Adding a vertical line for the true value
-            vlines!(ax, [ϕ_true[idx]], color = :indigo, linewidth = 2.6,
-                    label = "true " * param_names[idx])
+            vlines!(ax, [ϕ_true[idx]], color = :indigo, linewidth = 2.6, label = "true " * param_names[idx])
 
             xlims!(ax, xmin, xmax)
             ylims!(ax, 0, nothing)
@@ -306,7 +264,7 @@ function main()
 
             # Save the figure (marginal posterior distribution in constrained
             # space)
-            figname = "posterior_" * case * "_" * param_names[idx] * ".png"
+            figname = "marginal_posterior_constr_" * case * "_" * param_names[idx] * ".png"
             figpath_marg_constr = joinpath(output_directory, figname)
             save(figpath_marg_constr, fig)
 
