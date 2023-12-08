@@ -222,8 +222,7 @@ function main()
         figpath_constr = joinpath(output_directory, "pairplot_posterior_constr.png_" * case * ".png")
         labels = get_name(posterior)
 
-        data_unconstr =
-            (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_unconstr = (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
         data_constr = (; [(Symbol(labels[i]), posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
 
         p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
