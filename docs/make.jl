@@ -2,7 +2,6 @@
 
 using CalibrateEmulateSample
 using Documenter
-# using DocumenterCitations
 
 #----------
 
@@ -10,6 +9,11 @@ examples = [
     "Lorenz example" => "examples/lorenz_example.md",
     "Turbulence example" => "examples/edmf_example.md",
     "Cloudy example" => "examples/Cloudy_example.md",
+    "Emulator testing" => [
+        "examples/emulators/regression_2d_2d.md",
+        "examples/emulators/lorenz_integrator_3d_3d.md",
+        "examples/emulators/ishigami_3d_1d.md",
+    ],
 ]
 
 design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
@@ -51,7 +55,6 @@ makedocs(
     pages = pages,
     modules = [CalibrateEmulateSample],
     doctest = false,
-    strict = true,
     clean = true,
     checkdocs = :none,
 )
