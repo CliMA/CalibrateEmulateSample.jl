@@ -108,9 +108,10 @@ using CalibrateEmulateSample.DataContainers
     se = pykernels.RBF(1.0)
     GPkernel = var * se
 
+@info "pre GP"
 
     gp3 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-
+@info " post GP pre emulator"
     em3 = Emulator(
         gp3,
         iopairs,
@@ -119,9 +120,11 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
+    @info " post emulator pre optimize"
 
     Emulators.optimize_hyperparameters!(em3)
 
+    @info " post optimize pre predict"
 
     #gp3 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing,
     #               normalized=false, noise_learn=true,
