@@ -34,7 +34,7 @@ function constructor_tests(
     )
 
     #build a known type, with defaults
-    gp = GaussianProcess(GPJL())
+    gp = GaussianProcess(SKLJL())
     emulator = Emulator(
         gp,
         iopairs,
@@ -50,7 +50,7 @@ function constructor_tests(
     @test test_decomp.Vt == decomposition.Vt
     @test test_decomp.S == decomposition.S
 
-    gp = GaussianProcess(GPJL())
+    gp = GaussianProcess(SKLJL())
     emulator2 = Emulator(
         gp,
         iopairs,
@@ -65,7 +65,7 @@ function constructor_tests(
     @test train_inputs2 == norm_inputs
 
     # reverse standardise
-    gp = GaussianProcess(GPJL())
+    gp = GaussianProcess(SKLJL())
     emulator3 = Emulator(
         gp,
         iopairs,
@@ -174,7 +174,7 @@ end
         constructor_tests(iopairs, Σ, norm_factors, decomposition)
 
         # truncation - only test here, where singular value of Σ differ
-        gp = GaussianProcess(GPJL())
+        gp = GaussianProcess(SKLJL())
         emulator4 = Emulator(
             gp,
             iopairs,
