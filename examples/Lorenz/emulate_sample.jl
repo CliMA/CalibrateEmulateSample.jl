@@ -48,7 +48,7 @@ function main()
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = 2:7 # e.g. 1:8 or [7]
+    mask = 1:8 # 1:8 # e.g. 1:8 or [7]
     for (case) in cases[mask]
 
 
@@ -105,7 +105,7 @@ function main()
         ###
 
         # Emulate-sample settings
-        # choice of machine-learning tool
+        # choice of machine-learning tool in the emulation stage
         nugget = 0.001
         if case == "GP"
             gppackage = Emulators.GPJL()

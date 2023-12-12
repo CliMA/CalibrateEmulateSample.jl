@@ -105,6 +105,16 @@ function main()
         priors = PD.constrained_gaussian("F", F_true, 1.0, 0, Inf)
     end
 
+    # Plot the prior distribution
+    p = plot(priors, title = "prior")
+    plot!(p.subplots[1], [F_true], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash, xlabel = "F") # vline on top histogram
+    plot!(p.subplots[2], [A_true], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash, xlabel = "A") # vline on top histogram
+    figpath = joinpath(figure_save_directory, "prior" * ".pdf")
+    savefig(figpath)
+    figpath = joinpath(figure_save_directory, "prior" * ".png")
+    savefig(figpath)
+
+
 
     ###
     ###  Define the data from which we want to learn the parameters
