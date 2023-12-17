@@ -93,22 +93,24 @@ function main()
 
     param_names = get_name(priors)
     n_params = length(ϕ_true) # input dimension
+    n_outputs = length(truth_sample) # output dimension
 
     Γy = ekiobj.obs_noise_cov
 
     cases = [
         "rf-scalar",
         "gp-gpjl",  # Veeeery slow predictions
+        "rf-nosvd-nonsep"
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [1, 2]
+    case_mask = [3]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
 
     # These settings are the same for all Random Feature cases
-    n_features = 600
+    n_features = 400
     nugget = 1e-8
     optimizer_options = Dict(
         "verbose" => true,
@@ -136,7 +138,11 @@ function main()
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 
             # Define machine learning tool
-            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
+            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type
+                                  = pred_type, noise_learn = false)
+
+            decorrelate = true
+            standardize_outputs = true
 
         elseif case == "rf-scalar"
 
@@ -150,6 +156,25 @@ function main()
                 optimizer_options = optimizer_options,
             )
 
+            decorrelate = true
+            standardize_outputs = true
+
+        elseif case == "rf-nosvd-nonsep"
+
+            # Define machine learning tool
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                n_params,
+                n_outputs,
+                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
+                optimizer_options = optimizer_options
+            )
+
+            # Vector RF does not require decorrelation of outputs
+            decorrelate = false
+            standardize_outputs = false
+
+
         else
             error("Case $case is not implemented yet.")
 
@@ -157,11 +182,14 @@ function main()
 
         # The data processing normalizes input data, and decorrelates
         # output data with information from Γy
+        # Note: The `standardize_outputs_factors` are only used under the
+        # condition that `standardize_outputs` is true.
         emulator = Emulator(
             mlt,
             input_output_pairs,
             obs_noise_cov = Γy,
-            standardize_outputs = true,
+            decorrelate = decorrelate,
+            standardize_outputs = standardize_outputs,
             standardize_outputs_factors = vcat(norm_factors...),
         )
 
@@ -222,7 +250,8 @@ function main()
         figpath_constr = joinpath(output_directory, "pairplot_posterior_constr.png_" * case * ".png")
         labels = get_name(posterior)
 
-        data_unconstr = (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_unconstr =
+            (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
         data_constr = (; [(Symbol(labels[i]), posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
 
         p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
