@@ -104,7 +104,7 @@ function main()
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [3]
+    case_mask = [1]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
@@ -146,7 +146,8 @@ function main()
 
         elseif case == "rf-scalar"
 
-            kernel_structure = SeparableKernel(LowRankFactor(n_params, nugget), OneDimFactor())
+            kernel_rank = 3
+            kernel_structure = SeparableKernel(LowRankFactor(kernel_rank, nugget), OneDimFactor())
 
             # Define machine learning tool
             mlt = ScalarRandomFeatureInterface(
@@ -162,11 +163,12 @@ function main()
         elseif case == "rf-nosvd-nonsep"
 
             # Define machine learning tool
+            kernel_rank = 4
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 n_params,
                 n_outputs,
-                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
+                kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget)),
                 optimizer_options = optimizer_options
             )
 
@@ -181,7 +183,7 @@ function main()
         end
 
         # The data processing normalizes input data, and decorrelates
-        # output data with information from Γy
+        # output data with information from Γy, if required
         # Note: The `standardize_outputs_factors` are only used under the
         # condition that `standardize_outputs` is true.
         emulator = Emulator(
@@ -247,7 +249,7 @@ function main()
         # Make pair plots of the posterior distributions in the unconstrained
         # and in the constrained space (this uses `PairPlots.jl`)
         figpath_unconstr = joinpath(output_directory, "pairplot_posterior_unconstr_" * case * ".png")
-        figpath_constr = joinpath(output_directory, "pairplot_posterior_constr.png_" * case * ".png")
+        figpath_constr = joinpath(output_directory, "pairplot_posterior_constr_" * case * ".png")
         labels = get_name(posterior)
 
         data_unconstr =
