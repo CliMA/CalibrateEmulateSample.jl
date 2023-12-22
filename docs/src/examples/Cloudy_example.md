@@ -369,14 +369,16 @@ mlt = VectorRandomFeatureInterface(
 decorrelate = false
 standardize_outputs = false
 ```
-We construct the emulator using all input-output pairs obtained in the
-calibration stage. For the `gp-gpjl` and `rf-scalar` cases, we want the output
+We construct the emulator using the input-output pairs obtained in the
+calibration stage (note that we're not using all available input-output
+pairs---using all of them may not give the best results, especially if the EKI
+parameter converges rapidly and then "stays in the same place" during the remaining iterations). For the `gp-gpjl` and `rf-scalar` cases, we want the output
 data to be decorrelated with information from Γy, but for the vector RF case
 decorrelation is not required.
 
 ```
 input_output_pairs = get_training_points(ekiobj,
-                                          length(get_u(ekiobj))-1)
+                                          length(get_u(ekiobj))-2)
 
 # Use the medians of the outputs as standardizing factors
 norm_factors = get_standardizing_factors(

@@ -104,7 +104,7 @@ function main()
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [1]
+    case_mask = [1, 2, 3]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
@@ -121,7 +121,7 @@ function main()
 
     # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
-    input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 1)
+    input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 2)
     norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
     for case in cases[case_mask]
 
