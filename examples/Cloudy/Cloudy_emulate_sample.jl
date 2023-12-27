@@ -100,7 +100,7 @@ function main()
     cases = [
         "rf-scalar",
         "gp-gpjl",  # Veeeery slow predictions
-        "rf-nosvd-nonsep"
+        "rf-nosvd-nonsep",
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
@@ -138,8 +138,7 @@ function main()
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 
             # Define machine learning tool
-            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type
-                                  = pred_type, noise_learn = false)
+            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
 
             decorrelate = true
             standardize_outputs = true
@@ -169,7 +168,7 @@ function main()
                 n_params,
                 n_outputs,
                 kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget)),
-                optimizer_options = optimizer_options
+                optimizer_options = optimizer_options,
             )
 
             # Vector RF does not require decorrelation of outputs
@@ -252,8 +251,7 @@ function main()
         figpath_constr = joinpath(output_directory, "pairplot_posterior_constr_" * case * ".png")
         labels = get_name(posterior)
 
-        data_unconstr =
-            (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
+        data_unconstr = (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
         data_constr = (; [(Symbol(labels[i]), posterior_samples_constr[i, :]) for i in 1:length(labels)]...)
 
         p_unconstr = pairplot(data_unconstr => (PairPlots.Scatter(),))
