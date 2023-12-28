@@ -188,9 +188,7 @@ ekiobj = EnsembleKalmanProcess(
 
 We perform the inversion loop. Remember that within calls to `get_ϕ_final` the
 EKP transformations are applied, thus the ensemble that is returned will be the
-gamma distribution parameters that can be used to run the forward model, rather
-than their corresponding values in the unconstrained space where the EKI takes
-place. Each ensemble member is stored as a column and therefore for uses such as plotting one needs to reshape to the desired dimension.
+gamma distribution parameters that can be used directly to run the forward model, rather than their corresponding values in the unconstrained space where the EKI takes place. Each ensemble member is stored as a column and therefore for uses such as plotting one needs to reshape to the desired dimension.
 
 ```julia
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
@@ -276,21 +274,25 @@ truth_sample = load(data_save_file)["truth_sample"]
 θ_true = transform_constrained_to_unconstrained(priors, ϕ_true)
 ```
 
-The user can choose one or both of two emulators: a Gaussian Process (GP) emulator with `GaussianProcesses.jl` interface (`gp-gpjl`) and a scalar Random Feature
-(RF) interface (`rf-scalar`). See
-[here](https://clima.github.io/CalibrateEmulateSample.jl/previews/PR257/examples/emulators/regression_2d_2d)
-for a complete overview of the available emulators. 
+The user can choose one or more of the following three emulators: a Gaussian
+Process (GP) emulator with `GaussianProcesses.jl` interface (`gp-gpjl`), a
+scalar Random Feature (RF) interface (`rf-scalar`), and vector RF with a
+nonseparable, nondiagonal kernel structure in the output space
+(`rf-nosvd-nonsep`). See 
+[here](https://clima.github.io/CalibrateEmulateSample.jl/dev/examples/emulators/regression_2d_2d) for a complete overview of the available emulators. 
 
 ```julia
 cases = [
     "rf-scalar",
-    "gp-gpjl"  # Veeeery slow predictions
+    "gp-gpjl",  # Veeeery slow predictions
+    "rf-nosvd-nonsep"
 ]
 ```
 
 We first define some settings for the two emulators, e.g., the prediction type
 for the GP emulator, or the number of features and hyperparameter optimizer
-options for the RF emulator. The docs for GPs and RFs (TODO: add links!) explain the different options in more detail and provide some useful heuristics for how to customize the settings depending on the problem at hand.
+options for the RF emulator. The docs for
+[GPs](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/) and [RFs](https://clima.github.io/CalibrateEmulateSample.jl/dev/random_feature_emulator/) explain the different options in more detail and provide some useful heuristics for how to customize the settings depending on the problem at hand.
 
 ```julia
 # These settings are the same for all Gaussian Process cases
@@ -327,13 +329,17 @@ mlt = GaussianProcess(
     prediction_type = pred_type,
     noise_learn = false,
 )
+
+decorrelate = true
+standardize_outputs = true
 ```
 
-And similarly for `rf-scalar`:
+And similarly for `rf-scalar`
 
 ```julia
+kernel_rank = 3
 kernel_structure = SeparableKernel(
-    LowRankFactor(n_params, nugget),
+    LowRankFactor(kernel_rank, nugget),
     OneDimFactor()
 )
 
@@ -344,23 +350,49 @@ mlt = ScalarRandomFeatureInterface(
     optimizer_options = optimizer_options,
 )
 
-```
+decorrelate = true
+standardize_outputs = true
+``` 
+and for `rf-nosvd-nonsep`:
 
-We construct the emulator using all input-output pairs obtained in the
-calibration stage, and we want the output data to be decorrelated with information from Γy:
+```
+kernel_rank = 4
+mlt = VectorRandomFeatureInterface(
+    n_features,
+    n_params,
+    n_outputs,
+    kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget)),
+    optimizer_options = optimizer_options
+)
+
+# Vector RF does not require decorrelation of outputs
+decorrelate = false
+standardize_outputs = false
+```
+We construct the emulator using the input-output pairs obtained in the
+calibration stage (note that we're not using all available input-output
+pairs---using all of them may not give the best results, especially if the EKI
+parameter converges rapidly and then "stays in the same place" during the remaining iterations). For the `gp-gpjl` and `rf-scalar` cases, we want the output
+data to be decorrelated with information from Γy, but for the vector RF case
+decorrelation is not required.
 
 ```
 input_output_pairs = get_training_points(ekiobj,
-                                          length(get_u(ekiobj))-1)
+                                          length(get_u(ekiobj))-2)
 
 # Use the medians of the outputs as standardizing factors
 norm_factors = get_standardizing_factors(
     get_outputs(input_output_pairs)
 )
 
+# The data processing normalizes input data, and decorrelates
+# output data with information from Γy, if required
+# Note: The `standardize_outputs_factors` are only used under the
+# condition that `standardize_outputs` is true.
 emulator = Emulator(
     mlt,
     input_output_pairs,
+    decorrelate = decorrelate,
     obs_noise_cov = Γy,
     standardize_outputs = true,
     standardize_outputs_factors = vcat(norm_factors...),
@@ -450,7 +482,7 @@ posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 The samples of the posterior distributions represent the ultimate output of the
 CES process. By constructing histograms of these samples and comparing them with
 the known true parameter values, we can evaluate the results' accuracy. Ideally,
-the peak of the posterior distribution should converge near the true values,
+the peak of the posterior distribution should be located near the true values,
 indicating a high-quality estimation. Additionally, visualizing the prior
 distributions alongside the posteriors shows the distributional change effected by the Bayesian learning process.
 
@@ -480,9 +512,13 @@ For the GP emulator, the results (shown in the constrained/physical space) look 
 
 ![pairplot_posterior_gpjl](../assets/cloudy_pairplot_posterior_constr_gp-gpjl.png)
 
-And we can plot the same for the RF emulator:
+And we can plot the same for the scalar RF emulator...
 
 ![pairplot_posterior_rf-scalar](../assets/cloudy_pairplot_posterior_constr_rf-scalar.png)
+
+...and for the vector RF emulator:
+
+![pairplot_posterior_rf-vec](../assets/cloudy_pairplot_posterior_constr_rf-nosvd-nonsep.png)
 
 In addition, we plot the marginals of the posterior distributions---we are
 showing them here for the GP emulator case:

@@ -93,22 +93,24 @@ function main()
 
     param_names = get_name(priors)
     n_params = length(ϕ_true) # input dimension
+    n_outputs = length(truth_sample) # output dimension
 
     Γy = ekiobj.obs_noise_cov
 
     cases = [
         "rf-scalar",
         "gp-gpjl",  # Veeeery slow predictions
+        "rf-nosvd-nonsep",
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
-    case_mask = [1, 2]
+    case_mask = [1, 2, 3]
 
     # These settings are the same for all Gaussian Process cases
     pred_type = YType() # we want to predict data
 
     # These settings are the same for all Random Feature cases
-    n_features = 600
+    n_features = 400
     nugget = 1e-8
     optimizer_options = Dict(
         "verbose" => true,
@@ -119,7 +121,7 @@ function main()
 
     # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
-    input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 1)
+    input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 2)
     norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
     for case in cases[case_mask]
 
@@ -138,9 +140,13 @@ function main()
             # Define machine learning tool
             mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
 
+            decorrelate = true
+            standardize_outputs = true
+
         elseif case == "rf-scalar"
 
-            kernel_structure = SeparableKernel(LowRankFactor(n_params, nugget), OneDimFactor())
+            kernel_rank = 3
+            kernel_structure = SeparableKernel(LowRankFactor(kernel_rank, nugget), OneDimFactor())
 
             # Define machine learning tool
             mlt = ScalarRandomFeatureInterface(
@@ -150,18 +156,41 @@ function main()
                 optimizer_options = optimizer_options,
             )
 
+            decorrelate = true
+            standardize_outputs = true
+
+        elseif case == "rf-nosvd-nonsep"
+
+            # Define machine learning tool
+            kernel_rank = 4
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                n_params,
+                n_outputs,
+                kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget)),
+                optimizer_options = optimizer_options,
+            )
+
+            # Vector RF does not require decorrelation of outputs
+            decorrelate = false
+            standardize_outputs = false
+
+
         else
             error("Case $case is not implemented yet.")
 
         end
 
         # The data processing normalizes input data, and decorrelates
-        # output data with information from Γy
+        # output data with information from Γy, if required
+        # Note: The `standardize_outputs_factors` are only used under the
+        # condition that `standardize_outputs` is true.
         emulator = Emulator(
             mlt,
             input_output_pairs,
             obs_noise_cov = Γy,
-            standardize_outputs = true,
+            decorrelate = decorrelate,
+            standardize_outputs = standardize_outputs,
             standardize_outputs_factors = vcat(norm_factors...),
         )
 
@@ -219,7 +248,7 @@ function main()
         # Make pair plots of the posterior distributions in the unconstrained
         # and in the constrained space (this uses `PairPlots.jl`)
         figpath_unconstr = joinpath(output_directory, "pairplot_posterior_unconstr_" * case * ".png")
-        figpath_constr = joinpath(output_directory, "pairplot_posterior_constr.png_" * case * ".png")
+        figpath_constr = joinpath(output_directory, "pairplot_posterior_constr_" * case * ".png")
         labels = get_name(posterior)
 
         data_unconstr = (; [(Symbol(labels[i]), posterior_samples_unconstr[i, :]) for i in 1:length(labels)]...)
