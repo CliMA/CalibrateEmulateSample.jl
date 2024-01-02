@@ -1,14 +1,66 @@
-# AbstractMCMC sampling API
+# The Sample stage
 
 ```@meta
 CurrentModule = CalibrateEmulateSample.MarkovChainMonteCarlo
 ```
 
-The "sample" part of CES refers to exact sampling from the emulated posterior via [Markov chain Monte
-Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC). Within this paradigm, we want to provide the
-flexibility to use multiple sampling algorithms; the approach we take is to use the general-purpose
-[AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface) API, provided by the
-[Turing.jl](https://turing.ml/dev/) probabilistic programming framework.
+The "sample" part of CES refers to exact sampling from the emulated posterior. In our current framework this is acheived with a [Markov chain Monte
+Carlo algorithm](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC). Within this paradigm, we want to provide the flexibility to use multiple sampling algorithms; the approach we take is to use the general-purpose [AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface) API, provided by the [Turing.jl](https://turing.ml/dev/) probabilistic programming framework.
+
+
+## User interface
+
+We briefly outline an instance of how one sets up and uses MCMC within the CES package. The user first provides a Protocol (i.e. how one wishes to generate proposals)
+
+```julia
+protocol = RWMHSampling() # Random-Walk algorithm
+# protocol = pCNMHSampling() # preconditioned-Crank-Nicholson algorithm
+```
+Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the Calibrate stage, alongside the trained statistical emulator from the Emulate stage:
+```julia
+mcmc = MCMCWrapper(
+    protocol,
+    truth_sample, 
+    prior,
+    emulator;
+    init_params=mean_u_final,
+    burnin=10_000,
+)
+```
+The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of Calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the Sampling method.
+
+For good efficiency, one often needs to run MCMC with a problem-dependent step size. We provide a simple utility to help choose this. Here the optimizer runs short chains (of length `N`), and adjusts the step-size until the MCMC acceptance rate falls within an acceptable range, returning this step size.
+```julia
+new_step = optimize_stepsize(
+mcmc;
+init_stepsize = 1,
+N = 2000
+)
+```
+To generate ``10^5`` samples with a given step size (and optional random number generator `rng`), one calls
+```julia
+chain = sample(rng, mcmc, 100_000; stepsize = new_step)
+display(chain) # gives diagnostics
+```
+The return argument is stored in an `MCMCChains.Chains` object. To convert this back into a `ParameterDistribution` type (which contains e.g. the transformation maps) one can call
+```julia
+posterior = get_posterior(mcmc, chain)
+constrained_posterior = transform_unconstrained_to_constrained(prior, get_distribution(posterior))
+```
+
+One can quickly plot the marginals of the prior and posterior distribution with
+```julia
+using Plots
+plot(prior)
+plot!(posterior)
+```
+or extract statistics of the (unconstrained) distribution with
+```julia
+mean_posterior = mean(posterior)
+cov_postierior = cov(posterior)
+```
+
+# [Further details on the implementation](@id AbstractMCMC sampling API)
 
 This page provides a summary of AbstractMCMC which augments the existing documentation
 (\[[1](https://turing.ml/dev/docs/for-developers/interface)\],

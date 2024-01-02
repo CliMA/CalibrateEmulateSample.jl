@@ -13,6 +13,34 @@ The `VectorRandomFeatureInterface`, when applied to multidimensional problems, d
 
 Building a random feature interface is similar to building a Gaussian process: one defines a kernel to encode similarities between outputs ``(y_i,y_j)`` based on inputs ``(x_i,x_j)``. Additionally, one must specify the number of random feature samples to be taken to build the emulator.
 
+# Recommended configuration
+
+Below is listed a recommended configuration that is flexible and requires learning relatively few parameters. Users can increase `r` to balance flexibility against having more kernel hyperparameters to learn.
+
+```julia
+using CalibrateEmulateSample.Emulators
+# given input_dim, output_dim, and a PairedDataContainer
+
+# define number of features for prediction
+n_features = 400 # number of features for prediction 
+
+# define kernel 
+nugget = 1e8*eps() # small nugget term
+r = 1 # start with smallest rank 
+lr_perturbation = LowRankFactor(r, nugget) 
+nonsep_lrp_kernel = NonseparableKernel(lr_perturbation) 
+
+# configure optimizer
+optimizer_options = Dict(
+    "verbose" => true, # print diagnostics for optimizer
+    "n_features_opt" => 100, # use less features during hyperparameter optimization/kernel learning
+    "cov_sample_multiplier" => 1.0, # use to reduce/increase number of samples in initial cov estimation stage
+)
+
+machine_learning_tool = VectorRandomFeatureInterface(n_features, input_dim, output_dim, optimizer_options = optimizer_options)
+```
+Users can change the kernel complexity with `r`, and the number of features for prediciton with `n_features` and optimization with `n_features_opt`. 
+
 # User Interface
 
 `CalibrateEmulateSample.jl` allows the random feature emulator to be built using the external package [`RandomFeatures.jl`](https://github.com/CliMA/RandomFeatures.jl). In the notation of this package's documentation, our interface allows for families of `RandomFourierFeature` objects to be constructed with different Gaussian distributions of the "`xi`" a.k.a weight distribution, and with a learnable "`sigma`", a.k.a scaling parameter.
@@ -37,8 +65,8 @@ To adjust the expressivity of the random feature family one can define the keywo
 
 We have two types,
 ```julia
-separable_kernel = Separable(input_cov_structure, output_cov_structure)
-nonseparable_kernel = Nonseparable(cov_structure)
+separable_kernel = SeparableKernel(input_cov_structure, output_cov_structure)
+nonseparable_kernel = NonseparableKernel(cov_structure)
 ```
 where the `cov_structure` implies some imposed user structure on the covariance structure. The basic covariance structures are given by 
 ```julia

@@ -25,25 +25,46 @@ Given an observation ``y``, the computer model ``\mathcal{G}``, the observationa
  
 As the name suggests, `CalibrateEmulateSample.jl` breaks this problem into a sequence of three steps: calibration, emulation, and sampling. A comprehensive treatment of the calibrate-emulate-sample approach to Bayesian inverse problems can be found in [Cleary et al. (2020)](https://arxiv.org/pdf/2001.03689.pdf).
 
-### The three steps of the algorithm:
+### The three steps of the algorithm: see our walkthrough of the [Sinusoid Example](@ref)
 
-The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This the only time we interface with the forward model ``\mathcal{G}``).
+**Given some noisy observations...**
+```@raw html
+<img src="assets/sinusoid_true_vs_observed_signal.png" width="400">
+```
 
-The **emulate** step takes these pairs ``\{\theta, \mathcal{G}(\theta)\}`` and trains a statistical surrogate model (e.g., a Gaussian process), emulating the forward map ``\mathcal{G}``.
+1. The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This the only time we interface with the forward model ``\mathcal{G}``).
 
-The **sample** step uses this surrogate in place of ``\mathcal{G}`` in a sampling method (Markov chain Monte Carlo) to sample the posterior distribution of ``\theta``.
+**calibrate with EKP to generate data pairs...**
+```@raw html
+<img src="assets/sinusoid_eki_pairs.png" width="400">
+```
+
+2. The **emulate** step takes these pairs ``\{\theta, \mathcal{G}(\theta)\}`` and trains a statistical surrogate model (e.g., a Gaussian process), emulating the forward map ``\mathcal{G}``.
+
+**emulate the map statistically from EKP pairs...** 
+```@raw html
+<img src="assets/sinusoid_GP_emulator_contours.png" width="400">
+```
+3. The **sample** step uses this surrogate in place of ``\mathcal{G}`` in a sampling method (Markov chain Monte Carlo) to sample the posterior distribution of ``\theta``.
+
+**sample the emulated map with MCMC...**
+```@raw html
+<img src="assets/sinusoid_MCMC_hist_GP.png" width="400">
+```
+
+## Code Components
 
 `CalibrateEmulateSample.jl` contains the following modules:
 
-Module                       | Purpose
------------------------------|--------------------------------------------------------
-CalibrateEmulateSample.jl    | Pulls in the [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl) package
-Emulator.jl                  | Emulate: Modular template for emulators
-GaussianProcess.jl           | - A Gaussian process emulator
-MarkovChainMonteCarlo.jl     | Sample: Modular template for MCMC 
-Utilities.jl                 | Helper functions
+Module                                 | Purpose
+---------------------------------------|--------------------------------------------------------
+CalibrateEmulateSample.jl              | A wrapper for the pipeline
+Emulator.jl                            | Modular template for the emulators
+GaussianProcess.jl                     | A Gaussian process emulator
+Scalar/VectorRandomFeatureInterface.jl | A Scalar/Vector-output Random Feature emulator 
+MarkovChainMonteCarlo.jl               | Modular template for Markov Chain Monte Carlo samplers
+Utilities.jl                           | Helper functions
 
-**The best way to get started is to have a look at the examples!**
 
 ## Authors
 
