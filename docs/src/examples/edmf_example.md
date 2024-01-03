@@ -37,7 +37,7 @@ julia --project plot_posterior.jl
 ```
 For example, using Random features for case `exp_name = "ent-det-calibration"` one obtains
 ```@raw html
-<img src="../../assets/edmf_nonsep_posterior_2d.png" width="600">
+<img src="../../assets/edmf_nonsep_posterior_2d.png" width="300">
 ```
 and `exp_name = "ent-det-tked-tkee-stab-calibration"` or one obtains
 ```@raw html
