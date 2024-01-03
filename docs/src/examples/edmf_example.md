@@ -37,11 +37,11 @@ julia --project plot_posterior.jl
 ```
 For example, using Random features for case `exp_name = "ent-det-calibration"` one obtains
 ```@raw html
-<img src="../../assets/edmf-nonsep-posterior_2d.png" width="600">
+<img src="../../assets/edmf_nonsep_posterior_2d.png" width="600">
 ```
 and `exp_name = "ent-det-tked-tkee-stab-calibration"` or one obtains
 ```@raw html
-<img src="../../assets/edmf-nonsep-posterior_5d.png" width="600">
+<img src="../../assets/edmf_nonsep_posterior_5d.png" width="600">
 ```
 
 The posterior samples can also be investigated directly. They are stored as a `ParameterDistribution`-type `Samples` object. One can load this and extract an array of parameters with:
