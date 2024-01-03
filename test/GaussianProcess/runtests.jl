@@ -110,7 +110,7 @@ using CalibrateEmulateSample.DataContainers
 
 @info "pre GP"
 
-    gp3 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = false, prediction_type = pred_type)
+    gp3 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
 @info " post GP pre emulator"
     em3 = Emulator(
         gp3,
