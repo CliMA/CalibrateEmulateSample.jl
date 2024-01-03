@@ -263,6 +263,9 @@ function build_models!(
         # ScikitLearn.fit! arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
+        println(m.kernel)
+        println(size(input_values), " ", size(data_i))
+               
         ScikitLearn.fit!(m, input_values, data_i)
         @info "test here -after calling fit"
         if i == 1
