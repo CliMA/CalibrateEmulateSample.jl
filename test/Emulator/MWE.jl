@@ -17,10 +17,8 @@ function minimal_failing_example()
         noise_level = white_noise_level,
         noise_level_bounds = (1e-05, 10.0)
     )
-    kernel = var * se + white
+    kernel = var 
 
-    # alg parameters
-    alpha = 1e-3
     
     # some data
     n = 20                                       # number of training points
@@ -30,8 +28,6 @@ function minimal_failing_example()
     # the model
     m = pyGP.GaussianProcessRegressor(
         kernel = kernel,
-        n_restarts_optimizer = 10,
-        alpha = alpha
     )
 
     # call fit!
