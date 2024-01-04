@@ -133,7 +133,7 @@ jobs:
       env:
         PYTHON: ""
       run: |
-        julia --project -e 'using Conda; Conda.add("scipy=1.8.1")'
+        julia --project -e 'using Conda; Conda.add(\"scipy=1.8.1\")'
         julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.1.1\")'
 
     - name: Run Unit Tests
