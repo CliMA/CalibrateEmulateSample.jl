@@ -103,6 +103,7 @@ function Emulator(
         err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
         size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
     end
+    @info "test here - after checks"
 
 
     # [1.] Normalize the inputs? 
@@ -116,6 +117,8 @@ function Emulator(
         training_inputs = get_inputs(input_output_pairs)
     end
 
+    @info "test here - after normalization"
+
     # [2.] Standardize the outputs?
     if standardize_outputs
         training_outputs, obs_noise_cov =
@@ -124,6 +127,7 @@ function Emulator(
         training_outputs = get_outputs(input_output_pairs)
     end
 
+    @info "test here - after standardization"
     # [3.] Decorrelating the outputs, not performed for vector RF
     if decorrelate
         #Transform data if obs_noise_cov available 
@@ -133,6 +137,8 @@ function Emulator(
 
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         # [4.] build an emulator
+        @info "test here - just before build models"
+
         build_models!(machine_learning_tool, training_pairs)
     else
         if decorrelate || !isa(machine_learning_tool, VectorRandomFeatureInterface)
@@ -144,7 +150,7 @@ function Emulator(
         build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov)
     end
 
-
+    @info "test here"
     return Emulator{FT}(
         machine_learning_tool,
         training_pairs,

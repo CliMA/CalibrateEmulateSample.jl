@@ -10,8 +10,8 @@ using ScikitLearn
 const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.1.1"))
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.1.1"))
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.3.2"))
+    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.3.2"))
 end
 
 #exports (from Emulator)
@@ -243,6 +243,7 @@ function build_models!(
         kern = deepcopy(gp.kernel)
         println("Using user-defined kernel", kern)
     end
+    @info "test here -after build default kernel"
 
     if gp.noise_learn
         # Add white noise to kernel
@@ -251,18 +252,22 @@ function build_models!(
         kern = kern + white
         println("Learning additive white noise")
     end
-
+    @info "test here - after adding noise to kernel"
     regularization_noise = gp.alg_reg_noise
 
     for i in 1:N_models
         kernel_i = deepcopy(kern)
         data_i = output_values[i, :]
         m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise)
-
+        @info "test here - after building pyGP.GaussianProcessRegressor"
         # ScikitLearn.fit! arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
+        println(m.kernel)
+        println(size(input_values), " ", size(data_i))
+
         ScikitLearn.fit!(m, input_values, data_i)
+        @info "test here -after calling fit"
         if i == 1
             println(m.kernel.hyperparameters)
             print("Completed training of: ")
