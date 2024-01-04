@@ -4,21 +4,13 @@ const pykernels = PyNULL()
 const pyGP = PyNULL()
 
 function init()
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.1.1"))
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.1.1"))
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.3.2"))
+    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.3.2"))
 end
 
 function minimal_failing_example()
     # some kind of kernel
-    var = pykernels.ConstantKernel(constant_value = 1.0)
-    se = pykernels.RBF(1.0)
-    white_noise_level = 1.0
-    white = pykernels.WhiteKernel(
-        noise_level = white_noise_level,
-        noise_level_bounds = (1e-05, 10.0)
-    )
-    kernel = var 
-
+    kernel = pykernels.ConstantKernel(constant_value = 1.0)
     
     # some data
     n = 20                                       # number of training points
