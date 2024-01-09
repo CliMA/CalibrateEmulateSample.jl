@@ -27,12 +27,12 @@ As the name suggests, `CalibrateEmulateSample.jl` breaks this problem into a seq
 
 ### The three steps of the algorithm: see our walkthrough of the [Sinusoid Example](@ref)
 
-**Given some noisy observations...**
+**Learn the vertical shift and amplitude of the signal given the noisy observation**
 ```@raw html
 <img src="assets/sinusoid_true_vs_observed_signal.png" width="400">
 ```
 
-The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This is the only time we interface with the forward model ``\mathcal{G}``).
+The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. Here, ``\theta`` are amplitude and vertical shift pairs, and ``\mathcal{G}(\theta)`` are the resulting signal mean and range. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This is the only time we interface with the forward model ``\mathcal{G}``).
 
 **calibrate with EKP to generate data pairs...**
 ```@raw html
