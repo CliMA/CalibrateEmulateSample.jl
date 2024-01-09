@@ -1,5 +1,5 @@
 env:
-  JULIA_VERSION: "1.9.2"
+  JULIA_VERSION: "1"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
