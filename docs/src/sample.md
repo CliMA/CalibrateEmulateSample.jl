@@ -57,7 +57,7 @@ plot!(posterior)
 or extract statistics of the (unconstrained) distribution with
 ```julia
 mean_posterior = mean(posterior)
-cov_postierior = cov(posterior)
+cov_posterior = cov(posterior)
 ```
 
 # [Further details on the implementation](@id AbstractMCMC sampling API)

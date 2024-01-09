@@ -32,20 +32,20 @@ As the name suggests, `CalibrateEmulateSample.jl` breaks this problem into a seq
 <img src="assets/sinusoid_true_vs_observed_signal.png" width="400">
 ```
 
-1. The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This the only time we interface with the forward model ``\mathcal{G}``).
+The **calibrate** step of the algorithm consists of an application of [Ensemble Kalman Processes](https://github.com/CliMA/EnsembleKalmanProcesses.jl), which generates input-output pairs ``\{\theta, \mathcal{G}(\theta)\}`` in high density around an optimal parameter ``\theta^*``. This ``\theta^*`` will be near a mode of the posterior distribution (Note: This is the only time we interface with the forward model ``\mathcal{G}``).
 
 **calibrate with EKP to generate data pairs...**
 ```@raw html
 <img src="assets/sinusoid_eki_pairs.png" width="400">
 ```
 
-2. The **emulate** step takes these pairs ``\{\theta, \mathcal{G}(\theta)\}`` and trains a statistical surrogate model (e.g., a Gaussian process), emulating the forward map ``\mathcal{G}``.
+The **emulate** step takes these pairs ``\{\theta, \mathcal{G}(\theta)\}`` and trains a statistical surrogate model (e.g., a Gaussian process), emulating the forward map ``\mathcal{G}``.
 
 **emulate the map statistically from EKP pairs...** 
 ```@raw html
 <img src="assets/sinusoid_GP_emulator_contours.png" width="400">
 ```
-3. The **sample** step uses this surrogate in place of ``\mathcal{G}`` in a sampling method (Markov chain Monte Carlo) to sample the posterior distribution of ``\theta``.
+The **sample** step uses this surrogate in place of ``\mathcal{G}`` in a sampling method (Markov chain Monte Carlo) to sample the posterior distribution of ``\theta``.
 
 **sample the emulated map with MCMC...**
 ```@raw html
