@@ -19,6 +19,7 @@ y = \mathcal{G}(\theta) + \eta,
 ```
 where the noise ``\eta`` is drawn from a $d$-dimensional Gaussian with distribution ``\mathcal{N}(0, \Gamma_y)``.
 
+
 ### The inverse problem
 
 Given an observation ``y``, the computer model ``\mathcal{G}``, the observational noise ``\Gamma_y``, and some broad prior information on ``\theta``, we return the joint distribution of a data-informed distribution for "``\theta`` given ``y``".
