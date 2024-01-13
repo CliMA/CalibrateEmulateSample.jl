@@ -25,7 +25,7 @@ steps:
 
   - wait
 
-  - label: "Lorenz"
+  - label: "CES - Lorenz"
     key: "lorenz"
     command: |
       export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
@@ -52,4 +52,35 @@ steps:
       config: cpu
       queue: central
       slurm_ntasks: 1
+
+  - label: "Emulator - regression 2D"
+    key: "emulator_compare"
+    command: |
+      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
+
+      mkdir examples/Emulator/Regression_2d_2d/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/Regression_2d_2d/depot:$JULIA_DEPOT_PATH"
+
+      julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '
+        println("--- Developing Project")
+        using Pkg;
+        Pkg.develop(path=".")
+        Pkg.update()
+        println("--- Instantiating Project")
+        Pkg.instantiate()
+        println("+++ Running compare_regression")
+        include("examples/Emulator/Regression_2d_2d/compare_regression.jl")'
+    artifact_paths:
+      - "examples/Emulator/Regression_2d_2d/output/*.png"
+    env:
+      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
+      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
+    agents:
+      config: cpu
+      queue: central
+      slurm_ntasks: 1
+
 
