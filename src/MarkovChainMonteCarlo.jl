@@ -302,8 +302,8 @@ function AbstractMCMC.bundle_samples(
     # Check if we received any parameter names.
     if ismissing(param_names)
         param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
-    elseif length(param_names) < length(keys(ts[1].params))# in case bug with MV names, Chains still needs one name per dist.
-        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
+        #    elseif length(param_names) < length(keys(ts[1].params))# in case bug with MV names, Chains still needs one name per dist.
+        #        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
     else
         # Generate new array to be thread safe.
         param_names = Symbol.(param_names)
@@ -352,8 +352,8 @@ function AbstractMCMC.bundle_samples(
     # Check if we received any parameter names.
     if ismissing(param_names)
         param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
-    elseif length(param_names) < length(keys(ts[1][1].params)) # in case bug with MV names, Chains still needs one name per dist.
-        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
+        #    elseif length(param_names) < length(keys(ts[1][1].params)) # in case bug with MV names, Chains still needs one name per dist.
+        #        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
     else
         # Generate new array to be thread safe.
         param_names = Symbol.(param_names)
