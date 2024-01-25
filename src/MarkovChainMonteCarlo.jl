@@ -96,8 +96,8 @@ AdvancedMH.logratio_proposal_density(
 
 function _get_proposal(prior::ParameterDistribution)
     # *only* use covariance of prior, not full distribution
-    Σ = ParameterDistributions.cov(prior)
-    return AdvancedMH.RandomWalkProposal(Σ * MvNormal(zeros(size(Σ)[1]), I))
+    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
+    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
 end
 
 """
