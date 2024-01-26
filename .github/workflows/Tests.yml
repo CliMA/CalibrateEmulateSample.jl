@@ -80,7 +80,7 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.9.2
+        version: 1.9.0
         
     - name: Install Julia Project Packages
       env:
