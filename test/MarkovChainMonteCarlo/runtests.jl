@@ -36,7 +36,7 @@ end
 
 function test_prior_mv()
     ### Define prior
-    return constrained_gaussian("u_mv", -1.0, 6.0, -Inf, Inf, repeat = 10)
+    return constrained_gaussian("u_mv", -1.0, 6.0, -Inf, Inf, repeats = 10)
 end
 
 function test_data_mv(; rng_seed = 41, n = 20, var_y = 0.05, input_dim = 10, rest...)
