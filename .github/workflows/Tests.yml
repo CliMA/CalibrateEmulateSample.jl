@@ -80,8 +80,8 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.9.0
-        
+        version: 1.9.1
+                 # later versions causes hanging in package building
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
