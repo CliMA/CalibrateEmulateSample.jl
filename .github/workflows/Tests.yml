@@ -80,8 +80,8 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.9.3
-
+        version: 1.8.5
+        
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
