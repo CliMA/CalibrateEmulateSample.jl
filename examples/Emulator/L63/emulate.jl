@@ -23,7 +23,7 @@ function main()
     end
 
     # rng
-    rng = MersenneTwister(1232434)
+    rng = MersenneTwister(1232435)
 
     n_repeats = 20 # repeat exp with same data.
     println("run experiment $n_repeats times")
@@ -92,20 +92,22 @@ function main()
     # Emulate
     cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
 
-    case = cases[1]
+    case = cases[5]
 
     nugget = Float64(1e-12)
     u_test = []
     u_hist = []
     train_err = []
+    opt_diagnostics = []
+
     for rep_idx in 1:n_repeats
 
         rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
-            "cov_sample_multiplier" => 0.5,
-            "n_features_opt" => 400,
-            "n_iteration" => 30,
-            "accelerator" => ConstantStepNesterovAccelerator(),
+            "cov_sample_multiplier" => 1.0,
+            "n_features_opt" => 200,
+            "n_iteration" => 10, #30
+            "accelerator" => NesterovAccelerator(),
         )
 
         # Build ML tools
@@ -169,6 +171,11 @@ function main()
         end
         emulator = Emulator(mlt, iopairs; obs_noise_cov = Γy, decorrelate = decorrelate)
         optimize_hyperparameters!(emulator)
+
+        # diagnostics
+        if case == "RF-nosvd-nonsep"
+            push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec  -> vec
+        end
 
 
         # Predict with emulator
@@ -252,6 +259,30 @@ function main()
     JLD2.save(joinpath(output_directory, case * "_l63_histdata.jld2"), "solhist", solhist, "uhist", u_hist)
     JLD2.save(joinpath(output_directory, case * "_l63_testdata.jld2"), "solplot", solplot, "uplot", u_test)
 
+    # plot eki convergence plot
+    if length(opt_diagnostics) > 0
+        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
+
+        #save
+        error_filepath = joinpath(output_directory, "eki_conv_error.jld2")
+        save(error_filepath, "error", err_cols)
+
+        # print all repeats
+        f5 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
+        ax_conv = Axis(f5[1, 1], xlabel = "Iteration", ylabel = "max-normalized error", yscale = log10)
+        if n_repeats == 1
+            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
+        else
+            for idx in 1:size(err_cols, 1)
+                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
+                series!(ax_conv, err_normalized', solid_color = :blue)
+            end
+        end
+        save(joinpath(output_directory, "l63_eki-conv_$(case).png"), f5, px_per_unit = 3)
+        save(joinpath(output_directory, "l63_eki-conv_$(case).pdf"), f5, px_per_unit = 3)
+
+    end
+
     # compare  marginal histograms to truth - rough measure of fit
     sol_cdf = sort(solhist, dims = 2)
 
@@ -277,8 +308,6 @@ function main()
     lines!(axx, sol_cdf[1, :], unif_samples, color = (:orange, 1.0), linewidth = 4)
     lines!(axy, sol_cdf[2, :], unif_samples, color = (:orange, 1.0), linewidth = 4)
     lines!(axz, sol_cdf[3, :], unif_samples, color = (:orange, 1.0), linewidth = 4)
-
-
 
     # save
     save(joinpath(output_directory, case * "_l63_cdfs.png"), f4, px_per_unit = 3)
