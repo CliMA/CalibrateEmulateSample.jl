@@ -282,13 +282,13 @@ rng = Random.MersenneTwister(seed)
         em_srfi = Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
         n_srfi = length(get_rfms(srfi))
         em_vrfi = Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
-        n_srfi = length(get_rfms(vrfi))
+        n_vrfi = length(get_rfms(vrfi))
 
         # test under repeats
-        @test_logs (:warn) Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
+        @test_logs (:warn,) Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
         Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
         @test length(get_rfms(srfi)) == n_srfi
-        @test_logs (:warn) Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
+        @test_logs (:warn,) Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
         Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
         @test length(get_rfms(vrfi)) == n_vrfi
 
