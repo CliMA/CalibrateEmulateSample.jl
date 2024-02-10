@@ -305,6 +305,10 @@ function build_models!(
 
 
     rfms = get_rfms(srfi)
+    if length(rfms) > 0
+        @warn "ScalarRandomFeatureInterface already built. skipping..."
+        return
+    end
     fitted_features = get_fitted_features(srfi)
     n_features = get_n_features(srfi)
     batch_sizes = get_batch_sizes(srfi)

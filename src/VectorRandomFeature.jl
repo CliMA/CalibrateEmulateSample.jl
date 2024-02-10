@@ -354,6 +354,11 @@ function build_models!(
     n_hp = calculate_n_hyperparameters(input_dim, output_dim, kernel_structure)
 
     rfms = get_rfms(vrfi)
+    if length(rfms) > 0
+        @warn "VectorRandomFeatureInterface already built. skipping..."
+        return
+    end
+
     fitted_features = get_fitted_features(vrfi)
     n_features = get_n_features(vrfi)
     batch_sizes = get_batch_sizes(vrfi)
