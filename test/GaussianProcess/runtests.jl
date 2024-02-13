@@ -62,6 +62,7 @@ using CalibrateEmulateSample.DataContainers
     @test gp1.prediction_type == pred_type
     @test gp1.alg_reg_noise == 1e-4
 
+
     em1 = Emulator(
         gp1,
         iopairs,
@@ -70,6 +71,24 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
+
+    @test_logs (:warn,) Emulator(
+        gp1,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    ) # check that gp1 does not get more models added under second call
+    Emulator(
+        gp1,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
+    @test length(gp1.models) == 1
 
     Emulators.optimize_hyperparameters!(em1)
 
@@ -119,6 +138,24 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
+
+    @test_logs (:warn,) Emulator(
+        gp3,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
+    Emulator(
+        gp3,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
+    @test length(gp3.models) == 1 # check that gp3 does not get more models added under repeated calls
 
     Emulators.optimize_hyperparameters!(em3)
 
