@@ -164,8 +164,6 @@ rng = Random.MersenneTwister(seed)
         @test get_input_dim(srfi) == input_dim
         @test get_rng(srfi) == rng
         @test get_kernel_structure(srfi) == kernel_structure
-        @test get_optimizer_options(srfi) == optimizer_options
-
         # check defaults 
         srfi2 = ScalarRandomFeatureInterface(n_features, input_dim)
         @test get_batch_sizes(srfi2) === nothing

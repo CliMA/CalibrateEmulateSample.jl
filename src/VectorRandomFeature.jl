@@ -418,17 +418,15 @@ function build_models!(
         regularization = I
 
     else
-        reg_mat = regularization_matrix
+        # think of the regularization_matrix as the observational noise covariance, or a related quantity
         if !isposdef(regularization_matrix)
             regularization = posdef_correct(regularization_matrix)
             println("RF regularization matrix is not positive definite, correcting")
 
         else
-            # think of the regularization_matrix as the observational noise covariance, or a related quantity
-            regularization = exp((1 / output_dim) * sum(log.(eigvals(reg_mat)))) * I #i.e. det(M)^{1/output_dim} I
-
-            #regularization = reg_mat #using the full p.d. tikhonov exp. EXPENSIVE, and challenge get complexity terms
+            regularization = regularization_matrix
         end
+
     end
 
     idx_shuffle = randperm(rng, n_data)
@@ -472,38 +470,25 @@ function build_models!(
     if tikhonov_opt_val == 0
         # Build the covariance
         Γ = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += regularization # + approx_σ2
+        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
+            isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
         Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
-
-        #in diag case we have data logdet = λ^m, in non diag case we have logdet(Λ^) to match the different reg matrices.
-        min_complexity =
-            isa(regularization, UniformScaling) ? n_features_opt * log(regularization.λ) :
-            n_features_opt / output_dim * 2 * sum(log.(diag(cholesky(regularization).L)))
-        min_complexity = sqrt(abs(min_complexity))
-
-
-        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, min_complexity) #flatten data
+        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, 0.0) #flatten data
 
     elseif tikhonov_opt_val > 0
         # augment the state to add tikhonov
         outsize = size(internal_Γ, 1)
         Γ = zeros(outsize + n_hp, outsize + n_hp)
         Γ[1:outsize, 1:outsize] = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += approx_σ2 + regularization
+        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
         Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
 
         Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
 
-        #TODO the min complexity here is not the correct object in the non-diagonal case
-        min_complexity =
-            isa(regularization, UniformScaling) ? n_features_opt * log(regularization.λ) :
-            n_features_opt / output_dim * 2 * sum(log.(diag(cholesky(regularization).L)))
-        min_complexity = sqrt(abs(min_complexity))
-
         data = vcat(
             reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1),
             0.0,
-            min_complexity,
+            0.0,
             zeros(size(Γ, 1) - outsize, 1),
         ) #flatten data with additional zeros
     else
