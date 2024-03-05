@@ -9,7 +9,8 @@ export get_rfms,
     get_output_dim,
     get_rng,
     get_kernel_structure,
-    get_optimizer_options
+    get_optimizer_options,
+    get_optimizer
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -44,6 +45,8 @@ struct VectorRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     feature_decomposition::S
     "dictionary of options for hyperparameter optimizer"
     optimizer_options::Dict
+    "diagnostics from optimizer"
+    optimizer::Vector
 end
 
 """
@@ -122,6 +125,13 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Gets the optimizer_options field
 """
 get_optimizer_options(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer_options
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+gets the optimizer field
+"""
+get_optimizer(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -218,6 +228,7 @@ function VectorRandomFeatureInterface(
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
+        [],
     )
 end
 
@@ -364,6 +375,7 @@ function build_models!(
     batch_sizes = get_batch_sizes(vrfi)
     decomp_type = get_feature_decomposition(vrfi)
     optimizer_options = get_optimizer_options(vrfi)
+    optimizer = get_optimizer(vrfi)
     multithread = optimizer_options["multithread"]
     if multithread == "ensemble"
         multithread_type = EnsembleThreading()
@@ -572,6 +584,7 @@ function build_models!(
         err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
     end
+    push!(optimizer, err)
 
     # [5.] extract optimal hyperparameters
     hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
