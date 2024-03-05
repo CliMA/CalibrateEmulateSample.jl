@@ -19,7 +19,7 @@ authors:
   - name: Michael Howland
     orcid: 0000-0002-2878-3874
     affiliation: 4
-  - name: Andre De Souza
+  - name: Andre Nogueira de Souza
     orcid: 
     affiliation: 5
   - name: Laura Anne Mansfield

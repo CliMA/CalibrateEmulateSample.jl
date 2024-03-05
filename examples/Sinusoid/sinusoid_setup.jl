@@ -35,6 +35,7 @@
 using LinearAlgebra, Random
 using Plots
 using JLD2
+using Statistics, Distributions
 
 # Export functions for use later
 export model

@@ -24,11 +24,8 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
-
 include("sinusoid_setup.jl")           # This file defines the model G(θ)  
 
-rng_seed = 44
-rng = Random.MersenneTwister(rng_seed)
 
 # Load the ensembles generated in the calibration step.
 example_directory = @__DIR__
@@ -44,6 +41,8 @@ ensemble_kalman_process = load(calibrate_file)["eki"]
 prior = load(calibrate_file)["prior"]
 N_ensemble = load(calibrate_file)["N_ensemble"]
 N_iterations = load(calibrate_file)["N_iterations"]
+# Get random number generator to start where we left off
+rng = load(calibrate_file)["rng"]
 
 
 # We ran Ensemble Kalman Inversion with an ensemble size of 10 for 5 
@@ -87,7 +86,7 @@ output_dim = 2
 
 # Select number of features
 n_features = 60
-nugget = 1e-12
+nugget = 1e-9
 
 # Create random features
 # Here we use a vector random features set up because we find it performs similarly well to 
@@ -356,4 +355,6 @@ save(
     emulator_random_features,
     "prior",
     prior,
+    "rng",
+    rng,
 )

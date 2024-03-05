@@ -21,9 +21,6 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
-rng_seed = 43
-rng = Random.MersenneTwister(rng_seed)
-
 # Next, we need to load the emulator we built in the previous step (emulate.jl must be run before this script
 # We will start with the Gaussian process emulator.
 example_directory = @__DIR__
@@ -37,6 +34,9 @@ theta_true = load(obs_file)["theta_true"]
 emulator_file = joinpath(data_save_directory, "emulators.jld2")
 emulator_gp = load(emulator_file)["emulator_gp"]
 prior = load(emulator_file)["prior"]
+# Get random number generator to start where we left off
+rng = load(emulator_file)["rng"]
+
 # We will also need a suitable value to initiate MCMC. To reduce burn-in, we will use the 
 # final ensemble mean from EKI. 
 calibrate_file = joinpath(data_save_directory, "calibrate_results.jld2")

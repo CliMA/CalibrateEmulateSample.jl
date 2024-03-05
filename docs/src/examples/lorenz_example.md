@@ -1,5 +1,8 @@
 # Lorenz 96 example
 
+!!! info "How do I run this code?"
+    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+
 The Lorenz 96 (hereafter L96) example is a toy-problem for the application of the `CalibrateEmulateSample.jl` optimization and approximate uncertainty quantification methodologies.
 Here is L96 with additional periodic-in-time forcing, we try to determine parameters (sinusoidal amplitude and stationary component of the forcing) from some output statistics.
 The standard L96 equations are implemented with an additional forcing term with time dependence.
