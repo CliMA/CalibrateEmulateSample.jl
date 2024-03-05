@@ -25,8 +25,8 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.7.3
-
+        version: 1
+        
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
       # the system python (default on Linux), see the PyCall documentation
@@ -80,8 +80,8 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.7.3
-
+        version: 1.9.0
+                 # later versions causes hanging in package building
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
@@ -120,7 +120,7 @@ jobs:
     - name: Set up Julia
       uses: julia-actions/setup-julia@v1
       with:
-        version: 1.7.3
+        version: 1
 
     - name: Install Julia Project Packages
       env:

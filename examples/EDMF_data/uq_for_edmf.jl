@@ -128,6 +128,7 @@ function main()
     end
 
     # load and create prior distributions
+    # code deprecated due to JLD2
     #=   
     prior_filepath = joinpath(exp_dir, "prior.jld2")
     if !isfile(prior_filepath)
@@ -199,12 +200,9 @@ function main()
 
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-        "RF-vector-svd-diag",
-        "RF-vector-svd-nondiag",
         "RF-vector-svd-nonsep",
     ]
-    case = cases[5]
+    case = cases[2]
 
     overrides = Dict(
         "verbose" => true,
@@ -212,8 +210,6 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 100),
         "cov_sample_multiplier" => 0.5,
         "n_iteration" => 5,
-        #    "n_ensemble" => 20,
-        #    "localization" => SEC(0.1), # localization / sample error correction for small ensembles
     )
     nugget = 0.01
     rng_seed = 99330
@@ -229,31 +225,6 @@ function main()
             kernel = nothing, # use default squared exponential kernel
             prediction_type = pred_type,
             noise_learn = false,
-        )
-    elseif case ∈ ["RF-scalar"]
-        n_features = 100
-        kernel_structure = SeparableKernel(CholeskyFactor(nugget), OneDimFactor())
-        mlt = ScalarRandomFeatureInterface(
-            n_features,
-            input_dim,
-            rng = rng,
-            kernel_structure = kernel_structure,
-            optimizer_options = overrides,
-        )
-    elseif case ∈ ["RF-vector-svd-diag", "RF-vector-svd-nondiag"]
-        # do we want to assume that the outputs are decorrelated in the machine-learning problem?
-        kernel_structure =
-            case ∈ ["RF-vector-svd-diag"] ? SeparableKernel(LowRankFactor(1, nugget), DiagonalFactor(nugget)) :
-            SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget))
-        n_features = 500
-
-        mlt = VectorRandomFeatureInterface(
-            n_features,
-            input_dim,
-            output_dim,
-            rng = rng,
-            kernel_structure = kernel_structure,
-            optimizer_options = overrides,
         )
     elseif case ∈ ["RF-vector-svd-nonsep"]
         kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))

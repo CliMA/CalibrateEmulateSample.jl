@@ -17,8 +17,6 @@ examples = [
     ],
 ]
 
-design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
-
 api = [
     "CalibrateEmulateSample" => [
         "Emulators" => [
@@ -31,18 +29,21 @@ api = [
     ],
 ]
 
+emulate = [
+    "Emulator" => "emulate.md",
+    "Gaussian Process" => "GaussianProcessEmulator.md",
+    "Random Features" => "random_feature_emulator.md",
+]
 pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
     "Contributing" => "contributing.md",
-    "Calibrate" => "calibrate.md",
-    "Emulate" => "emulate.md",
     "Examples" => examples,
-    "Gaussian Process" => "GaussianProcessEmulator.md",
-    "Random Features" => "random_feature_emulator.md",
-    "Package Design" => design,
-    "API" => api,
+    "Calibrate" => "calibrate.md",
+    "Emulate" => emulate,
+    "Sample" => "sample.md",
     "Glossary" => "glossary.md",
+    "API" => api,
 ]
 
 #----------
