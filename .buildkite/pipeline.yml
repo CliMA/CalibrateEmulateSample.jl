@@ -1,5 +1,8 @@
+agents:
+  queue: new-central
+  modules: climacommon/2024_03_18 
+  
 env:
-  JULIA_VERSION: "1.10.0"
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
 
@@ -17,12 +20,7 @@ steps:
       
     artifact_paths: 
       - "*.toml"
-    agents:
-      config: cpu
-      queue: central
-      slurm_ntasks: 1
-
-
+   
   - wait
 
   - label: "CES - Lorenz"
@@ -48,10 +46,6 @@ steps:
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
-    agents:
-      config: cpu
-      queue: central
-      slurm_ntasks: 1
 
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
@@ -78,9 +72,6 @@ steps:
       PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
       PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
       CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
-    agents:
-      config: cpu
-      queue: central
-      slurm_ntasks: 1
+ 
 
 
