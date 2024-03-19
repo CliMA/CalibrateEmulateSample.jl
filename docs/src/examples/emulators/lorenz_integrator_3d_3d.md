@@ -1,7 +1,7 @@
 # Integrating Lorenz 63 with an emulated integrator
 
 !!! info "How do I run this code?"
-    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+    The full code is found in the [`examples/Emulator/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples/Emulator) directory of the github repository
 
 In this example, we assess directly the performance of our machine learning emulators. The task is to learn the forward Euler integrator of a [Lorenz 63 system](https://en.wikipedia.org/wiki/Lorenz_system). The model parameters are set to their classical settings ``(\sigma, \rho, \beta) = (10,28,\frac{8}{3})`` to exhibit chaotic behavior. The discrete system is given as:
 

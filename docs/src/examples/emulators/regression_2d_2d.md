@@ -1,7 +1,7 @@
 # Regression of ``\mathbb{R}^2 \to \mathbb{R}^2`` smooth function
 
 !!! info "How do I run this code?"
-    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+    The full code is found in the [`examples/Emulator/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples/Emulator) directory of the github repository
 
 In this example, we assess directly the performance of our machine learning emulators. The task is to learn the function:
 
