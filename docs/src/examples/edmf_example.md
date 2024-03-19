@@ -1,5 +1,8 @@
 # Extended Eddy-Diffusivity Mass-Flux (EDMF) Scheme
 
+!!! info "How do I run this code?"
+    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+
 ## Background
 The extended EDMF scheme is a unified model of turbulence and convection. More information about the model can be found [here](https://clima.github.io/TurbulenceConvection.jl/stable/). This example builds an emulator of the extended EDMF scheme from input-output pairs obtained during a calibration process, and runs emulator-based MCMC to obtain an estimate of the joint parameter distribution.
 
@@ -24,6 +27,7 @@ and call,
 ```
 > julia --project uq_for_EDMF.jl
 ```
+
 !!! info
     These runs take currently take ~1-3 hours to complete with Gaussian process emulator. Random feature training currently requires significant multithreading for performance and takes a similar amount of time.
 

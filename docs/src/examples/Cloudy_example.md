@@ -1,5 +1,7 @@
 # [Learning the initial parameters of a droplet mass distribution in Cloudy](@id Cloudy-example)
 
+!!! info "How do I run this code?"
+    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
 
 This example is based on [Cloudy](https://github.com/CliMA/Cloudy.jl.git), a
 microphysics model that simulates how cloud droplets collide and coalesce into
