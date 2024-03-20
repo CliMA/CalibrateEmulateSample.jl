@@ -1,5 +1,8 @@
 # Sinusoid Example
 
+!!! info "How do I run this code?"
+    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+
 ## Background
 This example demonstrates how to use CalibrateEmulateSample.jl for a simple model that generates noisy
 observables of a signal. The sinusoid signal is defined by two parameters: its shift along the vertical axis
