@@ -3,6 +3,7 @@ using RandomFeatures
 const RF = RandomFeatures
 using EnsembleKalmanProcesses
 const EKP = EnsembleKalmanProcesses
+using EnsembleKalmanProcesses.Localizers
 using ..ParameterDistributions
 using ..Utilities
 using StableRNGs

@@ -561,7 +561,7 @@ function build_models!(
         inflation = optimizer_options["inflation"]
         if inflation > 0
             terminated =
-                EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+                EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
         else
             terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
         end

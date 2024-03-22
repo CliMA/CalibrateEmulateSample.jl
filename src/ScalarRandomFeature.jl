@@ -154,6 +154,9 @@ function ScalarRandomFeatureInterface(
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "recompute_cov_at" => Inf, # whether to recompute the output_covariance
+        "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
+
     )
 
     if !isnothing(optimizer_options)
@@ -191,6 +194,7 @@ function hyperparameter_distribution_from_flat(
 
     M = zeros(input_dim) #scalar output
     U = hyperparameters_from_flat(x, input_dim, kernel_structure)
+
     if !isposdef(U)
         println("U not posdef - correcting")
         U = posdef_correct(U)
@@ -396,12 +400,14 @@ function build_models!(
         opt_verbose_flag = optimizer_options["verbose"]
         scheduler = optimizer_options["scheduler"]
         accelerator = optimizer_options["accelerator"]
+        recompute_cov_at = optimizer_options["recompute_cov_at"]
+        localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
         min_complexity = n_features_opt * log(regularization.λ)
         min_complexity = sqrt(abs(min_complexity))
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
-        ekiobj = EKP.EnsembleKalmanProcess(
+        ekiobj = [EKP.EnsembleKalmanProcess(
             initial_params,
             data,
             Γ,
@@ -410,15 +416,58 @@ function build_models!(
             rng = rng,
             accelerator = accelerator,
             verbose = opt_verbose_flag,
-        )
+            localization_method = localization,
+        )]
         err = zeros(n_iteration)
 
         # [4.] optimize with EKP
+        Γ_old = [Γ]
         for i in 1:n_iteration
-
+            
             #get parameters:
-            lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
+            lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj[1]))
 
+            if i % recompute_cov_at == 0
+                
+                internal_Γ_new, approx_σ2_new = estimate_mean_and_coeffnorm_covariance(
+                    srfi,
+                    rng,
+                    transform_unconstrained_to_constrained(prior, mean(get_u_final(ekiobj[1]),dims=2)),
+                    regularization,
+                    n_features_opt,
+                    n_train,
+                    n_test,
+                    batch_sizes,
+                    io_pairs_opt,
+                    n_cov_samples,
+                    decomp_type,
+                    multithread_type,
+                )
+                
+                Γ_new = internal_Γ_new
+                Γ_new[1:n_test, 1:n_test] += regularization  # + approx_σ2 
+                Γ_new[(n_test + 1):end, (n_test + 1):end] += I
+                if opt_verbose_flag
+                    @info "updated algorithm covariance difference: $(norm(Γ_new - Γ_old[1]))"
+                end
+                Γ_old[1] = Γ_new
+                # update eki. (the reason why it was a vector)
+
+                ekiobj[1] = EKP.EnsembleKalmanProcess(
+                    get_u_final(ekiobj[1]), # unconstrained
+                    data,
+                    Γ_new,
+                    Inversion(),
+                    scheduler = DataMisfitController(terminate_at=1e4),
+                    rng = rng,
+                    accelerator = DefaultAccelerator(),
+#                    localization_method = Localizers.SEC(1.0,0.01),
+                    verbose = opt_verbose_flag,
+                )
+                
+            end
+            
+            
             g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
                 srfi,
                 rng,
@@ -432,23 +481,26 @@ function build_models!(
                 decomp_type,
                 multithread_type,
             )
+
+            
+            g_ens[n_test+1,:] = rand(Normal(1e-3,1e-4),size(g_ens,2))
+            println("Adding Hack to get round 0 coeffl2norm - FIX ME PROPERLY")
             inflation = optimizer_options["inflation"]
             if inflation > 0
                 terminated =
-                    EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+                    EKP.update_ensemble!(ekiobj[1], g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
             else
-                terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
+                terminated = EKP.update_ensemble!(ekiobj[1], g_ens) # small regularizing inflation
             end
             if !isnothing(terminated)
                 break # if the timestep was terminated due to timestepping condition
             end
 
-            err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
-
+            err[i] = get_error(ekiobj[1])[end] #mean((params_true - mean(params_i,dims=2)).^2)
         end
 
         # [5.] extract optimal hyperparameters
-        hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
+        hp_optimal = get_ϕ_mean_final(prior, ekiobj[1])[:]
 
         if opt_verbose_flag
             names = get_name(prior)
