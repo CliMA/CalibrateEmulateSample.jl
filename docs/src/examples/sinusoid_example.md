@@ -4,7 +4,7 @@
     The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
 
 ## Background
-This example demonstrates how to use CalibrateEmulateSample.jl for a simple model that generates noisy
+This example demonstrates how to use `CalibrateEmulateSample.jl` for a simple model that generates noisy
 observables of a signal. The sinusoid signal is defined by two parameters: its shift along the vertical axis
 and its amplitude. We make noisy observations of the signal and we can calculate the mean of the signal,
 which is informative about its shift along the axis, and the range of the signal, which is informative 
@@ -34,7 +34,7 @@ where $\Gamma$ is the observational covariance matrix. We will assume the noise 
 
 # Walkthrough of code
 
-The code is split into four sections:
+You can find the full scripts to reproduce this tutorial in `examples/Sinusoid/`. The code is split into four sections:
 
 1. Model set up in `sinusoid_setup.jl`
 2. Calibrate in `calibrate.jl`
@@ -52,6 +52,8 @@ First, we load the packages we need for setting up the model:
 using LinearAlgebra, Random
 using Plots
 using JLD2
+using Statistics, Distributions
+
 ```
 
 We define a model that generates a sinusoid given parameters $\theta=(A,v)$ 
@@ -59,15 +61,13 @@ We define a model that generates a sinusoid given parameters $\theta=(A,v)$
 The model adds a random phase shift upon evaluation.
 
 ```julia
-# Seed for pseudo-random number generator.
-rng_seed = 41
-rng = Random.MersenneTwister(rng_seed)
 # Define x-axis
 dt = 0.01
 trange = 0:dt:(2 * pi + dt)
 
 function model(amplitude, vert_shift)
-    phi = 2 * pi * rand(rng)
+    # Set phi, the random phase
+    phi = 2 * pi * rand()
     return amplitude * sin.(trange .+ phi) .+ vert_shift
 end
 
@@ -149,7 +149,7 @@ prior_u1 = PD.constrained_gaussian("amplitude", 2, 1, 0, Inf)
 prior_u2 = PD.constrained_gaussian("vert_shift", 0, 5, -Inf, Inf)
 prior = PD.combine_distributions([prior_u1, prior_u2])
 # Plot priors
-p = plot(prior)
+p = plot(prior, fill = :lightgray)
 ```
 ![prior](../assets/sinusoid_prior.png)
 
@@ -158,9 +158,9 @@ We now generate the initial ensemble and set up the EKI.
 N_ensemble = 10
 N_iterations = 5
 
-initial_ensemble = EKP.construct_initial_ensemble(rng, prior, N_ensemble)
+initial_ensemble = EKP.construct_initial_ensemble(prior, N_ensemble)
 
-ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y_obs, Γ, EKP.Inversion(); rng = rng)
+ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y_obs, Γ, EKP.Inversion())
 ```
 
 We are now ready to carry out the inversion. At each iteration, we get the
@@ -181,13 +181,13 @@ Finally, we get the ensemble after the last iteration. This provides our estimat
 final_ensemble = EKP.get_ϕ_final(prior, ensemble_kalman_process)
 
 # Check that the ensemble mean is close to the theta_true
-println("Ensemble mean: ", mean(final_ensemble, dims=2))   # [3.08, 6.37]
+println("Ensemble mean: ", mean(final_ensemble, dims=2))   # [3.05, 6.37]
 println("True parameters: ", theta_true)   # [3.0, 7.0]
 ```
 
 | Parameter         | Truth    | EKI mean |
 | :---------------- | :------: | :----: |
-| Amplitude         |   3.0    | 3.08  |
+| Amplitude         |   3.0    | 3.05  |
 | Vertical shift    |   7.0    | 6.37  |
 
 The EKI ensemble mean at the final iteration is close to the true parameters, which is good.
@@ -265,20 +265,24 @@ For new problems, you may need to play around with these parameter choices.
 More information can be found [here](https://clima.github.io/CalibrateEmulateSample.jl/dev/random_feature_emulator/).
 
 ```julia
+# We have two input dimensions and two output dimensions.
+input_dim = 2
+output_dim = 2
+# Select number of features
+n_features = 60
+nugget = 1e-9
 kernel_structure = NonseparableKernel(LowRankFactor(2, nugget))
 optimizer_options = Dict(
     "n_ensemble" => 50,
     "cov_sample_multiplier" => 10,
     "scheduler" => EKP.DataMisfitController(on_terminate = "continue"),
     "n_iteration" => 50,
-    "rng" => rng,
     "verbose" => true,
 )
 random_features = VectorRandomFeatureInterface(
     n_features,
     input_dim,
     output_dim,
-    rng = rng,
     kernel_structure = kernel_structure,
     optimizer_options = optimizer_options,
 )
@@ -356,10 +360,15 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 ```
 
 We will provide the API with the observations, priors and our cheap emulator from the previous section. In this 
-example we use the GP emulator. 
-
+example we use the GP emulator. First, we need to find a suitable starting point, ideally one that is near the posterior distribution. We will use the final ensemble mean from EKI as this will increase the chance of acceptance near the start of the chain, and reduce burn-in time.
 ```julia
-mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator; init_params = init_sample)
+init_sample = EKP.get_u_mean_final(ensemble_kalman_process)
+println("initial parameters: ", init_sample)    # (1.11, 6.37)
+```
+
+Now, we can set up and carry out the MCMC starting from this point. 
+```julia
+mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator_gp; init_params = init_sample)
 # First let's run a short chain to determine a good step size
 new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
@@ -373,8 +382,8 @@ display(chain)
 
 | parameters         | mean    | std |
 | :---------------- | :------: | :----: |
-| amplitude         |   1.1049 | 0.0942  |
-| vert_shift        |   6.3753 | 0.4591  |
+| amplitude         |   1.1068 | 0.0943  |
+| vert_shift        |   6.3897 | 0.4601  |
 
 Note that these values are provided in the unconstrained space. The vertical shift
 seems reasonable, but the amplitude is not. This is because the amplitude is constrained to be
@@ -388,14 +397,16 @@ posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 constrained_posterior = Emulators.transform_unconstrained_to_constrained(
     prior, MarkovChainMonteCarlo.get_distribution(posterior)
 )
+println("Amplitude mean: ", mean(constrained_posterior["amplitude"]), ", std: ", std(constrained_posterior["amplitude"]))
+println("Vertical shift mean: ", mean(constrained_posterior["vert_shift"]), ", std: ", std(constrained_posterior["vert_shift"]))
 ```
 This gives:
 
 
 | parameters         | mean    | std |
 | :---------------- | :------: | :----: |
-| amplitude         |   3.0324 | 0.2863  |
-| vert_shift        |   6.3753 | 0.4591  |
+| amplitude         |   3.0382 | 0.2861  |
+| vert_shift        |   6.3897 | 0.4601  |
 
 This is in agreement with the true $\theta=(3.0, 7.0)$ and with the observational covariance matrix we provided $\Gamma=0.2 * I$ (i.e., a standard deviation of approx. $0.45$). `CalibrateEmulateSample.jl` has built-in plotting
 recipes to help us visualize the prior and posterior distributions.  Note that these are the
@@ -403,8 +414,8 @@ marginal distributions.
 
 ```julia
 # We can quickly plot priors and posterior using built-in capabilities
-p = plot(prior)
-plot!(posterior)
+p = plot(prior, fill = :lightgray)
+plot!(posterior, fill = :darkblue, alpha = 0.5)
 
 ```
 ![GP_posterior](../assets/sinusoid_posterior_GP.png)

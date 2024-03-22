@@ -163,4 +163,6 @@ save(
     N_ensemble,
     "N_iterations",
     N_iterations,
+    "rng",
+    rng,
 )
