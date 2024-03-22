@@ -61,16 +61,13 @@ We define a model that generates a sinusoid given parameters $\theta=(A,v)$
 The model adds a random phase shift upon evaluation.
 
 ```julia
-# Seed for pseudo-random number generator.
-rng_seed = 41
-rng = Random.MersenneTwister(rng_seed)
+# Define x-axis
+dt = 0.01
+trange = 0:dt:(2 * pi + dt)
 
-function model(amplitude, vert_shift; rng = Random.GLOBAL_RNG)
-    # Define x-axis
-    dt = 0.01
-    trange = 0:dt:(2 * pi + dt)
+function model(amplitude, vert_shift)
     # Set phi, the random phase
-    phi = 2 * pi * rand(rng)
+    phi = 2 * pi * rand()
     return amplitude * sin.(trange .+ phi) .+ vert_shift
 end
 
@@ -85,7 +82,7 @@ vert_shift_true = 7.0
 theta_true = [amplitude_true, vert_shift_true]
 dim_params = 2
 # Generate the "true" signal for these parameters
-signal_true = model(amplitude_true, vert_shift_true; rng = rng)
+signal_true = model(amplitude_true, vert_shift_true)
 ```
 We will observe properties of the signal that inform us about the amplitude and vertical 
 position. These properties will be the range (the difference between the maximum and the minimum),
@@ -101,7 +98,7 @@ observables. We call this $y_{obs}$. The user can choose the observational covar
 dim_output = 2
 Γ = 0.2 * I
 white_noise = MvNormal(zeros(dim_output), Γ)
-y_obs = [y1_true, y2_true] .+ rand(rng, white_noise)
+y_obs = [y1_true, y2_true] .+ rand(white_noise)
 println("Observations:", y_obs)
 ```
 This gives $y_{obs}=(6.15, 6.42)$.
@@ -113,9 +110,9 @@ It will be helpful for us to define a function $G(\theta)$, which returns these 
 (the range and the mean) of the sinusoid given a parameter vector. 
 
 ```julia
-function G(theta; rng = Random.GLOBAL_RNG)
+function G(theta)
     amplitude, vert_shift = theta
-    sincurve = model(amplitude, vert_shift; rng = rng)
+    sincurve = model(amplitude, vert_shift)
     return [maximum(sincurve) - minimum(sincurve), mean(sincurve)]
 end
 ```
@@ -152,7 +149,7 @@ prior_u1 = PD.constrained_gaussian("amplitude", 2, 1, 0, Inf)
 prior_u2 = PD.constrained_gaussian("vert_shift", 0, 5, -Inf, Inf)
 prior = PD.combine_distributions([prior_u1, prior_u2])
 # Plot priors
-p = plot(prior, fill = :lightgray, rng = rng)
+p = plot(prior, fill = :lightgray)
 ```
 ![prior](../assets/sinusoid_prior.png)
 
@@ -161,9 +158,9 @@ We now generate the initial ensemble and set up the EKI.
 N_ensemble = 10
 N_iterations = 5
 
-initial_ensemble = EKP.construct_initial_ensemble(rng, prior, N_ensemble)
+initial_ensemble = EKP.construct_initial_ensemble(prior, N_ensemble)
 
-ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y_obs, Γ, EKP.Inversion(); rng = rng)
+ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y_obs, Γ, EKP.Inversion())
 ```
 
 We are now ready to carry out the inversion. At each iteration, we get the
@@ -173,7 +170,7 @@ and apply the Kalman update to the ensemble.
 for i in 1:N_iterations
     params_i = EKP.get_ϕ_final(prior, ensemble_kalman_process)
 
-    G_ens = hcat([G(params_i[:, i]; rng = rng) for i in 1:N_ensemble]...)
+    G_ens = hcat([G(params_i[:, i]) for i in 1:N_ensemble]...)
 
     EKP.update_ensemble!(ensemble_kalman_process, G_ens)
 end
@@ -280,14 +277,12 @@ optimizer_options = Dict(
     "cov_sample_multiplier" => 10,
     "scheduler" => EKP.DataMisfitController(on_terminate = "continue"),
     "n_iteration" => 50,
-    "rng" => rng,
     "verbose" => true,
 )
 random_features = VectorRandomFeatureInterface(
     n_features,
     input_dim,
     output_dim,
-    rng = rng,
     kernel_structure = kernel_structure,
     optimizer_options = optimizer_options,
 )
@@ -375,11 +370,11 @@ Now, we can set up and carry out the MCMC starting from this point.
 ```julia
 mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator_gp; init_params = init_sample)
 # First let's run a short chain to determine a good step size
-new_step = optimize_stepsize(mcmc; rng = rng, init_stepsize = 0.1, N = 2000, discard_initial = 0)
+new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
 # Now begin the actual MCMC
 println("Begin MCMC - with step size ", new_step)
-chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; rng = rng, stepsize = new_step, discard_initial = 2_000)
+chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
 
 # We can print summary statistics of the MCMC chain
 display(chain)
@@ -419,8 +414,8 @@ marginal distributions.
 
 ```julia
 # We can quickly plot priors and posterior using built-in capabilities
-p = plot(prior, fill = :lightgray, rng = rng)
-plot!(posterior, fill = :darkblue, alpha = 0.5, rng = rng, size = (800, 200))
+p = plot(prior, fill = :lightgray)
+plot!(posterior, fill = :darkblue, alpha = 0.5)
 
 ```
 ![GP_posterior](../assets/sinusoid_posterior_GP.png)
