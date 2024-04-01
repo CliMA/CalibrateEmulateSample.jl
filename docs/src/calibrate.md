@@ -15,3 +15,7 @@ Calibration can be performed using different ensemble Kalman processes: ensemble
 
 Documentation on how to construct an EnsembleKalmanProcess from the computer model and the data can be found in the EnsembleKalmanProcesses [docs](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/ensemble_kalman_inversion/).
 
+## Julia-free forward model
+
+One draw of our approach is that it does not require the forward map to be written in Julia. To aid construction of such a workflow, EnsembleKalmanProcesses.jl provides a documented example of a BASH workflow for the [sinusoid problem](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/examples/sinusoid_example_toml)/, with source code [here](https://github.com/CliMA/EnsembleKalmanProcesses.jl/tree/main/examples/SinusoidInterface). The forward map interacts with the calibration tools (EKP) only though TOML file reading an writing, and thus can be written in any language; for example, to be used with [slurm HPC scripts](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/examples/ClimateMachine_example/), with source code (here)[https://github.com/CliMA/EnsembleKalmanProcesses.jl/tree/main/examples/ClimateMachine]).
+
