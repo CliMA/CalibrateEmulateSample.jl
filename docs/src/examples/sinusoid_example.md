@@ -303,8 +303,7 @@ First, we check the ground truth model $G(\theta)$ over our parameter space. We 
 
 ![groundtruth](../assets/sinusoid_groundtruth_contours.png)
 
-The first panel shows how the range varies with respect to the two parameters in the Gaussian process
-emulator. The contours show the range is mostly dependent on the amplitude, with little variation with
+The first panel shows how the range varies with respect to the two parameters in the true forward map. The contours show the range is mostly dependent on the amplitude, with little variation with
 respect to the vertical shift. The second panel shows how the mean varies with the respect to the two
 parameters and is mostly dependent on the vertical shift. This result makes sense for our model setup.
 
