@@ -13,7 +13,7 @@ Thank you for considering contributing to `CalibrateEmulateSample`! We encourage
 
 - Improve documentation or comments if you found something hard to use;
 
-- Implement a new feature if you need it. We strongly encourage opening an issue to make sure the administrators are on board before opening a PR with an unsolicited feature addition.
+- Implement a new feature if you need it. We strongly encourage opening an issue to make sure the administrators are on board before opening a PR with an unsolicited feature addition. Examples could include implementing new [statistical emulators](@ref modular-interface), or implementing new data compression tools (beyond normalization, standardization and truncated SVD)
 
 ## Using `git`
 
