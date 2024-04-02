@@ -8,6 +8,7 @@ CurrentModule = CalibrateEmulateSample.Emulators
 GaussianProcessesPackage
 PredictionType
 GaussianProcess
+GaussianProcess()
 build_models!(::GaussianProcess{GPJL}, ::PairedDataContainer{FT}) where {FT <: AbstractFloat}
 optimize_hyperparameters!(::GaussianProcess{GPJL})
 predict(::GaussianProcess{GPJL},  ::AbstractMatrix{FT}) where {FT <: AbstractFloat}
