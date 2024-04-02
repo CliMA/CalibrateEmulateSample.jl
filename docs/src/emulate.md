@@ -75,10 +75,14 @@ Developers may contribute new tools by performing the following
 2. Create a struct `MyMLTool <: MachineLearningTool`, containing any arguments or optimizer options 
 3. Create the following three methods to build, train, and predict with your tool (use `GaussianProcess.jl` as a guide)
 ```
-function build_models!(mlt::MyMLTool, iopairs::PairedDataContainer) 
-function optimize_hyperparameters!(mlt::MyMLTool, args...; kwargs...) 
-function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) # new_inputs [input_dim x N_new]
+build_models!(mlt::MyMLTool, iopairs::PairedDataContainer) -> Nothing
+optimize_hyperparameters!(mlt::MyMLTool, args...; kwargs...) -> Nothing
+function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{Matrix, Array{,3}
 ```
-!!! note
-    The `predict` method currently needs to return both a predicted mean and a predicted (co)variance at new inputs. The current conventions are: for scalar-output methods relying on diagonalization, return `output_dim`-by-`N_new` matrices for mean/variance. For vector-output methods, return types will be `output_dim`-by-`output_dim`-by-`N_new` matrices for covariances (mean as before). 
+!!! note "on dimensions of the predict inputs and outputs"
+    The `predict` method takes as input, an `input_dim`-by-`N_new` matrix. It return both a predicted mean and a predicted (co)variance at new inputs.
+    (i) for scalar-output methods relying on diagonalization, return `output_dim`-by-`N_new` matrices for mean and variance,
+    (ii) For vector-output methods, return `output_dim`-by-`N_new` for mean and `output_dim`-by-`output_dim`-by-`N_new` for covariances.
+
+Please get in touch with our development team when contributing new statistical emulators, to help us ensure the smoothest interface with any new tools.
 
