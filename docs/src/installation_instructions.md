@@ -3,7 +3,7 @@
 ### Installing CalibrateEmulateSample.jl
 
 Currently CalibrateEmulateSample (CES) depends on some external python dependencies 
-including `scipy` (`1.8.1` works) and `scikit-learn` (`1.1.1` works) that wrapped by ScikitLearn.jl.
+including `scipy` (version `1.8.1` works) and `scikit-learn` (version `1.1.1` works) that are wrapped by ScikitLearn.jl.
 
 If you have dependencies installed already, then the code can be used by simply entering
 
