@@ -4,7 +4,7 @@
 CurrentModule = CalibrateEmulateSample.MarkovChainMonteCarlo
 ```
 
-The "sample" part of CES refers to exact sampling from the emulated posterior. In our current framework this is acheived with a [Markov chain Monte
+The "sample" part of CES refers to exact sampling from the emulated posterior, in our current framework this is achieved with a [Markov chain Monte
 Carlo algorithm](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC). Within this paradigm, we want to provide the flexibility to use multiple sampling algorithms; the approach we take is to use the general-purpose [AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface) API, provided by the [Turing.jl](https://turing.ml/dev/) probabilistic programming framework.
 
 
@@ -17,7 +17,7 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 protocol = RWMHSampling() # Random-Walk algorithm
 # protocol = pCNMHSampling() # preconditioned-Crank-Nicholson algorithm
 ```
-Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the Calibrate stage, alongside the trained statistical emulator from the Emulate stage:
+Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the calibrate stage, alongside the trained statistical emulator from the emulate stage:
 ```julia
 mcmc = MCMCWrapper(
     protocol,
@@ -28,7 +28,7 @@ mcmc = MCMCWrapper(
     burnin=10_000,
 )
 ```
-The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of Calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the Sampling method.
+The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the sampling method.
 
 For good efficiency, one often needs to run MCMC with a problem-dependent step size. We provide a simple utility to help choose this. Here the optimizer runs short chains (of length `N`), and adjusts the step-size until the MCMC acceptance rate falls within an acceptable range, returning this step size.
 ```julia
