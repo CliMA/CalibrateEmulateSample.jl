@@ -19,14 +19,14 @@ We have a model of a sinusoidal signal that is a function of parameters $\theta=
 ```math
 f(A, v) = A \sin(\phi + t) + v, \forall t \in [0,2\pi]
 ```
-Here, $\phi$ is the random phase of each signal. 
+Here, $\phi$ is a random phase of each signal. 
 The goal is to estimate the not just point estimates of the parameters $\theta=(A,v)$, but entire probability distributions of them, given some noisy observations. We will use the range and mean of a signal as our observable: 
 ```math
 G(\theta) = \big[ \text{range}\big(f(\theta)\big), \text{mean}\big(f(\theta)\big) \big] 
 ```
-Then, our noisy observations, $y_{obs}$, can be written as:
+This highlights the role of choosing a good observable, in particular our choice of $G$ is independent of the random phase shift $\phi$ and is in fact deterministic. This allows us to write out an expression for the noisy observation, $y_{obs}$:
 ```math
-y_{obs} = G(\theta) + \mathcal{N}(0, \Gamma)
+y_{obs} = G(\theta) + \gamma, \qquad \gamma \sim \mathcal{N}(0, \Gamma)
 ```
 where $\Gamma$ is the observational covariance matrix. We will assume the noise to be independent for each observable, giving us a diagonal covariance matrix.
 
