@@ -37,7 +37,13 @@ optimizer_options = Dict(
     "cov_sample_multiplier" => 1.0, # use to reduce/increase number of samples in initial cov estimation stage
 )
 
-machine_learning_tool = VectorRandomFeatureInterface(n_features, input_dim, output_dim, optimizer_options = optimizer_options)
+machine_learning_tool = VectorRandomFeatureInterface(
+    n_features,
+    input_dim,
+    output_dim,
+    kernel_structure = nonsep_lrp_kernel,
+    optimizer_options = optimizer_options
+)
 ```
 Users can change the kernel complexity with `r`, and the number of features for prediciton with `n_features` and optimization with `n_features_opt`. 
 
@@ -103,7 +109,7 @@ Dict(
     "train_fraction" => tf,
 )
 ```
-- Decreasing `csm` (default `10.0`) towards `0.0` directly reduces the number of samples to estimate a covariance matrix in the optimizer, by using a shrinkage estimator to improve matrix conditioning. Guide: more samples implies less shrinkage for good conditioning and less approximation error. The amount of shrinkage is returned to user as a value between 0 (no shrinkage) and 1 (shrink to diagonal matrix), suggested that users choose `csm` to keep the shrinkage amount below `0.2`.
+- Decreasing `csm` (default `10.0`) towards `0.0` directly reduces the number of samples to estimate a covariance matrix in the optimizer, by using a shrinkage estimator to improve matrix conditioning. Guide: more samples implies less shrinkage for good conditioning and less approximation error. The amount of shrinkage is returned to user as a value between 0 (no shrinkage) and 1 (shrink to diagonal matrix), it is suggested that users choose `csm` to keep the shrinkage amount below `0.2`.
 - Increasing `tf` towards `1` changes the train-validate split, reducing samples but increasing cost-per-sample and reducing the available validation data (default `0.8`, suggested range `(0.5,0.95)`).
 
 If optimizer convergence stagnates or is too slow, or if it terminates before producing good results, try:
@@ -201,7 +207,7 @@ build_default_prior(input_dim, output_dim, vector_lowrank_kernel)
 # 1-dim positive distribution `sigma`
 ```
 
-!!! warn 
+!!! warning 
     Naive representations lead to very large numbers of hyperparameters.
 
 ```julia
