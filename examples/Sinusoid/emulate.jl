@@ -156,11 +156,15 @@ rf_std_grid = reshape(permutedims(reduce(vcat, [x' for x in rf_std]), (2, 1)), (
 ## Plot
 # First, we will plot the ground truth. We have 2 parameters and 2 outputs, so we will create a contour plot 
 # for each output to show how they vary against the two inputs. 
+range_clims = (0, 8)
+mean_clims = (-6, 10)
+
 p1 = contour(
     amp_range,
     vshift_range,
     g_true_grid[1, :, :];
     fill = true,
+    clims = range_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "True Sinusoid Range",
@@ -170,6 +174,7 @@ p2 = contour(
     vshift_range,
     g_true_grid[2, :, :];
     fill = true,
+    clims = mean_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "True Sinusoid Mean",
@@ -188,6 +193,7 @@ p1 = contour(
     vshift_range,
     gp_grid[1, :, :];
     fill = true,
+    clims = range_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP Sinusoid Range",
@@ -200,6 +206,7 @@ p2 = contour(
     vshift_range,
     gp_grid[2, :, :];
     fill = true,
+    clims = mean_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP Sinusoid Mean",
@@ -214,6 +221,7 @@ p1 = contour(
     vshift_range,
     rf_grid[1, :, :];
     fill = true,
+    clims = range_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF Sinusoid Range",
@@ -224,6 +232,7 @@ p2 = contour(
     vshift_range,
     rf_grid[2, :, :];
     fill = true,
+    clims = mean_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF Sinusoid Mean",
@@ -238,12 +247,16 @@ savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_contours.png"))
 
 # Next, we plot uncertainty estimates from the GP and RF emulators
 # Plot GP std estimates
+range_std_clims = (0, 2)
+mean_std_clims = (0, 1)
+
 p1 = contour(
     amp_range,
     vshift_range,
     gp_std_grid[1, :, :];
     c = :cividis,
     fill = true,
+    clims = range_std_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP 1σ in Sinusoid Range",
@@ -254,6 +267,7 @@ p2 = contour(
     gp_std_grid[2, :, :];
     c = :cividis,
     fill = true,
+    clims = mean_std_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP 1σ in Sinusoid Mean",
@@ -269,6 +283,7 @@ p1 = contour(
     rf_std_grid[1, :, :];
     c = :cividis,
     fill = true,
+    clims = range_std_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF 1σ in Sinusoid Range",
@@ -279,6 +294,7 @@ p2 = contour(
     rf_std_grid[2, :, :];
     c = :cividis,
     fill = true,
+    clims = mean_std_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF 1σ in Sinusoid Mean",
@@ -291,12 +307,15 @@ savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_std_contours.png"
 # Finally, we should validate how accurate the emulators are by looking at the absolute difference between emulator
 # predictions and the ground truth. 
 gp_diff_grid = abs.(gp_grid - g_true_grid)
+range_diff_clims = (0, 1)
+mean_diff_clims = (0, 1)
 p1 = contour(
     amp_range,
     vshift_range,
     gp_diff_grid[1, :, :];
     c = :cividis,
     fill = true,
+    clims = range_diff_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP error in Sinusoid Range",
@@ -307,6 +326,7 @@ p2 = contour(
     gp_diff_grid[2, :, :];
     c = :cividis,
     fill = true,
+    clims = mean_diff_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "GP error in Sinusoid Mean",
@@ -321,6 +341,7 @@ p1 = contour(
     rf_diff_grid[1, :, :];
     c = :cividis,
     fill = true,
+    clims = range_diff_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF error in Sinusoid Range",
@@ -331,6 +352,7 @@ p2 = contour(
     rf_diff_grid[2, :, :];
     c = :cividis,
     fill = true,
+    clims = mean_diff_clims,
     xlabel = "Amplitude",
     ylabel = "Vertical Shift",
     title = "RF error in Sinusoid Mean",
