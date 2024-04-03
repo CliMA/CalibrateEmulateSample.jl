@@ -140,7 +140,7 @@ The calibration stage must be run before the emulate-sample stages. The calibrat
 
 ## Emulate
 
-Having run the `calibrate.jl` code to generate input-output pairs from parameters to data using `EnsembleKalmanProcesses.jl`, we will now run the Emulate and Sample stages (emulate_sample.jl`). First, we need to define which machine learning model we will use for the emulation. We have 8 cases that the user can toggle or customize
+Having run the `calibrate.jl` code to generate input-output pairs from parameters to data using `EnsembleKalmanProcesses.jl`, we will now run the Emulate and Sample stages (`emulate_sample.jl`). First, we need to define which machine learning model we will use for the emulation. We have 8 cases that the user can toggle or customize
 ```julia
 cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs

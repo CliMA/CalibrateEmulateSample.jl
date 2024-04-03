@@ -4,19 +4,20 @@
 CurrentModule = CalibrateEmulateSample.MarkovChainMonteCarlo
 ```
 
-The "sample" part of CES refers to exact sampling from the emulated posterior. In our current framework this is acheived with a [Markov chain Monte
+The "sample" part of CES refers to exact sampling from the emulated posterior, in our current framework this is achieved with a [Markov chain Monte
 Carlo algorithm](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC). Within this paradigm, we want to provide the flexibility to use multiple sampling algorithms; the approach we take is to use the general-purpose [AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface) API, provided by the [Turing.jl](https://turing.ml/dev/) probabilistic programming framework.
 
 
 ## User interface
 
-We briefly outline an instance of how one sets up and uses MCMC within the CES package. The user first provides a Protocol (i.e. how one wishes to generate proposals)
+We briefly outline an instance of how one sets up and uses MCMC within the CES package. The user first loads the MCMC module, and provides one of the Protocols (i.e. how one wishes to generate sampling proposals)
 
 ```julia
+using CalibrateEmulateSample.MarkovChainMonteCarlo
 protocol = RWMHSampling() # Random-Walk algorithm
 # protocol = pCNMHSampling() # preconditioned-Crank-Nicholson algorithm
 ```
-Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the Calibrate stage, alongside the trained statistical emulator from the Emulate stage:
+Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the calibrate stage, alongside the trained statistical emulator from the emulate stage:
 ```julia
 mcmc = MCMCWrapper(
     protocol,
@@ -27,7 +28,7 @@ mcmc = MCMCWrapper(
     burnin=10_000,
 )
 ```
-The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of Calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the Sampling method.
+The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the sampling method.
 
 For good efficiency, one often needs to run MCMC with a problem-dependent step size. We provide a simple utility to help choose this. Here the optimizer runs short chains (of length `N`), and adjusts the step-size until the MCMC acceptance rate falls within an acceptable range, returning this step size.
 ```julia
@@ -82,23 +83,21 @@ remember where methods are defined! Below we describe the relevant parts of
 - Further extended for the needs of CES in [Markov chain Monte
   Carlo](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo).
 
-## Classes and methods
-
 ### Sampler
 
 A Sampler is AbstractMCMC's term for an implementation of a MCMC sampling algorithm, along with all its configuration
-parameters. All samplers must inherit from `AbstractMCMC.AbstractSampler`. 
+parameters. All samplers are a subtype of AbstractMCMC's `AbstractSampler`. 
 
 Currently CES only implements the Metropolis-Hastings (MH) algorithm. Because it's so straightforward, much of
 AbstractMCMC isn't needed. We implement two variants of MH with two different Samplers: `RWMetropolisHastings` and
-`pCNMetropolisHastings`, both of which inherit from the `AdvancedMH.MHSampler` base class. The public constructor for
+`pCNMetropolisHastings`, both of which are subtypes of `AdvancedMH.MHSampler`. The constructor for
 both Samplers is [`MetropolisHastingsSampler`](@ref); the different Samplers are specified by passing a
 [`MCMCProtocol`](@ref) object to this constructor.
 
-The MH Sampler classes have only one field, `proposal`, which is the distribution used to generate new MH proposals via
-stochastic offsets to the current parameter values. This is done by
+The `MHSampler` has only one field, `proposal`, the distribution used to generate new MH proposals via
+additive stochastic perturbations to the current parameter values. This is done by
 [AdvancedMH.propose()](https://github.com/TuringLang/AdvancedMH.jl/blob/master/src/proposal.jl), which gets called for
-each MCMC `step()` (below). The difference between our two Samplers is in how this proposal is generated:
+each MCMC `step()`. The difference between Samplers comes from how the proposal is generated:
 
 - [`RWMHSampling`](@ref) does vanilla random-walk proposal generation with a constant, user-specified step size (this
   differs from the AdvancedMH implementation, which doesn't provide for a step size.)
@@ -109,7 +108,7 @@ each MCMC `step()` (below). The difference between our two Samplers is in how th
   (2008)](https://www.worldscientific.com/doi/abs/10.1142/S0219493708002378) and [Cotter et. al.
   (2013)](https://projecteuclid.org/journals/statistical-science/volume-28/issue-3/MCMC-Methods-for-Functions--Modifying-Old-Algorithms-to-Make/10.1214/13-STS421.full).
 
-This is the only difference: generated proposals are then either accepted or rejected according to the same MH criterion
+Generated proposals are then either accepted or rejected according to the same MH criterion
 (in `step()`, below.)
 
 ### Models
@@ -121,7 +120,7 @@ likelihood (see [Emulators](@ref)) together with the prior. This is constructed 
 ### Sampling with the MCMC Wrapper object
 
 At a [high level](https://turing.ml/dev/docs/using-turing/guide), a Sampler and Model is all that's needed to do MCMC
-sampling. This is done by the [`sample`](https://github.com/TuringLang/AbstractMCMC.jl/blob/master/src/sample.jl) method
+sampling. This is done by the [`sample`](https://turinglang.org/AbstractMCMC.jl/dev/api/#Sampling-a-single-chain) method
 provided by AbstractMCMC (extending the method from BaseStats). 
 
 To be more user-friendly, in CES we wrap the Sampler, Model and other necessary configuration into a
@@ -131,8 +130,18 @@ with methods to use this object (that simply unpack its fields and call the appr
 
 ### Chain
 
-The [MCMCChain](https://beta.turing.ml/MCMCChains.jl/dev/) class is used to store the results of the MCMC sampling; the
-package provides simple diagnostics for visualization and diagnosing chain convergence.
+The [MCMCChain](https://beta.turing.ml/MCMCChains.jl/dev/) package provides the `Chains` container to store the results of the MCMC sampling; the package provides methods to for quick diagnostics and plot utilities of the the `Chains` objects. For example,
+
+```julia
+using MCMCChains
+using StatsPlots
+
+# ... from our MCMC example above ...
+# chain = sample(rng, mcmc, 100_000; stepsize = new_step)
+
+display(chain) # diagnostics
+plot(chain) # plots samples over iteration and PDFs for each parameter
+```
 
 
 ### Internals: Transitions

@@ -19,8 +19,8 @@ We have a model of a sinusoidal signal that is a function of parameters $\theta=
 ```math
 f(A, v) = A \sin(\phi + t) + v, \forall t \in [0,2\pi]
 ```
-Here, $\phi$ is a random phase of each signal. 
-The goal is to estimate the not just point estimates of the parameters $\theta=(A,v)$, but entire probability distributions of them, given some noisy observations. We will use the range and mean of a signal as our observable: 
+Here, $\phi$ is the random phase of each signal. 
+The goal is to estimate not just the point estimates of the parameters $\theta=(A,v)$, but entire probability distributions of them, given some noisy observations. We will use the range and mean of a signal as our observable: 
 ```math
 G(\theta) = \big[ \text{range}\big(f(\theta)\big), \text{mean}\big(f(\theta)\big) \big] 
 ```
@@ -259,7 +259,7 @@ We will check performance of the GP by testing on unseen data in a moment, but f
 
 ### Random Features
 An alternative emulator can be created with random features (RF). Random features can approximate a Gaussian process
-with improved scaling properties, making them more suitable for for higher dimensional problems. We use a Vector Random
+with improved scaling properties, making them more suitable for higher dimensional problems. We use a Vector Random
 Features emulator here, chosen because we find it is a reasonable approximation to the Gaussian process emulator above.
 For new problems, you may need to play around with these parameter choices.
 More information can be found [here](https://clima.github.io/CalibrateEmulateSample.jl/dev/random_feature_emulator/).
@@ -303,8 +303,7 @@ First, we check the ground truth model $G(\theta)$ over our parameter space. We 
 
 ![groundtruth](../assets/sinusoid_groundtruth_contours.png)
 
-The first panel shows how the range varies with respect to the two parameters in the Gaussian process
-emulator. The contours show the range is mostly dependent on the amplitude, with little variation with
+The first panel shows how the range varies with respect to the two parameters in the true forward map. The contours show the range is mostly dependent on the amplitude, with little variation with
 respect to the vertical shift. The second panel shows how the mean varies with the respect to the two
 parameters and is mostly dependent on the vertical shift. This result makes sense for our model setup.
 
@@ -351,7 +350,7 @@ added to the chain, or otherwise, the original sample is added to the chain. Thi
 iterations and eventually creates a sequence of samples from the posterior distribution.
 The CES code uses [AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface), full details can be found [here](https://clima.github.io/CalibrateEmulateSample.jl/dev/API/AbstractMCMC/).
 For this example, we will use a random walk Metropolis-Hastings sampler (`RWMHSampling`), which assumes that 
-the proposal distribution is a random walk, with a step-size `\delta`. Usually, we have little knowledge of 
+the proposal distribution is a random walk, with a step-size $\delta$. Usually, we have little knowledge of 
 what this step size should be, but we can optimize this as shown below.
 
 First, we will load the additional packages we need:
