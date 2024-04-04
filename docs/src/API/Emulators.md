@@ -9,12 +9,6 @@ Emulator
 Emulator(
     ::MachineLearningTool,
     ::PairedDataContainer{FT};
-    ::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing},
-    ::Bool,
-    ::Bool,
-    ::Union{AbstractVector{FT}, Nothing},
-    ::Bool,
-    ::FT,
 ) where {FT <: AbstractFloat}
 optimize_hyperparameters!(::Emulator)
 predict
