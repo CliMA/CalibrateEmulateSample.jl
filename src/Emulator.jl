@@ -91,9 +91,9 @@ Keyword Arguments
  - `obs_noise_cov`: A matrix/uniform scaling to provide the observational noise covariance of the data - used for data processing (default `nothing`),
  - `normalize_inputs`: Normalize the inputs to be unit Gaussian, in the smallest full-rank space of the data (default `true`),
  - `standardize_outputs`: Standardize outputs with by dividing by a vector of provided factors (default `false`),
- - `standardize_outputs_factors: If standardizing, the provided dim_output-length vector of factors,
+ - `standardize_outputs_factors`: If standardizing, the provided dim_output-length vector of factors,
  - `decorrelate`: Apply (truncated) SVD to the outputs. Predictions are returned in the decorrelated space, (default `true`)
- - `retained_svd_frac = 1.0`: The cumulative sum of singular values retained after output SVD truncation (default 1.0 - no truncation)
+ - `retained_svd_frac`: The cumulative sum of singular values retained after output SVD truncation (default 1.0 - no truncation)
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
