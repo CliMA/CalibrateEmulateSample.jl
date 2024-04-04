@@ -72,7 +72,7 @@ using CalibrateEmulateSample.DataContainers
         retained_svd_frac = 1.0,
     )
 
-    @test_logs (:warn,) Emulator(
+    @test_logs (:warn,) (:warn,) Emulator(
         gp1,
         iopairs,
         obs_noise_cov = nothing,
