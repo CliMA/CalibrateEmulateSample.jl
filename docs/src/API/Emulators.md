@@ -6,7 +6,7 @@ CurrentModule = CalibrateEmulateSample.Emulators
 
 ```@docs
 Emulator
-function Emulator(
+Emulator(
     ::MachineLearningTool,
     ::PairedDataContainer{FT};
     ::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing},
