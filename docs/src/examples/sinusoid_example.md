@@ -402,10 +402,10 @@ println("Vertical shift mean: ", mean(constrained_posterior["vert_shift"]), ", s
 This gives:
 
 
-| parameters         | mean    | std |
-| :---------------- | :------: | :----: |
-| amplitude         |   3.0382 | 0.2861  |
-| vert_shift        |   6.3897 | 0.4601  |
+| parameters        | mean     | std     |
+| :---------------- | :------: | :----:  |
+| amplitude         |   3.0382 | 0.2880  |
+| vert_shift        |   6.3774 | 0.4586  |
 
 This is in agreement with the true $\theta=(3.0, 7.0)$ and with the observational covariance matrix we provided $\Gamma=0.2 * I$ (i.e., a standard deviation of approx. $0.45$). `CalibrateEmulateSample.jl` has built-in plotting
 recipes to help us visualize the prior and posterior distributions.  Note that these are the
@@ -432,6 +432,11 @@ $\theta_2$ below, with the marginal distributions on each axis.
 
 We can repeat the sampling method using the random features emulator instead of the Gaussian
 process and we find similar results: 
+
+| parameters        | mean     | std    |
+| :---------------- | :------: | :----: |
+| amplitude         |   3.3210 | 0.7216 |
+| vert_shift        |   6.3986 | 0.5098 |
 
 ![RF_2d_posterior](../assets/sinusoid_MCMC_hist_RF.png)
 
