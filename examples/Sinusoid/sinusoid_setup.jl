@@ -88,7 +88,7 @@ function generate_obs(amplitude_true, vert_shift_true, Γ; rng = Random.GLOBAL_R
         color = :red,
         style = :dash,
         linewidth = 2,
-        label = "True mean: " * string(round(y2_true, digits = 2)),
+        label = "True mean: " * string(round(y2_true, digits = 1)),
     )
     plot!(
         [argmax(signal_true), argmax(signal_true)],
@@ -96,7 +96,7 @@ function generate_obs(amplitude_true, vert_shift_true, Γ; rng = Random.GLOBAL_R
         arrows = :both,
         color = :red,
         linewidth = 2,
-        label = "True range: " * string(round(y1_true, digits = 2)),
+        label = "True range: " * string(round(y1_true, digits = 1)),
     )
 
     # However, our observations are typically not noise-free, so we add some white noise to our 
@@ -115,8 +115,8 @@ function generate_obs(amplitude_true, vert_shift_true, Γ; rng = Random.GLOBAL_R
         label = "Observed mean: " * string(round(y2_obs, digits = 2)),
     )
     plot!(
-        [argmax(signal_true) + 10, argmax(signal_true) + 10],
-        [y2_true - y1_obs / 2, y2_true + y1_obs / 2],
+        [argmax(signal_true) + 15, argmax(signal_true) + 15],
+        [y2_obs - y1_obs / 2, y2_obs + y1_obs / 2],
         arrows = :both,
         color = :blue,
         linewidth = 1,
