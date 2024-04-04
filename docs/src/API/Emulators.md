@@ -6,6 +6,7 @@ CurrentModule = CalibrateEmulateSample.Emulators
 
 ```@docs
 Emulator
+Emulator()
 optimize_hyperparameters!(::Emulator)
 predict
 normalize
