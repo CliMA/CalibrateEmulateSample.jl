@@ -6,10 +6,6 @@ CurrentModule = CalibrateEmulateSample.Emulators
 
 ```@docs
 Emulator
-Emulator(
-    ::MachineLearningTool,
-    ::PairedDataContainer{FT};
-) where {FT <: AbstractFloat}
 optimize_hyperparameters!(::Emulator)
 predict
 normalize
