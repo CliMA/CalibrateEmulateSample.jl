@@ -20,7 +20,7 @@ authors:
     orcid: 0000-0002-2878-3874
     affiliation: 4
   - name: Andre Nogueira de Souza
-    orcid: 
+    orcid: 0000-0002-9906-7824
     affiliation: 5
   - name: Laura Anne Mansfield
     orcid: 0000-0002-6285-6045
