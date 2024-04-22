@@ -14,7 +14,7 @@
 # First, we load the packages we need:
 using LinearAlgebra, Random
 
-using Distributions, Plots
+using Distributions, Plots, Plots.PlotMeasures
 using JLD2
 
 using CalibrateEmulateSample
@@ -179,7 +179,15 @@ p2 = contour(
     ylabel = "Vertical Shift",
     title = "True Sinusoid Mean",
 )
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_groundtruth_contours.png"))
 # The first panel shows how the range varies with respect to the two parameters in the Gaussian process
 # emulator. The contours show the range is mostly dependent on the amplitude, with little variation with
@@ -212,7 +220,17 @@ p2 = contour(
     title = "GP Sinusoid Mean",
 )
 plot!(inputs[1, :], inputs[2, :]; seriestype = :scatter, zcolor = outputs[2, :], label = :false)
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    right_margin=3mm,
+    bottom_margin=3mm,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_GP_emulator_contours.png"))
 
 # Plot RF emulator contours
@@ -238,7 +256,17 @@ p2 = contour(
     title = "RF Sinusoid Mean",
 )
 plot!(inputs[1, :], inputs[2, :]; seriestype = :scatter, zcolor = outputs[2, :], label = :false)
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2, 
+    right_margin=3mm,
+    bottom_margin=3mm,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_contours.png"))
 
 # Both the GP and RF emulator give similar results to the ground truth G(θ), indicating they are correctly
@@ -272,7 +300,17 @@ p2 = contour(
     ylabel = "Vertical Shift",
     title = "GP 1σ in Sinusoid Mean",
 )
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    size = (600, 300),
+    layout = (1, 2),
+    right_margin=3mm,
+    bottom_margin=3mm,
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_GP_emulator_std_contours.png"))
 
 
@@ -299,7 +337,15 @@ p2 = contour(
     ylabel = "Vertical Shift",
     title = "RF 1σ in Sinusoid Mean",
 )
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_std_contours.png"))
 # The GP and RF uncertainty predictions are similar and show lower uncertainties around the region of interest
 # where we have more training points.
@@ -331,7 +377,15 @@ p2 = contour(
     ylabel = "Vertical Shift",
     title = "GP error in Sinusoid Mean",
 )
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_GP_errors_contours.png"))
 
 rf_diff_grid = abs.(rf_grid - g_true_grid)
@@ -357,7 +411,15 @@ p2 = contour(
     ylabel = "Vertical Shift",
     title = "RF error in Sinusoid Mean",
 )
-p = plot(p1, p2, size = (600, 300), layout = (1, 2))
+p = plot(
+    p1,
+    p2,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_errors_contours.png"))
 
 # Here, we want the emulator to show the low errors in the region around the true parameter values near θ = (3, 6),

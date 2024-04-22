@@ -74,7 +74,15 @@ function generate_obs(amplitude_true, vert_shift_true, Γ; rng = Random.GLOBAL_R
     # Generate the "true" signal for these parameters
     signal_true = model(amplitude_true, vert_shift_true; rng = rng)
     # Plot
-    p = plot(signal_true, color = :black, linewidth = 3, label = "True signal")
+    p = plot(
+        signal_true,
+        color = :black,
+        linewidth = 3,
+        label = "True signal",
+        guidefontsize = 14,
+        tickfontsize = 12,
+        legendfontsize = 12,
+)
 
     # We will observe properties of the signal that inform us about the amplitude and vertical 
     # position. These properties will be the range (the difference between the maximum and the minimum),

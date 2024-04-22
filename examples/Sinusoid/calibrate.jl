@@ -115,6 +115,9 @@ p = plot(
     legend = :bottomright,
     xlims = (0, 6),
     ylims = (-6, 10),
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
 )
 vline!([theta_true[1]], color = :red, style = :dash, label = :false)
 hline!([theta_true[2]], color = :red, style = :dash, label = :false)
