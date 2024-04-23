@@ -172,9 +172,9 @@ plot_all = plot(
     layout = layout,
     size = (600, 600),
     legend = :true,
-    guidefontsize = 8,
-    tickfontsize = 6,
-    legendfontsize = 6,
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
 )
 
 savefig(plot_all, joinpath(data_save_directory, "sinusoid_MCMC_hist_GP.png"))
@@ -293,9 +293,9 @@ plot_all = plot(
     layout = layout,
     size = (600, 600),
     legend = :true,
-    guidefontsize = 8,
-    tickfontsize = 6,
-    legendfontsize = 6,
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
 )
 
 savefig(plot_all, joinpath(data_save_directory, "sinusoid_MCMC_hist_RF.png"))
