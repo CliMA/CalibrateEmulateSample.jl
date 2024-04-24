@@ -15,7 +15,7 @@ export SeparableKernel, NonseparableKernel
 export get_input_cov_structure, get_output_cov_structure, get_cov_structure
 export get_eps
 export rank
-export shrinkage_cov
+export shrinkage_cov, nice_cov
 
 
 abstract type RandomFeatureInterface <: MachineLearningTool end
@@ -489,11 +489,9 @@ function calculate_mean_cov_and_coeffs(
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
     ## TODO - the theory states that the following should be set:
-    # scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+    scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
     # However the convergence is much improved with setting this to zero:
-    scaled_coeffs = 0
-
-
+    #scaled_coeffs = 0
     if decomp_type == "cholesky"
         chol_fac = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).L
         complexity = 2 * sum(log(chol_fac[i, i]) for i in 1:size(chol_fac, 1))
@@ -501,8 +499,8 @@ function calculate_mean_cov_and_coeffs(
         svd_singval = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).S
         complexity = sum(log, svd_singval) # note this is log(abs(det))
     end
-    complexity = sqrt(abs(complexity)) #abs can introduce nonconvexity, 
-
+    complexity = sqrt(complexity) #abs can introduce nonconvexity,
+    
     return scaled_coeffs, complexity
 
 end
@@ -538,6 +536,58 @@ function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
 
     @info "Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)\n shrinkage covariance condition number: $(cond(Γ))"
     return Γ
+end
+
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
+"""
+function nice_cov(sample_mat::AA, n_samples=400, δ::FT=1.0) where {AA <: AbstractMatrix, FT <: Real}
+
+    n_sample_cov = size(sample_mat, 2)
+    Γ = cov(sample_mat, dims = 2)
+    if !isposdef(Γ)
+        Γ = posdef_correct(Γ)
+    end
+
+    bd_tol = 1e8 * eps()
+
+    v = sqrt.(diag(Γ))
+    V = Diagonal(v) #stds
+    V_inv = inv(V)
+    corr = clamp.(V_inv * Γ * V_inv, -1 + bd_tol, 1 - bd_tol) # full corr
+
+    # parameter sweep over the exponents
+    max_exponent = 2 * 5 # must be even
+    interp_steps = 100
+    # use find the variability in the corr coeff matrix entries
+    std_corrs = approximate_corr_std.(corr, n_sample_cov, n_samples) # Found in EKP.Localizers !! slowest part of code -> could speed up by precomputing/using an interpolation
+    
+    std_tol = sqrt(sum(std_corrs .^ 2))
+    α_min_exceeded = [max_exponent]
+    for α in 2:2:max_exponent # even exponents give a PSD
+        corr_psd = corr .^ (α + 1) # abs not needed as α even
+        # find the first exponent that exceeds the noise tolerance in norm
+        if norm(corr_psd - corr) > δ * std_tol
+            α_min_exceeded[1] = α
+            break
+        end
+    end
+    corr_psd = corr .^ α_min_exceeded[1]
+    corr_psd_prev = corr .^ (α_min_exceeded[1] - 2) # previous PSD correction 
+    
+    for α in LinRange(1.0, 0.0, interp_steps)
+        corr_interp = ((1 - α) * (corr_psd_prev) + α * corr_psd) .* corr
+        if norm(corr_interp - corr) < δ * std_tol
+            corr[:,:] = corr_interp #update the correlation matrix block
+            break
+        end
+    end    
+    
+    return V * corr * V # rebuild the cov matrix
+
 end
 
 
@@ -624,11 +674,15 @@ function estimate_mean_and_coeffnorm_covariance(
         approx_σ2[id, id] = mean_of_covs[i, :, :] # this ordering, so we can take a mean/cov in dims = 2.
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
-
+    
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+
+    correction = "shrinkage"
+#    correction = "nice"
+    if correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end
@@ -834,9 +888,13 @@ function estimate_mean_and_coeffnorm_covariance(
 
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+ 
+    correction = "shrinkage"
+#    correction = "nice"
+    if correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end

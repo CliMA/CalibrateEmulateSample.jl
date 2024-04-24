@@ -320,7 +320,6 @@ function build_models!(
     decomp_type = get_feature_decomposition(srfi)
     optimizer_options = get_optimizer_options(srfi)
 
-
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
     train_fraction = optimizer_options["train_fraction"]
@@ -338,8 +337,6 @@ function build_models!(
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
     )
     for i in 1:n_rfms
-
-
         io_pairs_opt = PairedDataContainer(
             input_values[:, idx_shuffle],
             reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
@@ -404,9 +401,7 @@ function build_models!(
         localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        min_complexity = n_features_opt * log(regularization.λ)
-        min_complexity = sqrt(abs(min_complexity))
-        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
+        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
         ekiobj = [EKP.EnsembleKalmanProcess(
             initial_params,
             data,
@@ -446,13 +441,13 @@ function build_models!(
                 
                 Γ_new = internal_Γ_new
                 Γ_new[1:n_test, 1:n_test] += regularization  # + approx_σ2 
-                Γ_new[(n_test + 1):end, (n_test + 1):end] += I
+                Γ_new[(n_test + 1):end, (n_test + 1):end] += I 
                 if opt_verbose_flag
                     @info "updated algorithm covariance difference: $(norm(Γ_new - Γ_old[1]))"
                 end
                 Γ_old[1] = Γ_new
                 # update eki. (the reason why it was a vector)
-
+                # TODO: This restart is horrible.
                 ekiobj[1] = EKP.EnsembleKalmanProcess(
                     get_u_final(ekiobj[1]), # unconstrained
                     data,
@@ -461,12 +456,11 @@ function build_models!(
                     scheduler = DataMisfitController(terminate_at=1e4),
                     rng = rng,
                     accelerator = DefaultAccelerator(),
-#                    localization_method = Localizers.SEC(1.0,0.01),
+                    localization_method = Localizers.SECNice(200),
                     verbose = opt_verbose_flag,
                 )
                 
             end
-            
             
             g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
                 srfi,
@@ -482,9 +476,6 @@ function build_models!(
                 multithread_type,
             )
 
-            
-            g_ens[n_test+1,:] = rand(Normal(1e-3,1e-4),size(g_ens,2))
-            println("Adding Hack to get round 0 coeffl2norm - FIX ME PROPERLY")
             inflation = optimizer_options["inflation"]
             if inflation > 0
                 terminated =
