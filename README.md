@@ -4,7 +4,7 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 
 | **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]             |
 |---------------------:|:-------------------------------------------------|
-| **JOSS**             | [![DOI][joss-img][joss-url]                      |
+| **JOSS**             | [![DOI][joss-img]][joss-url]                      |
 | **DOI**              | [![DOI][zenodo-img]][zenodo-latest-url]          |
 | **Docs Build**       | [![docs build][docs-bld-img]][docs-bld-url]      |
 | **Unit tests**       | [![unit tests][unit-tests-img]][unit-tests-url]  |
