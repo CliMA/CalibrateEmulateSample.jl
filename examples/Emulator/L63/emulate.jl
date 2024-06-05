@@ -8,6 +8,7 @@ using JLD2
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using EnsembleKalmanProcesses.Localizers
 
 function lorenz(du, u, p, t)
     du[1] = 10.0 * (u[2] - u[1])
@@ -92,7 +93,7 @@ function main()
     # Emulate
     cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
 
-    case = cases[1]
+    case = cases[4]
 
     nugget = Float64(1e-12)
     u_test = []
@@ -102,10 +103,13 @@ function main()
 
         rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
-            "cov_sample_multiplier" => 0.5,
-            "n_features_opt" => 400,
-            "n_iteration" => 30,
-            "accelerator" => ConstantStepNesterovAccelerator(),
+            "cov_sample_multiplier" => 2.0,
+            "n_features_opt" => 150,
+            "n_iteration" => 10,
+            "accelerator" => NesterovAccelerator(),
+#            "localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.05,1.0), # localization / s
+            "n_ensemble" => 200,
+            "verbose" => true,
         )
 
         # Build ML tools
@@ -126,7 +130,7 @@ function main()
                 optimizer_options = rf_optimizer_overrides,
             )
         elseif case ∈ ["RF-svd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(6, nugget))
+            kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
             n_features = 500
 
             mlt = VectorRandomFeatureInterface(
@@ -138,7 +142,7 @@ function main()
                 optimizer_options = rf_optimizer_overrides,
             )
         elseif case ∈ ["RF-nosvd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
+            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
             n_features = 500
             mlt = VectorRandomFeatureInterface(
                 n_features,
@@ -161,6 +165,16 @@ function main()
             )
         end
 
+        #save config for RF
+        if !(case == "GP") && (rep_idx == 1)
+            JLD2.save(
+                joinpath(output_directory, case * "_l63_config.jld2"),
+                "rf_optimizer_overrides", rf_optimizer_overrides,
+                "n_features", n_features,
+                "kernel_structure", kernel_structure,
+            )
+        end
+        
         # Emulate
         if case ∈ ["RF-nosvd-nonsep", "RF-nosvd-sep"]
             decorrelate = false
@@ -202,7 +216,7 @@ function main()
         # plots for the first repeat
         if rep_idx == 1
             # plotting trace
-            f = Figure(resolution = (900, 450))
+            f = Figure(size = (900, 450))
             axx = Axis(f[1, 1], xlabel = "time", ylabel = "x")
             axy = Axis(f[2, 1], xlabel = "time", ylabel = "y")
             axz = Axis(f[3, 1], xlabel = "time", ylabel = "z")
@@ -261,7 +275,7 @@ function main()
         push!(u_cdf, u_cdf_tmp)
     end
 
-    f4 = Figure(resolution = (900, Int(floor(900 / 1.618))))
+    f4 = Figure(size = (900, Int(floor(900 / 1.618))))
     axx = Axis(f4[1, 1], xlabel = "", ylabel = "x")
     axy = Axis(f4[1, 2], xlabel = "", ylabel = "y")
     axz = Axis(f4[1, 3], xlabel = "", ylabel = "z")
