@@ -13,12 +13,12 @@ using CalibrateEmulateSample.ParameterDistributions
 # date = Date(year,month,day)
 
 # 2-parameter calibration exp
-exp_name = "ent-det-calibration"
-date_of_run = Date(2023, 10, 5)
+#exp_name = "ent-det-calibration"
+#date_of_run = Date(2023, 10, 17)
 
 # 5-parameter calibration exp
-#exp_name = "ent-det-tked-tkee-stab-calibration"
-#date_of_run = Date(2023,10,4)
+exp_name = "ent-det-tked-tkee-stab-calibration"
+date_of_run = Date(2024, 2, 2)
 
 # Output figure read/write directory
 figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(date_of_run))
@@ -48,5 +48,10 @@ transformed_data = (; [(Symbol(labels[i]), transformed_posterior_samples[i, :]) 
 
 p = pairplot(data => (PairPlots.Scatter(),))
 trans_p = pairplot(transformed_data => (PairPlots.Scatter(),))
+save(density_filepath, p)
+save(transformed_density_filepath, trans_p)
+
+density_filepath = joinpath(figure_save_directory, "posterior_dist_comp.pdf")
+transformed_density_filepath = joinpath(figure_save_directory, "posterior_dist_phys.pdf")
 save(density_filepath, p)
 save(transformed_density_filepath, trans_p)

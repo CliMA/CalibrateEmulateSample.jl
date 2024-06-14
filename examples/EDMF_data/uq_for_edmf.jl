@@ -1,4 +1,4 @@
-#include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
+#includef(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 PLOT_FLAG = false
 
 # Import modules
@@ -6,6 +6,7 @@ using Distributions  # probability distributions and associated functions
 using LinearAlgebra
 ENV["GKSwstype"] = "100"
 using Plots
+using CairoMakie
 using Random
 using JLD2
 using NCDatasets
@@ -28,10 +29,10 @@ Random.seed!(rng_seed)
 function main()
 
     # 2-parameter calibration exp
-    exp_name = "ent-det-calibration"
+    #exp_name = "ent-det-calibration"
 
     # 5-parameter calibration exp
-    #exp_name = "ent-det-tked-tkee-stab-calibration"
+    exp_name = "ent-det-tked-tkee-stab-calibration"
 
 
     # Output figure save directory
@@ -120,6 +121,7 @@ function main()
             for plot_i in 1:size(outputs, 1)
                 p = scatter(inputs_constrained[1, :], inputs_constrained[2, :], zcolor = outputs[plot_i, :])
                 savefig(p, joinpath(figure_save_directory, "output_" * string(plot_i) * ".png"))
+                savefig(p, joinpath(figure_save_directory, "output_" * string(plot_i) * ".pdf"))
             end
             println("finished plotting ensembles.")
         end
@@ -201,52 +203,114 @@ function main()
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-vector-svd-nonsep",
+        "RF-vector-nosvd-nonsep",  # don't perform decorrelation  
     ]
-    case = cases[2]
+    case = cases[3]
+    n_repeats = 2
 
-    overrides = Dict(
-        "verbose" => true,
-        "train_fraction" => 0.95,
-        "scheduler" => DataMisfitController(terminate_at = 100),
-        "cov_sample_multiplier" => 0.5,
-        "n_iteration" => 5,
-    )
-    nugget = 0.01
-    rng_seed = 99330
-    rng = Random.MersenneTwister(rng_seed)
-    input_dim = size(get_inputs(input_output_pairs), 1)
-    output_dim = size(get_outputs(input_output_pairs), 1)
-    if case == "GP"
+    opt_diagnostics = []
+    emulators = []
+    for rep_idx in 1:n_repeats
 
-        gppackage = Emulators.SKLJL()
-        pred_type = Emulators.YType()
-        mlt = GaussianProcess(
-            gppackage;
-            kernel = nothing, # use default squared exponential kernel
-            prediction_type = pred_type,
-            noise_learn = false,
+        overrides = Dict(
+            "verbose" => true,
+            "train_fraction" => 0.9, #95
+            "scheduler" => DataMisfitController(terminate_at = 1e5),
+            "cov_sample_multiplier" => 0.4,
+            "n_features_opt" => 200,
+            "n_iteration" => 15,
+            #    "n_ensemble" => 20,
+            #           "localization" => SEC(1.0, 0.01), # localization / sample error correction for small ensembles
         )
-    elseif case ∈ ["RF-vector-svd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
-        n_features = 500
+        nugget = 1e-10#1e-12#0.01
+        rng_seed = 99330
+        rng = Random.MersenneTwister(rng_seed)
+        input_dim = size(get_inputs(input_output_pairs), 1)
+        output_dim = size(get_outputs(input_output_pairs), 1)
+        decorrelate = true
+        if case == "GP"
 
-        mlt = VectorRandomFeatureInterface(
-            n_features,
-            input_dim,
-            output_dim,
-            rng = rng,
-            kernel_structure = kernel_structure,
-            optimizer_options = overrides,
+            gppackage = Emulators.SKLJL()
+            pred_type = Emulators.YType()
+            mlt = GaussianProcess(
+                gppackage;
+                kernel = nothing, # use default squared exponential kernel
+                prediction_type = pred_type,
+                noise_learn = false,
+            )
+        elseif case ∈ ["RF-vector-svd-nonsep"]
+            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+            n_features = 500
+
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                input_dim,
+                output_dim,
+                rng = rng,
+                kernel_structure = kernel_structure,
+                optimizer_options = overrides,
+            )
+        elseif case ∈ ["RF-vector-nosvd-nonsep"]
+            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+            n_features = 500
+
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                input_dim,
+                output_dim,
+                rng = rng,
+                kernel_structure = kernel_structure,
+                optimizer_options = overrides,
+            )
+            decorrelate = false
+        end
+
+        # Fit an emulator to the data
+        normalized = true
+
+        emulator = Emulator(
+            mlt,
+            input_output_pairs;
+            obs_noise_cov = truth_cov,
+            normalize_inputs = normalized,
+            decorrelate = decorrelate,
         )
+
+        # Optimize the GP hyperparameters for better fit
+        optimize_hyperparameters!(emulator)
+        if case ∈ ["RF-vector-nosvd-nonsep", "RF-vector-svd-nonsep"]
+            push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec -> vec
+        end
+
+        for rep_idx in n_repeats
+            push!(emulators, emulator)
+        end
     end
+    emulator = emulators[1]
 
-    # Fit an emulator to the data
-    normalized = true
+    # plot eki convergence plot
+    if length(opt_diagnostics) > 0
+        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
 
-    emulator = Emulator(mlt, input_output_pairs; obs_noise_cov = truth_cov, normalize_inputs = normalized)
+        #save data
+        error_filepath = joinpath(data_save_directory, "eki_conv_error.jld2")
+        save(error_filepath, "error", err_cols)
 
-    # Optimize the GP hyperparameters for better fit
-    optimize_hyperparameters!(emulator)
+        # print all repeats
+        f5 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
+        ax_conv = Axis(f5[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
+        if n_repeats == 1
+            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
+        else
+            for idx in 1:size(err_cols, 1)
+                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
+                series!(ax_conv, err_normalized', solid_color = :blue)
+            end
+        end
+        save(joinpath(figure_save_directory, "eki-conv_$(case).png"), f5, px_per_unit = 3)
+        save(joinpath(figure_save_directory, "eki-conv_$(case).pdf"), f5, px_per_unit = 3)
+
+    end
 
     emulator_filepath = joinpath(data_save_directory, "emulator.jld2")
     save(emulator_filepath, "emulator", emulator)

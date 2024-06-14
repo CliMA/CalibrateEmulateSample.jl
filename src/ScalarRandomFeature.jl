@@ -30,6 +30,8 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     feature_decomposition::S
     "dictionary of options for hyperparameter optimizer"
     optimizer_options::Dict{S}
+    "diagnostics from optimizer"
+    optimizer::Vector
 end
 
 """
@@ -94,6 +96,13 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 gets the optimizer_options field
 """
 get_optimizer_options(srfi::ScalarRandomFeatureInterface) = srfi.optimizer_options
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+gets the optimizer field
+"""
+get_optimizer(srfi::ScalarRandomFeatureInterface) = srfi.optimizer
 
 
 """
@@ -180,6 +189,7 @@ function ScalarRandomFeatureInterface(
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
+        [],
     )
 end
 
@@ -315,6 +325,7 @@ function build_models!(
     rng = get_rng(srfi)
     decomp_type = get_feature_decomposition(srfi)
     optimizer_options = get_optimizer_options(srfi)
+    optimizer = get_optimizer(srfi) # empty vector
 
 
     # Optimize features with EKP for each output dim
@@ -333,6 +344,8 @@ function build_models!(
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
     )
+    n_iteration = optimizer_options["n_iteration"]
+    diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
 
 
@@ -414,7 +427,7 @@ function build_models!(
         err = zeros(n_iteration)
 
         # [4.] optimize with EKP
-        for i in 1:n_iteration
+        for it in 1:n_iteration
 
             #get parameters:
             lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
@@ -443,9 +456,10 @@ function build_models!(
                 break # if the timestep was terminated due to timestepping condition
             end
 
-            err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
+            err[it] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
         end
+        diagnostics[:, i] = copy(err)
 
         # [5.] extract optimal hyperparameters
         hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
@@ -487,7 +501,9 @@ function build_models!(
 
         push!(rfms, rfm_i)
         push!(fitted_features, fitted_features_i)
+
     end
+    push!(optimizer, diagnostics)
 
 end
 
