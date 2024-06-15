@@ -28,11 +28,17 @@ Random.seed!(rng_seed)
 function main()
 
     # 2-parameter calibration exp
-    exp_name = "ent-det-calibration"
+    #exp_name = "ent-det-calibration"
 
     # 5-parameter calibration exp
-    #exp_name = "ent-det-tked-tkee-stab-calibration"
+    exp_name = "ent-det-tked-tkee-stab-calibration"
 
+    cases = [
+        "GP", # diagonalize, train scalar GP, assume diag inputs
+        "RF-prior",
+        "RF-vector-svd-nonsep",
+    ]
+    case = cases[1]
 
     # Output figure save directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
@@ -119,7 +125,7 @@ function main()
             println("plotting ensembles...")
             for plot_i in 1:size(outputs, 1)
                 p = scatter(inputs_constrained[1, :], inputs_constrained[2, :], zcolor = outputs[plot_i, :])
-                savefig(p, joinpath(figure_save_directory, "output_" * string(plot_i) * ".png"))
+                savefig(p, joinpath(figure_save_directory, "$(case)_output_" * string(plot_i) * ".png"))
             end
             println("finished plotting ensembles.")
         end
@@ -198,21 +204,23 @@ function main()
     println("Begin Emulation stage")
     # Create GP object
 
-    cases = [
-        "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-vector-svd-nonsep",
-    ]
-    case = cases[2]
-
     overrides = Dict(
         "verbose" => true,
-        "train_fraction" => 0.95,
+        "train_fraction" => 0.85,
         "scheduler" => DataMisfitController(terminate_at = 100),
-        "cov_sample_multiplier" => 0.5,
-        "n_iteration" => 5,
+        "cov_sample_multiplier" => 1.0,
+        "n_iteration" => 15,
+        "n_features_opt" => 200,
+        "localization" => SEC(0.05),
     )
-    nugget = 0.01
-    rng_seed = 99330
+if case == "RF-prior"
+    overrides = Dict("verbose" => true,
+        "cov_sample_multiplier" => 0.01,
+        "n_iteration" => 0,
+    )
+end
+nugget = 1e-6
+rng_seed = 99330
     rng = Random.MersenneTwister(rng_seed)
     input_dim = size(get_inputs(input_output_pairs), 1)
     output_dim = size(get_outputs(input_output_pairs), 1)
@@ -226,8 +234,8 @@ function main()
             prediction_type = pred_type,
             noise_learn = false,
         )
-    elseif case ∈ ["RF-vector-svd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+    elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
+        kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -248,7 +256,7 @@ function main()
     # Optimize the GP hyperparameters for better fit
     optimize_hyperparameters!(emulator)
 
-    emulator_filepath = joinpath(data_save_directory, "emulator.jld2")
+    emulator_filepath = joinpath(data_save_directory, "$(case)_emulator.jld2")
     save(emulator_filepath, "emulator", emulator)
 
     println("Finished Emulation stage")
@@ -264,17 +272,17 @@ function main()
     # determine a good step size
     yt_sample = y_truth
     mcmc = MCMCWrapper(RWMHSampling(), yt_sample, prior, emulator; init_params = u0)
-    new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
+    new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 5000, discard_initial = 0)
 
     # Now begin the actual MCMC
     println("Begin MCMC - with step size ", new_step)
-    chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+    chain = MarkovChainMonteCarlo.sample(mcmc, 300_000; stepsize = new_step, discard_initial = 2_000)
     posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
-    mcmc_filepath = joinpath(data_save_directory, "mcmc_and_chain.jld2")
+    mcmc_filepath = joinpath(data_save_directory, "$(case)_mcmc_and_chain.jld2")
     save(mcmc_filepath, "mcmc", mcmc, "chain", chain)
 
-    posterior_filepath = joinpath(data_save_directory, "posterior.jld2")
+    posterior_filepath = joinpath(data_save_directory, "$(case)_posterior.jld2")
     save(posterior_filepath, "posterior", posterior)
 
     println("Finished Sampling stage")
