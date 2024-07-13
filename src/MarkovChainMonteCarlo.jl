@@ -298,7 +298,6 @@ function AbstractMCMC.bundle_samples(
 )
     # Turn all the transitions into a vector-of-vectors.
     vals = [vcat(t.params, t.log_density, t.accepted) for t in ts]
-
     # Check if we received any parameter names.
     if ismissing(param_names)
         param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
