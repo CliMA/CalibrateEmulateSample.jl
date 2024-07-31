@@ -68,7 +68,6 @@ using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
-using CalibrateEmulateSample.Observations
 ```
 
 The first input settings define which input-output pairs to use for training the emulator. The Calibrate stage (run using `calibrate.jl`) generates parameter-to-data pairs by running the L96 system using an iterative optimization approach (`EnsembleKalmanProcess.jl`). So we first define which iterations we would like to use data from for our emulator training

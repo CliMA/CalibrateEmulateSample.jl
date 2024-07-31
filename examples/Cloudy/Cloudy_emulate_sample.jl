@@ -95,7 +95,7 @@ function main()
     n_params = length(ϕ_true) # input dimension
     n_outputs = length(truth_sample) # output dimension
 
-    Γy = ekiobj.obs_noise_cov
+    Γy = get_obs_noise_cov(ekiobj)
 
     cases = [
         "rf-scalar",
@@ -281,8 +281,7 @@ function main()
             # Adding a vertical line for the true value
             vlines!(ax, [ϕ_true[idx]], color = :indigo, linewidth = 2.6, label = "true " * param_names[idx])
 
-            xlims!(ax, xmin, xmax)
-            ylims!(ax, 0, nothing)
+
 
             # Setting title and labels
             ax.xlabel = "Value"

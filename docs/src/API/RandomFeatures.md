@@ -43,7 +43,7 @@ get_batch_sizes
 get_n_features
 get_input_dim
 get_output_dim
-get_rng
+EKP.get_rng
 get_kernel_structure
 get_feature_decomposition
 get_optimizer_options

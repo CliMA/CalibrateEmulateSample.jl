@@ -10,9 +10,9 @@ module CalibrateEmulateSample
 using Distributions, Statistics, LinearAlgebra, DocStringExtensions
 
 # imported modules from EKP.
-import EnsembleKalmanProcesses: EnsembleKalmanProcesses, ParameterDistributions, Observations, DataContainers
+import EnsembleKalmanProcesses: EnsembleKalmanProcesses, ParameterDistributions, DataContainers
 
-export EnsembleKalmanProcesses, ParameterDistributions, Observations, DataContainers
+export EnsembleKalmanProcesses, ParameterDistributions, DataContainers
 
 
 # Internal deps, light external deps
