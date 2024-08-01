@@ -1,6 +1,8 @@
 # Reference the in-tree version of CalibrateEmulateSample on Julias load path
 include(joinpath(@__DIR__, "../", "ci", "linkfig.jl"))
 
+@info "This experiment is very sensitive to the Cloudy version. It is known to work with Cloudy commit: b4fa7e3"
+
 # Import modules
 using Distributions
 using StatsBase
@@ -18,12 +20,12 @@ using Cloudy.KernelTensors
 # Import the module that runs Cloudy
 include(joinpath(@__DIR__, "DynamicalModel.jl"))
 
-# Import Ensemble Kalman Processes modules
-using EnsembleKalmanProcesses
-using EnsembleKalmanProcesses.Observations
-using EnsembleKalmanProcesses.ParameterDistributions
-using EnsembleKalmanProcesses.DataContainers
-using EnsembleKalmanProcesses.PlotRecipes
+# Import Ensemble Kalman Processes modules via CES
+using CalibrateEmulateSample
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
+using CalibrateEmulateSample.EnsembleKalmanProcesses.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcesses.PlotRecipes
 
 
 ################################################################################
@@ -100,7 +102,7 @@ savefig(p, output_directory * "cloudy_priors.png")
 ###  Define the data from which we want to learn the parameters
 ###
 
-data_names = ["M0", "M1", "M2"]
+data_names = ["M0_M1_M2"]
 moments = [0.0, 1.0, 2.0]
 n_moments = length(moments)
 
@@ -139,8 +141,7 @@ for i in 1:n_samples
     y_t[:, i] = G_t .+ rand(MvNormal(μ, Γy))
 end
 
-truth = Observations.Observation(y_t, Γy, data_names)
-truth_sample = truth.mean
+truth = Observation(Dict("samples" => vec(mean(y_t, dims = 2)), "covariances" => Γy, "names" => data_names))
 
 
 ###
@@ -151,13 +152,7 @@ N_ens = 50 # number of ensemble members
 N_iter = 15 # number of EKI iterations
 # initial parameters: n_params x N_ens
 initial_params = construct_initial_ensemble(rng, priors, N_ens)
-ekiobj = EnsembleKalmanProcess(
-    initial_params,
-    truth_sample,
-    truth.obs_noise_cov,
-    Inversion(),
-    scheduler = DataMisfitController(),
-)
+ekiobj = EnsembleKalmanProcess(initial_params, truth, Inversion(), scheduler = DataMisfitController())
 
 # Initialize a ParticleDistribution with dummy parameters. The parameters 
 # will then be set within `run_dyn_model`
@@ -196,9 +191,9 @@ save(
     "eki",
     ekiobj,
     "truth_sample",
-    truth_sample,
+    get_obs(truth),
     "truth_sample_mean",
-    truth.mean,
+    vec(mean(y_t, dims = 2)),
     "truth_input_constrained",
     ϕ_true,
 )

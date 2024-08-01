@@ -7,7 +7,6 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributions
-using RandomFeatures
 
 seed = 10101010
 rng = Random.MersenneTwister(seed)

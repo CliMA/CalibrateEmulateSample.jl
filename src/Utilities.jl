@@ -5,13 +5,11 @@ using LinearAlgebra
 using Statistics
 using StatsBase
 using Random
-using ..Observations
 using ..EnsembleKalmanProcesses
 EnsembleKalmanProcess = EnsembleKalmanProcesses.EnsembleKalmanProcess
 using ..DataContainers
 
 export get_training_points
-export get_obs_sample
 export orig2zscore
 export zscore2orig
 """
@@ -49,33 +47,6 @@ function get_training_points(
 
     return training_points
 end
-
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Return a random sample from the observations, for use in the MCMC.
-
- - `rng` - optional RNG object used to pick random sample; defaults to `Random.GLOBAL_RNG`.
- - `obs` - Observation struct with the observations (extract will pick one
-           of the sample observations to train).
- - `rng_seed` - optional kwarg; if provided, used to re-seed `rng` before sampling.
-"""
-function get_obs_sample(
-    rng::Random.AbstractRNG,
-    obs::Observation;
-    rng_seed::Union{IT, Nothing} = nothing,
-) where {IT <: Int}
-    # Ensuring reproducibility of the sampled parameter values: 
-    # re-seed the rng *only* if we're given a seed
-    if rng_seed !== nothing
-        rng = Random.seed!(rng, rng_seed)
-    end
-    row_idxs = StatsBase.sample(rng, axes(obs.samples, 1), 1; replace = false, ordered = false)
-    return obs.samples[row_idxs...]
-end
-# first arg optional; defaults to GLOBAL_RNG (as in Random, StatsBase)
-get_obs_sample(obs::Observation; kwargs...) = get_obs_sample(Random.GLOBAL_RNG, obs; kwargs...)
 
 function orig2zscore(X::AbstractVector{FT}, mean::AbstractVector{FT}, std::AbstractVector{FT}) where {FT}
     # Compute the z scores of a vector X using the given mean

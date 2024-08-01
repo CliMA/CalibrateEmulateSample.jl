@@ -3,6 +3,10 @@
 !!! info "How do I run this code?"
     The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
 
+!!! warn "version control for Cloudy"
+    Due to rapid developments in Cloudy, this example will not work with the latest version. It is known to work pinned to specific commit `b4fa7e3`, please add Cloudy to the example Project using command `add Cloudy#b4fa7e3` in `Pkg` to avoid errors.
+
+    
 This example is based on [Cloudy](https://github.com/CliMA/Cloudy.jl.git), a
 microphysics model that simulates how cloud droplets collide and coalesce into
 larger drops. Collision-coalescence is a crucial process for the formation of
@@ -76,7 +80,6 @@ and finally the EKP packages.
 
 ```julia
 using EnsembleKalmanProcesses
-using EnsembleKalmanProcesses.Observations
 using EnsembleKalmanProcesses.ParameterDistributions
 using EnsembleKalmanProcesses.DataContainers
 using EnsembleKalmanProcesses.PlotRecipes
@@ -163,8 +166,13 @@ for i in 1:n_samples
     y_t[:, i] = G_t .+ rand(MvNormal(μ, Γy))
 end
 
-truth = Observations.Observation(y_t, Γy, data_names)
-truth_sample = truth.mean 
+truth = Observation(
+    Dict(
+        "samples" => vec(mean(y_t, dims = 2)),
+        "covariances" => Γy,
+        "names" => data_names,
+    )
+)
 ```
 
 #### Perform ensemble Kalman inversion
@@ -181,8 +189,7 @@ N_iter = 8 # number of EKI iterations
 initial_params = construct_initial_ensemble(rng, priors, N_ens)
 ekiobj = EnsembleKalmanProcess(
     initial_params,
-    truth_sample,
-    truth.obs_noise_cov,
+    truth,
     Inversion(),
     scheduler=DataMisfitController()
 )

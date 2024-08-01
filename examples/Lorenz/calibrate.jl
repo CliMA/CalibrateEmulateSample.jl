@@ -119,7 +119,7 @@ function main()
     ###
     ###  Define the data from which we want to learn the parameters
     ###
-    data_names = ["y0", "y1"]
+    data_names = ["y0_y1"]
 
 
     ###
@@ -254,8 +254,7 @@ function main()
 
 
     # Construct observation object
-    truth = Observations.Observation(yt, Γy, data_names)
-    truth_sample = yt[:, end]
+    truth = EKP.Observation(Dict("samples" => vec(mean(yt, dims = 2)), "covariances" => Γy, "names" => data_names))
     ###
     ###  Calibrate: Ensemble Kalman Inversion
     ###
@@ -271,8 +270,7 @@ function main()
 
     ekiobj = EKP.EnsembleKalmanProcess(
         initial_params,
-        truth_sample,
-        truth.obs_noise_cov,
+        truth,
         EKP.Inversion(),
         scheduler = EKP.DataMisfitController(),
         verbose = true,
@@ -316,9 +314,9 @@ function main()
         "eki",
         ekiobj,
         "truth_sample",
-        truth_sample,
+        EKP.get_obs(truth),
         "truth_sample_mean",
-        truth.mean,
+        vec(mean(yt, dims = 2)),
         "truth_input_constrained",
         params_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
     )
