@@ -189,26 +189,29 @@ Sampled Emulated Sobol Indices (# obs 300, noise var 0.01)
 
 ## Sobol G-function results
 
-To emulate the Sobol function, a similar setup is created to that of Ishigami, and the code follows similarly
-Rather than a table though, plots are produced of the Sobol function values.
+To emulate the Sobol function, a similar code script is used to set up the Ishigami emulation. The primary change is that the input dimension is now a user parameter `n_dimension` that can be adjusted, and some reasonable defaults are set within the script. As an output, plots are produced of the Sobol function values, and slices through the function.
 
-For example, repeating the scalar random feature emulation task 30 times produces (1.) A slice of the function in the (up-to) three most sensitive dimensions from one realization, and (2.) The sensitivities' variability to each dimension averaged over the realizations.
+For example, we repeat the scalar random feature emulation task 30 times over different training realizations.
 
-For three input dimensions one obtains
+For three input dimensions, one obtains the following plot of the analytic indices (`X-true`), qMC-approximated with true function (`X-approx`), and the 95% confidence interval of the qMC-approximated with emulator (`X-emulate`).
 
 ```@raw html
 <img src="../../../assets/GFunction_sens_RF-scalar_3.png" width="600">
 ```
 
+One also obtains the slices through the emulated G-function, with red being the training points and blue being the prediction
+
 ```@raw html
 <img src="../../../assets/GFunction_slices_RF-scalar_3.png" width="600">
 ```
 
-For ten input dimensions one obtains
+For ten input dimensions one obtains similar plots
 
 ```@raw html
 <img src="../../../assets/GFunction_sens_RF-scalar_10.png" width="600">
 ```
+
+Here we plot only slices through the three most sensitive dimensions
 
 ```@raw html
 <img src="../../../assets/GFunction_slices_RF-scalar_10.png" width="600">
