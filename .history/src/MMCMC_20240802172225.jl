@@ -1,5 +1,5 @@
 # refactor-Sample
-module MarkovChainMonteCarlo
+module MMCMC
 
 using ..Emulators
 using ..ParameterDistributions
@@ -11,6 +11,7 @@ using LinearAlgebra
 using Printf
 using Random
 using Statistics
+using ForwardDiff
 
 using MCMCChains
 import AbstractMCMC: sample # Reexport sample()
@@ -22,6 +23,8 @@ export EmulatorPosteriorModel,
     MCMCProtocol,
     RWMHSampling,
     pCNMHSampling,
+    MALASampling,
+    BarkerSampling,
     MCMCWrapper,
     accept_ratio,
     optimize_stepsize,
@@ -46,7 +49,7 @@ function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <
     end
     decomp = em.decomposition
     if decomp !== nothing
-        # Use SVD decomposition of obs noise cov, if given, to transform data to 
+        # Use SVD decomposition of obs noise cov, if given, to transform data to
         # decorrelated coordinates.
         inv_sqrt_singvals = Diagonal(1.0 ./ sqrt.(decomp.S))
         return inv_sqrt_singvals * decomp.Vt * data
@@ -64,22 +67,22 @@ end
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
 #
 # (Strictly speaking the difference between RW and pCN should be implemented at the level of
-# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
+# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the
 # only change is made. We do the latter here because doing the former would require more
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
 """
 $(DocStringExtensions.TYPEDEF)
 
-Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref) 
+Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref)
 constructor, corresponding to different sampling algorithms.
 """
 abstract type MCMCProtocol end
 
 """
 $(DocStringExtensions.TYPEDEF)
-    
-[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters as as vanilla random walk, based on the covariance of `prior`.
 """
 struct RWMHSampling <: MCMCProtocol end
@@ -96,7 +99,7 @@ AdvancedMH.logratio_proposal_density(
 
 function _get_proposal(prior::ParameterDistribution)
     # *only* use covariance of prior, not full distribution
-    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
+    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions
     return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
 end
 
@@ -106,23 +109,23 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Constructor for all `Sampler` objects, with one method for each supported MCMC algorithm.
 
 !!! warning
-    Both currently implemented Samplers use a Gaussian approximation to the prior: 
-    specifically, new Metropolis-Hastings proposals are a scaled combination of the old 
+    Both currently implemented Samplers use a Gaussian approximation to the prior:
+    specifically, new Metropolis-Hastings proposals are a scaled combination of the old
     parameter values and a random shift distributed as a Gaussian with the same covariance
-    as the `prior`. 
-    
+    as the `prior`.
+
     This suffices for our current use case, in which our priors are Gaussian
-    (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
+    (possibly in a transformed space) and we assume enough fidelity in the Emulator that
     inference isn't prior-dominated.
 """
 MetropolisHastingsSampler(::RWMHSampling, prior::ParameterDistribution) = RWMetropolisHastings(_get_proposal(prior))
 
 """
 $(DocStringExtensions.TYPEDEF)
-    
-[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
-new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is 
-usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based 
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
+new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is
+usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based
 on the covariance of `prior`.
 """
 struct pCNMHSampling <: MCMCProtocol end
@@ -138,6 +141,44 @@ AdvancedMH.logratio_proposal_density(
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
 MetropolisHastingsSampler(::pCNMHSampling, prior::ParameterDistribution) = pCNMetropolisHastings(_get_proposal(prior))
+"""
+$(DocStringExtensions.TYPEDEF)
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
+new parameters according to the MALA.
+"""
+struct MALASampling <: MCMCProtocol end
+
+struct MetropolisAdjustedLangevin{D} <: AdvancedMH.MHSampler
+    proposal::D
+end
+# Define method needed by AdvancedMH for new Sampler
+AdvancedMH.logratio_proposal_density(
+    sampler::MetropolisAdjustedLangevin,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate,
+) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+
+MetropolisHastingsSampler(::MALASampling, prior::ParameterDistribution) = MetropolisAdjustedLangevin(_get_proposal(prior))
+"""
+$(DocStringExtensions.TYPEDEF)
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
+new parameters according to the Barker proposal.
+"""
+struct BarkerSampling <: MCMCProtocol end
+
+struct BarkerMetropolisHastings{D} <: AdvancedMH.MHSampler
+    proposal::D
+end
+# Define method needed by AdvancedMH for new Sampler
+AdvancedMH.logratio_proposal_density(
+    sampler::BarkerMetropolisHastings,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate,
+) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+
+MetropolisHastingsSampler(::BarkerSampling, prior::ParameterDistribution) = BarkerMetropolisHastings(_get_proposal(prior))
 
 # ------------------------------------------------------------------------------------------
 # Use emulated model in sampler
@@ -145,9 +186,9 @@ MetropolisHastingsSampler(::pCNMHSampling, prior::ParameterDistribution) = pCNMe
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Factory which constructs `AdvancedMH.DensityModel` objects given a prior on the model 
-parameters (`prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given 
-parameters. Together these yield the log posterior density we're attempting to sample from 
+Factory which constructs `AdvancedMH.DensityModel` objects given a prior on the model
+parameters (`prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given
+parameters. Together these yield the log posterior density we're attempting to sample from
 with the MCMC, which is the role of the `DensityModel` class in the `AbstractMCMC` interface.
 """
 function EmulatorPosteriorModel(
@@ -155,15 +196,15 @@ function EmulatorPosteriorModel(
     em::Emulator{FT},
     obs_sample::AbstractVector{FT},
 ) where {FT <: AbstractFloat}
-    return AdvancedMH.DensityModel(
+return AdvancedMH.DensityModel(
         function (θ)
             # θ: model params we evaluate at; in original coords.
             # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
             #
-            # Recall predict() written to return multiple N_samples: expects input to be a 
+            # Recall predict() written to return multiple N_samples: expects input to be a
             # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
-            # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
-            # have to reshape()/re-cast input/output; simpler to do here than add a 
+            # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we
+            # have to reshape()/re-cast input/output; simpler to do here than add a
             # predict() method.
             g, g_cov =
                 Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
@@ -216,7 +257,7 @@ function AdvancedMH.transition(
     model::AdvancedMH.DensityModel,
     params,
     log_density::Real,
-) where {MHS <: Union{pCNMetropolisHastings, RWMetropolisHastings}}
+) where {MHS <: Union{BarkerMetropolisHastings, MetropolisAdjustedLangevin, pCNMetropolisHastings, RWMetropolisHastings}}
     return MCMCState(params, log_density, true)
 end
 
@@ -239,10 +280,43 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
+    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional
     # inverse problems." for relating ρ to Euler stepsize:
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     return ρ * current_state.params .+ sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
+end
+
+# method extending AdvancedMH.propose() for Metropolis-adjusted Langevin algorithm
+function AdvancedMH.propose(
+    rng::Random.AbstractRNG,
+    sampler::MetropolisAdjustedLangevin,
+    model::AdvancedMH.DensityModel,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+        # Compute the gradient of the log-density at the current state
+        log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
+        proposed_state = current_state.params .+ (stepsize / 2) .* log_gradient .+ sqrt(stepsize) * rand(rng, sampler.proposal)
+        return proposed_state
+    end
+end
+
+# method extending AdvancedMH.propose() for the Barker proposal
+function AdvancedMH.propose(
+    rng::Random.AbstractRNG,
+    sampler::BarkerMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+# Livingstone and Zanella (2022)
+    # Compute the gradient of the log-density at the current state
+    log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
+    n = length(current_state.params)
+    u = rand(rng, n)
+    xi = rand(rng, sampler.proposal)
+    b = u .< 1 ./ (1 + exp(- log_gradient .* xi))
+    return current_state.params .+ b .* xi
 end
 
 # Copy a MCMCState and set accepted = false
@@ -281,7 +355,7 @@ function AbstractMCMC.step(
 end
 
 # ------------------------------------------------------------------------------------------
-# Extend the record-keeping methods defined in AdvancedMH to include the 
+# Extend the record-keeping methods defined in AdvancedMH to include the
 # MCMCState.accepted field added above.
 
 # A basic chains constructor that works with the Transition struct we defined.
@@ -375,8 +449,8 @@ end
 """
 $(DocStringExtensions.TYPEDEF)
 
-Top-level class holding all configuration information needed for MCMC sampling: the prior, 
-emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in 
+Top-level class holding all configuration information needed for MCMC sampling: the prior,
+emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in
 AbstractMCMC's terminology).
 
 # Fields
@@ -396,9 +470,9 @@ end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD 
-decorrelation) that was applied in the Emulator. It creates and wraps an instance of 
-[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator, and 
+Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD
+decorrelation) that was applied in the Emulator. It creates and wraps an instance of
+[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator, and
 [`MetropolisHastingsSampler`](@ref), for generating the MC proposals.
 
 - `mcmc_alg`: [`MCMCProtocol`](@ref) describing the MCMC sampling algorithm to use. Currently
@@ -406,14 +480,18 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
 
   - [`RWMHSampling`](@ref): Metropolis-Hastings sampling from a vanilla random walk with
     fixed stepsize.
-  - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned 
+  - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned
     Crank-Nicholson algorithm, which has a well-behaved small-stepsize limit.
+  - [`MALASampling`](@ref): Metropolis-Hastings sampling using the Metropolis
+    -adjusted Langevin algorithm, which exploits the gradient information of the target.
+  - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the preconditioned
+    Crank-Nicholson algorithm, which has a robustness to choosing step-size parameters.
 
-- `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
+- `obs_sample`: A single sample from the observations. Can, e.g., be picked from an
   Observation struct using `get_obs_sample`.
-- `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
+- `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
   object containing the parameters' prior distributions.
-- `em`: [`Emulator`](@ref) to sample from. 
+- `em`: [`Emulator`](@ref) to sample from.
 - `stepsize`: MCMC step size, applied as a scaling to the prior covariance.
 - `init_params`: Starting parameter values for MCMC sampling.
 - `burnin`: Initial number of MCMC steps to discard from output (pre-convergence).
@@ -454,10 +532,10 @@ end
 """
    $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
 
-Extends the `sample` methods of AbstractMCMC (which extends StatsBase) to sample from the 
-emulated posterior, using the MCMC sampling algorithm and [`Emulator`](@ref) configured in 
-[`MCMCWrapper`](@ref). Returns a [`MCMCChains.Chains`](https://beta.turing.ml/MCMCChains.jl/dev/) 
-object containing the samples. 
+Extends the `sample` methods of AbstractMCMC (which extends StatsBase) to sample from the
+emulated posterior, using the MCMC sampling algorithm and [`Emulator`](@ref) configured in
+[`MCMCWrapper`](@ref). Returns a [`MCMCChains.Chains`](https://beta.turing.ml/MCMCChains.jl/dev/)
+object containing the samples.
 
 Supported methods are:
 
@@ -467,21 +545,21 @@ Supported methods are:
 
 - `sample([rng, ]mcmc, isdone; kwargs...)`
 
-  Sample from the `model` with the Markov chain Monte Carlo `sampler` until a convergence 
-  criterion `isdone` returns `true`, and return the samples. The function `isdone` has the 
+  Sample from the `model` with the Markov chain Monte Carlo `sampler` until a convergence
+  criterion `isdone` returns `true`, and return the samples. The function `isdone` has the
   signature
 
   ```julia
       isdone(rng, model, sampler, samples, state, iteration; kwargs...)
   ```
 
-  where `state` and `iteration` are the current state and iteration of the sampler, 
+  where `state` and `iteration` are the current state and iteration of the sampler,
   respectively. It should return `true` when sampling should end, and `false` otherwise.
 
 - `sample([rng, ]mcmc, parallel_type, N, nchains; kwargs...)`
 
   Sample `nchains` Monte Carlo Markov chains in parallel according to `parallel_type`, which
-  may be `MCMCThreads()` or `MCMCDistributed()` for thread and parallel sampling, 
+  may be `MCMCThreads()` or `MCMCDistributed()` for thread and parallel sampling,
   respectively.
 """
 function sample(rng::Random.AbstractRNG, mcmc::MCMCWrapper, args...; kwargs...)
@@ -529,10 +607,10 @@ end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Uses a heuristic to return a stepsize for the `mh_proposal_sampler` element of 
+Uses a heuristic to return a stepsize for the `mh_proposal_sampler` element of
 [`MCMCWrapper`](@ref) which yields fast convergence of the Markov chain.
 
-The criterion used is that Metropolis-Hastings proposals should be accepted between 15% and 
+The criterion used is that Metropolis-Hastings proposals should be accepted between 15% and
 35% of the time.
 """
 function optimize_stepsize(
@@ -591,7 +669,7 @@ optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBA
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
+Returns a `ParameterDistribution` object corresponding to the empirical distribution of the
 samples in `chain`.
 
 !!! note
@@ -615,5 +693,4 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     ])
     return posterior_distribution
 end
-
-end # module MarkovChainMonteCarlo
+end # module MMCMC

@@ -305,9 +305,9 @@ function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) whe
     return μ, σ2
 end
 
-#We build the AGPJL implementation
+#now we build the AGPJL implementation
 function build_models!(
-    gp::GaussianProcess{AGPJL},
+    gp::GaussianProcess{SKLJL},
     input_output_pairs::PairedDataContainer{FT},
 ) where {FT <: AbstractFloat}
     # get inputs and outputs
@@ -364,24 +364,4 @@ function build_models!(
         push!(models, m)
         println(m.kernel)
     end
-end
-
-
-#function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs...)
-#    println("SKlearn, already trained. continuing...")
-#end
-
-function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
-    # SKJL based on rows not columns; need to transpose inputs
-    μ, σ = gp_model.predict(new_inputs', return_std = true)
-    return μ, (σ .* σ)
-end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
-    μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
-
-    # for SKLJL does not return the observational noise (even if return_std = true)
-    # we must add contribution depending on whether we learnt the noise or not.
-    σ2[:, :] = σ2[:, :] .+ gp.alg_reg_noise
-
-    return μ, σ2
 end
