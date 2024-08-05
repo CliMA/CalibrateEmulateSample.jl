@@ -327,10 +327,9 @@ function build_models!(
         println("Using default squared exponential kernel, learning length scale and variance parameters")
         # Create default squared exponential kernel
         const_value = 1.0
-        var_kern = pykernels.ConstantKernel(constant_value = const_value, constant_value_bounds = (1e-5, 1e4))
-        rbf_len = ones(size(input_values, 2))
-        rbf = pykernels.RBF(length_scale = rbf_len, length_scale_bounds = (1e-5, 1e4))
-        kern = var_kern * rbf
+        rbf_len = 1.0
+        rbf = const_value * transform(SqExponentialKernel(), ScaleTransform(rbf_len))
+        kern = rbf
         println("Using default squared exponential kernel:", kern)
     else
         kern = deepcopy(gp.kernel)
@@ -340,8 +339,8 @@ function build_models!(
     if gp.noise_learn
         # Add white noise to kernel
         white_noise_level = 1.0
-        white = pykernels.WhiteKernel(noise_level = white_noise_level, noise_level_bounds = (1e-05, 10.0))
-        kern = kern + white
+        white = WhiteKernel(white_noise_level)
+        kern += white
         println("Learning additive white noise")
     end
 
@@ -350,38 +349,35 @@ function build_models!(
     for i in 1:N_models
         kernel_i = deepcopy(kern)
         data_i = output_values[i, :]
-        m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise)
-
-        # ScikitLearn.fit! arguments:
+        f = GP(kernel_i)
+        # f arguments:
         # input_values:    (N_samples × input_dim)
+        fx = f(input_values, regularization_noise)
+        # posterior arguments:
         # data_i:    (N_samples,)
-        ScikitLearn.fit!(m, input_values, data_i)
+        post_fx = posterior(fx, data_i)
         if i == 1
-            println(m.kernel.hyperparameters)
+            println(kernel_i)
             print("Completed training of: ")
         end
         println(i, ", ")
-        push!(models, m)
-        println(m.kernel)
+        push!(models, post_fx)
+        println(post_fx)
     end
 end
 
-
+#Optimisation
 #function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs...)
 #    println("SKlearn, already trained. continuing...")
 #end
 
-function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
-    # SKJL based on rows not columns; need to transpose inputs
-    μ, σ = gp_model.predict(new_inputs', return_std = true)
-    return μ, (σ .* σ)
-end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
-    μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+    pred_gp = gp.models[1] # optimised before this
+    # mean_and_var(fx) == (mean(fx), var(fx))
+        # var(fx) == diag(cov(fx))
+    μ, σ2 = mean_and_var(pred_gp(new_inputs'))
 
-    # for SKLJL does not return the observational noise (even if return_std = true)
-    # we must add contribution depending on whether we learnt the noise or not.
-    σ2[:, :] = σ2[:, :] .+ gp.alg_reg_noise
+    σ2[:, :] .= σ2[:, :] .+ gp.alg_reg_noise
 
     return μ, σ2
 end
