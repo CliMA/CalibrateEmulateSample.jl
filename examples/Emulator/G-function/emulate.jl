@@ -102,12 +102,11 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 1e2),
         "n_features_opt" => 300,
         "train_fraction" => 0.8,#0.7
-        "n_iteration" => 20, # (=multiple of recompute_cov_at - 1 is most efficient)
+        "n_iteration" => 20, 
         "cov_sample_multiplier" => 1.0,
         #        "localization" => SEC(0.1),#,Doesnt help much tbh
         #        "accelerator" => NesterovAccelerator(),
         "n_ensemble" => 200, #40*n_dimensions,
-        # THIS currently needs to be set in src if used: "recompute_cov_at" => 10, 
     )
     if case == "Prior"
         # don't do anything
