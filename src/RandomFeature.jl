@@ -583,8 +583,9 @@ function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: Ab
             break
         end
     end
-
-    return posdef_correct(V * corr * V) # rebuild the cov matrix
+    out = posdef_correct(V * corr * V) # rebuild the cov matrix
+    @info "NICE-adjusted covariance condition number: $(cond(out))"
+    return out
 
 end
 
@@ -609,6 +610,7 @@ function estimate_mean_and_coeffnorm_covariance(
     decomp_type::S,
     multithread_type::TullioThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -675,11 +677,9 @@ function estimate_mean_and_coeffnorm_covariance(
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
 
-    correction = "shrinkage"
-    #    correction = "nice"
-    if correction == "shrinkage"
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
-    elseif correction == "nice"
+    elseif cov_correction == "nice"
         Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
@@ -800,6 +800,7 @@ function estimate_mean_and_coeffnorm_covariance(
     decomp_type::S,
     multithread_type::EnsembleThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -887,11 +888,9 @@ function estimate_mean_and_coeffnorm_covariance(
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
 
-    correction = "shrinkage"
-    #    correction = "nice"
-    if correction == "shrinkage"
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
-    elseif correction == "nice"
+    elseif cov_correction == "nice"
         Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)

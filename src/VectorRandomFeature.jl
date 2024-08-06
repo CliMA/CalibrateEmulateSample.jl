@@ -158,6 +158,8 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
       - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
+      - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
+
 
 """
 function VectorRandomFeatureInterface(
@@ -200,6 +202,7 @@ function VectorRandomFeatureInterface(
         "verbose" => false, # verbose optimizer statements
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
     )
 
     if !isnothing(optimizer_options)
@@ -439,6 +442,7 @@ function build_models!(
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
+    cov_correction = optimizer_options["cov_correction"]
 
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
@@ -464,6 +468,7 @@ function build_models!(
         n_cov_samples,
         decomp_type,
         multithread_type,
+        cov_correction = cov_correction,
     )
 
     tikhonov_opt_val = optimizer_options["tikhonov"]

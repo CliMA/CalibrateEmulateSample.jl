@@ -129,6 +129,7 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
      - "accelerator": use EKP accelerators (default is no acceleration)
      - "verbose" => false, verbose optimizer statements
+     - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -164,6 +165,7 @@ function ScalarRandomFeatureInterface(
         "verbose" => false, # verbose optimizer statements
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
+        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
     )
 
     if !isnothing(optimizer_options)
@@ -381,6 +383,7 @@ function build_models!(
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
 
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
+        cov_correction = optimizer_options["cov_correction"]
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
 
@@ -397,6 +400,7 @@ function build_models!(
             n_cov_samples,
             decomp_type,
             multithread_type,
+            cov_correction = cov_correction,
         )
         Γ = internal_Γ
         Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
@@ -412,7 +416,7 @@ function build_models!(
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
-        ekiobj = [
+        ekiobj =
             EKP.EnsembleKalmanProcess(
                 initial_params,
                 data,
@@ -424,14 +428,13 @@ function build_models!(
                 verbose = opt_verbose_flag,
                 localization_method = localization,
             ),
-        ]
-        err = zeros(n_iteration)
+            err = zeros(n_iteration)
 
         # [4.] optimize with EKP
         for i in 1:n_iteration
 
             #get parameters:
-            lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj[1]))
+            lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
             g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
                 srfi,
                 rng,
@@ -448,20 +451,20 @@ function build_models!(
 
             inflation = optimizer_options["inflation"]
             if inflation > 0
-                terminated = EKP.update_ensemble!(ekiobj[1], g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
+                terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
             else
-                terminated = EKP.update_ensemble!(ekiobj[1], g_ens) # small regularizing inflation
+                terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
             end
             if !isnothing(terminated)
                 break # if the timestep was terminated due to timestepping condition
             end
 
-            err[i] = get_error(ekiobj[1])[end] #mean((params_true - mean(params_i,dims=2)).^2)
+            err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
         end
         diagnostics[:, i] = copy(err)
 
         # [5.] extract optimal hyperparameters
-        hp_optimal = get_ϕ_mean_final(prior, ekiobj[1])[:]
+        hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
 
         if opt_verbose_flag
             names = get_name(prior)

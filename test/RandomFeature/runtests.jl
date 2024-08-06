@@ -152,6 +152,7 @@ rng = Random.MersenneTwister(seed)
             "multithread" => "ensemble",
             "accelerator" => DefaultAccelerator(),
             "verbose" => false,
+            "cov_correction" => "shrinkage",
         )
 
         srfi = ScalarRandomFeatureInterface(
@@ -215,6 +216,7 @@ rng = Random.MersenneTwister(seed)
             "accelerator" => DefaultAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
+            "cov_correction" => "shrinkage",
         )
 
         #build interfaces
