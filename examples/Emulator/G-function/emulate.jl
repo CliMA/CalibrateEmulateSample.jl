@@ -102,7 +102,7 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 1e2),
         "n_features_opt" => 300,
         "train_fraction" => 0.8,#0.7
-        "n_iteration" => 20, 
+        "n_iteration" => 20,
         "cov_sample_multiplier" => 1.0,
         #        "localization" => SEC(0.1),#,Doesnt help much tbh
         #        "accelerator" => NesterovAccelerator(),
