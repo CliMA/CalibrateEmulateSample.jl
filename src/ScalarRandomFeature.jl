@@ -163,7 +163,6 @@ function ScalarRandomFeatureInterface(
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
-        "recompute_cov_at" => Inf, # whether to recompute the output_covariance
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
     )
 
@@ -409,7 +408,6 @@ function build_models!(
         opt_verbose_flag = optimizer_options["verbose"]
         scheduler = optimizer_options["scheduler"]
         accelerator = optimizer_options["accelerator"]
-        recompute_cov_at = optimizer_options["recompute_cov_at"]
         localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
@@ -430,52 +428,10 @@ function build_models!(
         err = zeros(n_iteration)
 
         # [4.] optimize with EKP
-        Γ_old = [Γ]
         for i in 1:n_iteration
 
             #get parameters:
             lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj[1]))
-
-            if i % recompute_cov_at == 0
-
-                internal_Γ_new, approx_σ2_new = estimate_mean_and_coeffnorm_covariance(
-                    srfi,
-                    rng,
-                    transform_unconstrained_to_constrained(prior, mean(get_u_final(ekiobj[1]), dims = 2)),
-                    regularization,
-                    n_features_opt,
-                    n_train,
-                    n_test,
-                    batch_sizes,
-                    io_pairs_opt,
-                    n_cov_samples,
-                    decomp_type,
-                    multithread_type,
-                )
-
-                Γ_new = internal_Γ_new
-                Γ_new[1:n_test, 1:n_test] += regularization  # + approx_σ2 
-                Γ_new[(n_test + 1):end, (n_test + 1):end] += I
-                if opt_verbose_flag
-                    @info "updated algorithm covariance difference: $(norm(Γ_new - Γ_old[1]))"
-                end
-                Γ_old[1] = Γ_new
-                # update eki. (the reason why it was a vector)
-                # TODO: This restart is horrible.
-                ekiobj[1] = EKP.EnsembleKalmanProcess(
-                    get_u_final(ekiobj[1]), # unconstrained
-                    data,
-                    Γ_new,
-                    Inversion(),
-                    scheduler = DataMisfitController(terminate_at = 1e4),
-                    rng = rng,
-                    accelerator = DefaultAccelerator(),
-                    localization_method = Localizers.SECNice(200),
-                    verbose = opt_verbose_flag,
-                )
-
-            end
-
             g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
                 srfi,
                 rng,

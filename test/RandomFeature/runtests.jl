@@ -183,6 +183,7 @@ rng = Random.MersenneTwister(seed)
                 @test get_optimizer_options(srfi2)[key] == optimizer_options[key] # we just set the defaults above
             end
         end
+        
     end
 
     @testset "VectorRandomFeatureInterface" begin
@@ -287,6 +288,18 @@ rng = Random.MersenneTwister(seed)
         em_vrfi = Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
         n_vrfi = length(get_rfms(vrfi))
 
+        # test bad case
+        optimizer_options = Dict("multithread" => "bad_option")
+
+        srfi_bad = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            kernel_structure = scalar_ks,
+            rng = rng,
+            optimizer_options = optimizer_options,
+        )
+        @test_throws ArgumentError Emulator(srfi_bad, iopairs)
+        
         # test under repeats
         @test_logs (:warn,) Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
         Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
@@ -314,6 +327,9 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μv - new_outputs), 0, atol = tol_μ)
         @test all(isapprox.(vec(σv²), 0.05^2 * ones(ntest), atol = 1e-2))
 
+        
+
+        
     end
     @testset "RF within Emulator: 2D -> 2D" begin
         # Generate training data
