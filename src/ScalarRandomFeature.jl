@@ -416,19 +416,18 @@ function build_models!(
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
         data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
-        ekiobj =
-            EKP.EnsembleKalmanProcess(
-                initial_params,
-                data,
-                Γ,
-                Inversion(),
-                scheduler = scheduler,
-                rng = rng,
-                accelerator = accelerator,
-                verbose = opt_verbose_flag,
-                localization_method = localization,
-            )
-            err = zeros(n_iteration)
+        ekiobj = EKP.EnsembleKalmanProcess(
+            initial_params,
+            data,
+            Γ,
+            Inversion(),
+            scheduler = scheduler,
+            rng = rng,
+            accelerator = accelerator,
+            verbose = opt_verbose_flag,
+            localization_method = localization,
+        )
+        err = zeros(n_iteration)
 
         # [4.] optimize with EKP
         for i in 1:n_iteration
