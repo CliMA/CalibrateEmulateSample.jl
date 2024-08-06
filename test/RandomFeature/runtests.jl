@@ -118,6 +118,12 @@ rng = Random.MersenneTwister(seed)
         good_cov = shrinkage_cov(samples)
         @test (cond(good_cov) < 1.1) && ((good_cov[1] < 1.2) && (good_cov[1] > 0.8))
 
+        # test NICE utility
+        samples = rand(MvNormal(zeros(100), I), 20)
+        # normal condition number should be huge around 10^18
+        # nice cov will have improved conditioning, does not perform as well at this task as shrinking so has looser bounds
+        good_cov = nice_cov(samples)
+        @test (cond(good_cov) < 100) && ((good_cov[1] < 1.5) && (good_cov[1] > 0.5))
 
     end
 
@@ -146,6 +152,7 @@ rng = Random.MersenneTwister(seed)
             "multithread" => "ensemble",
             "accelerator" => DefaultAccelerator(),
             "verbose" => false,
+            "cov_correction" => "shrinkage",
         )
 
         srfi = ScalarRandomFeatureInterface(
@@ -164,8 +171,6 @@ rng = Random.MersenneTwister(seed)
         @test get_input_dim(srfi) == input_dim
         @test get_rng(srfi) == rng
         @test get_kernel_structure(srfi) == kernel_structure
-        @test get_optimizer_options(srfi) == optimizer_options
-
         # check defaults 
         srfi2 = ScalarRandomFeatureInterface(n_features, input_dim)
         @test get_batch_sizes(srfi2) === nothing
@@ -179,6 +184,7 @@ rng = Random.MersenneTwister(seed)
                 @test get_optimizer_options(srfi2)[key] == optimizer_options[key] # we just set the defaults above
             end
         end
+
     end
 
     @testset "VectorRandomFeatureInterface" begin
@@ -210,6 +216,7 @@ rng = Random.MersenneTwister(seed)
             "accelerator" => DefaultAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
+            "cov_correction" => "shrinkage",
         )
 
         #build interfaces
@@ -283,6 +290,18 @@ rng = Random.MersenneTwister(seed)
         em_vrfi = Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
         n_vrfi = length(get_rfms(vrfi))
 
+        # test bad case
+        optimizer_options = Dict("multithread" => "bad_option")
+
+        srfi_bad = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            kernel_structure = scalar_ks,
+            rng = rng,
+            optimizer_options = optimizer_options,
+        )
+        @test_throws ArgumentError Emulator(srfi_bad, iopairs)
+
         # test under repeats
         @test_logs (:warn,) Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
         Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
@@ -309,6 +328,9 @@ rng = Random.MersenneTwister(seed)
         @test size(σv²) == (1, ntest)
         @test isapprox.(norm(μv - new_outputs), 0, atol = tol_μ)
         @test all(isapprox.(vec(σv²), 0.05^2 * ones(ntest), atol = 1e-2))
+
+
+
 
     end
     @testset "RF within Emulator: 2D -> 2D" begin

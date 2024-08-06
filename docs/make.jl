@@ -13,7 +13,7 @@ examples = [
     "Emulator testing" => [
         "examples/emulators/regression_2d_2d.md",
         "examples/emulators/lorenz_integrator_3d_3d.md",
-        "examples/emulators/ishigami_3d_1d.md",
+        "examples/emulators/global_sens_analysis.md",
     ],
 ]
 

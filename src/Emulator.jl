@@ -220,7 +220,6 @@ function predict(
 
     # [1.] normalize
     normalized_new_inputs = normalize(emulator, new_inputs)
-
     # [2.]  predict. Note: ds = decorrelated, standard
     ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs, mlt_kwargs...)
 
@@ -312,6 +311,7 @@ function calculate_normalization(inputs::VOrM) where {VOrM <: AbstractVecOrMat}
         svd_in = svd(input_cov)
         sqrt_inv_sv = 1 ./ sqrt.(svd_in.S[1:rank(input_cov)])
         normalization = Diagonal(sqrt_inv_sv) * svd_in.Vt[1:rank(input_cov), :] #non-square
+        @info "reducing input dimension from $(size(input_cov,1)) to $rank(input_cov) during low rank in normalization"
     end
     return normalization
 end

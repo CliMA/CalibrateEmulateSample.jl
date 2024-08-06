@@ -1,13 +1,25 @@
-# Global Sensitiviy Analysis for an emulated Ishigami function
+# Global Sensitiviy Analysis (GSA) test functions
 
 !!! info "How do I run this code?"
     The full code is found in the [`examples/Emulator/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples/Emulator) directory of the github repository
 
-In this example, we assess directly the performance of our machine learning emulators. The task is to learn a function for use in a [global sensitivity analysis](https://en.wikipedia.org/wiki/Variance-based_sensitivity_analysis). In particular, we learn the Ishigami function
+In this example, we assess directly the performance of our machine learning emulators. The task is to learn a function for use in a [global sensitivity analysis](https://en.wikipedia.org/wiki/Variance-based_sensitivity_analysis). In particular, we have two cases:
+
+- The Ishigami function
 ```math
 f(x; a, b) = (1 + bx_3^4)\sin(x_1) + a \sin(x_2), \forall x\in [-\pi,\pi]^3
 ```
-with ``a=7, b=0.1``. In this example, global sensitivity analysis refers to calculation of two Sobol indices. The first index collects proportions ``V_i`` (a.k.a `firstorder`) of the variance of ``f`` attributable to the input ``x_i``, and the second index collects proportions ``TV_i`` (a.k.a `totalorder`) of the residual variance having removed contributions attributable to inputs ``x_j`` ``\forall j\neq i``. The Ishigami function has an analytic formula for these Sobol indices, it is also known that one can obtain numerical approximation through quasi-Monto-Carlo methods by evaluating the Ishigami function on a special quasi-random Sobol sequence.
+with ``a=7, b=0.1``.
+- The Sobol G-function
+```math
+f(x; a) = \prod_{i=1}^d \frac{|4x_i - 2|+a_i}{1+x_i},
+```
+with the user-chosen input dimension ``d``, and coefficients ``a_i = \frac{i-1}{2} \geq 0`` for ``i=1,\dots,d``, where small $i$ (and thus small $a_i$) imply larger first-order effects, and interactions are primarily present between these variables.
+
+
+In this example, global sensitivity analysis refers to calculation of two Sobol indices. The first index collects proportions ``V_i`` (a.k.a `firstorder`) of the variance of ``f`` attributable to the input ``x_i``, and the second index collects proportions ``TV_i`` (a.k.a `totalorder`) of the residual variance having removed contributions attributable to inputs ``x_j`` ``\forall j\neq i``. The Ishigami function has an analytic formula for these Sobol indices, it is also known that one can obtain numerical approximation through quasi-Monto-Carlo methods by evaluating the Ishigami function on a special quasi-random Sobol sequence.
+
+## Ishigami
 
 To emulate the Ishigami function, the data consists of 300 pairs ``\{x,f(x)+\eta\}`` where ``\eta \sim N(0,\Sigma)`` is additive noise, and the x are sampled from the Sobol sequence. The emulators are validated by evaluating the posterior mean function on the full 16000 points of the Sobol sequence and the Sobol indices are estimated. We rerun the experiment for many repeats of the random feature hyperparameter optimization and present the statistics of these indices, as well as plotting a realization of the emulator.
 
@@ -123,7 +135,7 @@ y_pred, y_var = predict(emulator, samples', transform_to_real = true)
 result_pred = analyze(data, y_pred')
 ```
 
-## Gaussian Process Emulator (sci-kit learn `GP`)
+### Gaussian Process Emulator (sci-kit learn `GP`)
 
 Here is the plot for one emulation
 ```@raw html
@@ -147,7 +159,7 @@ Sampled Emulated Sobol Indices (# obs 300, noise var 0.01)
     totalorder: [0.5502469909342245, 0.4587734278791574, 0.23542404141319245]
 ```
 
-## Random feature emulator (Separable Low-rank kernel `RF-scalar`)
+### Random feature emulator (Separable Low-rank kernel `RF-scalar`)
 
 Here is the plot for one emulation
 ```@raw html
@@ -174,4 +186,35 @@ Sampled Emulated Sobol Indices (# obs 300, noise var 0.01)
 (std)  totalorder: [0.10619345801872732, 0.1041023777237331, 0.07200225781785778]
 
 ```
+
+## Sobol G-function results
+
+To emulate the Sobol function, a similar code script is used to set up the Ishigami emulation. The primary change is that the input dimension is now a user parameter `n_dimension` that can be adjusted, and some reasonable defaults are set within the script. As an output, plots are produced of the Sobol function values, and slices through the function.
+
+For example, we repeat the scalar random feature emulation task 30 times over different training realizations.
+
+For three input dimensions, one obtains the following plot of the analytic indices (`X-true`), qMC-approximated with true function (`X-approx`), and the 95% confidence interval of the qMC-approximated with emulator (`X-emulate`).
+
+```@raw html
+<img src="../../../assets/GFunction_sens_RF-scalar_3.png" width="600">
+```
+
+One also obtains the slices through the emulated G-function, with red being the training points and blue being the prediction
+
+```@raw html
+<img src="../../../assets/GFunction_slices_RF-scalar_3.png" width="600">
+```
+
+For ten input dimensions one obtains similar plots
+
+```@raw html
+<img src="../../../assets/GFunction_sens_RF-scalar_10.png" width="600">
+```
+
+Here we plot only slices through the three most sensitive dimensions
+
+```@raw html
+<img src="../../../assets/GFunction_slices_RF-scalar_10.png" width="600">
+```
+
 

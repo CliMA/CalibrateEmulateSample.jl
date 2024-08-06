@@ -129,6 +129,7 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
      - "accelerator": use EKP accelerators (default is no acceleration)
      - "verbose" => false, verbose optimizer statements
+     - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -163,6 +164,8 @@ function ScalarRandomFeatureInterface(
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
+        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
     )
 
     if !isnothing(optimizer_options)
@@ -201,6 +204,7 @@ function hyperparameter_distribution_from_flat(
 
     M = zeros(input_dim) #scalar output
     U = hyperparameters_from_flat(x, input_dim, kernel_structure)
+
     if !isposdef(U)
         println("U not posdef - correcting")
         U = posdef_correct(U)
@@ -327,7 +331,6 @@ function build_models!(
     optimizer_options = get_optimizer_options(srfi)
     optimizer = get_optimizer(srfi) # empty vector
 
-
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
     train_fraction = optimizer_options["train_fraction"]
@@ -347,8 +350,6 @@ function build_models!(
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
-
-
         io_pairs_opt = PairedDataContainer(
             input_values[:, idx_shuffle],
             reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
@@ -362,7 +363,7 @@ function build_models!(
         else
             throw(
                 ArgumentError(
-                    "Unknown optimizer option for multithreading, please choose from \"tullio\" (allows Tullio.jl to control threading in RandomFeatures.jl, or \"loops\" (threading optimization loops)",
+                    "Unknown optimizer option for multithreading, please choose from \"tullio\" (allows Tullio.jl to control threading in RandomFeatures.jl), or \"ensemble\" (threading is done over the ensemble)",
                 ),
             )
         end
@@ -382,6 +383,7 @@ function build_models!(
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
 
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
+        cov_correction = optimizer_options["cov_correction"]
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
 
@@ -398,6 +400,7 @@ function build_models!(
             n_cov_samples,
             decomp_type,
             multithread_type,
+            cov_correction = cov_correction,
         )
         Γ = internal_Γ
         Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
@@ -409,11 +412,10 @@ function build_models!(
         opt_verbose_flag = optimizer_options["verbose"]
         scheduler = optimizer_options["scheduler"]
         accelerator = optimizer_options["accelerator"]
+        localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        min_complexity = n_features_opt * log(regularization.λ)
-        min_complexity = sqrt(abs(min_complexity))
-        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
+        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
         ekiobj = EKP.EnsembleKalmanProcess(
             initial_params,
             data,
@@ -423,15 +425,15 @@ function build_models!(
             rng = rng,
             accelerator = accelerator,
             verbose = opt_verbose_flag,
+            localization_method = localization,
         )
         err = zeros(n_iteration)
 
         # [4.] optimize with EKP
-        for it in 1:n_iteration
+        for i in 1:n_iteration
 
             #get parameters:
             lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
-
             g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
                 srfi,
                 rng,
@@ -445,6 +447,7 @@ function build_models!(
                 decomp_type,
                 multithread_type,
             )
+
             inflation = optimizer_options["inflation"]
             if inflation > 0
                 terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
@@ -455,8 +458,7 @@ function build_models!(
                 break # if the timestep was terminated due to timestepping condition
             end
 
-            err[it] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
-
+            err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
         end
         diagnostics[:, i] = copy(err)
 

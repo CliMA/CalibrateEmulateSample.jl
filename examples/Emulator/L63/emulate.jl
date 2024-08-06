@@ -1,3 +1,4 @@
+
 using OrdinaryDiffEq
 using Random, Distributions, LinearAlgebra
 ENV["GKSwstype"] = "100"
@@ -8,6 +9,7 @@ using JLD2
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using EnsembleKalmanProcesses.Localizers
 
 function lorenz(du, u, p, t)
     du[1] = 10.0 * (u[2] - u[1])
@@ -90,9 +92,9 @@ function main()
 
 
     # Emulate
-    cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
+    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
 
-    case = cases[5]
+    case = cases[6]
 
     nugget = Float64(1e-12)
     u_test = []
@@ -104,17 +106,37 @@ function main()
 
         rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
-            "cov_sample_multiplier" => 1.0,
-            "n_features_opt" => 200,
-            "n_iteration" => 10, #30
+            "cov_sample_multiplier" => 5.0,
+            "n_features_opt" => 150,
+            "n_iteration" => 20,
             "accelerator" => NesterovAccelerator(),
+            #            "localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.05,1.0), # localization / s
+            "n_ensemble" => 200,
+            "verbose" => true,
         )
+
 
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
             mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
+        elseif case == "RF-prior"
+            #No optimization
+            rf_optimizer_overrides["n_iteration"] = 0
+            rf_optimizer_overrides["cov_sample_multiplier"] = 0.1
+            # put in whatever you want to reflect
+            kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(3, nugget))
+            n_features = 500
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                3,
+                3,
+                rng = rng,
+                kernel_structure = kernel_structure,
+                optimizer_options = rf_optimizer_overrides,
+            )
+
         elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
             n_features = 10 * Int(floor(sqrt(3 * n_tp)))
             kernel_structure =
@@ -128,7 +150,7 @@ function main()
                 optimizer_options = rf_optimizer_overrides,
             )
         elseif case ∈ ["RF-svd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(6, nugget))
+            kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
             n_features = 500
 
             mlt = VectorRandomFeatureInterface(
@@ -160,6 +182,19 @@ function main()
                 rng = rng,
                 kernel_structure = kernel_structure,
                 optimizer_options = rf_optimizer_overrides,
+            )
+        end
+
+        #save config for RF
+        if !(case == "GP") && (rep_idx == 1)
+            JLD2.save(
+                joinpath(output_directory, case * "_l63_config.jld2"),
+                "rf_optimizer_overrides",
+                rf_optimizer_overrides,
+                "n_features",
+                n_features,
+                "kernel_structure",
+                kernel_structure,
             )
         end
 
@@ -209,7 +244,7 @@ function main()
         # plots for the first repeat
         if rep_idx == 1
             # plotting trace
-            f = Figure(resolution = (900, 450))
+            f = Figure(size = (900, 450))
             axx = Axis(f[1, 1], xlabel = "time", ylabel = "x")
             axy = Axis(f[2, 1], xlabel = "time", ylabel = "y")
             axz = Axis(f[3, 1], xlabel = "time", ylabel = "z")
@@ -292,7 +327,7 @@ function main()
         push!(u_cdf, u_cdf_tmp)
     end
 
-    f4 = Figure(resolution = (900, Int(floor(900 / 1.618))))
+    f4 = Figure(size = (900, Int(floor(900 / 1.618))))
     axx = Axis(f4[1, 1], xlabel = "", ylabel = "x")
     axy = Axis(f4[1, 2], xlabel = "", ylabel = "y")
     axz = Axis(f4[1, 3], xlabel = "", ylabel = "z")

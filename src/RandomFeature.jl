@@ -3,6 +3,7 @@ using RandomFeatures
 const RF = RandomFeatures
 using EnsembleKalmanProcesses
 const EKP = EnsembleKalmanProcesses
+using EnsembleKalmanProcesses.Localizers
 using ..ParameterDistributions
 using ..Utilities
 using StableRNGs
@@ -14,7 +15,7 @@ export SeparableKernel, NonseparableKernel
 export get_input_cov_structure, get_output_cov_structure, get_cov_structure
 export get_eps
 export rank
-export shrinkage_cov
+export shrinkage_cov, nice_cov
 
 
 abstract type RandomFeatureInterface <: MachineLearningTool end
@@ -488,20 +489,19 @@ function calculate_mean_cov_and_coeffs(
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
     ## TODO - the theory states that the following should be set:
-    # scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+    #    scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+    scaled_coeffs = 1e-3 * rand(n_features)#overwrite with noise...
     # However the convergence is much improved with setting this to zero:
-    scaled_coeffs = 0
-
-
+    #scaled_coeffs = 0    
     if decomp_type == "cholesky"
         chol_fac = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).L
+
         complexity = 2 * sum(log(chol_fac[i, i]) for i in 1:size(chol_fac, 1))
     else
         svd_singval = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).S
         complexity = sum(log, svd_singval) # note this is log(abs(det))
     end
-    complexity = sqrt(abs(complexity)) #abs can introduce nonconvexity, 
-
+    complexity = sqrt(complexity)
     return scaled_coeffs, complexity
 
 end
@@ -540,6 +540,56 @@ function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
 end
 
 
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
+"""
+function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
+
+    n_sample_cov = size(sample_mat, 2)
+    Γ = cov(sample_mat, dims = 2)
+
+    bd_tol = 1e8 * eps()
+
+    v = sqrt.(diag(Γ))
+    V = Diagonal(v) #stds
+    V_inv = inv(V)
+    corr = clamp.(V_inv * Γ * V_inv, -1 + bd_tol, 1 - bd_tol) # full corr
+
+    # parameter sweep over the exponents
+    max_exponent = 2 * 5 # must be even
+    interp_steps = 100
+    # use find the variability in the corr coeff matrix entries
+    std_corrs = approximate_corr_std.(corr, n_sample_cov, n_samples) # Found in EKP.Localizers !! slowest part of code -> could speed up by precomputing an interpolation of [-1,1]
+
+    std_tol = sqrt(sum(std_corrs .^ 2))
+    α_min_exceeded = [max_exponent]
+    for α in 2:2:max_exponent # even exponents give a PSD
+        corr_psd = corr .^ (α + 1) # abs not needed as α even
+        # find the first exponent that exceeds the noise tolerance in norm
+        if norm(corr_psd - corr) > δ * std_tol
+            α_min_exceeded[1] = α
+            break
+        end
+    end
+    corr_psd = corr .^ α_min_exceeded[1]
+    corr_psd_prev = corr .^ (α_min_exceeded[1] - 2) # previous PSD correction 
+
+    for α in LinRange(1.0, 0.0, interp_steps)
+        corr_interp = ((1 - α) * (corr_psd_prev) + α * corr_psd) .* corr
+        if norm(corr_interp - corr) < δ * std_tol
+            corr[:, :] = corr_interp #update the correlation matrix block
+            break
+        end
+    end
+    out = posdef_correct(V * corr * V) # rebuild the cov matrix
+    @info "NICE-adjusted covariance condition number: $(cond(out))"
+    return out
+
+end
+
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -560,6 +610,7 @@ function estimate_mean_and_coeffnorm_covariance(
     decomp_type::S,
     multithread_type::TullioThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -625,9 +676,11 @@ function estimate_mean_and_coeffnorm_covariance(
     end
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif cov_correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end
@@ -747,6 +800,7 @@ function estimate_mean_and_coeffnorm_covariance(
     decomp_type::S,
     multithread_type::EnsembleThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -833,9 +887,11 @@ function estimate_mean_and_coeffnorm_covariance(
 
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif cov_correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end

@@ -6,7 +6,6 @@ using Distributions  # probability distributions and associated functions
 using LinearAlgebra
 ENV["GKSwstype"] = "100"
 using Plots
-using CairoMakie
 using Random
 using JLD2
 using NCDatasets
@@ -34,6 +33,12 @@ function main()
     # 5-parameter calibration exp
     exp_name = "ent-det-tked-tkee-stab-calibration"
 
+    cases = [
+        "GP", # diagonalize, train scalar GP, assume diag inputs
+        "RF-prior",
+        "RF-vector-svd-nonsep",
+    ]
+    case = cases[3]
 
     # Output figure save directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
@@ -75,11 +80,13 @@ function main()
             ".zip\" and retry.",
         )
     end
+
     data_filepath = joinpath(exp_dir, "Diagnostics.nc")
     if !isfile(data_filepath)
         LoadError("experiment data file \"Diagnostics.nc\" not found in directory \"" * exp_dir * "/\"")
     else
         y_truth = Array(NCDataset(data_filepath).group["reference"]["y_full"]) #ndata
+
         truth_cov = Array(NCDataset(data_filepath).group["reference"]["Gamma_full"]) #ndata x ndata
         # Option (i) get data from NCDataset else get from jld2 files.
         output_mat = Array(NCDataset(data_filepath).group["particle_diags"]["g_full"]) #nens x ndata x nit
@@ -120,13 +127,11 @@ function main()
             println("plotting ensembles...")
             for plot_i in 1:size(outputs, 1)
                 p = scatter(inputs_constrained[1, :], inputs_constrained[2, :], zcolor = outputs[plot_i, :])
-                savefig(p, joinpath(figure_save_directory, "output_" * string(plot_i) * ".png"))
-                savefig(p, joinpath(figure_save_directory, "output_" * string(plot_i) * ".pdf"))
+                savefig(p, joinpath(figure_save_directory, "$(case)_output_" * string(plot_i) * ".png"))
             end
             println("finished plotting ensembles.")
         end
         input_output_pairs = DataContainers.PairedDataContainer(inputs, outputs)
-
     end
 
     # load and create prior distributions
@@ -174,7 +179,6 @@ function main()
     std = prior_config["unconstrained_σ"]
     constraints = prior_config["constraints"]
 
-
     prior = combine_distributions([
         ParameterDistribution(
             Dict("name" => name, "distribution" => Parameterized(Normal(mean, std)), "constraint" => constraints[name]),
@@ -200,18 +204,24 @@ function main()
     println("Begin Emulation stage")
     # Create GP object
 
-    cases = [
-        "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-vector-svd-nonsep",
-        "RF-vector-nosvd-nonsep",  # don't perform decorrelation  
-    ]
-    case = cases[3]
-    n_repeats = 2
-
-    opt_diagnostics = []
-    emulators = []
-    for rep_idx in 1:n_repeats
-
+    overrides = Dict(
+        "verbose" => true,
+        "train_fraction" => 0.85,
+        "scheduler" => DataMisfitController(terminate_at = 100),
+        "cov_sample_multiplier" => 1.0,
+        "n_iteration" => 15,
+        "n_features_opt" => 200,
+        "localization" => SEC(0.05),
+    )
+    if case == "RF-prior"
+        overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)
+    end
+    nugget = 1e-6
+    rng_seed = 99330
+    rng = Random.MersenneTwister(rng_seed)
+    input_dim = size(get_inputs(input_output_pairs), 1)
+    output_dim = size(get_outputs(input_output_pairs), 1)
+    if case == "GP"
         overrides = Dict(
             "verbose" => true,
             "train_fraction" => 0.9, #95
@@ -222,71 +232,61 @@ function main()
             #    "n_ensemble" => 20,
             #           "localization" => SEC(1.0, 0.01), # localization / sample error correction for small ensembles
         )
-        nugget = 1e-10#1e-12#0.01
-        rng_seed = 99330
-        rng = Random.MersenneTwister(rng_seed)
-        input_dim = size(get_inputs(input_output_pairs), 1)
-        output_dim = size(get_outputs(input_output_pairs), 1)
-        decorrelate = true
-        if case == "GP"
+    elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
+        kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
+        n_features = 500
 
-            gppackage = Emulators.SKLJL()
-            pred_type = Emulators.YType()
-            mlt = GaussianProcess(
-                gppackage;
-                kernel = nothing, # use default squared exponential kernel
-                prediction_type = pred_type,
-                noise_learn = false,
-            )
-        elseif case ∈ ["RF-vector-svd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
-            n_features = 500
-
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                input_dim,
-                output_dim,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = overrides,
-            )
-        elseif case ∈ ["RF-vector-nosvd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
-            n_features = 500
-
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                input_dim,
-                output_dim,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = overrides,
-            )
-            decorrelate = false
-        end
-
-        # Fit an emulator to the data
-        normalized = true
-
-        emulator = Emulator(
-            mlt,
-            input_output_pairs;
-            obs_noise_cov = truth_cov,
-            normalize_inputs = normalized,
-            decorrelate = decorrelate,
+        gppackage = Emulators.SKLJL()
+        pred_type = Emulators.YType()
+        mlt = GaussianProcess(
+            gppackage;
+            kernel = nothing, # use default squared exponential kernel
+            prediction_type = pred_type,
+            noise_learn = false,
         )
+    elseif case ∈ ["RF-vector-svd-nonsep"]
+        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        n_features = 500
 
-        # Optimize the GP hyperparameters for better fit
-        optimize_hyperparameters!(emulator)
-        if case ∈ ["RF-vector-nosvd-nonsep", "RF-vector-svd-nonsep"]
-            push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec -> vec
-        end
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+    elseif case ∈ ["RF-vector-nosvd-nonsep"]
+        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        n_features = 500
 
-        for rep_idx in n_repeats
-            push!(emulators, emulator)
-        end
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+        decorrelate = false
     end
-    emulator = emulators[1]
+
+    # Fit an emulator to the data
+    normalized = true
+
+    emulator = Emulator(
+        mlt,
+        input_output_pairs;
+        obs_noise_cov = truth_cov,
+        normalize_inputs = normalized,
+        decorrelate = decorrelate,
+    )
+
+    # Optimize the GP hyperparameters for better fit
+    optimize_hyperparameters!(emulator)
+    if case ∈ ["RF-vector-nosvd-nonsep", "RF-vector-svd-nonsep"]
+        push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec -> vec
+    end
 
     # plot eki convergence plot
     if length(opt_diagnostics) > 0
@@ -312,7 +312,7 @@ function main()
 
     end
 
-    emulator_filepath = joinpath(data_save_directory, "emulator.jld2")
+    emulator_filepath = joinpath(data_save_directory, "$(case)_emulator.jld2")
     save(emulator_filepath, "emulator", emulator)
 
     println("Finished Emulation stage")
@@ -328,17 +328,17 @@ function main()
     # determine a good step size
     yt_sample = y_truth
     mcmc = MCMCWrapper(RWMHSampling(), yt_sample, prior, emulator; init_params = u0)
-    new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
+    new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 5000, discard_initial = 0)
 
     # Now begin the actual MCMC
     println("Begin MCMC - with step size ", new_step)
-    chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+    chain = MarkovChainMonteCarlo.sample(mcmc, 300_000; stepsize = new_step, discard_initial = 2_000)
     posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
-    mcmc_filepath = joinpath(data_save_directory, "mcmc_and_chain.jld2")
+    mcmc_filepath = joinpath(data_save_directory, "$(case)_mcmc_and_chain.jld2")
     save(mcmc_filepath, "mcmc", mcmc, "chain", chain)
 
-    posterior_filepath = joinpath(data_save_directory, "posterior.jld2")
+    posterior_filepath = joinpath(data_save_directory, "$(case)_posterior.jld2")
     save(posterior_filepath, "posterior", posterior)
 
     println("Finished Sampling stage")

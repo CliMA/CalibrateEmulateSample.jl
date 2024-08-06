@@ -1,4 +1,5 @@
 
+
 using GlobalSensitivityAnalysis
 const GSA = GlobalSensitivityAnalysis
 using Distributions
@@ -10,6 +11,8 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
+
+using JLD2
 
 using CairoMakie, ColorSchemes #for plots
 seed = 2589456
@@ -136,7 +139,9 @@ function main()
         push!(y_preds, y_pred)
         push!(result_preds, result_pred)
 
+        jldsave(joinpath(output_directory, "emulator_repeat_$(rep_idx)_$(case).jld2"); emulator)
     end
+
 
     # analytic sobol indices
     a = 7
@@ -149,6 +154,17 @@ function main()
     VT2 = a^2 / 8
     VT3 = 8 * b^2 * π^8 / 225
 
+    jldsave(
+        joinpath(output_directory, "results_$case.jld2");
+        sobol_pts = samples,
+        train_idx = ind,
+        mlt_pred_y = y_preds,
+        mlt_sobol = result_preds,
+        analytic_sobol = [V1, V2, V3, VT1, VT2, VT3],
+        true_y = y,
+        noise_y = Γ,
+        estimated_sobol = result,
+    )
 
     println(" ")
     println("True Sobol Indices")
