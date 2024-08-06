@@ -427,7 +427,7 @@ function build_models!(
                 accelerator = accelerator,
                 verbose = opt_verbose_flag,
                 localization_method = localization,
-            ),
+            )
             err = zeros(n_iteration)
 
         # [4.] optimize with EKP
