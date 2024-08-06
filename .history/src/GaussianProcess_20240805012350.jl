@@ -58,9 +58,9 @@ $(DocStringExtensions.TYPEDFIELDS)
 """
 struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
-    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}
+    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}
     "Kernel object."
-    kernel::Union{<:GaussianProcesses.Kernel, <:PyObject, <:AbstractGPs.Kernel, Nothing}
+    kernel::Union{<:Kernel, <:PyObject, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
     noise_learn::Bool
     "Additional observational or regularization noise in used in GP algorithms"
@@ -82,14 +82,14 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 """
 function GaussianProcess(
     package::GPPkg;
-    kernel::Union{GPK, KPy, AGPK, Nothing} = nothing,
+    kernel::Union{K, KPy, Nothing} = nothing,
     noise_learn = true,
     alg_reg_noise::FT = 1e-3,
     prediction_type::PredictionType = YType(),
-) where {GPPkg <: GaussianProcessesPackage, GPK <: GaussianProcesses.Kernel, KPy <: PyObject, AGPK <: AbstractGPs.Kernel, FT <: AbstractFloat}
+) where {GPPkg <: GaussianProcessesPackage, K <: Kernel, KPy <: PyObject, FT <: AbstractFloat}
 
     # Initialize vector for GP models
-    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}(undef, 0)
+    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}(undef, 0)
 
     # the algorithm regularization noise is set to some small value if we are learning noise, else
     # it is fixed to the correct value (1.0)
@@ -328,7 +328,7 @@ function build_models!(
         # Create default squared exponential kernel
         const_value = 1.0
         rbf_len = 1.0
-        rbf = const_value * KernelFunctions.SqExponentialKernel() ∘ KernelFunctions.ScaleTransform(rbf_len)
+        rbf = const_value * KernelFunctions.transform(KernelFunctions.SqExponentialKernel(), KernelFunctions.ScaleTransform(rbf_len))
         kern = rbf
         println("Using default squared exponential kernel:", kern)
     else
@@ -345,22 +345,14 @@ function build_models!(
     end
 
     regularization_noise = gp.alg_reg_noise
-    println("size of regularization_noise: ", size(regularization_noise))
-
-    println("size of input_values: ", size(input_values))
-    println("size of output_values: ", size(output_values))
 
     for i in 1:N_models
         kernel_i = deepcopy(kern)
-        # In contrast to the GPJL and SKLJL case "data_i = output_values[i, :]"
-        data_i = output_values[:, i]
-        f = AbstractGPs.GP(kernel_i)
-        println("size of data_i: ", size(data_i)) # delete
-        println("size of transposed data_i: ", size(data_i')) # delete
+        data_i = output_values[i, :]
+        f = GP(kernel_i)
         # f arguments:
         # input_values:    (N_samples × input_dim)
         fx = f(input_values, regularization_noise)
-        println("size of fx: ", size(fx)) # delete
         # posterior arguments:
         # data_i:    (N_samples,)
         post_fx = posterior(fx, data_i)

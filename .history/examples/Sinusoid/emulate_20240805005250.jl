@@ -2,13 +2,13 @@
 
 # In this example we have a model that produces a sinusoid
 # ``f(A, v) = A \sin(\phi + t) + v, \forall t \in [0,2\pi]``, with a random
-# phase ``\phi``. We want to quantify uncertainties on parameters ``A`` and ``v``,
+# phase ``\phi``. We want to quantify uncertainties on parameters ``A`` and ``v``, 
 # given noisy observations of the model output.
-# Previously, in the calibration step, we started with an initial guess of these
+# Previously, in the calibration step, we started with an initial guess of these 
 # parameters and used Ensemble Kalman Inversion to iteratively update our estimates.
 # Quantifying uncertainties around these estimates requires many model evaluations
-# and can quickly become expensive.
-# On this page, we will see how we can build an emulator to help us with
+# and can quickly become expensive. 
+# On this page, we will see how we can build an emulator to help us with 
 # this task.
 
 # First, we load the packages we need:
@@ -24,7 +24,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
-include("sinusoid_setup.jl")           # This file defines the model G(θ)
+include("sinusoid_setup.jl")           # This file defines the model G(θ)  
 
 
 # Load the ensembles generated in the calibration step.
@@ -45,18 +45,18 @@ N_iterations = load(calibrate_file)["N_iterations"]
 rng = load(calibrate_file)["rng"]
 
 
-# We ran Ensemble Kalman Inversion with an ensemble size of 10 for 5
+# We ran Ensemble Kalman Inversion with an ensemble size of 10 for 5 
 # iterations. This generated a total of 50 input output pairs from our model.
-# We will use these samples to train an emulator. The EKI samples make a suitable
-# dataset for training an emulator because in the first iteration, the ensemble parameters
+# We will use these samples to train an emulator. The EKI samples make a suitable 
+# dataset for training an emulator because in the first iteration, the ensemble parameters 
 # are spread out according to the prior, meaning they cover the full support of the
-# parameter space. This is important for building an emulator that can be evaluated anywhere
-# in this space. In later iterations, the ensemble parameters are focused around the truth.
+# parameter space. This is important for building an emulator that can be evaluated anywhere 
+# in this space. In later iterations, the ensemble parameters are focused around the truth. 
 # This means the emulator that will be more accurate around this region.
 
 
 ## Build Emulators
-# We will build two types of emulator here for comparison: Gaussian processes and Random
+# We will build two types of emulator here for comparison: Gaussian processes and Random 
 # Features. First, set up the data in the correct format. CalibrateEmulateSample.jl uses
 # a paired data container that matches the inputs (in the unconstrained space) to the outputs:
 input_output_pairs = CES.Utilities.get_training_points(ensemble_kalman_process, N_iterations)
@@ -67,14 +67,14 @@ outputs = CES.Utilities.get_outputs(input_output_pairs)
 # Gaussian process
 # We will set up a basic Gaussian process emulator using either ScikitLearn.jl or GaussianProcesses.jl.
 # See the Gaussian process page for more information and details about kernel choices.
-gppackage = Emulators.AGPJL()
+gppackage = Emulators.GPJL()
 gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
 # Build emulator with data
 emulator_gp = Emulator(gauss_proc, input_output_pairs, normalize_inputs = true, obs_noise_cov = Γ)
 optimize_hyperparameters!(emulator_gp)
 
-# We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator
+# We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator 
 # performance soon, but first, build a random features emulator for comparison.
 
 ## Random Features
@@ -89,7 +89,7 @@ n_features = 60
 nugget = 1e-9
 
 # Create random features
-# Here we use a vector random features set up because we find it performs similarly well to
+# Here we use a vector random features set up because we find it performs similarly well to 
 # the GP emulator, but there are many options that could be tested
 kernel_structure = NonseparableKernel(LowRankFactor(2, nugget))
 optimizer_options = Dict(
@@ -115,7 +115,7 @@ optimize_hyperparameters!(emulator_random_features)
 
 ## Emulator Validation
 # Now we will validate both GP and RF emulators and compare them against the ground truth, G(θ).
-# Note this is only possible in our example because our true model, G(θ), is cheap to evaluate.
+# Note this is only possible in our example because our true model, G(θ), is cheap to evaluate. 
 # In more complex systems, we would have limited data to validate emulator performance with.
 # Set up mesh to cover parameter space
 N_grid = 50
@@ -154,8 +154,8 @@ rf_std = [sqrt.(diag(rf_cov[j])) for j in 1:length(rf_cov)]
 rf_std_grid = reshape(permutedims(reduce(vcat, [x' for x in rf_std]), (2, 1)), (output_dim, N_grid, N_grid))
 
 ## Plot
-# First, we will plot the ground truth. We have 2 parameters and 2 outputs, so we will create a contour plot
-# for each output to show how they vary against the two inputs.
+# First, we will plot the ground truth. We have 2 parameters and 2 outputs, so we will create a contour plot 
+# for each output to show how they vary against the two inputs. 
 range_clims = (0, 8)
 mean_clims = (-6, 10)
 
@@ -262,8 +262,8 @@ p = plot(
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_contours.png"))
 
 # Both the GP and RF emulator give similar results to the ground truth G(θ), indicating they are correctly
-# learning the relationships between the parameters and the outputs. We also see the contours agree with the
-# colors of the training data points.
+# learning the relationships between the parameters and the outputs. We also see the contours agree with the 
+# colors of the training data points. 
 
 # Next, we plot uncertainty estimates from the GP and RF emulators
 # Plot GP std estimates
@@ -335,7 +335,7 @@ savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_std_contours.png"
 # where we have more training points.
 
 # Finally, we should validate how accurate the emulators are by looking at the absolute difference between emulator
-# predictions and the ground truth.
+# predictions and the ground truth. 
 gp_diff_grid = abs.(gp_grid - g_true_grid)
 range_diff_clims = (0, 1)
 mean_diff_clims = (0, 1)
@@ -391,8 +391,8 @@ p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfon
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_errors_contours.png"))
 
 # Here, we want the emulator to show the low errors in the region around the true parameter values near θ = (3, 6),
-# as this is the region that we will be sampling in the next step. This appears to the be case for both
-# outputs and both emulators.
+# as this is the region that we will be sampling in the next step. This appears to the be case for both 
+# outputs and both emulators. 
 
 
 println(mean(gp_diff_grid, dims = (2, 3)))

@@ -58,7 +58,7 @@ $(DocStringExtensions.TYPEDFIELDS)
 """
 struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
-    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}
+    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, Nothing}}
     "Kernel object."
     kernel::Union{<:GaussianProcesses.Kernel, <:PyObject, <:AbstractGPs.Kernel, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
@@ -355,12 +355,12 @@ function build_models!(
         # In contrast to the GPJL and SKLJL case "data_i = output_values[i, :]"
         data_i = output_values[:, i]
         f = AbstractGPs.GP(kernel_i)
-        println("size of data_i: ", size(data_i)) # delete
-        println("size of transposed data_i: ", size(data_i')) # delete
+        println("size of data_i: ", size(data_i))
+        println("size of transposed data_i: ", size(data_i'))
         # f arguments:
         # input_values:    (N_samples × input_dim)
         fx = f(input_values, regularization_noise)
-        println("size of fx: ", size(fx)) # delete
+        println("size of fx: ", size(fx))
         # posterior arguments:
         # data_i:    (N_samples,)
         post_fx = posterior(fx, data_i)
