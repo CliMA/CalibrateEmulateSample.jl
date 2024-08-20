@@ -601,14 +601,21 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
-    # live in same space as prior
-    p_constraints = [flat_constraints[slice] for slice in p_slices]
 
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
 
+    # live in same space as prior
+    # checks if a function distribution, by looking at if the distribution is nested
+    p_constraints = [
+        !isa(get_distribution(mcmc.prior)[pn],ParameterDistribution) ? # if not func-dist
+        flat_constraints[slice] : # constraints are slice
+        get_all_constraints(get_distribution(mcmc.prior)[ps]) # get constraints of nested dist
+        for (pn,slice) in zip(p_names, p_slices)
+    ]
+    
     # distributions created as atoms and pieced together
     posterior_distribution = combine_distributions([
         ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)
