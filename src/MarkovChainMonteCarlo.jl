@@ -612,8 +612,8 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_constraints = [
         !isa(get_distribution(mcmc.prior)[pn],ParameterDistribution) ? # if not func-dist
         flat_constraints[slice] : # constraints are slice
-        get_all_constraints(get_distribution(mcmc.prior)[ps]) # get constraints of nested dist
-        for (pn,slice) in zip(p_names, p_slices)
+        get_all_constraints(get_distribution(mcmc.prior)[pn]) # get constraints of nested dist
+        for (pn, slice) in zip(p_names, p_slices)
     ]
     
     # distributions created as atoms and pieced together
