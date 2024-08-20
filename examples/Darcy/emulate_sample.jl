@@ -39,7 +39,7 @@ function main()
             "cov_sample_multiplier" => 0.5,
             "n_iteration" => 20,
             "n_ensemble" => 120,
-            "localization" => Localizers.SECNice(1000,0.1,1.0),
+            "localization" => Localizers.SECNice(1000, 0.1, 1.0),
         )
         # we do not want termination, as our priors have relatively little interpretation
 
@@ -90,12 +90,9 @@ function main()
         # choice of machine-learning tool in the emulation stage
         nugget = 1e-12
         if case == "GP"
-#            gppackage = Emulators.SKLJL()
+            #            gppackage = Emulators.SKLJL()
             gppackage = Emulators.GPJL()
-            mlt = GaussianProcess(
-                gppackage;
-                noise_learn = false,
-            )
+            mlt = GaussianProcess(gppackage; noise_learn = false)
         elseif case ∈ ["RF-vector-svd-nonsep"]
             kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
             n_features = 100

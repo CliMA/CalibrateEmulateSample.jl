@@ -610,12 +610,12 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
     p_constraints = [
-        !isa(get_distribution(mcmc.prior)[pn],ParameterDistribution) ? # if not func-dist
+        !isa(get_distribution(mcmc.prior)[pn], ParameterDistribution) ? # if not func-dist
         flat_constraints[slice] : # constraints are slice
         get_all_constraints(get_distribution(mcmc.prior)[pn]) # get constraints of nested dist
         for (pn, slice) in zip(p_names, p_slices)
     ]
-    
+
     # distributions created as atoms and pieced together
     posterior_distribution = combine_distributions([
         ParameterDistribution(ps, pc, pn) for (ps, pc, pn) in zip(p_samples, p_constraints, p_names)
