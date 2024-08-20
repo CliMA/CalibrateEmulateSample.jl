@@ -22,7 +22,6 @@ function main()
 
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-vector-svd-nonsep",
     ]
 
     #### CHOOSE YOUR CASE: 
@@ -33,25 +32,6 @@ function main()
         println("case: ", case)
         min_iter = 1
         max_iter = 5 # number of EKP iterations to use data from is at most this
-        overrides = Dict(
-            "verbose" => true,
-            "scheduler" => DataMisfitController(terminate_at = 100.0),
-            "cov_sample_multiplier" => 0.5,
-            "n_iteration" => 20,
-            "n_ensemble" => 120,
-            "localization" => Localizers.SECNice(1000, 0.1, 1.0),
-        )
-        # we do not want termination, as our priors have relatively little interpretation
-
-        # Should be loaded:
-        dim = 2
-        N, L = 80, 1.0
-        pts_per_dim = LinRange(0, L, N)
-        obs_ΔN = 10
-        smoothness = 1.0
-        corr_length = 0.25
-        dofs = 20 # i.e. the input space dimension
-        ####
 
         exp_name = "darcy"
         rng_seed = 940284
@@ -93,18 +73,6 @@ function main()
             #            gppackage = Emulators.SKLJL()
             gppackage = Emulators.GPJL()
             mlt = GaussianProcess(gppackage; noise_learn = false)
-        elseif case ∈ ["RF-vector-svd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
-            n_features = 100
-
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                n_params,
-                output_dim,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = overrides,
-            )
         end
 
 
