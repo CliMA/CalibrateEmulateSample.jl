@@ -147,11 +147,10 @@ function main()
 
         param_names = get_name(posterior)
 
-        posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
-        constrained_posterior_samples =
-            mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
+        posterior_samples = reduce(vcat,[get_distribution(posterior)[name] for name in get_name(posterior)]) #samples are columns of this matrix
 
-
+        #... plot etc
+        
         # Save data
         save(
             joinpath(data_save_directory, "posterior.jld2"),
