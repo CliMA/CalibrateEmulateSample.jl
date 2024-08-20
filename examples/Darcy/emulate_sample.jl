@@ -147,10 +147,10 @@ function main()
 
         param_names = get_name(posterior)
 
-        posterior_samples = reduce(vcat,[get_distribution(posterior)[name] for name in get_name(posterior)]) #samples are columns of this matrix
+        posterior_samples = reduce(vcat, [get_distribution(posterior)[name] for name in get_name(posterior)]) #samples are columns of this matrix
 
         #... plot etc
-        
+
         # Save data
         save(
             joinpath(data_save_directory, "posterior.jld2"),
