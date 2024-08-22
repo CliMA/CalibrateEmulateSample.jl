@@ -49,12 +49,12 @@ function main()
     dim = 2
     N, L = 80, 1.0
     pts_per_dim = LinRange(0, L, N)
-    obs_ΔN = 20
+    obs_ΔN = 10
 
     # To provide a simple test case, we assume that the true function parameter is a particular sample from the function space we set up to define our prior. More precisely we choose a value of the truth that doesnt have a vanishingly small probability under the prior defined by a probability distribution over functions; here taken as a family of Gaussian Random Fields (GRF). The function distribution is characterized by a covariance function - here a Matern kernel which assumes a level of smoothness over the samples from the distribution. We define an appropriate expansion of this distribution, here based on the Karhunen-Loeve expansion (similar to an eigenvalue-eigenfunction expansion) that is truncated to a finite number of terms, known as the degrees of freedom (`dofs`). The `dofs` define the effective dimension of the learning problem, decoupled from the spatial discretization. Explicitly, larger `dofs` may be required to represent multiscale functions, but come at an increased dimension of the parameter space and therefore a typical increase in cost and difficulty of the learning problem.
 
-    smoothness = 1.0
-    corr_length = 0.25
+    smoothness = 10
+    corr_length = 0.25 # 0.25
     dofs = 6
 
     grf = GRF.GaussianRandomField(
@@ -84,7 +84,7 @@ function main()
     println(" Number of observation points: $(darcy.N_y)")
     h_2d_true = solve_Darcy_2D(darcy, κ_true)
     y_noiseless = compute_obs(darcy, h_2d_true)
-    obs_noise_cov = 0.2^2 * I(length(y_noiseless)) * (maximum(y_noiseless) - minimum(y_noiseless))
+    obs_noise_cov = 0.25^2 * I(length(y_noiseless)) * (maximum(y_noiseless) - minimum(y_noiseless))
     truth_sample = vec(y_noiseless + rand(rng, MvNormal(zeros(length(y_noiseless)), obs_noise_cov)))
 
 

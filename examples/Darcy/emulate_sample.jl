@@ -68,7 +68,6 @@ function main()
 
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
-        nugget = 1e-12
         if case == "GP"
             #            gppackage = Emulators.SKLJL()
             gppackage = Emulators.GPJL()
@@ -148,8 +147,37 @@ function main()
         param_names = get_name(posterior)
 
         posterior_samples = reduce(vcat, [get_distribution(posterior)[name] for name in get_name(posterior)]) #samples are columns of this matrix
+        n_post = size(posterior_samples, 2)
+        plot_sample_id = (n_post - 1000):n_post
+        constrained_posterior_samples =
+            transform_unconstrained_to_constrained(prior, posterior_samples[:, plot_sample_id])
 
-        #... plot etc
+        N, L = 80, 1.0
+        pts_per_dim = LinRange(0, L, N)
+
+        κ_ens_mean = reshape(mean(constrained_posterior_samples, dims = 2), N, N)
+        p1 = contour(
+            pts_per_dim,
+            pts_per_dim,
+            κ_ens_mean',
+            fill = true,
+            levels = 15,
+            title = "kappa mean",
+            colorbar = true,
+        )
+        κ_ens_ptw_var = reshape(var(constrained_posterior_samples, dims = 2), N, N)
+        p2 = contour(
+            pts_per_dim,
+            pts_per_dim,
+            κ_ens_ptw_var',
+            fill = true,
+            levels = 15,
+            title = "kappa var",
+            colorbar = true,
+        )
+        l = @layout [a b]
+        plt = plot(p1, p2, layout = l)
+        savefig(plt, joinpath(data_save_directory, "posterior_pointwise_uq.png"))
 
         # Save data
         save(
