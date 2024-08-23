@@ -54,9 +54,9 @@ function main()
     # To provide a simple test case, we assume that the true function parameter is a particular sample from the function space we set up to define our prior. More precisely we choose a value of the truth that doesnt have a vanishingly small probability under the prior defined by a probability distribution over functions; here taken as a family of Gaussian Random Fields (GRF). The function distribution is characterized by a covariance function - here a Matern kernel which assumes a level of smoothness over the samples from the distribution. We define an appropriate expansion of this distribution, here based on the Karhunen-Loeve expansion (similar to an eigenvalue-eigenfunction expansion) that is truncated to a finite number of terms, known as the degrees of freedom (`dofs`). The `dofs` define the effective dimension of the learning problem, decoupled from the spatial discretization. Explicitly, larger `dofs` may be required to represent multiscale functions, but come at an increased dimension of the parameter space and therefore a typical increase in cost and difficulty of the learning problem.
 
     smoothness = 0.1
-    corr_length = 1.0 
+    corr_length = 1.0
     dofs = 5
-    
+
     grf = GRF.GaussianRandomField(
         GRF.CovarianceFunction(dim, GRF.Matern(smoothness, corr_length)),
         GRF.KarhunenLoeve(dofs),
