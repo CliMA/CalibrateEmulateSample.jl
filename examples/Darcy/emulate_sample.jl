@@ -161,6 +161,7 @@ function main()
         constrained_posterior_samples =
             transform_unconstrained_to_constrained(prior, posterior_samples[:, plot_sample_id])
 
+        gr(size = (1500, 400), legend = false)
         κ_ens_mean = reshape(mean(constrained_posterior_samples, dims = 2), N, N)
         p1 = contour(
             pts_per_dim,
