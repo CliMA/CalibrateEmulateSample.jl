@@ -12,9 +12,8 @@ steps:
     command:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
-      - "julia --project -e 'using Conda; Conda.add(\"scipy=1.8.1\", channel=\"conda-forge\")'"
-      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.1.1\")'"
-      - "julia --project -e 'using Conda; Conda.add(\"matplotlib=3.7.1\")'"
+      - "julia --project -e 'using Conda; Conda.add(\"scipy=1.14.1\", channel=\"conda-forge\")'"
+      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.5.1\")'"
     env:
       PYTHON: ""
       
