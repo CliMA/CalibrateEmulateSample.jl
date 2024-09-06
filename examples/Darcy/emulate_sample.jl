@@ -18,6 +18,8 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
+include("GModel.jl")
+
 function main()
 
     cases = [
@@ -32,11 +34,11 @@ function main()
         println("case: ", case)
         min_iter = 1
         max_iter = 5 # number of EKP iterations to use data from is at most this
-
+        
         exp_name = "darcy"
         rng_seed = 940284
         rng = Random.MersenneTwister(rng_seed)
-
+        
         # loading relevant data
         homedir = pwd()
         println(homedir)
@@ -58,6 +60,11 @@ function main()
         truth_params_constrained = load(data_save_file)["truth_input_constrained"] #true parameters in constrained space
         truth_params = load(data_save_file)["truth_input_unconstrained"] #true parameters in unconstrained space  
         Γy = get_obs_noise_cov(ekiobj)
+        # should ideally be loaded from calibrate (matching values in main)
+        N, L = 80, 1.0
+        pts_per_dim = LinRange(0, L, N)
+        obs_ΔN = 10
+        darcy = Setup_Param(pts_per_dim, obs_ΔN, truth_params_constrained )
 
 
         n_params = length(truth_params) # "input dim"
@@ -84,9 +91,10 @@ function main()
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
 
         retained_svd_frac = 1.0
+
         normalized = true
         # do we want to use SVD to decorrelate outputs
-        decorrelate = case ∈ ["RF-vector-nosvd-diag", "RF-vector-nosvd-nondiag"] ? false : true
+        decorrelate = true
 
         emulator = Emulator(
             mlt,
@@ -96,7 +104,7 @@ function main()
             retained_svd_frac = retained_svd_frac,
             decorrelate = decorrelate,
         )
-        optimize_hyperparameters!(emulator)
+        optimize_hyperparameters!(emulator, kernbounds = [fill(-1e2, n_params+1), fill(1e2, n_params+1)])
 
         # Check how well the Gaussian Process regression predicts on the
         # true parameters
@@ -126,6 +134,7 @@ function main()
 
         # First let's run a short chain to determine a good step size
         mcmc = MCMCWrapper(RWMHSampling(), truth_sample, prior, emulator; init_params = u0)
+#        mcmc = MCMCWrapper(pCNMHSampling(), truth_sample, prior, emulator; init_params = u0)
         new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
         # Now begin the actual MCMC
@@ -152,9 +161,6 @@ function main()
         constrained_posterior_samples =
             transform_unconstrained_to_constrained(prior, posterior_samples[:, plot_sample_id])
 
-        N, L = 80, 1.0
-        pts_per_dim = LinRange(0, L, N)
-
         κ_ens_mean = reshape(mean(constrained_posterior_samples, dims = 2), N, N)
         p1 = contour(
             pts_per_dim,
@@ -175,9 +181,13 @@ function main()
             title = "kappa var",
             colorbar = true,
         )
-        l = @layout [a b]
-        plt = plot(p1, p2, layout = l)
-        savefig(plt, joinpath(data_save_directory, "posterior_pointwise_uq.png"))
+
+        h_2d = solve_Darcy_2D(darcy, κ_ens_mean)
+        p3 = contour(pts_per_dim, pts_per_dim, h_2d', fill = true, levels = 15, title = "pressure", colorbar = true)
+        
+        l = @layout [a b c]
+        plt = plot(p1, p2, p3, layout = l)
+        savefig(plt, joinpath(data_save_directory, "$(case)_posterior_pointwise_uq.png"))
 
         # Save data
         save(
