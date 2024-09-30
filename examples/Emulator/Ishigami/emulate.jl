@@ -160,7 +160,7 @@ function main()
         train_idx = ind,
         mlt_pred_y = y_preds,
         mlt_sobol = result_preds,
-        analytic_sobol = [V1, V2, V3, VT1, VT2, VT3],
+        analytic_sobol = [V, V1, V2, V3, VT1, VT2, VT3],
         true_y = y,
         noise_y = Γ,
         estimated_sobol = result,
