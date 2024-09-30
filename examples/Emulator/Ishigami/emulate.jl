@@ -77,7 +77,7 @@ function main()
     noise = rand(rng, Normal(0, Γ), n_tp)
     for i in 1:n_tp
         input[:, i] = samples[ind[i], :]
-        output[i] = y[ind[i]] + noise[i]
+        output[i] = y[ind[i]] + noise[i] 
     end
     iopairs = PairedDataContainer(input, output)
 
@@ -162,7 +162,8 @@ function main()
         mlt_sobol = result_preds,
         analytic_sobol = [V, V1, V2, V3, VT1, VT2, VT3],
         true_y = y,
-        noise_y = Γ,
+        noise_sample = noise,
+        noise_cov = Γ,
         estimated_sobol = result,
     )
 
@@ -220,7 +221,7 @@ function main()
         save(error_filepath, "error", err_cols)
 
         # print all repeats
-        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
+        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4, fontsize=48)
         ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "Error")
 
         if n_repeats == 1
