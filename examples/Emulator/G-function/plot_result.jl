@@ -36,16 +36,18 @@ function main()
     )
 
     n_repeats = length(mlt_sobol)
-
+    fontsize = 28
     if n_repeats == 1
-        f3, ax3, plt3 = scatter(
+        f3 = Figure(markersize = 8,fontsize = fontsize)
+        ax3 = Axis(f3[1,1])
+        scatter!(
+            ax3,
             1:n_dimensions,
             mlt_sobol[1][:firstorder];
             color = :red,
             markersize = 8,
             marker = :cross,
             label = "V-emulate",
-            title = "input dimension: $(n_dimensions)",
         )
         scatter!(ax3, estimated_sobol[:firstorder], color = :red, markersize = 8, label = "V-approx")
         scatter!(ax3, analytic_V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -90,7 +92,10 @@ function main()
         println("(5%)  totalorder: ", totalorder_low)
         println("(95%)  totalorder: ", totalorder_up)
         #
-        f3, ax3, plt3 = errorbars(
+        f3 = Figure(markersize = 8,fontsize = fontsize)
+        ax3 = Axis(f3[1,1])
+        errorbars!(
+            ax3,
             1:n_dimensions,
             firstorder_med,
             firstorder_med - firstorder_low,
@@ -98,7 +103,6 @@ function main()
             whiskerwidth = 10,
             color = :red,
             label = "V-emulate",
-            title = "input dimension: $(n_dimensions)",
         )
         scatter!(ax3, estimated_sobol[:firstorder], color = :red, markersize = 8, label = "V-approx")
         scatter!(ax3, analytic_V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -122,7 +126,7 @@ function main()
     end
     # plots - first 3 dimensions
     plot_dim = n_dimensions >= 3 ? 3 : n_dimensions
-    f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4)
+    f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4, fontsize=fontsize)
     for i in 1:plot_dim
         ax2 = Axis(f2[1, i], xlabel = "x" * string(i), ylabel = "f")
         scatter!(ax2, sobol_pts[:, i], mlt_pred_y[1][:], color = :blue)

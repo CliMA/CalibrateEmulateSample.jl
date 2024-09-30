@@ -39,7 +39,7 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 3 # repeat exp with same data.
+    n_repeats = 30 # repeat exp with same data.
     n_dimensions = 3
     # To create the sampling
     n_data_gen = 800
@@ -158,15 +158,17 @@ function main()
         GC.gc() #collect garbage
 
         # PLotting:
+        fontsize = 28
         if rep_idx == 1
-            f3, ax3, plt3 = scatter(
+            f3 = Figure(markersize = 8,fontsize = fontsize)
+            ax3 = Axis(f3[1,1])
+            scatter!(
+                ax3,
                 1:n_dimensions,
                 result_preds[1][:firstorder];
                 color = :red,
-                markersize = 8,
                 marker = :cross,
                 label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -219,7 +221,10 @@ function main()
             println("(5%)  totalorder: ", totalorder_low)
             println("(95%)  totalorder: ", totalorder_up)
             #
-            f3, ax3, plt3 = errorbars(
+            f3 = Figure(markersize = 8,fontsize = fontsize)
+            ax3 = Axis(f3[1,1])
+            errorbars!(
+                ax3,
                 1:n_dimensions,
                 firstorder_med,
                 firstorder_med - firstorder_low,
@@ -227,7 +232,6 @@ function main()
                 whiskerwidth = 10,
                 color = :red,
                 label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
