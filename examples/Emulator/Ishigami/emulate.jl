@@ -36,7 +36,7 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 20 # repeat exp with same data.
+    n_repeats = 1 # repeat exp with same data.
 
     # To create the sampling
     n_data_gen = 2000
@@ -55,7 +55,7 @@ function main()
     # perform Sobol Analysis
     result = analyze(data, y)
 
-    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = 28)
     axx = Axis(f1[1, 1], xlabel = "x1", ylabel = "f")
     axy = Axis(f1[1, 2], xlabel = "x2", ylabel = "f")
     axz = Axis(f1[1, 3], xlabel = "x3", ylabel = "f")
@@ -82,7 +82,7 @@ function main()
     iopairs = PairedDataContainer(input, output)
 
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[3]
+    case = cases[2]
     decorrelate = true
     nugget = Float64(1e-12)
     overrides = Dict(
@@ -198,7 +198,7 @@ function main()
 
     # plots
 
-    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize=28)
     axx_em = Axis(f2[1, 1], xlabel = "x1", ylabel = "f")
     axy_em = Axis(f2[1, 2], xlabel = "x2", ylabel = "f")
     axz_em = Axis(f2[1, 3], xlabel = "x3", ylabel = "f")
@@ -221,7 +221,7 @@ function main()
         save(error_filepath, "error", err_cols)
 
         # print all repeats
-        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4, fontsize=48)
+        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
         ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "Error")
 
         if n_repeats == 1
