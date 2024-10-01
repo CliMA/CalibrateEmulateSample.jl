@@ -40,7 +40,7 @@ function main()
     rng = MersenneTwister(seed)
 
     n_repeats = 30 # repeat exp with same data.
-    n_dimensions = 3
+    n_dimensions = 20
     # To create the sampling
     n_data_gen = 800
 
@@ -158,7 +158,7 @@ function main()
         GC.gc() #collect garbage
 
         # PLotting:
-        fontsize = 28
+        fontsize = 24
         if rep_idx == 1
             f3 = Figure(markersize = 8,fontsize = fontsize)
             ax3 = Axis(f3[1,1])
