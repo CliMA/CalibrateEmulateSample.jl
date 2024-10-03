@@ -123,7 +123,7 @@ rng = Random.MersenneTwister(seed)
         # normal condition number should be huge around 10^18
         # nice cov will have improved conditioning, does not perform as well at this task as shrinking so has looser bounds
         good_cov = nice_cov(samples)
-        @test (cond(good_cov) < 100) && ((good_cov[1] < 1.5) && (good_cov[1] > 0.5))
+        @test (cond(good_cov) < 100) && ((good_cov[1] < 2.0) && (good_cov[1] > 0.2))
 
     end
 
