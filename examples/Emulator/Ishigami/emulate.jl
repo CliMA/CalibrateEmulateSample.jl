@@ -36,7 +36,7 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 1 # repeat exp with same data.
+    n_repeats = 30 # repeat exp with same data.
 
     # To create the sampling
     n_data_gen = 2000
@@ -82,7 +82,7 @@ function main()
     iopairs = PairedDataContainer(input, output)
 
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[2]
+    case = cases[3]
     decorrelate = true
     nugget = Float64(1e-12)
     overrides = Dict(
@@ -222,7 +222,7 @@ function main()
 
         # print all repeats
         f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
-        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "Error")
+        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
 
         if n_repeats == 1
             lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
