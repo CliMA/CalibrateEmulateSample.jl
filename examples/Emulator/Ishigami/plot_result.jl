@@ -9,7 +9,7 @@ function main()
     
     output_directory = "output"
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[3]
+    case = cases[2]
     filename = joinpath(output_directory, "results_$case.jld2")
 
     (sobol_pts, train_idx, mlt_pred_y, mlt_sobol, analytic_sobol, true_y, noise_sample, noise_cov, estimated_sobol) = load(

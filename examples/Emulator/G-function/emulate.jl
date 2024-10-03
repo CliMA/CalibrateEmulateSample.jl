@@ -40,7 +40,7 @@ function main()
     rng = MersenneTwister(seed)
 
     n_repeats = 30 # repeat exp with same data.
-    n_dimensions = 20
+    n_dimensions = 3
     # To create the sampling
     n_data_gen = 800
 
@@ -100,12 +100,11 @@ function main()
     overrides = Dict(
         "verbose" => true,
         "scheduler" => DataMisfitController(terminate_at = 1e2),
-        "n_features_opt" => 300,
-        "train_fraction" => 0.8,#0.7
+        "n_features_opt" => 150,#300
         "n_iteration" => 20,
         "cov_sample_multiplier" => 1.0,
         #        "localization" => SEC(0.1),#,Doesnt help much tbh
-        #        "accelerator" => NesterovAccelerator(),
+        "accelerator" => NesterovAccelerator(),
         "n_ensemble" => 200, #40*n_dimensions,
     )
     if case == "Prior"
@@ -116,7 +115,8 @@ function main()
 
     y_preds = []
     result_preds = []
-
+    opt_diagnostics = []
+    times = zeros(n_repeats)
     for rep_idx in 1:n_repeats
         @info "Repeat: $(rep_idx)"
         # Build ML tools
@@ -142,9 +142,17 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
-        optimize_hyperparameters!(emulator)
-
+        times[rep_idx] = @elapsed begin
+            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+            optimize_hyperparameters!(emulator)
+        end
+        
+        if case == "RF-scalar"
+            diag_tmp = reduce(hcat, get_optimizer(mlt)) # (n_iteration, dim_output=1) convergence for each scalar mode as cols
+            push!(opt_diagnostics, diag_tmp)
+        end
+        
+        @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"        
         # predict on all Sobol points with emulator (example)    
         y_pred, y_var = predict(emulator, samples', transform_to_real = true)
 
@@ -282,6 +290,32 @@ function main()
         end
     end
 
+    if length(opt_diagnostics) > 0
+        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
+
+        #save
+        error_filepath = joinpath(output_directory, "eki_conv_error.jld2")
+        save(error_filepath, "error", err_cols)
+
+        # print all repeats
+        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
+        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
+
+        if n_repeats == 1
+            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
+        else
+            for idx in 1:size(err_cols, 1)
+                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
+                series!(ax_conv, err_normalized', solid_color = :blue)
+            end
+        end
+
+        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).png"), f3, px_per_unit = 3)
+        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).pdf"), f3, px_per_unit = 3)
+
+    end
+
+    
     println(" ")
     println("True Sobol Indices")
     println("******************")
@@ -296,10 +330,10 @@ function main()
 
     println("Sampled Emulated Sobol Indices (# obs $n_train_pts, noise var $Γ)")
     println("***************************************************************")
-
-
+    
+    
     jldsave(
-        joinpath(output_directory, "Gfunction_$(case)_$(n_dimensions).jld2");
+        joinpath(output_directory, "GFunction_$(case)_$(n_dimensions).jld2");
         sobol_pts = samples,
         train_idx = ind,
         analytic_V = V,
