@@ -192,7 +192,7 @@ function VectorRandomFeatureInterface(
         "prior" => prior, #the hyperparameter_prior (note scalings have already been applied)
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping
+        "scheduler" => EKP.DataMisfitController(terminate_at=100), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
         "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
@@ -201,7 +201,7 @@ function VectorRandomFeatureInterface(
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
-        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
     )
 
@@ -406,8 +406,10 @@ function build_models!(
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
     train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data)) # 20% split
-    n_test = n_data - n_train
+    n_train = n_data
+    n_test = n_data
+#    n_train = Int(floor(train_fraction * n_data)) # 20% split
+#    n_test = n_data - n_train
     n_features_opt = optimizer_options["n_features_opt"]
 
     @info (
@@ -432,12 +434,13 @@ function build_models!(
 
     end
 
-    idx_shuffle = randperm(rng, n_data)
-
-    io_pairs_opt = PairedDataContainer(
-        input_values[:, idx_shuffle],
-        reshape(output_values[:, idx_shuffle], :, size(output_values, 2)),
-    )
+    #idx_shuffle = randperm(rng, n_data)
+    io_pairs_opt = PairedDataContainer(input_values,output_values)
+    
+    #io_pairs_opt = PairedDataContainer(
+    #    input_values[:, idx_shuffle],
+    #    reshape(output_values[:, idx_shuffle], :, size(output_values, 2)),
+    #)
 
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
@@ -478,7 +481,8 @@ function build_models!(
         Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
             isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
         Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
-        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, 0.0) #flatten data
+#        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, 0.0) #flatten data
+        data = vcat(get_outputs(io_pairs_opt)[:], 0.0, 0.0) #flatten data
 
     elseif tikhonov_opt_val > 0
         # augment the state to add tikhonov
@@ -491,7 +495,8 @@ function build_models!(
         Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
 
         data = vcat(
-            reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1),
+#            reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1),
+            get_outputs(io_pairs_opt)[:],
             0.0,
             0.0,
             zeros(size(Γ, 1) - outsize, 1),

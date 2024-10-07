@@ -156,7 +156,7 @@ function ScalarRandomFeatureInterface(
         "prior" => prior, #the hyperparameter_prior
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping,
+        "scheduler" => EKP.DataMisfitController(terminate_at=100), # Adaptive timestepping,
         "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
@@ -334,11 +334,13 @@ function build_models!(
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
     train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data))
-    n_test = n_data - n_train
+    n_train=n_data
+    n_test = n_data
+#    n_train = Int(floor(train_fraction * n_data))
+#    n_test = n_data - n_train
     n_features_opt = optimizer_options["n_features_opt"]
 
-    idx_shuffle = randperm(rng, n_data)
+    #idx_shuffle = randperm(rng, n_data)
 
     #regularization = I = 1.0 in scalar case
     regularization = I
@@ -351,9 +353,13 @@ function build_models!(
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
         io_pairs_opt = PairedDataContainer(
-            input_values[:, idx_shuffle],
-            reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
+            input_values,
+            reshape(output_values[i,:],1,size(output_values, 2)),
         )
+        #io_pairs_opt = PairedDataContainer(
+        #    input_values[:, idx_shuffle],
+        #    reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
+        #)
 
         multithread = optimizer_options["multithread"]
         if multithread == "ensemble"
@@ -415,7 +421,8 @@ function build_models!(
         localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
+#        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, 0.0)
+         data = vcat(get_outputs(io_pairs_opt)[:], 0.0, 0.0)
         ekiobj = EKP.EnsembleKalmanProcess(
             initial_params,
             data,
