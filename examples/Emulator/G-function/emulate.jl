@@ -39,8 +39,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 30 # repeat exp with same data.
-    n_dimensions = 3
+    n_repeats = 30# repeat exp with same data.
+    n_dimensions = 20
     # To create the sampling
     n_data_gen = 800
 
@@ -102,9 +102,9 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 1e2),
         "n_features_opt" => 150,#300
         "n_iteration" => 20,
-        "cov_sample_multiplier" => 1.0,
+        "cov_sample_multiplier" => 2.0,
         #        "localization" => SEC(0.1),#,Doesnt help much tbh
-        "accelerator" => NesterovAccelerator(),
+        #"accelerator" => NesterovAccelerator(),
         "n_ensemble" => 200, #40*n_dimensions,
     )
     if case == "Prior"
