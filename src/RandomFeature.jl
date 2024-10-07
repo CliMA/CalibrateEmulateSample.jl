@@ -452,11 +452,13 @@ function calculate_mean_cov_and_coeffs(
 }
 
     # split data into train/test 
-    itrain = get_inputs(io_pairs)[:, 1:n_train]
-    otrain = get_outputs(io_pairs)[:, 1:n_train]
+    itrain = get_inputs(io_pairs)
+    otrain = get_outputs(io_pairs)
     io_train_cost = PairedDataContainer(itrain, otrain)
-    itest = get_inputs(io_pairs)[:, (n_train + 1):end]
-    otest = get_outputs(io_pairs)[:, (n_train + 1):end]
+#    itest = get_inputs(io_pairs)[:, (n_train + 1):end]
+#    otest = get_outputs(io_pairs)[:, (n_train + 1):end]
+    itest = get_inputs(io_pairs)
+    otest = get_outputs(io_pairs)
     input_dim = size(itrain, 1)
     output_dim = size(otrain, 1)
     n_test = size(itest, 2)
@@ -489,8 +491,9 @@ function calculate_mean_cov_and_coeffs(
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
     ## TODO - the theory states that the following should be set:
-    #    scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
-    scaled_coeffs = 1e-3 * rand(n_features)#overwrite with noise...
+    scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+
+    #scaled_coeffs = 1e-3 * rand(n_features)#overwrite with noise...
     # However the convergence is much improved with setting this to zero:
     #scaled_coeffs = 0    
     if decomp_type == "cholesky"
