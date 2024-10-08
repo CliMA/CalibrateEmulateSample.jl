@@ -192,7 +192,7 @@ function VectorRandomFeatureInterface(
         "prior" => prior, #the hyperparameter_prior (note scalings have already been applied)
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(terminate_at=100), # Adaptive timestepping
+        "scheduler" => EKP.DataMisfitController(terminate_at=1000), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
         "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
@@ -203,6 +203,7 @@ function VectorRandomFeatureInterface(
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
+        "n_cross_val_sets" => 1,
     )
 
     if !isnothing(optimizer_options)
@@ -406,11 +407,10 @@ function build_models!(
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
     train_fraction = optimizer_options["train_fraction"]
-    n_train = n_data
-    n_test = n_data
-#    n_train = Int(floor(train_fraction * n_data)) # 20% split
-#    n_test = n_data - n_train
+    n_train = Int(floor(train_fraction * n_data)) # 20% split
+    n_test = n_data - n_train
     n_features_opt = optimizer_options["n_features_opt"]
+
 
     @info (
         "hyperparameter learning using $n_train training points, $n_test validation points and $n_features_opt features"
@@ -434,19 +434,24 @@ function build_models!(
 
     end
 
-    #idx_shuffle = randperm(rng, n_data)
-    io_pairs_opt = PairedDataContainer(input_values,output_values)
-    
-    #io_pairs_opt = PairedDataContainer(
-    #    input_values[:, idx_shuffle],
-    #    reshape(output_values[:, idx_shuffle], :, size(output_values, 2)),
-    #)
+    idx_shuffle = randperm(rng, n_data)
+    n_cross_val_sets = optimizer_options["n_cross_val_sets"]
+    if n_test*n_cross_val_sets > n_data
+        throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
+    end
 
+    train_idx = []
+    test_idx = []
+    for i = 1:n_cross_val_sets
+        tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
+        push!(test_idx, tmp)
+        push!(train_idx, setdiff(collect(1:n_data), tmp))
+    end
+    
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
     cov_correction = optimizer_options["cov_correction"]
-
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
             n_cov_samples_min = n_test + 2 # diagonal case
@@ -457,58 +462,71 @@ function build_models!(
         n_cov_samples_min = (n_test * output_dim + 2)
     end
     n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
-
-    internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
-        vrfi,
-        rng,
-        μ_hp, # take mean values
-        regularization,
-        n_features_opt,
-        n_train,
-        n_test,
-        batch_sizes,
-        io_pairs_opt,
-        n_cov_samples,
-        decomp_type,
-        multithread_type,
-        cov_correction = cov_correction,
-    )
-
+    observation_vec = []
     tikhonov_opt_val = optimizer_options["tikhonov"]
-    if tikhonov_opt_val == 0
-        # Build the covariance
-        Γ = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
-            isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
-        Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
-#        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, 0.0) #flatten data
-        data = vcat(get_outputs(io_pairs_opt)[:], 0.0, 0.0) #flatten data
-
-    elseif tikhonov_opt_val > 0
-        # augment the state to add tikhonov
-        outsize = size(internal_Γ, 1)
-        Γ = zeros(outsize + n_hp, outsize + n_hp)
-        Γ[1:outsize, 1:outsize] = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
-        Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
-
-        Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
-
-        data = vcat(
-#            reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1),
-            get_outputs(io_pairs_opt)[:],
+    for cv_idx = 1:n_cross_val_sets
+        internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
+            vrfi,
+            rng,
+            μ_hp, # take mean values
+            regularization,
+            n_features_opt,
+            train_idx[cv_idx],
+            test_idx[cv_idx],
+            batch_sizes,
+            input_output_pairs,
+            n_cov_samples,
+            decomp_type,
+            multithread_type,
+            cov_correction = cov_correction,
+        )
+        
+        if tikhonov_opt_val == 0
+            # Build the covariance
+            Γ = internal_Γ
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
+                isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
+            Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
+            data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
+            
+        elseif tikhonov_opt_val > 0
+            # augment the state to add tikhonov
+            outsize = size(internal_Γ, 1)
+            Γ = zeros(outsize + n_hp, outsize + n_hp)
+            Γ[1:outsize, 1:outsize] = internal_Γ
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
+            Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
+            
+            Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
+            
+            data = vcat(
+            reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1),
             0.0,
             0.0,
             zeros(size(Γ, 1) - outsize, 1),
-        ) #flatten data with additional zeros
-    else
-        throw(
+            ) #flatten data with additional zeros
+        else
+            throw(
             ArgumentError(
                 "Tikhonov parameter must be non-negative, instead received tikhonov_opt_val=$tikhonov_opt_val",
             ),
-        )
+            )
+        end
+        if !isposdef(Γ)
+            Γ = posdef_correct(Γ)
+        end
+        push!(observation_vec, EKP.Observation(
+                Dict(
+                    "names" => "$(cv_idx)",
+                    "samples" => data[:],
+                    "covariances" => Γ,
+                ),
+            ),
+            )
+     
     end
-
+    observation = combine_observations(observation_vec)
+    
     # [3.] set up EKP optimization
     n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
     n_iteration = optimizer_options["n_iteration"]
@@ -517,16 +535,12 @@ function build_models!(
     localization = optimizer_options["localization"]
     accelerator = optimizer_options["accelerator"]
 
-    if !isposdef(Γ)
-        Γ = posdef_correct(Γ)
-    end
 
     initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
 
     ekiobj = EKP.EnsembleKalmanProcess(
         initial_params,
-        data[:],
-        Γ,
+        observation,
         Inversion(),
         scheduler = scheduler,
         rng = rng,
@@ -541,30 +555,41 @@ function build_models!(
         #get parameters:
         lvec = get_ϕ_final(prior, ekiobj)
 
-        g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
-            vrfi,
-            rng,
-            lvec,
-            regularization,
-            n_features_opt,
-            n_train,
-            n_test,
-            batch_sizes,
-            io_pairs_opt,
-            decomp_type,
-            multithread_type,
-        )
         if tikhonov_opt_val > 0
-            # augment with the computational parameters (u not ϕ)
-            uvecormat = get_u_final(ekiobj)
-            if isa(uvecormat, AbstractVector)
-                umat = reshape(uvecormat, 1, :)
-            else
-                umat = uvecormat
+            g_ens = zeros(n_cross_val_sets*(output_dim*n_test+input_dim+2),n_ensemble)
+        else
+            g_ens = zeros(n_cross_val_sets*(output_dim*n_test+2),n_ensemble)
+        end
+        for cv_idx = 1:n_cross_val_sets
+            g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
+                vrfi,
+                rng,
+                lvec,
+                regularization,
+                n_features_opt,
+                train_idx[cv_idx],
+                test_idx[cv_idx],
+                batch_sizes,
+                input_output_pairs,
+                decomp_type,
+                multithread_type,
+            )
+            if tikhonov_opt_val > 0
+                # augment with the computational parameters (u not ϕ)
+                uvecormat = get_u_final(ekiobj)
+                if isa(uvecormat, AbstractVector)
+                    umat = reshape(uvecormat, 1, :)
+                else
+                    umat = uvecormat
+                end
+                
+                g_ens_tmp = vcat(g_ens_tmp, umat)
             end
 
-            g_ens = vcat(g_ens, umat)
+            g_ens[(cv_idx-1)*(output_dim*n_test+2) + 1: cv_idx*(output_dim*n_test+2), :] = g_ens_tmp
+
         end
+
         inflation = optimizer_options["inflation"]
         if inflation > 0
             terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
@@ -574,7 +599,7 @@ function build_models!(
         if !isnothing(terminated)
             break # if the timestep was terminated due to timestepping condition
         end
-
+        
         err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
     end
