@@ -40,7 +40,7 @@ function main()
     rng = MersenneTwister(seed)
 
     n_repeats = 5 # repeat exp with same data.
-    n_dimensions = 3
+    n_dimensions = 6
     # To create the sampling
     n_data_gen = 800
 
@@ -166,7 +166,7 @@ function main()
             test_err[f_idx,rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]).^2))/length(ind_test)
 
             JLD2.save(
-                joinpath(output_directory, "diff_n_features_GFunction_$(n_dimensions)_ndata$(n_data).jld2"),
+                joinpath(output_directory, "diff_n_features_GFunction_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2"),
                 "n_features_vec", n_features_vec,
                 "timings", ttt,
                 "train_err", train_err,
