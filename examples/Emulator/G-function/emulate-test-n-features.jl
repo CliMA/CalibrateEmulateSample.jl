@@ -39,8 +39,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 30# repeat exp with same data.
-    n_dimensions = 20
+    n_repeats = 5 # repeat exp with same data.
+    n_dimensions = 6
     # To create the sampling
     n_data_gen = 800
 
@@ -69,7 +69,8 @@ function main()
     CairoMakie.save(joinpath(output_directory, "GFunction_slices_truth_$(n_dimensions).pdf"), f1, px_per_unit = 3)
 
     n_train_pts = n_dimensions * 250
-    ind = shuffle!(rng, Vector(1:n_data))[1:n_train_pts]
+    ind_total = shuffle!(rng, Vector(1:n_data))
+    ind = ind_total[1:n_train_pts]
     # now subsample the samples data
     n_tp = length(ind)
     input = zeros(n_dimensions, n_tp)
@@ -97,86 +98,101 @@ function main()
     decorrelate = true
     nugget = Float64(1e-12)
 
-    overrides = Dict(
-        "verbose" => true,
-        "scheduler" => DataMisfitController(terminate_at = 1e2),
-        "n_features_opt" => 150,#300
-        "n_iteration" => 20,
-        "cov_sample_multiplier" => 2.0,
-        #        "localization" => SEC(0.1),#,Doesnt help much tbh
-        #"accelerator" => NesterovAccelerator(),
-        "n_ensemble" => 200, #40*n_dimensions,
-    )
-    if case == "Prior"
-        # don't do anything
-        overrides["n_iteration"] = 0
-        overrides["cov_sample_multiplier"] = 0.1
-    end
+    n_features_vec = [25, 50, 100, 200, 400, 800] # < data points ideally as output dim = 1
+    ttt = zeros(length(n_features_vec),n_repeats)
+    train_err = zeros(length(n_features_vec),n_repeats)
+    test_err = zeros(length(n_features_vec),n_repeats)
 
-    y_preds = []
-    result_preds = []
-    opt_diagnostics = []
-    times = zeros(n_repeats)
-    for rep_idx in 1:n_repeats
-        @info "Repeat: $(rep_idx)"
-        # Build ML tools
-        if case == "GP"
-            gppackage = Emulators.SKLJL()
-            pred_type = Emulators.YType()
-            mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
-
-        elseif case ∈ ["RF-scalar", "Prior"]
-            rank = n_dimensions #<= 10 ? n_dimensions : 10
-            kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
-            n_features = n_dimensions <= 10 ? n_dimensions * 100 : 1000
-            if (n_features / n_train_pts > 0.9) && (n_features / n_train_pts < 1.1)
-                @warn "The number of features similar to the number of training points, poor performance expected, change one or other of these"
+    
+    for (f_idx, n_features_opt) in enumerate(n_features_vec)
+        y_preds = []
+        result_preds = []
+        
+        overrides = Dict(
+            #"verbose" => true,
+            "scheduler" => DataMisfitController(terminate_at = 1e3),
+            "n_features_opt" => n_features_opt,
+            "n_iteration" => 20,
+            "cov_sample_multiplier" => 1.0,
+            #        "localization" => SEC(0.1),#,Doesnt help much tbh
+            #        "accelerator" => NesterovAccelerator(),
+            "n_ensemble" => 100,
+            "n_cross_val_sets" => 2,
+        )
+        if case == "Prior"
+            # don't do anything
+            overrides["n_iteration"] = 0
+            overrides["cov_sample_multiplier"] = 0.1
+        end
+        
+        for rep_idx in 1:n_repeats
+            @info "Testing #features = $(n_features_opt) \n repeat $(rep_idx) of $(n_repeats)"
+            # Build ML tools
+            if case == "GP"
+                gppackage = Emulators.SKLJL()
+                pred_type = Emulators.YType()
+                mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
+                
+            elseif case ∈ ["RF-scalar", "Prior"]
+                rank = n_dimensions #<= 10 ? n_dimensions : 10
+                kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
+                n_features = n_dimensions <= 10 ? n_dimensions * 100 : 1000
+                if (n_features / n_train_pts > 0.9) && (n_features / n_train_pts < 1.1)
+                    @warn "The number of features similar to the number of training points, poor performance expected, change one or other of these"
+                end
+                mlt = ScalarRandomFeatureInterface(
+                    n_features,
+                    n_dimensions,
+                    rng = rng,
+                    kernel_structure = kernel_structure,
+                    optimizer_options = deepcopy(overrides),
+                )
             end
-            mlt = ScalarRandomFeatureInterface(
-                n_features,
-                n_dimensions,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = deepcopy(overrides),
-            )
-        end
+            
+            # Emulate
+            ttt[f_idx, rep_idx] = @elapsed begin
+                emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+                optimize_hyperparameters!(emulator)
+            end
+            
+            # errors:
+            # training error
+            y_pred, y_var = predict(emulator, get_inputs(iopairs), transform_to_real = true)
+            train_err[f_idx,rep_idx] = sqrt(sum((y_pred - get_outputs(iopairs)).^2))/n_train_pts
 
-        # Emulate
-        times[rep_idx] = @elapsed begin
-            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
-            optimize_hyperparameters!(emulator)
-        end
-        
-        if case == "RF-scalar"
-            diag_tmp = reduce(hcat, get_optimizer(mlt)) # (n_iteration, dim_output=1) convergence for each scalar mode as cols
-            push!(opt_diagnostics, diag_tmp)
-        end
-        
-        @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"        
-        # predict on all Sobol points with emulator (example)    
-        y_pred, y_var = predict(emulator, samples', transform_to_real = true)
+            # predict on all test points with emulator (example)    
+            y_pred, y_var = predict(emulator, samples', transform_to_real = true) #predict on all points
+            ind_test = ind_total[n_train_pts+1:end]
+            test_err[f_idx,rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]).^2))/length(ind_test)
 
-        # obtain emulated Sobol indices
-        result_pred = analyze(data, y_pred')
-        println("First order: ", result_pred[:firstorder])
-        println("Total order: ", result_pred[:totalorder])
+            JLD2.save(
+                joinpath(output_directory, "diff_n_features_GFunction_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2"),
+                "n_features_vec", n_features_vec,
+                "timings", ttt,
+                "train_err", train_err,
+                "test_err", test_err,
+            ) #save every iteration for safety
 
-        push!(y_preds, y_pred)
-        push!(result_preds, result_pred)
-        GC.gc() #collect garbage
-
+            
+            # obtain emulated Sobol indices
+            result_pred = analyze(data, y_pred')
+            println("First order: ", result_pred[:firstorder])
+            println("Total order: ", result_pred[:totalorder])
+            
+            push!(y_preds, y_pred)
+            push!(result_preds, result_pred)
+            GC.gc() #collect garbage
+            
         # PLotting:
-        fontsize = 24
-        if rep_idx == 1
-            f3 = Figure(markersize = 8,fontsize = fontsize)
-            ax3 = Axis(f3[1,1])
-            scatter!(
-                ax3,
+#=        if rep_idx == 1
+            f3, ax3, plt3 = scatter(
                 1:n_dimensions,
                 result_preds[1][:firstorder];
                 color = :red,
+                markersize = 8,
                 marker = :cross,
                 label = "V-emulate",
+                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -229,10 +245,7 @@ function main()
             println("(5%)  totalorder: ", totalorder_low)
             println("(95%)  totalorder: ", totalorder_up)
             #
-            f3 = Figure(markersize = 8,fontsize = fontsize)
-            ax3 = Axis(f3[1,1])
-            errorbars!(
-                ax3,
+            f3, ax3, plt3 = errorbars(
                 1:n_dimensions,
                 firstorder_med,
                 firstorder_med - firstorder_low,
@@ -240,6 +253,7 @@ function main()
                 whiskerwidth = 10,
                 color = :red,
                 label = "V-emulate",
+                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -288,34 +302,12 @@ function main()
                 px_per_unit = 3,
             )
         end
-    end
-
-    if length(opt_diagnostics) > 0
-        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
-
-        #save
-        error_filepath = joinpath(output_directory, "eki_conv_error.jld2")
-        save(error_filepath, "error", err_cols)
-
-        # print all repeats
-        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
-        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
-
-        if n_repeats == 1
-            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
-        else
-            for idx in 1:size(err_cols, 1)
-                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
-                series!(ax_conv, err_normalized', solid_color = :blue)
-            end
+            
         end
-
-        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).png"), f3, px_per_unit = 3)
-        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).pdf"), f3, px_per_unit = 3)
-
+            =#
+        end
     end
 
-    
     println(" ")
     println("True Sobol Indices")
     println("******************")
@@ -330,10 +322,10 @@ function main()
 
     println("Sampled Emulated Sobol Indices (# obs $n_train_pts, noise var $Γ)")
     println("***************************************************************")
-    
-    
+
+
     jldsave(
-        joinpath(output_directory, "GFunction_$(case)_$(n_dimensions).jld2");
+        joinpath(output_directory, "Gfunction_$(case)_$(n_dimensions).jld2");
         sobol_pts = samples,
         train_idx = ind,
         analytic_V = V,

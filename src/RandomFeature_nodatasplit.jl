@@ -431,8 +431,8 @@ function calculate_mean_cov_and_coeffs(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    train_idx::VV,
-    test_idx::VV,
+    n_train::Int,
+    n_test::Int,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -444,7 +444,6 @@ function calculate_mean_cov_and_coeffs(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
-    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
     M <: AbstractMatrix{<:AbstractFloat},
@@ -453,15 +452,16 @@ function calculate_mean_cov_and_coeffs(
 }
 
     # split data into train/test 
-    itrain = get_inputs(io_pairs)[:, train_idx]
-    otrain = get_outputs(io_pairs)[:, train_idx]
+    itrain = get_inputs(io_pairs)
+    otrain = get_outputs(io_pairs)
     io_train_cost = PairedDataContainer(itrain, otrain)
-    itest = get_inputs(io_pairs)[:, test_idx]
-    otest = get_outputs(io_pairs)[:, test_idx]
+#    itest = get_inputs(io_pairs)[:, (n_train + 1):end]
+#    otest = get_outputs(io_pairs)[:, (n_train + 1):end]
+    itest = get_inputs(io_pairs)
+    otest = get_outputs(io_pairs)
     input_dim = size(itrain, 1)
     output_dim = size(otrain, 1)
     n_test = size(itest, 2)
-    
     # build and fit the RF
     rfm = RFM_from_hyperparameters(
         rfi,
@@ -605,8 +605,8 @@ function estimate_mean_and_coeffnorm_covariance(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    train_idx::VV,
-    test_idx::VV,
+    n_train::Int,
+    n_test::Int,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     n_samples::Int,
@@ -618,14 +618,12 @@ function estimate_mean_and_coeffnorm_covariance(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
-    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
 
     output_dim = size(get_outputs(io_pairs), 1)
-    n_test = length(test_idx)
-    
+
     means = zeros(output_dim, n_samples, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
     moc_tmp = similar(mean_of_covs)
@@ -633,7 +631,7 @@ function estimate_mean_and_coeffnorm_covariance(
     buffer = zeros(n_test, output_dim, n_features)
     complexity = zeros(1, n_samples)
     coeffl2norm = zeros(1, n_samples)
-    println("estimate cov with " * string(n_samples) * " iterations...")
+    println("estimate cov with " * string(n_samples * repeats) * " iterations...")
 
     for i in ProgressBar(1:n_samples)
         for j in 1:repeats
@@ -643,8 +641,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 l,
                 regularization,
                 n_features,
-                train_idx,
-                test_idx,
+                n_train,
+                n_test,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -710,8 +708,8 @@ function calculate_ensemble_mean_and_coeffnorm(
     lvecormat::VorM,
     regularization::MorUSorD,
     n_features::Int,
-    train_idx::VV,
-    test_idx::VV,
+    n_train::Int,
+    n_test::Int,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -721,7 +719,6 @@ function calculate_ensemble_mean_and_coeffnorm(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     VorM <: AbstractVecOrMat,
-    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
@@ -732,8 +729,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     N_ens = size(lmat, 2)
     output_dim = size(get_outputs(io_pairs), 1)
-    n_test = length(test_idx)
-    
+
     means = zeros(output_dim, N_ens, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
     buffer = zeros(n_test, output_dim, n_features)
@@ -742,7 +738,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     moc_tmp = similar(mean_of_covs)
     mtmp = zeros(output_dim, n_test)
 
-    println("calculating " * string(N_ens) * " ensemble members...")
+    println("calculating " * string(N_ens * repeats) * " ensemble members...")
 
     for i in ProgressBar(1:N_ens)
         for j in collect(1:repeats)
@@ -754,8 +750,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                 l,
                 regularization,
                 n_features,
-                train_idx,
-                test_idx,
+                n_train,
+                n_test,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -799,8 +795,8 @@ function estimate_mean_and_coeffnorm_covariance(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    train_idx::VV,
-    test_idx::VV,
+    n_train::Int,
+    n_test::Int,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     n_samples::Int,
@@ -812,14 +808,13 @@ function estimate_mean_and_coeffnorm_covariance(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
-    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
 
     output_dim = size(get_outputs(io_pairs), 1)
-    n_test = length(test_idx)
-    println("estimate cov with " * string(n_samples) * " iterations...")
+
+    println("estimate cov with " * string(n_samples * repeats) * " iterations...")
 
     nthreads = Threads.nthreads()
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
@@ -848,8 +843,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 l,
                 regularization,
                 n_features,
-                train_idx,
-                test_idx,
+                n_train,
+                n_test,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -922,8 +917,8 @@ function calculate_ensemble_mean_and_coeffnorm(
     lvecormat::VorM,
     regularization::MorUSorD,
     n_features::Int,
-    train_idx::VV,
-    test_idx::VV,
+    n_train::Int,
+    n_test::Int,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -933,7 +928,6 @@ function calculate_ensemble_mean_and_coeffnorm(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     VorM <: AbstractVecOrMat,
-    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
@@ -944,10 +938,10 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     N_ens = size(lmat, 2)
     output_dim = size(get_outputs(io_pairs), 1)
-    n_test = length(test_idx)
 
 
-    println("calculating " * string(N_ens) * " ensemble members...")
+
+    println("calculating " * string(N_ens * repeats) * " ensemble members...")
 
     nthreads = Threads.nthreads()
     c_list = [zeros(1, N_ens) for i in 1:nthreads]
@@ -974,8 +968,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                 l,
                 regularization,
                 n_features,
-                train_idx,
-                test_idx,
+                n_train,
+                n_test,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
