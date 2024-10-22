@@ -1,4 +1,3 @@
-
 using OrdinaryDiffEq
 using Random, Distributions, LinearAlgebra
 ENV["GKSwstype"] = "100"
@@ -27,7 +26,7 @@ function main()
     # rng
     rng = MersenneTwister(1232435)
 
-    n_repeats = 1#30 # repeat exp with same data.
+    n_repeats = 20 # repeat exp with same data.
     println("run experiment $n_repeats times")
 
     #for later plots
@@ -85,7 +84,9 @@ function main()
     n_tp = length(ind)
     input = zeros(3, n_tp)
     output = zeros(3, n_tp)
-    Γy = 1e-2 * I(3)
+    noise_var = 1e-4
+    Γy = noise_var * I(3)
+    @info "with noise size: $(noise_var)"
     noise = rand(rng, MvNormal(zeros(3), Γy), n_tp)
     for i in 1:n_tp
         input[:, i] = sol.u[ind[i]]
@@ -95,27 +96,27 @@ function main()
 
 
     # Emulate
-    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
+    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep","RF-svd-sep"]
 
-    case = cases[5]
+    case = cases[8]
 
-    nugget = Float64(1e-12)
+    nugget = Float64(1e-8)
     u_test = []
     u_hist = []
     train_err = []
     opt_diagnostics = []
-
     for rep_idx in 1:n_repeats
-
+        @info "Repeat: $(rep_idx)"
         rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
             "cov_sample_multiplier" => 1.0, #5.0,
             "n_features_opt" => 150,
-            "n_iteration" => 20,
-            "accelerator" => NesterovAccelerator(),
-            #"localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.05,1.0), # localization / s
+            "n_iteration" => 10,
+            #"accelerator" => DefaultAccelerator(),
+            #"localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.01,1.0), # localization / s
             "n_ensemble" => 200,
             "verbose" => true,
+            "n_cross_val_sets" => 2,
         )
 
 
@@ -175,8 +176,8 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-nosvd-sep"]
-            kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(3, nugget))
+        elseif case ∈ ["RF-nosvd-sep", "RF-svd-sep"]
+            kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(1, nugget))
             n_features = 500
             mlt = VectorRandomFeatureInterface(
                 n_features,

@@ -28,7 +28,7 @@ function main()
 
     n_repeats = 20 # repeat exp with same data.
     println("run experiment $n_repeats times")
-    rank_test = 1:9 # must be 1:k for now
+    rank_test = 1:6 # must be 1:k for now
     n_iteration = 20
 
     #for later plots
@@ -98,9 +98,9 @@ function main()
 
 
     # Emulate
-    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
+    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep", "RF-svd-sep"]
 
-    case = cases[5]
+    case = cases[8]
 
     nugget = Float64(1e-8)
     u_test = []
@@ -141,6 +141,21 @@ function main()
                     kernel_structure = kernel_structure,
                     optimizer_options = rf_optimizer_overrides,
             )
+            elseif case ∈ ["RF-svd-sep"]
+                rank_out = Int(ceil(rank_val/3)) # 1 1 1 2 2 2 
+                rank_in = rank_val - 3*(rank_out-1) # 1 2 3 1 2 3
+                @info "Test rank in: $(rank_in) out: $(rank_out)"
+                kernel_structure = SeparableKernel(LowRankFactor(rank_in, nugget), LowRankFactor(rank_out, nugget))
+                n_features = 500
+                mlt = VectorRandomFeatureInterface(
+                    n_features,
+                    3,
+                    3,
+                    rng = rng,
+                    kernel_structure = kernel_structure,
+                    optimizer_options = rf_optimizer_overrides,
+                )
+
             end
             
             #save config for RF
