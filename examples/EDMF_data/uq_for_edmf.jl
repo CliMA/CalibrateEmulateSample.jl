@@ -41,7 +41,7 @@ function main()
         "RF-vector-svd-sep", #Bad kernel for comparison
         "RF-vector-nosvd-nonsep",
     ]
-    case = cases[5]
+    case = cases[3]
 
     # Output figure save directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
@@ -235,7 +235,7 @@ function main()
             noise_learn = false,
         )
     elseif case ∈ ["RF-vector-svd-sep"]
-        kernel_structure = SeparableKernel(LowRankFactor(kernel_rank, nugget),LowRankFactor(kernel_rank,nugget))
+        kernel_structure = SeparableKernel(LowRankFactor(5, nugget),LowRankFactor(kernel_rank,nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
