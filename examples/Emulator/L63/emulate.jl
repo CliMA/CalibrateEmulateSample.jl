@@ -98,7 +98,7 @@ function main()
     # Emulate
     cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep","RF-svd-sep"]
 
-    case = cases[8]
+    case = cases[7]
 
     nugget = Float64(1e-8)
     u_test = []
@@ -212,7 +212,7 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # diagnostics
-        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep"]
+        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep", "RF-svd-sep"]]
             push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec  -> vec
         end
 
