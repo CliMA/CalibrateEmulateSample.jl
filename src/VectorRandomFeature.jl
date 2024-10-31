@@ -159,7 +159,7 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
       - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
-
+      - "n_cross_val_sets" => 1, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 
 """
 function VectorRandomFeatureInterface(
@@ -203,7 +203,7 @@ function VectorRandomFeatureInterface(
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
-        "n_cross_val_sets" => 1,
+        "n_cross_val_sets" => 1, # if set to 0, removes data split. i.e takes train & test to be the same data set
     )
 
     if !isnothing(optimizer_options)
@@ -419,14 +419,15 @@ function build_models!(
         n_train = n_data
         n_test = n_data    
     else
-        if n_test*n_cross_val_sets > n_data
-            throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
-        end
-
         train_fraction = optimizer_options["train_fraction"]
         n_train = Int(floor(train_fraction * n_data)) # 20% split
         n_test = n_data - n_train
 
+        if n_test*n_cross_val_sets > n_data
+            throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
+        end
+
+        
         for i = 1:n_cross_val_sets
             tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
             push!(test_idx, tmp)
