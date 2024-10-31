@@ -406,16 +406,36 @@ function build_models!(
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
-    train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data)) # 20% split
-    n_test = n_data - n_train
     n_features_opt = optimizer_options["n_features_opt"]
+    idx_shuffle = randperm(rng, n_data)
+    n_cross_val_sets = Int(optimizer_options["n_cross_val_sets"])
+    
+    train_idx = []
+    test_idx = []
+    if n_cross_val_sets == 0 
+        push!(train_idx,idx_shuffle)
+        push!(test_idx,idx_shuffle)
+        n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
+        n_train = n_data
+        n_test = n_data    
+    else
+        if n_test*n_cross_val_sets > n_data
+            throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
+        end
 
+        train_fraction = optimizer_options["train_fraction"]
+        n_train = Int(floor(train_fraction * n_data)) # 20% split
+        n_test = n_data - n_train
 
+        for i = 1:n_cross_val_sets
+            tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
+            push!(test_idx, tmp)
+            push!(train_idx, setdiff(collect(1:n_data), tmp))
+        end
+    end
     @info (
         "hyperparameter learning using $n_train training points, $n_test validation points and $n_features_opt features"
     )
-
 
     # regularization_matrix = nothing when we use scaled SVD to decorrelate the space,
     # in this setting, noise = I
@@ -432,22 +452,7 @@ function build_models!(
             regularization = regularization_matrix
         end
 
-    end
-
-    idx_shuffle = randperm(rng, n_data)
-    n_cross_val_sets = optimizer_options["n_cross_val_sets"]
-    if n_test*n_cross_val_sets > n_data
-        throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
-    end
-
-    train_idx = []
-    test_idx = []
-    for i = 1:n_cross_val_sets
-        tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
-        push!(test_idx, tmp)
-        push!(train_idx, setdiff(collect(1:n_data), tmp))
-    end
-    
+    end    
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]

@@ -166,7 +166,7 @@ function ScalarRandomFeatureInterface(
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
-        "n_cross_val_sets" => 1,
+        "n_cross_val_sets" => 1, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
     )
 
     if !isnothing(optimizer_options)
@@ -334,24 +334,39 @@ function build_models!(
 
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
-    train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data))
-    n_test = n_data - n_train
+    idx_shuffle = randperm(rng, n_data)
+    n_cross_val_sets = Int(optimizer_options["n_cross_val_sets"])
     n_features_opt = optimizer_options["n_features_opt"]
 
-    idx_shuffle = randperm(rng, n_data)
-    n_cross_val_sets = optimizer_options["n_cross_val_sets"]
-    if n_test*n_cross_val_sets > n_data
-        throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
-    end
     train_idx = []
     test_idx = []
-    for i = 1:n_cross_val_sets
-        tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
-        push!(test_idx, tmp)
-        push!(train_idx, setdiff(collect(1:n_data), tmp))
-    end
+    n_train=0
+    n_test=0
+    if n_cross_val_sets == 0 
+        push!(train_idx,idx_shuffle)
+        push!(test_idx,idx_shuffle)
+        n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
+        n_train = n_data
+        n_test = n_data    
+    else
+        train_fraction = optimizer_options["train_fraction"]
+        n_train = Int(floor(train_fraction * n_data))
+        n_test = n_data - n_train
         
+        if n_test*n_cross_val_sets > n_data
+            throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
+        end
+
+        
+        for i = 1:n_cross_val_sets
+            tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
+            push!(test_idx, tmp)
+            push!(train_idx, setdiff(collect(1:n_data), tmp))
+        end
+    end
+    
+    
+    
     #regularization = I = 1.0 in scalar case
     regularization = I
 
