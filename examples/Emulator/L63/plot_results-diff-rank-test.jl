@@ -6,8 +6,8 @@ using JLD2
 function main()
     # filepaths
     output_directory = joinpath(@__DIR__, "output")
-    case = "RF-svd-nonsep"
-#    case = "RF-svd-sep"
+#    case = "RF-svd-nonsep"
+    case = "RF-svd-sep"
     rank_test = 1:9 # must be 1:k for now
     @info "plotting case $case for rank test $(rank_test)"
 
@@ -40,13 +40,19 @@ function main()
     save(joinpath(output_directory, "l63_diff-rank-test_eki-conv_$(case).png"), f5, px_per_unit = 3)
     save(joinpath(output_directory, "l63_diff-rank-test_eki-conv_$(case).pdf"), f5, px_per_unit = 3) 
 
+    # if including GP - either load or just put in average here:
+    gp_train_test_err=[0.0154,0.00292]
+    
     f6 = Figure(resolution = (1.618 * 300, 300), markersize = 4, fontsize=fontsize)
     if case == "RF-svd-nonsep"
         ax_error = Axis(f6[1, 1], xlabel = "rank", xticks=collect(rank_test), ylabel = "L²-error in trajectory", yscale=log10 )
-        mean_train_err = mean(train_err,dims=2)
-        mean_test_err = mean(test_err,dims=2)
-        lines!(ax_error, rank_test, mean_train_err[:], label="train" )
-        lines!(ax_error, rank_test, mean_test_err[:], label="test")
+        mean_train_err = mean(train_err[1:length(rank_test),:],dims=2)
+        mean_test_err = mean(test_err[1:length(rank_test),:],dims=2)
+        lines!(ax_error, rank_test, mean_train_err[:], label="RF-train", color=:blue, linestyle=:dash)
+        lines!(ax_error, rank_test, mean_test_err[:], label="RF-test", color=:blue)
+        hlines!(ax_error, [gp_train_test_err[1]], label="GP-train", color = :orange, linestyle=:dash)
+         hlines!(ax_error, [gp_train_test_err[2]], label="GP-test", color = :orange, linestyle=:solid)
+        
         axislegend(ax_error)
     elseif case == "RF-svd-sep"
         rank_labels = []
@@ -60,8 +66,10 @@ function main()
         ax_error = Axis(f6[1, 1], xlabel = "rank (in,out)", xticks=(rank_test,["$(rank_labels[i])" for i in idx]), ylabel = "L²-error in trajectory", yscale=log10 )
         mean_train_err = mean(train_err[idx,:],dims=2)
         mean_test_err = mean(test_err[idx,:],dims=2)
-        lines!(ax_error, rank_test, mean_train_err[:], label="train")
-        lines!(ax_error, rank_test, mean_test_err[:], label="test")
+        lines!(ax_error, rank_test, mean_train_err[:], label="RF-train", color=:blue, linestyle=:dash)
+        lines!(ax_error, rank_test, mean_test_err[:], label="RF-test", color=:blue)
+        hlines!(ax_error, [gp_train_test_err[1]], label="GP-train", color = :orange, linestyle=:dash)
+        hlines!(ax_error, [gp_train_test_err[2]], label="GP-test", color = :orange, linestyle=:solid)
         axislegend(ax_error)
     else
         throw(ArgumentError("case $(case) not found, check for typos"))

@@ -36,10 +36,11 @@ function main()
         "RF-vector-svd-sep", #Bad kernel for comparison
         "RF-vector-nosvd-nonsep",
     ]
-    case = cases[3]
+    case = cases[4]
 
-    rank_test = 1:5
-    n_repeats = 2
+    rank_test = 1:5 # for svd-sep
+#    rank_test = 3:10 # for svd-nonsep
+    n_repeats = 1
     n_iteration = 10
 
 
@@ -171,17 +172,17 @@ function main()
                 "verbose" => true,
                 "train_fraction" => train_frac,
                 "scheduler" => DataMisfitController(terminate_at = 1000),
-                "cov_sample_multiplier" => 0.5,
+                "cov_sample_multiplier" => 0.2,
                 "n_iteration" => n_iteration,
                 "n_features_opt" => Int(floor((max_feature_size/10))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
-                "n_ensemble" => 200,
+                "n_ensemble" => 400,
                 "n_cross_val_sets" => n_cross_val_sets,        
             )
             if case == "RF-prior"
                 overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)
             end
-            nugget = 1e-8 # 1e-6
+            nugget = 1e-6 # 1e-6
             input_dim = size(get_inputs(train_pairs), 1)
             output_dim = size(get_outputs(train_pairs), 1)
             decorrelate = true
@@ -269,8 +270,8 @@ function main()
             test_err[rank_id,rep_idx] = 1 / size(test_inputs, 2) * test_err_tmp[1]
 
             @info "train error ($(size(train_inputs,2)) pts): $(train_err[rank_id,rep_idx])"
-            @info "train error ($(size(test_inputs, 2)) pts): $(test_err[rank_id,rep_idx])"
-            if case != "GP"
+            @info "test error ($(size(test_inputs, 2)) pts): $(test_err[rank_id,rep_idx])"
+            if !(case ∈ ["GP", "RF-prior"])
                 opt_diagnostics[rank_id,rep_idx,:] =  get_optimizer(mlt)[1] #length-1 vec of vec -> vec
                 eki_conv_filepath = joinpath(data_save_directory, "$(case)_$(rank_val)_eki-conv.jld2")
                 save(eki_conv_filepath, "opt_diagnostics", opt_diagnostics)
