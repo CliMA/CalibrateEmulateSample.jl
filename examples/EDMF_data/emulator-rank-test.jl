@@ -36,10 +36,17 @@ function main()
         "RF-vector-svd-sep", #Bad kernel for comparison
         "RF-vector-nosvd-nonsep",
     ]
-    case = cases[4]
+    rank_cases = [
+        [0], # not used
+        [10], # some rank > 0
+        1:10, # 
+        1:5, # input rank always 5, output rank 1:5
+        1:10,
+    ]
 
-    rank_test = 1:5 # for svd-sep
-#    rank_test = 3:10 # for svd-nonsep
+    case_id = 2
+    case = cases[case_id]
+    rank_test = rank_cases[case_id]
     n_repeats = 1
     n_iteration = 10
 
@@ -134,8 +141,13 @@ function main()
         
         rng_seed = 14225
         rng = Random.MersenneTwister(rng_seed)
-        train_idx = shuffle(rng, collect(1:n_test+n_train))[1:n_train]
+
+        # random train-set
+        #        train_idx = shuffle(rng, collect(1:n_test+n_train))[1:n_train]
+        # final train earlier iteration, test final iteration
+        train_idx = collect(1:n_test+n_train)[1:n_train]
         test_idx = setdiff(collect(1:n_test+n_train),train_idx)
+        
         train_inputs = inputs[:,train_idx]
         train_outputs = outputs[:,train_idx]
 
@@ -174,7 +186,7 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 1000),
                 "cov_sample_multiplier" => 0.2,
                 "n_iteration" => n_iteration,
-                "n_features_opt" => Int(floor((max_feature_size/10))),# here: /5 with rank <= 3 works
+                "n_features_opt" => Int(floor((max_feature_size/5))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
                 "n_ensemble" => 400,
                 "n_cross_val_sets" => n_cross_val_sets,        
