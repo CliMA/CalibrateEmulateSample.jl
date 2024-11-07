@@ -77,7 +77,7 @@ function main()
     noise = rand(rng, Normal(0, Γ), n_tp)
     for i in 1:n_tp
         input[:, i] = samples[ind[i], :]
-        output[i] = y[ind[i]] + noise[i] 
+        output[i] = y[ind[i]] + noise[i]
     end
     iopairs = PairedDataContainer(input, output)
 
@@ -198,7 +198,7 @@ function main()
 
     # plots
 
-    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize=28)
+    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = 28)
     axx_em = Axis(f2[1, 1], xlabel = "x1", ylabel = "f")
     axy_em = Axis(f2[1, 2], xlabel = "x2", ylabel = "f")
     axz_em = Axis(f2[1, 3], xlabel = "x3", ylabel = "f")

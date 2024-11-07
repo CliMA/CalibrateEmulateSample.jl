@@ -461,7 +461,7 @@ function calculate_mean_cov_and_coeffs(
     input_dim = size(itrain, 1)
     output_dim = size(otrain, 1)
     n_test = size(itest, 2)
-    
+
     # build and fit the RF
     rfm = RFM_from_hyperparameters(
         rfi,
@@ -625,7 +625,7 @@ function estimate_mean_and_coeffnorm_covariance(
 
     output_dim = size(get_outputs(io_pairs), 1)
     n_test = length(test_idx)
-    
+
     means = zeros(output_dim, n_samples, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
     moc_tmp = similar(mean_of_covs)
@@ -733,7 +733,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     N_ens = size(lmat, 2)
     output_dim = size(get_outputs(io_pairs), 1)
     n_test = length(test_idx)
-    
+
     means = zeros(output_dim, N_ens, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
     buffer = zeros(n_test, output_dim, n_features)

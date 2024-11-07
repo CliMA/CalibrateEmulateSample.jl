@@ -157,7 +157,7 @@ function ScalarRandomFeatureInterface(
         "prior" => prior, #the hyperparameter_prior
         "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
         "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(terminate_at=1000), # Adaptive timestepping,
+        "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping,
         "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
@@ -341,33 +341,37 @@ function build_models!(
 
     train_idx = []
     test_idx = []
-    n_train=0
-    n_test=0
-    if n_cross_val_sets == 0 
-        push!(train_idx,idx_shuffle)
-        push!(test_idx,idx_shuffle)
+    n_train = 0
+    n_test = 0
+    if n_cross_val_sets == 0
+        push!(train_idx, idx_shuffle)
+        push!(test_idx, idx_shuffle)
         n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
         n_train = n_data
-        n_test = n_data    
+        n_test = n_data
     else
         train_fraction = optimizer_options["train_fraction"]
         n_train = Int(floor(train_fraction * n_data))
         n_test = n_data - n_train
-        
-        if n_test*n_cross_val_sets > n_data
-            throw(ArgumentError("train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets"))
+
+        if n_test * n_cross_val_sets > n_data
+            throw(
+                ArgumentError(
+                    "train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets",
+                ),
+            )
         end
 
-        
-        for i = 1:n_cross_val_sets
-            tmp = idx_shuffle[(i-1)*n_test+1:i*n_test]
+
+        for i in 1:n_cross_val_sets
+            tmp = idx_shuffle[((i - 1) * n_test + 1):(i * n_test)]
             push!(test_idx, tmp)
             push!(train_idx, setdiff(collect(1:n_data), tmp))
         end
     end
-    
-    
-    
+
+
+
     #regularization = I = 1.0 in scalar case
     regularization = I
 
@@ -377,12 +381,9 @@ function build_models!(
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
-        
-        io_pairs_opt = PairedDataContainer(
-            input_values,
-            reshape(output_values[i,:],1,size(output_values, 2)),
-        )
-       
+
+        io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
+
         multithread = optimizer_options["multithread"]
         if multithread == "ensemble"
             multithread_type = EnsembleThreading()
@@ -415,7 +416,7 @@ function build_models!(
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
         observation_vec = []
-        for cv_idx = 1:n_cross_val_sets
+        for cv_idx in 1:n_cross_val_sets
             internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
                 srfi,
                 rng,
@@ -439,13 +440,9 @@ function build_models!(
             end
             data = vcat(get_outputs(io_pairs_opt)[test_idx[cv_idx]], 0.0, 0.0)
 
-            push!(observation_vec, EKP.Observation(
-                Dict(
-                    "names" => "$(cv_idx)",
-                    "samples" => data[:],
-                    "covariances" => Γ,
-                ),
-            ),
+            push!(
+                observation_vec,
+                EKP.Observation(Dict("names" => "$(cv_idx)", "samples" => data[:], "covariances" => Γ)),
             )
         end
         observation = combine_observations(observation_vec)
@@ -475,9 +472,9 @@ function build_models!(
 
             #get parameters:
             lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
-            g_ens = zeros(n_cross_val_sets*(n_test+2),n_ensemble)
-            for cv_idx = 1:n_cross_val_sets
-        
+            g_ens = zeros(n_cross_val_sets * (n_test + 2), n_ensemble)
+            for cv_idx in 1:n_cross_val_sets
+
                 g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
                     srfi,
                     rng,
@@ -491,9 +488,9 @@ function build_models!(
                     decomp_type,
                     multithread_type,
                 )
-                g_ens[(cv_idx-1)*(n_test+2) + 1: cv_idx*(n_test+2), :] = g_ens_tmp
+                g_ens[((cv_idx - 1) * (n_test + 2) + 1):(cv_idx * (n_test + 2)), :] = g_ens_tmp
             end
-            
+
             inflation = optimizer_options["inflation"]
             if inflation > 0
                 terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation

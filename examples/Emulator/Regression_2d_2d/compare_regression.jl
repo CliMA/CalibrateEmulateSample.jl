@@ -57,8 +57,8 @@ function main()
     d = 2   # output dim
     X = 2.0 * π * rand(p, n)
     # G(x1, x2)
-    g1(x) = sin.(x[1, :]) .+ 2*cos.(2*x[2, :])    
-    g2(x) = 3*sin.(3*x[1, :]) .- 4*cos.(4*x[2, :])
+    g1(x) = sin.(x[1, :]) .+ 2 * cos.(2 * x[2, :])
+    g2(x) = 3 * sin.(3 * x[1, :]) .- 4 * cos.(4 * x[2, :])
     g1x = g1(X)
     g2x = g2(X)
     gx = zeros(2, n)
@@ -147,7 +147,8 @@ function main()
 
         # common random feature setup
         n_features = 300
-        optimizer_options = Dict("n_iteration" => 20, "n_features_opt" => 100, "n_ensemble" => 80, "cov_sample_multiplier"=>1.0)
+        optimizer_options =
+            Dict("n_iteration" => 20, "n_features_opt" => 100, "n_ensemble" => 80, "cov_sample_multiplier" => 1.0)
         nugget = 1e-12
 
 

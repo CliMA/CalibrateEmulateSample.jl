@@ -51,7 +51,7 @@ function main()
     n_iteration = 10
 
 
-    
+
     # Output figure save directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
     data_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
@@ -136,43 +136,43 @@ function main()
         truth_cov = truth_cov[good_datadim, good_datadim]
 
         # split out a training set:
-        n_test = Int(floor(0.2*length(good_particles)))
-        n_train = Int(ceil(0.8*length(good_particles)))
-        
+        n_test = Int(floor(0.2 * length(good_particles)))
+        n_train = Int(ceil(0.8 * length(good_particles)))
+
         rng_seed = 14225
         rng = Random.MersenneTwister(rng_seed)
 
         # random train-set
         #        train_idx = shuffle(rng, collect(1:n_test+n_train))[1:n_train]
         # final train earlier iteration, test final iteration
-        train_idx = collect(1:n_test+n_train)[1:n_train]
-        test_idx = setdiff(collect(1:n_test+n_train),train_idx)
-        
-        train_inputs = inputs[:,train_idx]
-        train_outputs = outputs[:,train_idx]
+        train_idx = collect(1:(n_test + n_train))[1:n_train]
+        test_idx = setdiff(collect(1:(n_test + n_train)), train_idx)
 
-        test_inputs = inputs[:,test_idx]
-        test_outputs = outputs[:,test_idx]
-        
+        train_inputs = inputs[:, train_idx]
+        train_outputs = outputs[:, train_idx]
+
+        test_inputs = inputs[:, test_idx]
+        test_outputs = outputs[:, test_idx]
+
         train_pairs = DataContainers.PairedDataContainer(train_inputs, train_outputs)
     end
-    
+
     @info "Completed data loading stage"
     println(" ")
     ##############################################
     # [3. ] Build Emulator from calibration data #
     ##############################################
 
-    opt_diagnostics = zeros(length(rank_test),n_repeats,n_iteration)
-    train_err = zeros(length(rank_test),n_repeats)
-    test_err = zeros(length(rank_test),n_repeats)
-    ttt = zeros(length(rank_test),n_repeats)
+    opt_diagnostics = zeros(length(rank_test), n_repeats, n_iteration)
+    train_err = zeros(length(rank_test), n_repeats)
+    test_err = zeros(length(rank_test), n_repeats)
+    ttt = zeros(length(rank_test), n_repeats)
 
     @info "Begin Emulation stage"
     # Create GP object
     train_frac = 0.9
     n_cross_val_sets = 2
-    max_feature_size=size(get_outputs(train_pairs), 2) * size(get_outputs(train_pairs),1) * (1-train_frac)
+    max_feature_size = size(get_outputs(train_pairs), 2) * size(get_outputs(train_pairs), 1) * (1 - train_frac)
     for (rank_id, rank_val) in enumerate(rank_test) #test over different ranks for svd-nonsep
         rng_seed = 99330
         rng = Random.MersenneTwister(rng_seed)
@@ -186,10 +186,10 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 1000),
                 "cov_sample_multiplier" => 0.2,
                 "n_iteration" => n_iteration,
-                "n_features_opt" => Int(floor((max_feature_size/5))),# here: /5 with rank <= 3 works
+                "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
                 "n_ensemble" => 400,
-                "n_cross_val_sets" => n_cross_val_sets,        
+                "n_cross_val_sets" => n_cross_val_sets,
             )
             if case == "RF-prior"
                 overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)
@@ -200,7 +200,7 @@ function main()
             decorrelate = true
 
             if case == "GP"
-                rank_val=0
+                rank_val = 0
                 gppackage = Emulators.SKLJL()
                 pred_type = Emulators.YType()
                 mlt = GaussianProcess(
@@ -210,9 +210,9 @@ function main()
                     noise_learn = false,
                 )
             elseif case ∈ ["RF-vector-svd-sep"]
-                kernel_structure = SeparableKernel(LowRankFactor(5, nugget),LowRankFactor(rank_val,nugget))
+                kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(rank_val, nugget))
                 n_features = 500
-                
+
                 mlt = VectorRandomFeatureInterface(
                     n_features,
                     input_dim,
@@ -221,11 +221,11 @@ function main()
                     kernel_structure = kernel_structure,
                     optimizer_options = overrides,
                 )
-                
+
             elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
                 kernel_structure = NonseparableKernel(LowRankFactor(rank_val, nugget))
                 n_features = 500
-                
+
                 mlt = VectorRandomFeatureInterface(
                     n_features,
                     input_dim,
@@ -237,7 +237,7 @@ function main()
             elseif case ∈ ["RF-vector-nosvd-nonsep"]
                 kernel_structure = NonseparableKernel(LowRankFactor(rank_val, nugget))
                 n_features = 500
-                
+
                 mlt = VectorRandomFeatureInterface(
                     n_features,
                     input_dim,
@@ -248,11 +248,11 @@ function main()
                 )
                 decorrelate = false
             end
-            
+
             # Fit an emulator to the data
             normalized = true
-            
-            ttt[rank_id,rep_idx] = @elapsed begin
+
+            ttt[rank_id, rep_idx] = @elapsed begin
                 emulator = Emulator(
                     mlt,
                     train_pairs;
@@ -260,7 +260,7 @@ function main()
                     normalize_inputs = normalized,
                     decorrelate = decorrelate,
                 )
-            
+
                 # Optimize the GP hyperparameters for better fit
                 optimize_hyperparameters!(emulator)
             end
@@ -271,7 +271,7 @@ function main()
                 train_mean, _ = Emulators.predict(emulator, train_inputs[:, i:i], transform_to_real = true) # 3x1
                 train_err_tmp[1] += norm(train_mean - train_outputs[:, i])
             end
-            train_err[rank_id,rep_idx] = 1 / size(train_inputs, 2) * train_err_tmp[1]
+            train_err[rank_id, rep_idx] = 1 / size(train_inputs, 2) * train_err_tmp[1]
 
             # error of emulator on test points: 
             test_err_tmp = [0.0]
@@ -279,32 +279,36 @@ function main()
                 test_mean, _ = Emulators.predict(emulator, test_inputs[:, i:i], transform_to_real = true) # 3x1
                 test_err_tmp[1] += norm(test_mean - test_outputs[:, i])
             end
-            test_err[rank_id,rep_idx] = 1 / size(test_inputs, 2) * test_err_tmp[1]
+            test_err[rank_id, rep_idx] = 1 / size(test_inputs, 2) * test_err_tmp[1]
 
             @info "train error ($(size(train_inputs,2)) pts): $(train_err[rank_id,rep_idx])"
             @info "test error ($(size(test_inputs, 2)) pts): $(test_err[rank_id,rep_idx])"
             if !(case ∈ ["GP", "RF-prior"])
-                opt_diagnostics[rank_id,rep_idx,:] =  get_optimizer(mlt)[1] #length-1 vec of vec -> vec
+                opt_diagnostics[rank_id, rep_idx, :] = get_optimizer(mlt)[1] #length-1 vec of vec -> vec
                 eki_conv_filepath = joinpath(data_save_directory, "$(case)_$(rank_val)_eki-conv.jld2")
                 save(eki_conv_filepath, "opt_diagnostics", opt_diagnostics)
             end
 
-#            emulator_filepath = joinpath(data_save_directory, "$(case)_$(rank_val)_emulator.jld2")
-#            save(emulator_filepath, "emulator", emulator)
+            #            emulator_filepath = joinpath(data_save_directory, "$(case)_$(rank_val)_emulator.jld2")
+            #            save(emulator_filepath, "emulator", emulator)
 
             JLD2.save(
-                 joinpath(data_save_directory, case * "_edmf_rank_test_results.jld2"),
-                     "rank_test", collect(rank_test),
-                     "timings", ttt,
-                     "train_err", train_err,
-                     "test_err", test_err,
-                 )
+                joinpath(data_save_directory, case * "_edmf_rank_test_results.jld2"),
+                "rank_test",
+                collect(rank_test),
+                "timings",
+                ttt,
+                "train_err",
+                train_err,
+                "test_err",
+                test_err,
+            )
         end
     end
 
-    
-    
-    
+
+
+
     @info "Finished Emulation stage"
 end
 

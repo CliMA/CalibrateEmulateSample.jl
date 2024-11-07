@@ -1,110 +1,110 @@
 
-  using GlobalSensitivityAnalysis
-  const GSA = GlobalSensitivityAnalysis
-  using Distributions
-  using DataStructures
-  using Random
-  using LinearAlgebra
-  import StatsBase: percentile
-  using JLD2
+using GlobalSensitivityAnalysis
+const GSA = GlobalSensitivityAnalysis
+using Distributions
+using DataStructures
+using Random
+using LinearAlgebra
+import StatsBase: percentile
+using JLD2
 
-  using CalibrateEmulateSample.EnsembleKalmanProcesses
-  using CalibrateEmulateSample.Emulators
-  using CalibrateEmulateSample.DataContainers
-  using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.Emulators
+using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 
-  using CairoMakie, ColorSchemes #for plots
-  seed = 2589436
+using CairoMakie, ColorSchemes #for plots
+seed = 2589436
 
-  output_directory = joinpath(@__DIR__, "output")
-  if !isdir(output_directory)
-      mkdir(output_directory)
-  end
-
-
-  inner_func(x::AV, a::AV) where {AV <: AbstractVector} = prod((abs.(4 * x .- 2) + a) ./ (1 .+ a))
-
-  "G-Function taken from https://www.sfu.ca/~ssurjano/gfunc.html"
-  function GFunction(x::AM, a::AV) where {AM <: AbstractMatrix, AV <: AbstractVector}
-      @assert size(x, 1) == length(a)
-      return mapslices(y -> inner_func(y, a), x; dims = 1) #applys the map to columns
-  end
-
-  function GFunction(x::AM) where {AM <: AbstractMatrix}
-      a = [(i - 1.0) / 2.0 for i in 1:size(x, 1)]
-      return GFunction(x, a)
-  end
-
-  function main()
-
-      rng = MersenneTwister(seed)
-
-      n_repeats = 20# repeat exp with same data.
-      n_dimensions = 20
-      # To create the sampling
-      n_data_gen = 800
-
-      data =
-          SobolData(params = OrderedDict([Pair(Symbol("x", i), Uniform(0, 1)) for i in 1:n_dimensions]), N = n_data_gen)
-
-      # To perform global analysis,
-      # one must generate samples using Sobol sequence (i.e. creates more than N points)
-      samples = GSA.sample(data)
-      n_data = size(samples, 1) # [n_samples x n_dim]
-      println("number of sobol points: ", n_data)
-      # run model (example)
-      y = GFunction(samples')' # G is applied to columns
-      # perform Sobol Analysis
-      result = analyze(data, y)
-
-      # plot the first 3 dimensions
-      plot_dim = n_dimensions >= 3 ? 3 : n_dimensions
-      f1 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4)
-      for i in 1:plot_dim
-          ax = Axis(f1[1, i], xlabel = "x" * string(i), ylabel = "f")
-          scatter!(ax, samples[:, i], y[:], color = :orange)
-      end
-
-      CairoMakie.save(joinpath(output_directory, "GFunction_slices_truth_$(n_dimensions).png"), f1, px_per_unit = 3)
-      CairoMakie.save(joinpath(output_directory, "GFunction_slices_truth_$(n_dimensions).pdf"), f1, px_per_unit = 3)
-
-      n_train_pts = n_dimensions * 250
-      ind = shuffle!(rng, Vector(1:n_data))[1:n_train_pts]
-      # now subsample the samples data
-      n_tp = length(ind)
-      input = zeros(n_dimensions, n_tp)
-      output = zeros(1, n_tp)
-      Γ = 1e-3
-      noise = rand(rng, Normal(0, Γ), n_tp)
-      for i in 1:n_tp
-          input[:, i] = samples[ind[i], :]
-          output[i] = y[ind[i]] + noise[i]
-      end
-      iopairs = PairedDataContainer(input, output)
-
-      # analytic sobol indices taken from
-      # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8989694/pdf/main.pdf
-      a = [(i - 1.0) / 2.0 for i in 1:n_dimensions]  # a_i < a_j => a_i more sensitive
-      prod_tmp = prod(1 .+ 1 ./ (3 .* (1 .+ a) .^ 2)) - 1
-      V = [(1 / (3 * (1 + ai)^2)) / prod_tmp for ai in a]
-      prod_tmp2 = [prod(1 .+ 1 ./ (3 .* (1 .+ a[1:end .!== j]) .^ 2)) for j in 1:n_dimensions]
-      TV = [(1 / (3 * (1 + ai)^2)) * prod_tmp2[i] / prod_tmp for (i, ai) in enumerate(a)]
+output_directory = joinpath(@__DIR__, "output")
+if !isdir(output_directory)
+    mkdir(output_directory)
+end
 
 
+inner_func(x::AV, a::AV) where {AV <: AbstractVector} = prod((abs.(4 * x .- 2) + a) ./ (1 .+ a))
 
-      cases = ["Prior", "GP", "RF-scalar"]
-      case = cases[3]
-      decorrelate = true
-      nugget = Float64(1e-12)
+"G-Function taken from https://www.sfu.ca/~ssurjano/gfunc.html"
+function GFunction(x::AM, a::AV) where {AM <: AbstractMatrix, AV <: AbstractVector}
+    @assert size(x, 1) == length(a)
+    return mapslices(y -> inner_func(y, a), x; dims = 1) #applys the map to columns
+end
 
-      overrides = Dict(
-          "verbose" => true,
-          "scheduler" => DataMisfitController(terminate_at = 1e2),
-          "n_features_opt" => 150,
-          "n_iteration" => 10,
-          "cov_sample_multiplier" => 3.0,
-          #"localization" => SEC(0.1),#,Doesnt help much tbh
-          #"accelerator" => NesterovAccelerator(),
+function GFunction(x::AM) where {AM <: AbstractMatrix}
+    a = [(i - 1.0) / 2.0 for i in 1:size(x, 1)]
+    return GFunction(x, a)
+end
+
+function main()
+
+    rng = MersenneTwister(seed)
+
+    n_repeats = 20# repeat exp with same data.
+    n_dimensions = 20
+    # To create the sampling
+    n_data_gen = 800
+
+    data =
+        SobolData(params = OrderedDict([Pair(Symbol("x", i), Uniform(0, 1)) for i in 1:n_dimensions]), N = n_data_gen)
+
+    # To perform global analysis,
+    # one must generate samples using Sobol sequence (i.e. creates more than N points)
+    samples = GSA.sample(data)
+    n_data = size(samples, 1) # [n_samples x n_dim]
+    println("number of sobol points: ", n_data)
+    # run model (example)
+    y = GFunction(samples')' # G is applied to columns
+    # perform Sobol Analysis
+    result = analyze(data, y)
+
+    # plot the first 3 dimensions
+    plot_dim = n_dimensions >= 3 ? 3 : n_dimensions
+    f1 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4)
+    for i in 1:plot_dim
+        ax = Axis(f1[1, i], xlabel = "x" * string(i), ylabel = "f")
+        scatter!(ax, samples[:, i], y[:], color = :orange)
+    end
+
+    CairoMakie.save(joinpath(output_directory, "GFunction_slices_truth_$(n_dimensions).png"), f1, px_per_unit = 3)
+    CairoMakie.save(joinpath(output_directory, "GFunction_slices_truth_$(n_dimensions).pdf"), f1, px_per_unit = 3)
+
+    n_train_pts = n_dimensions * 250
+    ind = shuffle!(rng, Vector(1:n_data))[1:n_train_pts]
+    # now subsample the samples data
+    n_tp = length(ind)
+    input = zeros(n_dimensions, n_tp)
+    output = zeros(1, n_tp)
+    Γ = 1e-3
+    noise = rand(rng, Normal(0, Γ), n_tp)
+    for i in 1:n_tp
+        input[:, i] = samples[ind[i], :]
+        output[i] = y[ind[i]] + noise[i]
+    end
+    iopairs = PairedDataContainer(input, output)
+
+    # analytic sobol indices taken from
+    # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8989694/pdf/main.pdf
+    a = [(i - 1.0) / 2.0 for i in 1:n_dimensions]  # a_i < a_j => a_i more sensitive
+    prod_tmp = prod(1 .+ 1 ./ (3 .* (1 .+ a) .^ 2)) - 1
+    V = [(1 / (3 * (1 + ai)^2)) / prod_tmp for ai in a]
+    prod_tmp2 = [prod(1 .+ 1 ./ (3 .* (1 .+ a[1:end .!== j]) .^ 2)) for j in 1:n_dimensions]
+    TV = [(1 / (3 * (1 + ai)^2)) * prod_tmp2[i] / prod_tmp for (i, ai) in enumerate(a)]
+
+
+
+    cases = ["Prior", "GP", "RF-scalar"]
+    case = cases[3]
+    decorrelate = true
+    nugget = Float64(1e-12)
+
+    overrides = Dict(
+        "verbose" => true,
+        "scheduler" => DataMisfitController(terminate_at = 1e2),
+        "n_features_opt" => 150,
+        "n_iteration" => 10,
+        "cov_sample_multiplier" => 3.0,
+        #"localization" => SEC(0.1),#,Doesnt help much tbh
+        #"accelerator" => NesterovAccelerator(),
         "n_ensemble" => 100, #40*n_dimensions,
         "n_cross_val_sets" => 4,
     )
@@ -147,13 +147,13 @@
             emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
             optimize_hyperparameters!(emulator)
         end
-        
+
         if case == "RF-scalar"
             diag_tmp = reduce(hcat, get_optimizer(mlt)) # (n_iteration, dim_output=1) convergence for each scalar mode as cols
             push!(opt_diagnostics, diag_tmp)
         end
-        
-        @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"        
+
+        @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"
         # predict on all Sobol points with emulator (example)    
         y_pred, y_var = predict(emulator, samples', transform_to_real = true)
 
@@ -169,8 +169,8 @@
         # PLotting:
         fontsize = 24
         if rep_idx == 1
-            f3 = Figure(markersize = 8,fontsize = fontsize)
-            ax3 = Axis(f3[1,1])
+            f3 = Figure(markersize = 8, fontsize = fontsize)
+            ax3 = Axis(f3[1, 1])
             scatter!(
                 ax3,
                 1:n_dimensions,
@@ -230,8 +230,8 @@
             println("(5%)  totalorder: ", totalorder_low)
             println("(95%)  totalorder: ", totalorder_up)
             #
-            f3 = Figure(markersize = 8,fontsize = fontsize)
-            ax3 = Axis(f3[1,1])
+            f3 = Figure(markersize = 8, fontsize = fontsize)
+            ax3 = Axis(f3[1, 1])
             errorbars!(
                 ax3,
                 1:n_dimensions,
@@ -316,7 +316,7 @@
 
     end
 
-    
+
     println(" ")
     println("True Sobol Indices")
     println("******************")
@@ -331,8 +331,8 @@
 
     println("Sampled Emulated Sobol Indices (# obs $n_train_pts, noise var $Γ)")
     println("***************************************************************")
-    
-    
+
+
     jldsave(
         joinpath(output_directory, "GFunction_$(case)_$(n_dimensions).jld2");
         sobol_pts = samples,

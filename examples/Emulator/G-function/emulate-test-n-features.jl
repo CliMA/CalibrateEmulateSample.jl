@@ -99,16 +99,16 @@ function main()
     nugget = Float64(1e-12)
 
     n_features_vec = [25, 50, 100, 200, 400, 800] # < data points ideally as output dim = 1
-    ttt = zeros(length(n_features_vec),n_repeats)
-    train_err = zeros(length(n_features_vec),n_repeats)
-    test_err = zeros(length(n_features_vec),n_repeats)
+    ttt = zeros(length(n_features_vec), n_repeats)
+    train_err = zeros(length(n_features_vec), n_repeats)
+    test_err = zeros(length(n_features_vec), n_repeats)
     n_cross_val_sets = 2
 
-    
+
     for (f_idx, n_features_opt) in enumerate(n_features_vec)
         y_preds = []
         result_preds = []
-        
+
         overrides = Dict(
             #"verbose" => true,
             "scheduler" => DataMisfitController(terminate_at = 1e3),
@@ -125,7 +125,7 @@ function main()
             overrides["n_iteration"] = 0
             overrides["cov_sample_multiplier"] = 0.1
         end
-        
+
         for rep_idx in 1:n_repeats
             @info "Testing #features = $(n_features_opt) \n repeat $(rep_idx) of $(n_repeats)"
             # Build ML tools
@@ -149,163 +149,170 @@ function main()
                     optimizer_options = deepcopy(overrides),
                 )
             end
-            
+
             # Emulate
             ttt[f_idx, rep_idx] = @elapsed begin
                 emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
                 optimize_hyperparameters!(emulator)
             end
-            
+
             # errors:
             # training error
             y_pred, y_var = predict(emulator, get_inputs(iopairs), transform_to_real = true)
-            train_err[f_idx,rep_idx] = sqrt(sum((y_pred - get_outputs(iopairs)).^2))/n_train_pts
+            train_err[f_idx, rep_idx] = sqrt(sum((y_pred - get_outputs(iopairs)) .^ 2)) / n_train_pts
 
             # predict on all test points with emulator (example)    
             y_pred, y_var = predict(emulator, samples', transform_to_real = true) #predict on all points
-            ind_test = ind_total[n_train_pts+1:end]
-            test_err[f_idx,rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]).^2))/length(ind_test)
+            ind_test = ind_total[(n_train_pts + 1):end]
+            test_err[f_idx, rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]) .^ 2)) / length(ind_test)
 
             JLD2.save(
-                joinpath(output_directory, "diff_n_features_GFunction_$(case)_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2"),
-                "n_features_vec", n_features_vec,
-                "timings", ttt,
-                "train_err", train_err,
-                "test_err", test_err,
+                joinpath(
+                    output_directory,
+                    "diff_n_features_GFunction_$(case)_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2",
+                ),
+                "n_features_vec",
+                n_features_vec,
+                "timings",
+                ttt,
+                "train_err",
+                train_err,
+                "test_err",
+                test_err,
             ) #save every iteration for safety
 
-            
+
             # obtain emulated Sobol indices
             result_pred = analyze(data, y_pred')
             println("First order: ", result_pred[:firstorder])
             println("Total order: ", result_pred[:totalorder])
-            
+
             push!(y_preds, y_pred)
             push!(result_preds, result_pred)
             GC.gc() #collect garbage
-            
-        # PLotting:
-#=        if rep_idx == 1
-            f3, ax3, plt3 = scatter(
-                1:n_dimensions,
-                result_preds[1][:firstorder];
-                color = :red,
-                markersize = 8,
-                marker = :cross,
-                label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
-            )
-            scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
-            scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
-            scatter!(
-                ax3,
-                1:n_dimensions,
-                result_preds[1][:totalorder];
-                color = :blue,
-                label = "TV-emulate",
-                markersize = 8,
-                marker = :cross,
-            )
-            scatter!(ax3, result[:totalorder], color = :blue, markersize = 8, label = "TV-approx")
-            scatter!(ax3, TV, color = :blue, markersize = 12, marker = :xcross, label = "TV-true")
-            axislegend(ax3)
 
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).png"),
-                f3,
-                px_per_unit = 3,
-            )
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).pdf"),
-                f3,
-                px_per_unit = 3,
-            )
-        else
-            # get percentiles:
-            fo_mat = zeros(n_dimensions, rep_idx)
-            to_mat = zeros(n_dimensions, rep_idx)
+            # PLotting:
+            #=        if rep_idx == 1
+                        f3, ax3, plt3 = scatter(
+                            1:n_dimensions,
+                            result_preds[1][:firstorder];
+                            color = :red,
+                            markersize = 8,
+                            marker = :cross,
+                            label = "V-emulate",
+                            title = "input dimension: $(n_dimensions)",
+                        )
+                        scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
+                        scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
+                        scatter!(
+                            ax3,
+                            1:n_dimensions,
+                            result_preds[1][:totalorder];
+                            color = :blue,
+                            label = "TV-emulate",
+                            markersize = 8,
+                            marker = :cross,
+                        )
+                        scatter!(ax3, result[:totalorder], color = :blue, markersize = 8, label = "TV-approx")
+                        scatter!(ax3, TV, color = :blue, markersize = 12, marker = :xcross, label = "TV-true")
+                        axislegend(ax3)
 
-            for (idx, rp) in enumerate(result_preds)
-                fo_mat[:, idx] = rp[:firstorder]
-                to_mat[:, idx] = rp[:totalorder]
-            end
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).png"),
+                            f3,
+                            px_per_unit = 3,
+                        )
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).pdf"),
+                            f3,
+                            px_per_unit = 3,
+                        )
+                    else
+                        # get percentiles:
+                        fo_mat = zeros(n_dimensions, rep_idx)
+                        to_mat = zeros(n_dimensions, rep_idx)
 
-            firstorder_med = percentile.(eachrow(fo_mat), 50)
-            firstorder_low = percentile.(eachrow(fo_mat), 5)
-            firstorder_up = percentile.(eachrow(fo_mat), 95)
+                        for (idx, rp) in enumerate(result_preds)
+                            fo_mat[:, idx] = rp[:firstorder]
+                            to_mat[:, idx] = rp[:totalorder]
+                        end
 
-            totalorder_med = percentile.(eachrow(to_mat), 50)
-            totalorder_low = percentile.(eachrow(to_mat), 5)
-            totalorder_up = percentile.(eachrow(to_mat), 95)
+                        firstorder_med = percentile.(eachrow(fo_mat), 50)
+                        firstorder_low = percentile.(eachrow(fo_mat), 5)
+                        firstorder_up = percentile.(eachrow(fo_mat), 95)
 
-            println("(50%) firstorder: ", firstorder_med)
-            println("(5%)  firstorder: ", firstorder_low)
-            println("(95%)  firstorder: ", firstorder_up)
+                        totalorder_med = percentile.(eachrow(to_mat), 50)
+                        totalorder_low = percentile.(eachrow(to_mat), 5)
+                        totalorder_up = percentile.(eachrow(to_mat), 95)
 
-            println("(50%) totalorder: ", totalorder_med)
-            println("(5%)  totalorder: ", totalorder_low)
-            println("(95%)  totalorder: ", totalorder_up)
-            #
-            f3, ax3, plt3 = errorbars(
-                1:n_dimensions,
-                firstorder_med,
-                firstorder_med - firstorder_low,
-                firstorder_up - firstorder_med;
-                whiskerwidth = 10,
-                color = :red,
-                label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
-            )
-            scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
-            scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
-            errorbars!(
-                ax3,
-                1:n_dimensions,
-                totalorder_med,
-                totalorder_med - totalorder_low,
-                totalorder_up - totalorder_med;
-                whiskerwidth = 10,
-                color = :blue,
-                label = "TV-emulate",
-            )
-            scatter!(ax3, result[:totalorder], color = :blue, markersize = 8, label = "TV-approx")
-            scatter!(ax3, TV, color = :blue, markersize = 12, marker = :xcross, label = "TV-true")
-            axislegend(ax3)
+                        println("(50%) firstorder: ", firstorder_med)
+                        println("(5%)  firstorder: ", firstorder_low)
+                        println("(95%)  firstorder: ", firstorder_up)
 
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).png"),
-                f3,
-                px_per_unit = 3,
-            )
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).pdf"),
-                f3,
-                px_per_unit = 3,
-            )
+                        println("(50%) totalorder: ", totalorder_med)
+                        println("(5%)  totalorder: ", totalorder_low)
+                        println("(95%)  totalorder: ", totalorder_up)
+                        #
+                        f3, ax3, plt3 = errorbars(
+                            1:n_dimensions,
+                            firstorder_med,
+                            firstorder_med - firstorder_low,
+                            firstorder_up - firstorder_med;
+                            whiskerwidth = 10,
+                            color = :red,
+                            label = "V-emulate",
+                            title = "input dimension: $(n_dimensions)",
+                        )
+                        scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
+                        scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
+                        errorbars!(
+                            ax3,
+                            1:n_dimensions,
+                            totalorder_med,
+                            totalorder_med - totalorder_low,
+                            totalorder_up - totalorder_med;
+                            whiskerwidth = 10,
+                            color = :blue,
+                            label = "TV-emulate",
+                        )
+                        scatter!(ax3, result[:totalorder], color = :blue, markersize = 8, label = "TV-approx")
+                        scatter!(ax3, TV, color = :blue, markersize = 12, marker = :xcross, label = "TV-true")
+                        axislegend(ax3)
 
-        end
-        # plots - first 3 dimensions
-        if rep_idx == 1
-            f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4)
-            for i in 1:plot_dim
-                ax2 = Axis(f2[1, i], xlabel = "x" * string(i), ylabel = "f")
-                scatter!(ax2, samples[:, i], y_preds[1][:], color = :blue)
-                scatter!(ax2, samples[ind, i], y[ind] + noise, color = :red, markersize = 8)
-            end
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_slices_$(case)_$(n_dimensions).png"),
-                f2,
-                px_per_unit = 3,
-            )
-            CairoMakie.save(
-                joinpath(output_directory, "GFunction_slices_$(case)_$(n_dimensions).pdf"),
-                f2,
-                px_per_unit = 3,
-            )
-        end
-            
-        end
-            =#
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).png"),
+                            f3,
+                            px_per_unit = 3,
+                        )
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_sens_$(case)_$(n_dimensions).pdf"),
+                            f3,
+                            px_per_unit = 3,
+                        )
+
+                    end
+                    # plots - first 3 dimensions
+                    if rep_idx == 1
+                        f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4)
+                        for i in 1:plot_dim
+                            ax2 = Axis(f2[1, i], xlabel = "x" * string(i), ylabel = "f")
+                            scatter!(ax2, samples[:, i], y_preds[1][:], color = :blue)
+                            scatter!(ax2, samples[ind, i], y[ind] + noise, color = :red, markersize = 8)
+                        end
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_slices_$(case)_$(n_dimensions).png"),
+                            f2,
+                            px_per_unit = 3,
+                        )
+                        CairoMakie.save(
+                            joinpath(output_directory, "GFunction_slices_$(case)_$(n_dimensions).pdf"),
+                            f2,
+                            px_per_unit = 3,
+                        )
+                    end
+
+                    end
+                        =#
         end
     end
 

@@ -4,33 +4,34 @@ using JLD2
 
 function main()
 
-    
 
-    
+
+
     output_directory = "output"
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[2]
     filename = joinpath(output_directory, "results_$case.jld2")
 
-    (sobol_pts, train_idx, mlt_pred_y, mlt_sobol, analytic_sobol, true_y, noise_sample, noise_cov, estimated_sobol) = load(
-        filename,
-        "sobol_pts",
-        "train_idx",
-        "mlt_pred_y",
-        "mlt_sobol",
-        "analytic_sobol",
-        "true_y",
-        "noise_sample",
-        "noise_cov",
-        "estimated_sobol",
-    )
+    (sobol_pts, train_idx, mlt_pred_y, mlt_sobol, analytic_sobol, true_y, noise_sample, noise_cov, estimated_sobol) =
+        load(
+            filename,
+            "sobol_pts",
+            "train_idx",
+            "mlt_pred_y",
+            "mlt_sobol",
+            "analytic_sobol",
+            "true_y",
+            "noise_sample",
+            "noise_cov",
+            "estimated_sobol",
+        )
     n_data = size(sobol_pts, 1)
     n_train_pts = length(train_idx)
     n_repeats = length(mlt_sobol)
     (V, V1, V2, V3, VT1, VT2, VT3) = analytic_sobol
 
 
-    fontsize=28
+    fontsize = 28
     f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = fontsize)
     axx = Axis(f1[1, 1], xlabel = "x1", ylabel = "f")
     axy = Axis(f1[1, 2], xlabel = "x2", ylabel = "f")

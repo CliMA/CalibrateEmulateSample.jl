@@ -10,7 +10,7 @@ function main()
     n_dimensions = 3
     filename = joinpath(output_directory, "Gfunction_$(case)_$(n_dimensions).jld2")
     legend = true
-    
+
     (
         sobol_pts,
         train_idx,
@@ -39,8 +39,8 @@ function main()
     n_repeats = length(mlt_sobol)
     fontsize = 24
     if n_repeats == 1
-        f3 = Figure(markersize = 8,fontsize = fontsize)
-        ax3 = Axis(f3[1,1], xticks = 1:2:n_dimensions, ylabel = "Sobol Index", xlabel="i")
+        f3 = Figure(markersize = 8, fontsize = fontsize)
+        ax3 = Axis(f3[1, 1], xticks = 1:2:n_dimensions, ylabel = "Sobol Index", xlabel = "i")
         scatter!(
             ax3,
             1:n_dimensions,
@@ -71,7 +71,7 @@ function main()
         CairoMakie.save(png_out, f3, px_per_unit = 3)
         CairoMakie.save(pdf_out, f3, px_per_unit = 3)
         @info "Plotted sensitivities, case dim = $n_dimensions, \n storing plots in: \n $png_out \n $pdf_out"
-        
+
     else
         # get percentiles:
         fo_mat = zeros(n_dimensions, n_repeats)
@@ -98,8 +98,8 @@ function main()
         println("(5%)  totalorder: ", totalorder_low)
         println("(95%)  totalorder: ", totalorder_up)
         #
-        f3 = Figure(markersize = 8,fontsize = fontsize)
-        ax3 = Axis(f3[1,1], xticks = 1:2:n_dimensions, ylabel = "Sobol Index", xlabel = "i")
+        f3 = Figure(markersize = 8, fontsize = fontsize)
+        ax3 = Axis(f3[1, 1], xticks = 1:2:n_dimensions, ylabel = "Sobol Index", xlabel = "i")
         errorbars!(
             ax3,
             1:n_dimensions,
@@ -132,11 +132,11 @@ function main()
         CairoMakie.save(png_out, f3, px_per_unit = 3)
         CairoMakie.save(pdf_out, f3, px_per_unit = 3)
         @info "Plotted sensitivities, case dim = $n_dimensions, \n storing plots in: \n $png_out \n $pdf_out"
-        
+
     end
     # plots - first 3 dimensions
     plot_dim = n_dimensions >= 3 ? 3 : n_dimensions
-    f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4, fontsize=fontsize)
+    f2 = Figure(resolution = (1.618 * plot_dim * 300, 300), markersize = 4, fontsize = fontsize)
     for i in 1:plot_dim
         ax2 = Axis(f2[1, i], xlabel = "x" * string(i), ylabel = "f")
         scatter!(ax2, sobol_pts[:, i], mlt_pred_y[1][:], color = :blue)

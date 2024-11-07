@@ -202,17 +202,18 @@ function main()
     kernel_rank = 3 # svd-sep should be kr - 5 (as input rank is set to 5)
     n_cross_val_sets = 2
     @info "Kernel rank: $(kernel_rank)"
-    max_feature_size=size(get_outputs(input_output_pairs), 2) * size(get_outputs(input_output_pairs),1) * (1-train_frac)
+    max_feature_size =
+        size(get_outputs(input_output_pairs), 2) * size(get_outputs(input_output_pairs), 1) * (1 - train_frac)
     overrides = Dict(
         "verbose" => true,
         "train_fraction" => train_frac,
         "scheduler" => DataMisfitController(terminate_at = 1000),
         "cov_sample_multiplier" => 0.2,
         "n_iteration" => 15,
-        "n_features_opt" => Int(floor((max_feature_size/5))),# here: /5 with rank <= 3 works
-      "localization" => SEC(0.05),
+        "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
+        "localization" => SEC(0.05),
         "n_ensemble" => 400,
-        "n_cross_val_sets" => n_cross_val_sets,      
+        "n_cross_val_sets" => n_cross_val_sets,
     )
     if case == "RF-prior"
         overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)
@@ -225,7 +226,7 @@ function main()
     decorrelate = true
     opt_diagnostics = []
     if case == "GP"
-        kernel_rank=0
+        kernel_rank = 0
         gppackage = Emulators.SKLJL()
         pred_type = Emulators.YType()
         mlt = GaussianProcess(
@@ -235,7 +236,7 @@ function main()
             noise_learn = false,
         )
     elseif case ∈ ["RF-vector-svd-sep"]
-        kernel_structure = SeparableKernel(LowRankFactor(5, nugget),LowRankFactor(kernel_rank,nugget))
+        kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -246,7 +247,7 @@ function main()
             kernel_structure = kernel_structure,
             optimizer_options = overrides,
         )
-        
+
     elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
         kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget))
         n_features = 500
@@ -320,7 +321,7 @@ function main()
     emulator_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_emulator.jld2")
     save(emulator_filepath, "emulator", emulator)
 
-    if length(opt_diagnostics)>0
+    if length(opt_diagnostics) > 0
         eki_conv_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_eki-conv.jld2")
         save(eki_conv_filepath, "opt_diagnostics", opt_diagnostics)
     end

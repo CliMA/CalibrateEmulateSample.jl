@@ -31,7 +31,7 @@ function main()
 
     #for later plots
     fontsize = 20
-    wideticks= WilkinsonTicks(3, k_min=3, k_max=4) # prefer few ticks
+    wideticks = WilkinsonTicks(3, k_min = 3, k_max = 4) # prefer few ticks
 
 
     # Run L63 from 0 -> tmax
@@ -96,7 +96,16 @@ function main()
 
 
     # Emulate
-    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep","RF-svd-sep"]
+    cases = [
+        "GP",
+        "RF-prior",
+        "RF-scalar",
+        "RF-scalar-diagin",
+        "RF-svd-nonsep",
+        "RF-nosvd-nonsep",
+        "RF-nosvd-sep",
+        "RF-svd-sep",
+    ]
 
     case = cases[7]
 
@@ -212,7 +221,7 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # diagnostics
-        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep", "RF-svd-sep"]]
+        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep", "RF-svd-sep"]
             push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec  -> vec
         end
 
@@ -249,10 +258,10 @@ function main()
         if rep_idx == 1
 
             # plotting trace
-            f = Figure(size = (900, 450), fontsize=fontsize)
+            f = Figure(size = (900, 450), fontsize = fontsize)
             axx = Axis(f[1, 1], ylabel = "x", yticks = wideticks)
             axy = Axis(f[2, 1], ylabel = "y", yticks = wideticks)
-            axz = Axis(f[3, 1], xlabel = "time", ylabel = "z", yticks = [10,30,50])
+            axz = Axis(f[3, 1], xlabel = "time", ylabel = "z", yticks = [10, 30, 50])
 
             xx = 0:dt:tmax_test
             lines!(axx, xx, u_test_tmp[1, :], color = :blue)
@@ -269,7 +278,7 @@ function main()
             save(joinpath(output_directory, case * "_l63_test.pdf"), f, pt_per_unit = 3)
 
             # plot attractor
-            f3 = Figure(fontsize=fontsize)
+            f3 = Figure(fontsize = fontsize)
             lines(f3[1, 1], u_test_tmp[1, :], u_test_tmp[3, :], color = :blue)
             lines(f3[2, 1], solplot[1, :], solplot[3, :], color = :orange)
 
@@ -278,11 +287,11 @@ function main()
             save(joinpath(output_directory, case * "_l63_attr.pdf"), f3, pt_per_unit = 3)
 
             # plotting histograms
-            f2 = Figure(fontsize=1.25*fontsize)
-            axx = Axis(f2[1, 1], xlabel = "x", ylabel = "pdf", xticks=wideticks, yticklabelsvisible = false)
-            axy = Axis(f2[1, 2], xlabel = "y", xticks=wideticks, yticklabelsvisible = false)
-            axz = Axis(f2[1, 3], xlabel = "z", xticks= [10,30,50], yticklabelsvisible = false)
-            
+            f2 = Figure(fontsize = 1.25 * fontsize)
+            axx = Axis(f2[1, 1], xlabel = "x", ylabel = "pdf", xticks = wideticks, yticklabelsvisible = false)
+            axy = Axis(f2[1, 2], xlabel = "y", xticks = wideticks, yticklabelsvisible = false)
+            axz = Axis(f2[1, 3], xlabel = "z", xticks = [10, 30, 50], yticklabelsvisible = false)
+
             hist!(axx, u_hist_tmp[1, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
             hist!(axy, u_hist_tmp[2, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
             hist!(axz, u_hist_tmp[3, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
@@ -336,10 +345,10 @@ function main()
         push!(u_cdf, u_cdf_tmp)
     end
 
-    f4 = Figure(size = (900, Int(floor(900 / 1.618))), fontsize = 1.5*fontsize)
-    axx = Axis(f4[1, 1], xlabel = "x", ylabel = "cdf", xticks=wideticks)
-    axy = Axis(f4[1, 2], xlabel = "y", xticks=wideticks,yticklabelsvisible = false)
-    axz = Axis(f4[1, 3], xlabel = "z", xticks= [10,30,50],yticklabelsvisible = false)
+    f4 = Figure(size = (900, Int(floor(900 / 1.618))), fontsize = 1.5 * fontsize)
+    axx = Axis(f4[1, 1], xlabel = "x", ylabel = "cdf", xticks = wideticks)
+    axy = Axis(f4[1, 2], xlabel = "y", xticks = wideticks, yticklabelsvisible = false)
+    axz = Axis(f4[1, 3], xlabel = "z", xticks = [10, 30, 50], yticklabelsvisible = false)
 
     unif_samples = (1:size(sol_cdf, 2)) / size(sol_cdf, 2)
 
