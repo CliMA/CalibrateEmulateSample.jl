@@ -38,7 +38,7 @@ function main()
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-prior",
         "RF-vector-svd-nonsep",
-        "RF-vector-svd-sep", #Bad kernel for comparison
+        "RF-vector-svd-sep",
         "RF-vector-nosvd-nonsep",
     ]
     case = cases[3]
@@ -199,20 +199,20 @@ function main()
     @info "Begin Emulation stage"
     # Create GP object
     train_frac = 0.9
-    kernel_rank = 3
-    n_cross_val_sets = 4
+    kernel_rank = 3 # svd-sep should be kr - 5 (as input rank is set to 5)
+    n_cross_val_sets = 2
     @info "Kernel rank: $(kernel_rank)"
     max_feature_size=size(get_outputs(input_output_pairs), 2) * size(get_outputs(input_output_pairs),1) * (1-train_frac)
     overrides = Dict(
         "verbose" => true,
         "train_fraction" => train_frac,
         "scheduler" => DataMisfitController(terminate_at = 1000),
-        "cov_sample_multiplier" => 0.5,
-        "n_iteration" => 10,
-        "n_features_opt" => Int(floor((max_feature_size/20))),# here: /5 with rank <= 3 works
-        "localization" => SEC(0.01),
-        "n_ensemble" => 200,
-        "n_cross_val_sets" => 4,        
+        "cov_sample_multiplier" => 0.2,
+        "n_iteration" => 15,
+        "n_features_opt" => Int(floor((max_feature_size/5))),# here: /5 with rank <= 3 works
+      "localization" => SEC(0.05),
+        "n_ensemble" => 400,
+        "n_cross_val_sets" => n_cross_val_sets,      
     )
     if case == "RF-prior"
         overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)

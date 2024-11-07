@@ -19,7 +19,7 @@ function main()
 
 # 5-parameter calibration exp
 exp_name = "ent-det-tked-tkee-stab-calibration"
-date_of_run = Date(2024, 10, 21)
+date_of_run = Date(2024, 11, 03)
 @info "plotting results found in $(date_of_run)"
 # Output figure read/write directory
 figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(date_of_run))
@@ -33,8 +33,8 @@ cases = [
     "RF-vector-svd-sep",
     "RF-vector-nosvd-nonsep",
 ]
-case_rf = cases[5]
-kernel_rank = 1
+case_rf = cases[3]
+kernel_rank = 3
 prior_kernel_rank = 3
 # load
 posterior_filepath = joinpath(data_save_directory, "$(case_rf)_$(kernel_rank)_posterior.jld2")
@@ -148,9 +148,11 @@ density_filepath = joinpath(figure_save_directory, "all_$(kernel_rank)_posterior
 transformed_density_filepath = joinpath(figure_save_directory, "all_$(kernel_rank)_posterior_dist_phys.png")
 labels = get_name(posterior)
 
-data_prior = (; [(Symbol(labels[i]), posterior_samples[i, burnin:end]) for i in 1:length(labels)]...)
+prior_burnin = 240000
+    
+data_prior = (; [(Symbol(labels[i]), posterior_samples[i, prior_burnin:end]) for i in 1:length(labels)]...)
 transformed_data_prior =
-    (; [(Symbol(labels[i]), transformed_posterior_samples[i, burnin:end]) for i in 1:length(labels)]...)
+    (; [(Symbol(labels[i]), transformed_posterior_samples[i, prior_burnin:end]) for i in 1:length(labels)]...)
 #
 #
 #
