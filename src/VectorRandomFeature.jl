@@ -159,7 +159,7 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
       - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
-      - "n_cross_val_sets" => 1, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
+      - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 
 """
 function VectorRandomFeatureInterface(
@@ -203,7 +203,7 @@ function VectorRandomFeatureInterface(
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
-        "n_cross_val_sets" => 1, # if set to 0, removes data split. i.e takes train & test to be the same data set
+        "n_cross_val_sets" => 2, # if set to 0, removes data split. i.e takes train & test to be the same data set
     )
 
     if !isnothing(optimizer_options)

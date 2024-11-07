@@ -130,7 +130,7 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "accelerator": use EKP accelerators (default is no acceleration)
      - "verbose" => false, verbose optimizer statements
      - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
-     - "n_cross_val_sets" => 1, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
+     - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -167,7 +167,7 @@ function ScalarRandomFeatureInterface(
         "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
-        "n_cross_val_sets" => 1, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
+        "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
     )
 
     if !isnothing(optimizer_options)
