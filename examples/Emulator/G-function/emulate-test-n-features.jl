@@ -94,7 +94,7 @@ function main()
 
 
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[3]
+    case = cases[2]
     decorrelate = true
     nugget = Float64(1e-12)
 
@@ -102,6 +102,7 @@ function main()
     ttt = zeros(length(n_features_vec),n_repeats)
     train_err = zeros(length(n_features_vec),n_repeats)
     test_err = zeros(length(n_features_vec),n_repeats)
+    n_cross_val_sets = 2
 
     
     for (f_idx, n_features_opt) in enumerate(n_features_vec)
@@ -117,7 +118,7 @@ function main()
             #        "localization" => SEC(0.1),#,Doesnt help much tbh
             #        "accelerator" => NesterovAccelerator(),
             "n_ensemble" => 100,
-            "n_cross_val_sets" => 2,
+            "n_cross_val_sets" => n_cross_val_sets,
         )
         if case == "Prior"
             # don't do anything
@@ -132,7 +133,7 @@ function main()
                 gppackage = Emulators.SKLJL()
                 pred_type = Emulators.YType()
                 mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
-                
+                n_cross_val_sets = 0
             elseif case ∈ ["RF-scalar", "Prior"]
                 rank = n_dimensions #<= 10 ? n_dimensions : 10
                 kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
@@ -166,7 +167,7 @@ function main()
             test_err[f_idx,rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]).^2))/length(ind_test)
 
             JLD2.save(
-                joinpath(output_directory, "diff_n_features_GFunction_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2"),
+                joinpath(output_directory, "diff_n_features_GFunction_$(case)_$(n_dimensions)_ntest-$(Int(n_train_pts/5))_cv-$(n_cross_val_sets).jld2"),
                 "n_features_vec", n_features_vec,
                 "timings", ttt,
                 "train_err", train_err,
