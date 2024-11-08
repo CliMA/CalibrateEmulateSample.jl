@@ -190,8 +190,8 @@ function VectorRandomFeatureInterface(
     #Optimization Defaults    
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior (note scalings have already been applied)
-        "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
-        "n_iteration" => 5, # number of eki iterations
+        "n_ensemble" => min(10 * ndims(prior), 100), #number of ensemble
+        "n_iteration" => 10, # number of eki iterations
         "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
         "tikhonov" => 0, # tikhonov regularization parameter if >0

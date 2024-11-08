@@ -155,8 +155,8 @@ function ScalarRandomFeatureInterface(
     # default optimizer settings
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior
-        "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
-        "n_iteration" => 5, # number of eki iterations
+        "n_ensemble" => min(10 * ndims(prior), 100), #number of ensemble
+        "n_iteration" => 10, # number of eki iterations
         "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping,
         "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation

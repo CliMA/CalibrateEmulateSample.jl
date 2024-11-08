@@ -142,8 +142,8 @@ rng = Random.MersenneTwister(seed)
 
         optimizer_options = Dict(
             "prior" => prior,
-            "n_ensemble" => max(ndims(prior) + 1, 10),
-            "n_iteration" => 5,
+            "n_ensemble" => min(10 * ndims(prior), 100),
+            "n_iteration" => 10,
             "scheduler" => DataMisfitController(terminate_at = 1000),
             "n_features_opt" => n_features,
             "cov_sample_multiplier" => 2.0,
@@ -205,8 +205,8 @@ rng = Random.MersenneTwister(seed)
 
         optimizer_options = Dict(
             "prior" => prior,
-            "n_ensemble" => max(ndims(prior) + 1, 10),
-            "n_iteration" => 5,
+            "n_ensemble" => min(10 * ndims(prior), 100),
+            "n_iteration" => 10,
             "scheduler" => DataMisfitController(terminate_at = 1000),
             "cov_sample_multiplier" => 10.0,
             "n_features_opt" => n_features,
