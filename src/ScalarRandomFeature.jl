@@ -158,13 +158,13 @@ function ScalarRandomFeatureInterface(
         "n_ensemble" => min(10 * ndims(prior), 100), #number of ensemble
         "n_iteration" => 10, # number of eki iterations
         "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping,
-        "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
+        "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
         "n_features_opt" => n_features, # number of features for the optimization 
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
-        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
