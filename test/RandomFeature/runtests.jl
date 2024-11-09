@@ -268,13 +268,13 @@ rng = Random.MersenneTwister(seed)
         # Training data
         input_dim = 1
         output_dim = 1
-        n = 40                                       # number of training points
+        n = 50                                       # number of training points
         x = reshape(2.0 * π * rand(n), 1, n)         # unif(0,2π) predictors/features: 1 x n
         obs_noise_cov = 0.05^2 * I
         y = reshape(sin.(x) + 0.05 * randn(n)', 1, n) # predictands/targets: 1 x n
         iopairs = PairedDataContainer(x, y, data_are_columns = true)
 
-        ntest = 40
+        ntest = 50
         new_inputs = reshape(2.0 * π * rand(ntest), 1, ntest)
         new_outputs = sin.(new_inputs)
 
