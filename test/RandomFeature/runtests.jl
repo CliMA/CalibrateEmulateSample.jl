@@ -146,7 +146,7 @@ rng = Random.MersenneTwister(seed)
             "n_iteration" => 10,
             "scheduler" => DataMisfitController(terminate_at = 1000),
             "n_features_opt" => n_features,
-            "cov_sample_multiplier" => 2.0,
+            "cov_sample_multiplier" => 10.0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
@@ -280,14 +280,30 @@ rng = Random.MersenneTwister(seed)
 
         # RF parameters
         n_features = 100
-        eps = 1e-8
+        eps = 1.0 # more reg needed here for some reason...
         scalar_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor()) # Diagonalize input (ARD-type kernel)
+
+        eps = 1e-8 # more reg needed here for some reason...
         vector_ks = SeparableKernel(DiagonalFactor(eps), CholeskyFactor()) # Diagonalize input (ARD-type kernel)
         # Scalar RF options to mimic squared-exp ARD kernel
-        srfi = ScalarRandomFeatureInterface(n_features, input_dim, kernel_structure = scalar_ks, rng = rng)
+        n_features = 100
+        srfi = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            kernel_structure = scalar_ks,
+            rng = rng,
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
 
         # Vector RF options to mimic squared-exp ARD kernel (in 1D)
-        vrfi = VectorRandomFeatureInterface(n_features, input_dim, output_dim, kernel_structure = vector_ks, rng = rng)
+        vrfi = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            kernel_structure = vector_ks,
+            rng = rng,
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
 
         # build emulators
         em_srfi = Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
