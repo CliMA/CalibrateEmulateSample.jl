@@ -1,30 +1,38 @@
 using CairoMakie, ColorSchemes #for plots
-
+using JLD2
 
 
 function main()
 
+
+
+
     output_directory = "output"
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[3]
+    case = cases[2]
     filename = joinpath(output_directory, "results_$case.jld2")
 
-    (sobol_pts, train_idx, mlt_pred_y, mlt_sobol, analytic_sobol, true_y, noise_y, estimated_sobol) = load(
-        filename,
-        "sobol_pts",
-        "train_idx",
-        "mlt_pred_y",
-        "mlt_sobol",
-        "analytic_sobol",
-        "true_y",
-        "noise_y",
-        "estimated_sobol",
-    )
-
+    (sobol_pts, train_idx, mlt_pred_y, mlt_sobol, analytic_sobol, true_y, noise_sample, noise_cov, estimated_sobol) =
+        load(
+            filename,
+            "sobol_pts",
+            "train_idx",
+            "mlt_pred_y",
+            "mlt_sobol",
+            "analytic_sobol",
+            "true_y",
+            "noise_sample",
+            "noise_cov",
+            "estimated_sobol",
+        )
+    n_data = size(sobol_pts, 1)
+    n_train_pts = length(train_idx)
     n_repeats = length(mlt_sobol)
     (V, V1, V2, V3, VT1, VT2, VT3) = analytic_sobol
 
-    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+
+    fontsize = 28
+    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = fontsize)
     axx = Axis(f1[1, 1], xlabel = "x1", ylabel = "f")
     axy = Axis(f1[1, 2], xlabel = "x2", ylabel = "f")
     axz = Axis(f1[1, 3], xlabel = "x3", ylabel = "f")
@@ -35,7 +43,6 @@ function main()
 
     save(joinpath(output_directory, "ishigami_slices_truth.png"), f1, px_per_unit = 3)
     save(joinpath(output_directory, "ishigami_slices_truth.pdf"), f1, px_per_unit = 3)
-
 
     # display some info
     println(" ")
@@ -50,7 +57,7 @@ function main()
     println("    totalorder: ", estimated_sobol[:totalorder])
     println(" ")
 
-    println("Sampled Emulated Sobol Indices (# obs $n_train_pts, noise var $noise_y)")
+    println("Sampled Emulated Sobol Indices (# obs $n_train_pts, noise var $noise_cov)")
     println("***************************************************************")
     if n_repeats == 1
         println("    firstorder: ", mlt_sobol[1][:firstorder])
@@ -69,16 +76,16 @@ function main()
 
     # plots
 
-    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = fontsize)
     axx_em = Axis(f2[1, 1], xlabel = "x1", ylabel = "f")
     axy_em = Axis(f2[1, 2], xlabel = "x2", ylabel = "f")
     axz_em = Axis(f2[1, 3], xlabel = "x3", ylabel = "f")
     scatter!(axx_em, sobol_pts[:, 1], mlt_pred_y[1][:], color = :blue)
     scatter!(axy_em, sobol_pts[:, 2], mlt_pred_y[1][:], color = :blue)
     scatter!(axz_em, sobol_pts[:, 3], mlt_pred_y[1][:], color = :blue)
-    scatter!(axx_em, sobol_pts[train_idx, 1], true_y[train_idx] + noise, color = :red, markersize = 8)
-    scatter!(axy_em, sobol_pts[train_idx, 2], true_y[train_idx] + noise, color = :red, markersize = 8)
-    scatter!(axz_em, sobol_pts[train_idx, 3], true_y[train_idx] + noise, color = :red, markersize = 8)
+    scatter!(axx_em, sobol_pts[train_idx, 1], true_y[train_idx] + noise_sample, color = :red, markersize = 8)
+    scatter!(axy_em, sobol_pts[train_idx, 2], true_y[train_idx] + noise_sample, color = :red, markersize = 8)
+    scatter!(axz_em, sobol_pts[train_idx, 3], true_y[train_idx] + noise_sample, color = :red, markersize = 8)
 
     save(joinpath(output_directory, "ishigami_slices_$(case).png"), f2, px_per_unit = 3)
     save(joinpath(output_directory, "ishigami_slices_$(case).pdf"), f2, px_per_unit = 3)

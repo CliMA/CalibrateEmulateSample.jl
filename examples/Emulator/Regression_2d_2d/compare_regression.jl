@@ -52,20 +52,22 @@ function main()
     case_mask = [1, 3:length(cases)...] # (KEEP set to 1:length(cases) when pushing for buildkite)
 
     #problem
-    n = 150  # number of training points
+    n = 200  # number of training points
     p = 2   # input dim 
     d = 2   # output dim
     X = 2.0 * π * rand(p, n)
     # G(x1, x2)
-    g1x = sin.(X[1, :]) .+ cos.(X[2, :])
-    g2x = sin.(X[1, :]) .- cos.(X[2, :])
+    g1(x) = sin.(x[1, :]) .+ 2 * cos.(2 * x[2, :])
+    g2(x) = 3 * sin.(3 * x[1, :]) .- 4 * cos.(4 * x[2, :])
+    g1x = g1(X)
+    g2x = g2(X)
     gx = zeros(2, n)
     gx[1, :] = g1x
     gx[2, :] = g2x
 
     # Add noise η
     μ = zeros(d)
-    Σ = 0.1 * [[0.8, 0.1] [0.1, 0.5]] # d x d
+    Σ = 0.05 * [[0.8, 0.1] [0.1, 0.5]] # d x d
     noise_samples = rand(MvNormal(μ, Σ), n)
     # y = G(x) + η
     Y = gx .+ noise_samples
@@ -144,8 +146,9 @@ function main()
         pred_type = YType()
 
         # common random feature setup
-        n_features = 150
-        optimizer_options = Dict("n_iteration" => 10, "scheduler" => DataMisfitController(on_terminate = "continue"))
+        n_features = 300
+        optimizer_options =
+            Dict("n_iteration" => 20, "n_features_opt" => 100, "n_ensemble" => 80, "cov_sample_multiplier" => 1.0)
         nugget = 1e-12
 
 
@@ -163,7 +166,7 @@ function main()
             srfi = ScalarRandomFeatureInterface(
                 n_features,
                 p,
-                kernel_structure = SeparableKernel(LowRankFactor(2, 1e-8), OneDimFactor()),
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
                 optimizer_options = optimizer_options,
             )
             emulator = Emulator(srfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
@@ -284,7 +287,7 @@ function main()
         end
 
         # Plot the true components of G(x1, x2)
-        g1_true = sin.(inputs[1, :]) .+ cos.(inputs[2, :])
+        g1_true = g1(inputs)
         g1_true_grid = reshape(g1_true, n_pts, n_pts)
         if plot_flag
             p7 = plot(
@@ -302,7 +305,7 @@ function main()
             savefig(joinpath(output_directory, case * "_true_g1.png"))
         end
 
-        g2_true = sin.(inputs[1, :]) .- cos.(inputs[2, :])
+        g2_true = g2(inputs)
         g2_true_grid = reshape(g2_true, n_pts, n_pts)
         if plot_flag
             p8 = plot(

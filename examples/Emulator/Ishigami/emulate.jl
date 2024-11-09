@@ -36,7 +36,7 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 20 # repeat exp with same data.
+    n_repeats = 30 # repeat exp with same data.
 
     # To create the sampling
     n_data_gen = 2000
@@ -55,7 +55,7 @@ function main()
     # perform Sobol Analysis
     result = analyze(data, y)
 
-    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+    f1 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = 28)
     axx = Axis(f1[1, 1], xlabel = "x1", ylabel = "f")
     axy = Axis(f1[1, 2], xlabel = "x2", ylabel = "f")
     axz = Axis(f1[1, 3], xlabel = "x3", ylabel = "f")
@@ -160,9 +160,10 @@ function main()
         train_idx = ind,
         mlt_pred_y = y_preds,
         mlt_sobol = result_preds,
-        analytic_sobol = [V1, V2, V3, VT1, VT2, VT3],
+        analytic_sobol = [V, V1, V2, V3, VT1, VT2, VT3],
         true_y = y,
-        noise_y = Γ,
+        noise_sample = noise,
+        noise_cov = Γ,
         estimated_sobol = result,
     )
 
@@ -197,7 +198,7 @@ function main()
 
     # plots
 
-    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4)
+    f2 = Figure(resolution = (1.618 * 900, 300), markersize = 4, fontsize = 28)
     axx_em = Axis(f2[1, 1], xlabel = "x1", ylabel = "f")
     axy_em = Axis(f2[1, 2], xlabel = "x2", ylabel = "f")
     axz_em = Axis(f2[1, 3], xlabel = "x3", ylabel = "f")
@@ -221,7 +222,7 @@ function main()
 
         # print all repeats
         f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
-        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "Error")
+        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
 
         if n_repeats == 1
             lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat

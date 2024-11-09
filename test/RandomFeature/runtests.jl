@@ -142,17 +142,18 @@ rng = Random.MersenneTwister(seed)
 
         optimizer_options = Dict(
             "prior" => prior,
-            "n_ensemble" => max(ndims(prior) + 1, 10),
-            "n_iteration" => 5,
-            "scheduler" => DataMisfitController(),
+            "n_ensemble" => min(10 * ndims(prior), 100),
+            "n_iteration" => 10,
+            "scheduler" => DataMisfitController(terminate_at = 1000),
             "n_features_opt" => n_features,
-            "cov_sample_multiplier" => 2.0,
+            "cov_sample_multiplier" => 10.0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
-            "accelerator" => DefaultAccelerator(),
+            "accelerator" => NesterovAccelerator(),
             "verbose" => false,
             "cov_correction" => "shrinkage",
+            "n_cross_val_sets" => 2,
         )
 
         srfi = ScalarRandomFeatureInterface(
@@ -178,9 +179,9 @@ rng = Random.MersenneTwister(seed)
         @test get_kernel_structure(srfi2) ==
               SeparableKernel(cov_structure_from_string("lowrank", input_dim), OneDimFactor())
 
-        # currently the "scheduler" doesn't always satisfy X() = X(), bug so we need to remove this for now
+        # Some structs don't satisfy X == X so removed for now
         for key in keys(optimizer_options)
-            if !(key ∈ ["scheduler", "prior", "n_ensemble"])
+            if !(key ∈ ["scheduler", "prior", "n_ensemble", "accelerator"])
                 @test get_optimizer_options(srfi2)[key] == optimizer_options[key] # we just set the defaults above
             end
         end
@@ -204,19 +205,20 @@ rng = Random.MersenneTwister(seed)
 
         optimizer_options = Dict(
             "prior" => prior,
-            "n_ensemble" => max(ndims(prior) + 1, 10),
-            "n_iteration" => 5,
-            "scheduler" => DataMisfitController(),
+            "n_ensemble" => min(10 * ndims(prior), 100),
+            "n_iteration" => 10,
+            "scheduler" => DataMisfitController(terminate_at = 1000),
             "cov_sample_multiplier" => 10.0,
             "n_features_opt" => n_features,
             "tikhonov" => 0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
-            "accelerator" => DefaultAccelerator(),
+            "accelerator" => NesterovAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
             "cov_correction" => "shrinkage",
+            "n_cross_val_sets" => 2,
         )
 
         #build interfaces
@@ -250,11 +252,14 @@ rng = Random.MersenneTwister(seed)
             cov_structure_from_string("lowrank", output_dim),
         )
 
+        # exclude some structs where X == X not true
         for key in keys(optimizer_options)
-            if !(key ∈ ["scheduler", "prior", "n_ensemble"])
+            if !(key ∈ ["scheduler", "prior", "n_ensemble", "accelerator"])
                 @test get_optimizer_options(vrfi2)[key] == optimizer_options[key] # we just set the defaults above
+
             end
         end
+
 
     end
 
@@ -263,26 +268,42 @@ rng = Random.MersenneTwister(seed)
         # Training data
         input_dim = 1
         output_dim = 1
-        n = 40                                       # number of training points
+        n = 50                                       # number of training points
         x = reshape(2.0 * π * rand(n), 1, n)         # unif(0,2π) predictors/features: 1 x n
         obs_noise_cov = 0.05^2 * I
         y = reshape(sin.(x) + 0.05 * randn(n)', 1, n) # predictands/targets: 1 x n
         iopairs = PairedDataContainer(x, y, data_are_columns = true)
 
-        ntest = 40
+        ntest = 50
         new_inputs = reshape(2.0 * π * rand(ntest), 1, ntest)
         new_outputs = sin.(new_inputs)
 
         # RF parameters
         n_features = 100
-        eps = 1e-8
+        eps = 1.0 # more reg needed here for some reason...
         scalar_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor()) # Diagonalize input (ARD-type kernel)
+
+        eps = 1e-8 # more reg needed here for some reason...
         vector_ks = SeparableKernel(DiagonalFactor(eps), CholeskyFactor()) # Diagonalize input (ARD-type kernel)
         # Scalar RF options to mimic squared-exp ARD kernel
-        srfi = ScalarRandomFeatureInterface(n_features, input_dim, kernel_structure = scalar_ks, rng = rng)
+        n_features = 100
+        srfi = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            kernel_structure = scalar_ks,
+            rng = rng,
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
 
         # Vector RF options to mimic squared-exp ARD kernel (in 1D)
-        vrfi = VectorRandomFeatureInterface(n_features, input_dim, output_dim, kernel_structure = vector_ks, rng = rng)
+        vrfi = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            kernel_structure = vector_ks,
+            rng = rng,
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
 
         # build emulators
         em_srfi = Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)

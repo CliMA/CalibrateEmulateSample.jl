@@ -1,4 +1,3 @@
-
 using OrdinaryDiffEq
 using Random, Distributions, LinearAlgebra
 ENV["GKSwstype"] = "100"
@@ -30,6 +29,9 @@ function main()
     n_repeats = 20 # repeat exp with same data.
     println("run experiment $n_repeats times")
 
+    #for later plots
+    fontsize = 20
+    wideticks = WilkinsonTicks(3, k_min = 3, k_max = 4) # prefer few ticks
 
 
     # Run L63 from 0 -> tmax
@@ -72,7 +74,7 @@ function main()
     # Create training pairs (with noise) from subsampling [burnin,tmax] 
     tburn = 1 # NB works better with no spin-up!
     burnin = Int(floor(tburn / dt))
-    n_train_pts = 600
+    n_train_pts = 500
     sample_rand = true
     if sample_rand
         ind = Int.(shuffle!(rng, Vector(burnin:(tmax / dt - 1)))[1:n_train_pts])
@@ -82,7 +84,9 @@ function main()
     n_tp = length(ind)
     input = zeros(3, n_tp)
     output = zeros(3, n_tp)
-    Γy = 1e-4 * I(3)
+    noise_var = 1e-4
+    Γy = noise_var * I(3)
+    @info "with noise size: $(noise_var)"
     noise = rand(rng, MvNormal(zeros(3), Γy), n_tp)
     for i in 1:n_tp
         input[:, i] = sol.u[ind[i]]
@@ -92,27 +96,36 @@ function main()
 
 
     # Emulate
-    cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
+    cases = [
+        "GP",
+        "RF-prior",
+        "RF-scalar",
+        "RF-scalar-diagin",
+        "RF-svd-nonsep",
+        "RF-nosvd-nonsep",
+        "RF-nosvd-sep",
+        "RF-svd-sep",
+    ]
 
-    case = cases[6]
+    case = cases[7]
 
-    nugget = Float64(1e-12)
+    nugget = Float64(1e-8)
     u_test = []
     u_hist = []
     train_err = []
     opt_diagnostics = []
-
     for rep_idx in 1:n_repeats
-
+        @info "Repeat: $(rep_idx)"
         rf_optimizer_overrides = Dict(
             "scheduler" => DataMisfitController(terminate_at = 1e4),
-            "cov_sample_multiplier" => 5.0,
+            "cov_sample_multiplier" => 1.0, #5.0,
             "n_features_opt" => 150,
-            "n_iteration" => 20,
-            "accelerator" => NesterovAccelerator(),
-            #            "localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.05,1.0), # localization / s
+            "n_iteration" => 10,
+            #"accelerator" => DefaultAccelerator(),
+            #"localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.01,1.0), # localization / s
             "n_ensemble" => 200,
             "verbose" => true,
+            "n_cross_val_sets" => 2,
         )
 
 
@@ -172,8 +185,8 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-nosvd-sep"]
-            kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(3, nugget))
+        elseif case ∈ ["RF-nosvd-sep", "RF-svd-sep"]
+            kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(1, nugget))
             n_features = 500
             mlt = VectorRandomFeatureInterface(
                 n_features,
@@ -208,7 +221,7 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # diagnostics
-        if case == "RF-nosvd-nonsep"
+        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep", "RF-svd-sep"]
             push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec  -> vec
         end
 
@@ -243,11 +256,12 @@ function main()
 
         # plots for the first repeat
         if rep_idx == 1
+
             # plotting trace
-            f = Figure(size = (900, 450))
-            axx = Axis(f[1, 1], xlabel = "time", ylabel = "x")
-            axy = Axis(f[2, 1], xlabel = "time", ylabel = "y")
-            axz = Axis(f[3, 1], xlabel = "time", ylabel = "z")
+            f = Figure(size = (900, 450), fontsize = fontsize)
+            axx = Axis(f[1, 1], ylabel = "x", yticks = wideticks)
+            axy = Axis(f[2, 1], ylabel = "y", yticks = wideticks)
+            axz = Axis(f[3, 1], xlabel = "time", ylabel = "z", yticks = [10, 30, 50])
 
             xx = 0:dt:tmax_test
             lines!(axx, xx, u_test_tmp[1, :], color = :blue)
@@ -264,7 +278,7 @@ function main()
             save(joinpath(output_directory, case * "_l63_test.pdf"), f, pt_per_unit = 3)
 
             # plot attractor
-            f3 = Figure()
+            f3 = Figure(fontsize = fontsize)
             lines(f3[1, 1], u_test_tmp[1, :], u_test_tmp[3, :], color = :blue)
             lines(f3[2, 1], solplot[1, :], solplot[3, :], color = :orange)
 
@@ -273,14 +287,18 @@ function main()
             save(joinpath(output_directory, case * "_l63_attr.pdf"), f3, pt_per_unit = 3)
 
             # plotting histograms
-            f2 = Figure()
-            hist(f2[1, 1], u_hist_tmp[1, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
-            hist(f2[1, 2], u_hist_tmp[2, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
-            hist(f2[1, 3], u_hist_tmp[3, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
+            f2 = Figure(fontsize = 1.25 * fontsize)
+            axx = Axis(f2[1, 1], xlabel = "x", ylabel = "pdf", xticks = wideticks, yticklabelsvisible = false)
+            axy = Axis(f2[1, 2], xlabel = "y", xticks = wideticks, yticklabelsvisible = false)
+            axz = Axis(f2[1, 3], xlabel = "z", xticks = [10, 30, 50], yticklabelsvisible = false)
 
-            hist!(f2[1, 1], solhist[1, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
-            hist!(f2[1, 2], solhist[2, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
-            hist!(f2[1, 3], solhist[3, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
+            hist!(axx, u_hist_tmp[1, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
+            hist!(axy, u_hist_tmp[2, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
+            hist!(axz, u_hist_tmp[3, :], bins = 50, normalization = :pdf, color = (:blue, 0.5))
+
+            hist!(axx, solhist[1, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
+            hist!(axy, solhist[2, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
+            hist!(axz, solhist[3, :], bins = 50, normalization = :pdf, color = (:orange, 0.5))
 
             # save
             save(joinpath(output_directory, case * "_l63_pdf.png"), f2, px_per_unit = 3)
@@ -306,7 +324,7 @@ function main()
         f5 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
         ax_conv = Axis(f5[1, 1], xlabel = "Iteration", ylabel = "max-normalized error", yscale = log10)
         if n_repeats == 1
-            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
+            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], color = :blue) # If just one repeat
         else
             for idx in 1:size(err_cols, 1)
                 err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
@@ -327,10 +345,10 @@ function main()
         push!(u_cdf, u_cdf_tmp)
     end
 
-    f4 = Figure(size = (900, Int(floor(900 / 1.618))))
-    axx = Axis(f4[1, 1], xlabel = "", ylabel = "x")
-    axy = Axis(f4[1, 2], xlabel = "", ylabel = "y")
-    axz = Axis(f4[1, 3], xlabel = "", ylabel = "z")
+    f4 = Figure(size = (900, Int(floor(900 / 1.618))), fontsize = 1.5 * fontsize)
+    axx = Axis(f4[1, 1], xlabel = "x", ylabel = "cdf", xticks = wideticks)
+    axy = Axis(f4[1, 2], xlabel = "y", xticks = wideticks, yticklabelsvisible = false)
+    axz = Axis(f4[1, 3], xlabel = "z", xticks = [10, 30, 50], yticklabelsvisible = false)
 
     unif_samples = (1:size(sol_cdf, 2)) / size(sol_cdf, 2)
 

@@ -4,8 +4,9 @@ PLOT_FLAG = false
 # Import modules
 using Distributions  # probability distributions and associated functions
 using LinearAlgebra
-ENV["GKSwstype"] = "100"
-using Plots
+#ENV["GKSwstype"] = "100"
+# using Plots
+using CairoMakie
 using Random
 using JLD2
 using NCDatasets
@@ -37,6 +38,8 @@ function main()
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-prior",
         "RF-vector-svd-nonsep",
+        "RF-vector-svd-sep",
+        "RF-vector-nosvd-nonsep",
     ]
     case = cases[3]
 
@@ -85,13 +88,14 @@ function main()
     if !isfile(data_filepath)
         LoadError("experiment data file \"Diagnostics.nc\" not found in directory \"" * exp_dir * "/\"")
     else
-        y_truth = Array(NCDataset(data_filepath).group["reference"]["y_full"]) #ndata
-
-        truth_cov = Array(NCDataset(data_filepath).group["reference"]["Gamma_full"]) #ndata x ndata
+        @info "loading data from NC dataset"
+        data_set = NCDataset(data_filepath)
+        y_truth = Array(data_set.group["reference"]["y_full"]) #ndata
+        truth_cov = Array(data_set.group["reference"]["Gamma_full"]) #ndata x ndata
         # Option (i) get data from NCDataset else get from jld2 files.
-        output_mat = Array(NCDataset(data_filepath).group["particle_diags"]["g_full"]) #nens x ndata x nit
-        input_mat = Array(NCDataset(data_filepath).group["particle_diags"]["u"]) #nens x nparam x nit
-        input_constrained_mat = Array(NCDataset(data_filepath).group["particle_diags"]["phi"]) #nens x nparam x nit        
+        output_mat = Array(data_set.group["particle_diags"]["g_full"]) #nens x ndata x nit
+        input_mat = Array(data_set.group["particle_diags"]["u"]) #nens x nparam x nit
+        input_constrained_mat = Array(data_set.group["particle_diags"]["phi"]) #nens x nparam x nit        
 
         # to be consistent, we wish to go from nens x nparam x nit arrays to nparam x (nit x nens) 
         inputs =
@@ -122,15 +126,6 @@ function main()
         y_truth = y_truth[good_datadim]
         truth_cov = truth_cov[good_datadim, good_datadim]
 
-        # quick plots of data
-        if PLOT_FLAG
-            println("plotting ensembles...")
-            for plot_i in 1:size(outputs, 1)
-                p = scatter(inputs_constrained[1, :], inputs_constrained[2, :], zcolor = outputs[plot_i, :])
-                savefig(p, joinpath(figure_save_directory, "$(case)_output_" * string(plot_i) * ".png"))
-            end
-            println("finished plotting ensembles.")
-        end
         input_output_pairs = DataContainers.PairedDataContainer(inputs, outputs)
     end
 
@@ -196,22 +191,29 @@ function main()
     # end
     # input_output_pairs = Utilities.get_training_points(ekpobj, max_ekp_it)
 
-    println("Completed calibration loading stage")
+    @info "Completed calibration loading stage"
     println(" ")
     ##############################################
     # [3. ] Build Emulator from calibration data #
     ##############################################
-    println("Begin Emulation stage")
+    @info "Begin Emulation stage"
     # Create GP object
-
+    train_frac = 0.9
+    kernel_rank = 3 # svd-sep should be kr - 5 (as input rank is set to 5)
+    n_cross_val_sets = 2
+    @info "Kernel rank: $(kernel_rank)"
+    max_feature_size =
+        size(get_outputs(input_output_pairs), 2) * size(get_outputs(input_output_pairs), 1) * (1 - train_frac)
     overrides = Dict(
         "verbose" => true,
-        "train_fraction" => 0.85,
-        "scheduler" => DataMisfitController(terminate_at = 100),
-        "cov_sample_multiplier" => 1.0,
+        "train_fraction" => train_frac,
+        "scheduler" => DataMisfitController(terminate_at = 1000),
+        "cov_sample_multiplier" => 0.2,
         "n_iteration" => 15,
-        "n_features_opt" => 200,
+        "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
         "localization" => SEC(0.05),
+        "n_ensemble" => 400,
+        "n_cross_val_sets" => n_cross_val_sets,
     )
     if case == "RF-prior"
         overrides = Dict("verbose" => true, "cov_sample_multiplier" => 0.01, "n_iteration" => 0)
@@ -221,21 +223,10 @@ function main()
     rng = Random.MersenneTwister(rng_seed)
     input_dim = size(get_inputs(input_output_pairs), 1)
     output_dim = size(get_outputs(input_output_pairs), 1)
+    decorrelate = true
+    opt_diagnostics = []
     if case == "GP"
-        overrides = Dict(
-            "verbose" => true,
-            "train_fraction" => 0.9, #95
-            "scheduler" => DataMisfitController(terminate_at = 1e5),
-            "cov_sample_multiplier" => 0.4,
-            "n_features_opt" => 200,
-            "n_iteration" => 15,
-            #    "n_ensemble" => 20,
-            #           "localization" => SEC(1.0, 0.01), # localization / sample error correction for small ensembles
-        )
-    elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
-        kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
-        n_features = 500
-
+        kernel_rank = 0
         gppackage = Emulators.SKLJL()
         pred_type = Emulators.YType()
         mlt = GaussianProcess(
@@ -244,8 +235,21 @@ function main()
             prediction_type = pred_type,
             noise_learn = false,
         )
-    elseif case ∈ ["RF-vector-svd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+    elseif case ∈ ["RF-vector-svd-sep"]
+        kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(kernel_rank, nugget))
+        n_features = 500
+
+        mlt = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            rng = rng,
+            kernel_structure = kernel_structure,
+            optimizer_options = overrides,
+        )
+
+    elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
+        kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -257,7 +261,7 @@ function main()
             optimizer_options = overrides,
         )
     elseif case ∈ ["RF-vector-nosvd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+        kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -289,6 +293,7 @@ function main()
     end
 
     # plot eki convergence plot
+    #=
     if length(opt_diagnostics) > 0
         err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
 
@@ -311,11 +316,17 @@ function main()
         save(joinpath(figure_save_directory, "eki-conv_$(case).pdf"), f5, px_per_unit = 3)
 
     end
+    =#
 
-    emulator_filepath = joinpath(data_save_directory, "$(case)_emulator.jld2")
+    emulator_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_emulator.jld2")
     save(emulator_filepath, "emulator", emulator)
 
-    println("Finished Emulation stage")
+    if length(opt_diagnostics) > 0
+        eki_conv_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_eki-conv.jld2")
+        save(eki_conv_filepath, "opt_diagnostics", opt_diagnostics)
+    end
+
+    @info "Finished Emulation stage"
     println(" ")
     ########################################################################
     # [4. ] Run Emulator-based MCMC to obtain joint parameter distribution #
@@ -335,10 +346,10 @@ function main()
     chain = MarkovChainMonteCarlo.sample(mcmc, 300_000; stepsize = new_step, discard_initial = 2_000)
     posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
-    mcmc_filepath = joinpath(data_save_directory, "$(case)_mcmc_and_chain.jld2")
+    mcmc_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_mcmc_and_chain.jld2")
     save(mcmc_filepath, "mcmc", mcmc, "chain", chain)
 
-    posterior_filepath = joinpath(data_save_directory, "$(case)_posterior.jld2")
+    posterior_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_posterior.jld2")
     save(posterior_filepath, "posterior", posterior)
 
     println("Finished Sampling stage")

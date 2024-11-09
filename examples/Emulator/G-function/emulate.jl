@@ -39,8 +39,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 3 # repeat exp with same data.
-    n_dimensions = 3
+    n_repeats = 20# repeat exp with same data.
+    n_dimensions = 20
     # To create the sampling
     n_data_gen = 800
 
@@ -100,13 +100,13 @@ function main()
     overrides = Dict(
         "verbose" => true,
         "scheduler" => DataMisfitController(terminate_at = 1e2),
-        "n_features_opt" => 300,
-        "train_fraction" => 0.8,#0.7
-        "n_iteration" => 20,
-        "cov_sample_multiplier" => 1.0,
-        #        "localization" => SEC(0.1),#,Doesnt help much tbh
-        #        "accelerator" => NesterovAccelerator(),
-        "n_ensemble" => 200, #40*n_dimensions,
+        "n_features_opt" => 150,
+        "n_iteration" => 10,
+        "cov_sample_multiplier" => 3.0,
+        #"localization" => SEC(0.1),#,Doesnt help much tbh
+        #"accelerator" => NesterovAccelerator(),
+        "n_ensemble" => 100, #40*n_dimensions,
+        "n_cross_val_sets" => 4,
     )
     if case == "Prior"
         # don't do anything
@@ -116,7 +116,8 @@ function main()
 
     y_preds = []
     result_preds = []
-
+    opt_diagnostics = []
+    times = zeros(n_repeats)
     for rep_idx in 1:n_repeats
         @info "Repeat: $(rep_idx)"
         # Build ML tools
@@ -142,9 +143,17 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
-        optimize_hyperparameters!(emulator)
+        times[rep_idx] = @elapsed begin
+            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+            optimize_hyperparameters!(emulator)
+        end
 
+        if case == "RF-scalar"
+            diag_tmp = reduce(hcat, get_optimizer(mlt)) # (n_iteration, dim_output=1) convergence for each scalar mode as cols
+            push!(opt_diagnostics, diag_tmp)
+        end
+
+        @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"
         # predict on all Sobol points with emulator (example)    
         y_pred, y_var = predict(emulator, samples', transform_to_real = true)
 
@@ -158,15 +167,17 @@ function main()
         GC.gc() #collect garbage
 
         # PLotting:
+        fontsize = 24
         if rep_idx == 1
-            f3, ax3, plt3 = scatter(
+            f3 = Figure(markersize = 8, fontsize = fontsize)
+            ax3 = Axis(f3[1, 1])
+            scatter!(
+                ax3,
                 1:n_dimensions,
                 result_preds[1][:firstorder];
                 color = :red,
-                markersize = 8,
                 marker = :cross,
                 label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -219,7 +230,10 @@ function main()
             println("(5%)  totalorder: ", totalorder_low)
             println("(95%)  totalorder: ", totalorder_up)
             #
-            f3, ax3, plt3 = errorbars(
+            f3 = Figure(markersize = 8, fontsize = fontsize)
+            ax3 = Axis(f3[1, 1])
+            errorbars!(
+                ax3,
                 1:n_dimensions,
                 firstorder_med,
                 firstorder_med - firstorder_low,
@@ -227,7 +241,6 @@ function main()
                 whiskerwidth = 10,
                 color = :red,
                 label = "V-emulate",
-                title = "input dimension: $(n_dimensions)",
             )
             scatter!(ax3, result[:firstorder], color = :red, markersize = 8, label = "V-approx")
             scatter!(ax3, V, color = :red, markersize = 12, marker = :xcross, label = "V-true")
@@ -278,6 +291,32 @@ function main()
         end
     end
 
+    if length(opt_diagnostics) > 0
+        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
+
+        #save
+        error_filepath = joinpath(output_directory, "eki_conv_error.jld2")
+        save(error_filepath, "error", err_cols)
+
+        # print all repeats
+        f3 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
+        ax_conv = Axis(f3[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
+
+        if n_repeats == 1
+            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], color = :blue) # If just one repeat
+        else
+            for idx in 1:size(err_cols, 1)
+                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
+                series!(ax_conv, err_normalized', color = :blue)
+            end
+        end
+
+        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).png"), f3, px_per_unit = 3)
+        save(joinpath(output_directory, "GFunction_eki-conv_$(case)_$(n_dimensions).pdf"), f3, px_per_unit = 3)
+
+    end
+
+
     println(" ")
     println("True Sobol Indices")
     println("******************")
@@ -295,7 +334,7 @@ function main()
 
 
     jldsave(
-        joinpath(output_directory, "Gfunction_$(case)_$(n_dimensions).jld2");
+        joinpath(output_directory, "GFunction_$(case)_$(n_dimensions).jld2");
         sobol_pts = samples,
         train_idx = ind,
         analytic_V = V,
