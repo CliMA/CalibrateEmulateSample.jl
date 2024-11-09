@@ -7,5 +7,5 @@ if lowercase(get(ENV, "CI", "false")) == "true"
     Pkg.build("PyCall")
 end
 
-Conda.add("scipy=1.8.1", channel = "conda-forge")
-Conda.add("scikit-learn=1.1.1")
+Conda.add("scipy=1.14.1", channel = "conda-forge")
+Conda.add("scikit-learn=1.5.1")
