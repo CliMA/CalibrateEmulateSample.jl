@@ -279,7 +279,7 @@ rng = Random.MersenneTwister(seed)
         new_outputs = sin.(new_inputs)
 
         # RF parameters
-        n_features = 50
+        n_features = 100
         eps = 1e-8
         scalar_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor()) # Diagonalize input (ARD-type kernel)
         vector_ks = SeparableKernel(DiagonalFactor(eps), CholeskyFactor()) # Diagonalize input (ARD-type kernel)
