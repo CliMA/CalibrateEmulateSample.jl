@@ -6,8 +6,8 @@ on:
     tags: '*'
     
 jobs:
-  test:
-    name: test-linux
+  test-linux-v1:
+    name: test-linux-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
@@ -62,8 +62,8 @@ jobs:
         token: ${{secrets.CODECOV_TOKEN}}
       if: success()
 
-  test:
-    name: test-macos
+  test-macos-v1:
+    name: test-macos-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
@@ -103,8 +103,8 @@ jobs:
       run: |
         LD_LIBRARY_PATH=$HOME/.julia/conda/3/lib julia --project -e 'using Pkg; Pkg.test()'
 
-  test:
-    name: test-windows
+  test-windows-v1:
+    name: test-windows-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
