@@ -16,7 +16,8 @@ A useful resource to learn about Gaussian processes is [Rasmussen and Williams (
 
 `CalibrateEmulateSample.jl` allows the Gaussian process emulator to be built using
 either [`GaussianProcesses.jl`](https://stor-i.github.io/GaussianProcesses.jl/latest/) 
-or [`ScikitLearn.jl`](https://scikitlearnjl.readthedocs.io/en/latest/models/#scikitlearn-models).
+or [`ScikitLearn.jl`](https://scikitlearnjl.readthedocs.io/en/latest/models/#scikitlearn-models). Different packages may be optimized for different settings, we recommend users give both a try, and checkout the individual package documentation to make a choice for their problem setting. 
+
 To use `GaussianProcesses.jl`, define the package type as
 ```julia
 gppackage = Emulators.GPJL()
@@ -26,7 +27,6 @@ To use `ScikitLearn.jl`, define the package type as
 ```julia
 gppackage = Emulators.SKLJL()
 ```
-
 
 Initialize a basic Gaussian Process with
 ```julia
@@ -103,10 +103,9 @@ gauss_proc = GaussianProcess(
 ```
 You can also combine multiple ScikitLearn kernels via linear operations in the same way as above.
 
-# Learning the noise
+# Learning additional white noise
 
-Often it is useful to learn the noise of the data by adding a white noise kernel. This is added with the 
-Boolean keyword `noise_learn` when initializing the Gaussian process. The default is true. 
+Often it is useful to learn the discrepancy between the Gaussian process prediction and the data, by learning additional white noise. Though one often knows, and provides, the discrepancy between the true model and data with an observational noise covariance; the additional white kernel can help account for approximation error from the selected Gaussian process kernel and the true model. This is added with the Boolean keyword `noise_learn` when initializing the Gaussian process. The default is true. 
 
 ```julia
 gauss_proc = GaussianProcess(
@@ -118,8 +117,8 @@ When `noise_learn` is true, an additional white noise kernel is added to the ker
 across all parameter values, including the training data. 
 The scale parameters of the white noise kernel are learned in `optimize_hyperparameters!(emulator)`. 
 
-You may not need to learn the noise if you already have a good estimate of the noise from your training data. 
-When `noise_learn` is false, additional regularization is added for stability.
+You may not need to learn the noise if you already have a good estimate of the noise from your training data, and if the Gaussian process kernel is well specified. 
+When `noise_learn` is false, a small additional regularization is added for stability.
 The default value is `1e-3` but this can be chosen through the optional argument `alg_reg_noise`:
 
 ```julia

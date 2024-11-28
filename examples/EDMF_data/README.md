@@ -3,6 +3,7 @@ To run this example, you must first instantiate the dependencies in the `Project
 
 Next, you must extract the `.zip` file and ensure that `exp_name` matches the directory name of the unzipped data directory. Then run the main file `uq_for_edmf.jl`.
 
-Approx time for completion:
+Approx time for completion (with GP case):
 - exp_name = ent-det-calibration: 82 mins
 - exp-det-tked-tkee-stab-calibtaion: 155 mins
+

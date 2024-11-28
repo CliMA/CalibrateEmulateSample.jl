@@ -6,16 +6,16 @@ using Documenter
 #----------
 
 examples = [
+    "Simple example walkthrough" => "examples/sinusoid_example.md",
+    "Lorenz example" => "examples/lorenz_example.md",
+    "Turbulence example" => "examples/edmf_example.md",
+    "Cloudy example" => "examples/Cloudy_example.md",
     "Emulator testing" => [
         "examples/emulators/regression_2d_2d.md",
         "examples/emulators/lorenz_integrator_3d_3d.md",
-        "examples/emulators/ishigami_3d_1d.md",
+        "examples/emulators/global_sens_analysis.md",
     ],
-    "Lorenz example" => "examples/lorenz_example.md",
-    "Turbulence example" => "examples/edmf_example.md",
 ]
-
-design = ["AbstractMCMC sampling API" => "API/AbstractMCMC.md"]
 
 api = [
     "CalibrateEmulateSample" => [
@@ -29,18 +29,21 @@ api = [
     ],
 ]
 
+emulate = [
+    "Emulator" => "emulate.md",
+    "Gaussian Process" => "GaussianProcessEmulator.md",
+    "Random Features" => "random_feature_emulator.md",
+]
 pages = [
     "Home" => "index.md",
     "Installation instructions" => "installation_instructions.md",
     "Contributing" => "contributing.md",
-    "Calibrate" => "calibrate.md",
-    "Emulate" => "emulate.md",
     "Examples" => examples,
-    "Gaussian Process" => "GaussianProcessEmulator.md",
-    "Random Features" => "random_feature_emulator.md",
-    "Package Design" => design,
-    "API" => api,
+    "Calibrate" => "calibrate.md",
+    "Emulate" => emulate,
+    "Sample" => "sample.md",
     "Glossary" => "glossary.md",
+    "API" => api,
 ]
 
 #----------

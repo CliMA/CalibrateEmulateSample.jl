@@ -3,6 +3,7 @@ using RandomFeatures
 const RF = RandomFeatures
 using EnsembleKalmanProcesses
 const EKP = EnsembleKalmanProcesses
+using EnsembleKalmanProcesses.Localizers
 using ..ParameterDistributions
 using ..Utilities
 using StableRNGs
@@ -14,7 +15,7 @@ export SeparableKernel, NonseparableKernel
 export get_input_cov_structure, get_output_cov_structure, get_cov_structure
 export get_eps
 export rank
-export shrinkage_cov
+export shrinkage_cov, nice_cov
 
 
 abstract type RandomFeatureInterface <: MachineLearningTool end
@@ -430,8 +431,8 @@ function calculate_mean_cov_and_coeffs(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    n_train::Int,
-    n_test::Int,
+    train_idx::VV,
+    test_idx::VV,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -443,6 +444,7 @@ function calculate_mean_cov_and_coeffs(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
+    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
     M <: AbstractMatrix{<:AbstractFloat},
@@ -451,14 +453,15 @@ function calculate_mean_cov_and_coeffs(
 }
 
     # split data into train/test 
-    itrain = get_inputs(io_pairs)[:, 1:n_train]
-    otrain = get_outputs(io_pairs)[:, 1:n_train]
+    itrain = get_inputs(io_pairs)[:, train_idx]
+    otrain = get_outputs(io_pairs)[:, train_idx]
     io_train_cost = PairedDataContainer(itrain, otrain)
-    itest = get_inputs(io_pairs)[:, (n_train + 1):end]
-    otest = get_outputs(io_pairs)[:, (n_train + 1):end]
+    itest = get_inputs(io_pairs)[:, test_idx]
+    otest = get_outputs(io_pairs)[:, test_idx]
     input_dim = size(itrain, 1)
     output_dim = size(otrain, 1)
     n_test = size(itest, 2)
+
     # build and fit the RF
     rfm = RFM_from_hyperparameters(
         rfi,
@@ -488,20 +491,20 @@ function calculate_mean_cov_and_coeffs(
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
     ## TODO - the theory states that the following should be set:
-    # scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+    scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
+
+    #scaled_coeffs = 1e-3 * rand(n_features)#overwrite with noise...
     # However the convergence is much improved with setting this to zero:
-    scaled_coeffs = 0
-
-
+    #scaled_coeffs = 0    
     if decomp_type == "cholesky"
         chol_fac = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).L
+
         complexity = 2 * sum(log(chol_fac[i, i]) for i in 1:size(chol_fac, 1))
     else
         svd_singval = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).S
         complexity = sum(log, svd_singval) # note this is log(abs(det))
     end
-    complexity = sqrt(abs(complexity)) #abs can introduce nonconvexity, 
-
+    complexity = sqrt(complexity)
     return scaled_coeffs, complexity
 
 end
@@ -540,6 +543,56 @@ function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
 end
 
 
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
+"""
+function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
+
+    n_sample_cov = size(sample_mat, 2)
+    Γ = cov(sample_mat, dims = 2)
+
+    bd_tol = 1e8 * eps()
+
+    v = sqrt.(diag(Γ))
+    V = Diagonal(v) #stds
+    V_inv = inv(V)
+    corr = clamp.(V_inv * Γ * V_inv, -1 + bd_tol, 1 - bd_tol) # full corr
+
+    # parameter sweep over the exponents
+    max_exponent = 2 * 5 # must be even
+    interp_steps = 100
+    # use find the variability in the corr coeff matrix entries
+    std_corrs = approximate_corr_std.(corr, n_sample_cov, n_samples) # Found in EKP.Localizers !! slowest part of code -> could speed up by precomputing an interpolation of [-1,1]
+
+    std_tol = sqrt(sum(std_corrs .^ 2))
+    α_min_exceeded = [max_exponent]
+    for α in 2:2:max_exponent # even exponents give a PSD
+        corr_psd = corr .^ (α + 1) # abs not needed as α even
+        # find the first exponent that exceeds the noise tolerance in norm
+        if norm(corr_psd - corr) > δ * std_tol
+            α_min_exceeded[1] = α
+            break
+        end
+    end
+    corr_psd = corr .^ α_min_exceeded[1]
+    corr_psd_prev = corr .^ (α_min_exceeded[1] - 2) # previous PSD correction 
+
+    for α in LinRange(1.0, 0.0, interp_steps)
+        corr_interp = ((1 - α) * (corr_psd_prev) + α * corr_psd) .* corr
+        if norm(corr_interp - corr) < δ * std_tol
+            corr[:, :] = corr_interp #update the correlation matrix block
+            break
+        end
+    end
+    out = posdef_correct(V * corr * V) # rebuild the cov matrix
+    @info "NICE-adjusted covariance condition number: $(cond(out))"
+    return out
+
+end
+
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -552,23 +605,26 @@ function estimate_mean_and_coeffnorm_covariance(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    n_train::Int,
-    n_test::Int,
+    train_idx::VV,
+    test_idx::VV,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     n_samples::Int,
     decomp_type::S,
     multithread_type::TullioThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
+    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
 
     output_dim = size(get_outputs(io_pairs), 1)
+    n_test = length(test_idx)
 
     means = zeros(output_dim, n_samples, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
@@ -577,7 +633,7 @@ function estimate_mean_and_coeffnorm_covariance(
     buffer = zeros(n_test, output_dim, n_features)
     complexity = zeros(1, n_samples)
     coeffl2norm = zeros(1, n_samples)
-    println("estimate cov with " * string(n_samples * repeats) * " iterations...")
+    println("estimate cov with " * string(n_samples) * " iterations...")
 
     for i in ProgressBar(1:n_samples)
         for j in 1:repeats
@@ -587,8 +643,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 l,
                 regularization,
                 n_features,
-                n_train,
-                n_test,
+                train_idx,
+                test_idx,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -625,9 +681,11 @@ function estimate_mean_and_coeffnorm_covariance(
     end
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif cov_correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end
@@ -652,8 +710,8 @@ function calculate_ensemble_mean_and_coeffnorm(
     lvecormat::VorM,
     regularization::MorUSorD,
     n_features::Int,
-    n_train::Int,
-    n_test::Int,
+    train_idx::VV,
+    test_idx::VV,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -663,6 +721,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     VorM <: AbstractVecOrMat,
+    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
@@ -673,6 +732,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     N_ens = size(lmat, 2)
     output_dim = size(get_outputs(io_pairs), 1)
+    n_test = length(test_idx)
 
     means = zeros(output_dim, N_ens, n_test)
     mean_of_covs = zeros(output_dim, output_dim, n_test)
@@ -682,7 +742,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     moc_tmp = similar(mean_of_covs)
     mtmp = zeros(output_dim, n_test)
 
-    println("calculating " * string(N_ens * repeats) * " ensemble members...")
+    println("calculating " * string(N_ens) * " ensemble members...")
 
     for i in ProgressBar(1:N_ens)
         for j in collect(1:repeats)
@@ -694,8 +754,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                 l,
                 regularization,
                 n_features,
-                n_train,
-                n_test,
+                train_idx,
+                test_idx,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -739,25 +799,27 @@ function estimate_mean_and_coeffnorm_covariance(
     l::ForVM,
     regularization::MorUSorD,
     n_features::Int,
-    n_train::Int,
-    n_test::Int,
+    train_idx::VV,
+    test_idx::VV,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     n_samples::Int,
     decomp_type::S,
     multithread_type::EnsembleThreading;
     repeats::Int = 1,
+    cov_correction = "shrinkage",
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     ForVM <: Union{AbstractFloat, AbstractVecOrMat},
+    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
 
     output_dim = size(get_outputs(io_pairs), 1)
-
-    println("estimate cov with " * string(n_samples * repeats) * " iterations...")
+    n_test = length(test_idx)
+    println("estimate cov with " * string(n_samples) * " iterations...")
 
     nthreads = Threads.nthreads()
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
@@ -786,8 +848,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 l,
                 regularization,
                 n_features,
-                n_train,
-                n_test,
+                train_idx,
+                test_idx,
                 batch_sizes,
                 io_pairs,
                 decomp_type,
@@ -833,9 +895,11 @@ function estimate_mean_and_coeffnorm_covariance(
 
 
     sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-    shrinkage = true
-    if shrinkage
+
+    if cov_correction == "shrinkage"
         Γ = shrinkage_cov(sample_mat)
+    elseif cov_correction == "nice"
+        Γ = nice_cov(sample_mat)
     else
         Γ = cov(sample_mat, dims = 2)
     end
@@ -858,8 +922,8 @@ function calculate_ensemble_mean_and_coeffnorm(
     lvecormat::VorM,
     regularization::MorUSorD,
     n_features::Int,
-    n_train::Int,
-    n_test::Int,
+    train_idx::VV,
+    test_idx::VV,
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
@@ -869,6 +933,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
     VorM <: AbstractVecOrMat,
+    VV <: AbstractVector,
     S <: AbstractString,
     MorUSorD <: Union{Matrix, UniformScaling, Diagonal},
 }
@@ -879,10 +944,10 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     N_ens = size(lmat, 2)
     output_dim = size(get_outputs(io_pairs), 1)
+    n_test = length(test_idx)
 
 
-
-    println("calculating " * string(N_ens * repeats) * " ensemble members...")
+    println("calculating " * string(N_ens) * " ensemble members...")
 
     nthreads = Threads.nthreads()
     c_list = [zeros(1, N_ens) for i in 1:nthreads]
@@ -909,8 +974,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                 l,
                 regularization,
                 n_features,
-                n_train,
-                n_test,
+                train_idx,
+                test_idx,
                 batch_sizes,
                 io_pairs,
                 decomp_type,

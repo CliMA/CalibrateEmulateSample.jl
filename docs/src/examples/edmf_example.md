@@ -1,5 +1,8 @@
 # Extended Eddy-Diffusivity Mass-Flux (EDMF) Scheme
 
+!!! info "How do I run this code?"
+    The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
+
 ## Background
 The extended EDMF scheme is a unified model of turbulence and convection. More information about the model can be found [here](https://clima.github.io/TurbulenceConvection.jl/stable/). This example builds an emulator of the extended EDMF scheme from input-output pairs obtained during a calibration process, and runs emulator-based MCMC to obtain an estimate of the joint parameter distribution.
 
@@ -24,8 +27,9 @@ and call,
 ```
 > julia --project uq_for_EDMF.jl
 ```
+
 !!! info
-    These runs take currently take ~1 hour to complete
+    These runs take currently take ~1-3 hours to complete with Gaussian process emulator. Random feature training currently requires significant multithreading for performance and takes a similar amount of time.
 
 ## Solution and output
 
@@ -35,6 +39,15 @@ The posterior is visualized by using `plot_posterior.jl`, which produces corner-
 ```
 julia --project plot_posterior.jl
 ```
+For example, using Random features for case `exp_name = "ent-det-calibration"` one obtains
+```@raw html
+<img src="../../assets/edmf_nonsep_posterior_2d.png" width="300">
+```
+and `exp_name = "ent-det-tked-tkee-stab-calibration"` or one obtains
+```@raw html
+<img src="../../assets/edmf_nonsep_posterior_5d.png" width="600">
+```
+
 The posterior samples can also be investigated directly. They are stored as a `ParameterDistribution`-type `Samples` object. One can load this and extract an array of parameters with:
 ```julia
 # input:
@@ -53,3 +66,5 @@ mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_s
     The computational ``\theta``-space are the parameters on which the algorithms act. Statistics (e.g. mean/covariance) are most meaningful when taken in this space.
     The physical ``\phi``-space is a (nonlinear) transformation of the computational space to apply parameter constraints. To pass parameter values back into the forward model, one must transform them.
     Full details and examples can be found [here](https://clima.github.io/EnsembleKalmanProcesses.jl/stable/parameter_distributions/)
+
+

@@ -9,7 +9,8 @@ export get_rfms,
     get_output_dim,
     get_rng,
     get_kernel_structure,
-    get_optimizer_options
+    get_optimizer_options,
+    get_optimizer
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -44,6 +45,8 @@ struct VectorRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     feature_decomposition::S
     "dictionary of options for hyperparameter optimizer"
     optimizer_options::Dict
+    "diagnostics from optimizer"
+    optimizer::Vector
 end
 
 """
@@ -93,7 +96,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Gets the rng field
 """
-get_rng(vrfi::VectorRandomFeatureInterface) = vrfi.rng
+EKP.get_rng(vrfi::VectorRandomFeatureInterface) = vrfi.rng
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -126,6 +129,13 @@ get_optimizer_options(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer_optio
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
+gets the optimizer field
+"""
+get_optimizer(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
 Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for the `RandomFeatures.jl` package for multi-input and multi-output emulators.
  - `n_features` - the number of random features
  - `input_dim` - the dimension of the input space
@@ -148,6 +158,8 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
       - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
+      - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
+      - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 
 """
 function VectorRandomFeatureInterface(
@@ -178,9 +190,9 @@ function VectorRandomFeatureInterface(
     #Optimization Defaults    
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior (note scalings have already been applied)
-        "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
-        "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping
+        "n_ensemble" => min(10 * ndims(prior), 100), #number of ensemble
+        "n_iteration" => 10, # number of eki iterations
+        "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
         "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
@@ -189,7 +201,9 @@ function VectorRandomFeatureInterface(
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
-        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
+        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
+        "n_cross_val_sets" => 2, # if set to 0, removes data split. i.e takes train & test to be the same data set
     )
 
     if !isnothing(optimizer_options)
@@ -218,6 +232,7 @@ function VectorRandomFeatureInterface(
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
+        [],
     )
 end
 
@@ -354,11 +369,17 @@ function build_models!(
     n_hp = calculate_n_hyperparameters(input_dim, output_dim, kernel_structure)
 
     rfms = get_rfms(vrfi)
+    if length(rfms) > 0
+        @warn "VectorRandomFeatureInterface already built. skipping..."
+        return
+    end
+
     fitted_features = get_fitted_features(vrfi)
     n_features = get_n_features(vrfi)
     batch_sizes = get_batch_sizes(vrfi)
     decomp_type = get_feature_decomposition(vrfi)
     optimizer_options = get_optimizer_options(vrfi)
+    optimizer = get_optimizer(vrfi)
     multithread = optimizer_options["multithread"]
     if multithread == "ensemble"
         multithread_type = EnsembleThreading()
@@ -385,15 +406,41 @@ function build_models!(
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
-    train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data)) # 20% split
-    n_test = n_data - n_train
     n_features_opt = optimizer_options["n_features_opt"]
+    idx_shuffle = randperm(rng, n_data)
+    n_cross_val_sets = Int(optimizer_options["n_cross_val_sets"])
 
+    train_idx = []
+    test_idx = []
+    if n_cross_val_sets == 0
+        push!(train_idx, idx_shuffle)
+        push!(test_idx, idx_shuffle)
+        n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
+        n_train = n_data
+        n_test = n_data
+    else
+        train_fraction = optimizer_options["train_fraction"]
+        n_train = Int(floor(train_fraction * n_data)) # 20% split
+        n_test = n_data - n_train
+
+        if n_test * n_cross_val_sets > n_data
+            throw(
+                ArgumentError(
+                    "train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets",
+                ),
+            )
+        end
+
+
+        for i in 1:n_cross_val_sets
+            tmp = idx_shuffle[((i - 1) * n_test + 1):(i * n_test)]
+            push!(test_idx, tmp)
+            push!(train_idx, setdiff(collect(1:n_data), tmp))
+        end
+    end
     @info (
         "hyperparameter learning using $n_train training points, $n_test validation points and $n_features_opt features"
     )
-
 
     # regularization_matrix = nothing when we use scaled SVD to decorrelate the space,
     # in this setting, noise = I
@@ -401,30 +448,20 @@ function build_models!(
         regularization = I
 
     else
-        reg_mat = regularization_matrix
+        # think of the regularization_matrix as the observational noise covariance, or a related quantity
         if !isposdef(regularization_matrix)
             regularization = posdef_correct(regularization_matrix)
             println("RF regularization matrix is not positive definite, correcting")
 
         else
-            # think of the regularization_matrix as the observational noise covariance, or a related quantity
-            regularization = exp((1 / output_dim) * sum(log.(eigvals(reg_mat)))) * I #i.e. det(M)^{1/output_dim} I
-
-            #regularization = reg_mat #using the full p.d. tikhonov exp. EXPENSIVE, and challenge get complexity terms
+            regularization = regularization_matrix
         end
+
     end
-
-    idx_shuffle = randperm(rng, n_data)
-
-    io_pairs_opt = PairedDataContainer(
-        input_values[:, idx_shuffle],
-        reshape(output_values[:, idx_shuffle], :, size(output_values, 2)),
-    )
-
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
-
+    cov_correction = optimizer_options["cov_correction"]
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
             n_cov_samples_min = n_test + 2 # diagonal case
@@ -435,67 +472,63 @@ function build_models!(
         n_cov_samples_min = (n_test * output_dim + 2)
     end
     n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
-
-    internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
-        vrfi,
-        rng,
-        μ_hp, # take mean values
-        regularization,
-        n_features_opt,
-        n_train,
-        n_test,
-        batch_sizes,
-        io_pairs_opt,
-        n_cov_samples,
-        decomp_type,
-        multithread_type,
-    )
-
+    observation_vec = []
     tikhonov_opt_val = optimizer_options["tikhonov"]
-    if tikhonov_opt_val == 0
-        # Build the covariance
-        Γ = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += regularization # + approx_σ2
-        Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
-
-        #in diag case we have data logdet = λ^m, in non diag case we have logdet(Λ^) to match the different reg matrices.
-        min_complexity =
-            isa(regularization, UniformScaling) ? n_features_opt * log(regularization.λ) :
-            n_features_opt / output_dim * 2 * sum(log.(diag(cholesky(regularization).L)))
-        min_complexity = sqrt(abs(min_complexity))
-
-
-        data = vcat(reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1), 0.0, min_complexity) #flatten data
-
-    elseif tikhonov_opt_val > 0
-        # augment the state to add tikhonov
-        outsize = size(internal_Γ, 1)
-        Γ = zeros(outsize + n_hp, outsize + n_hp)
-        Γ[1:outsize, 1:outsize] = internal_Γ
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += approx_σ2 + regularization
-        Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
-
-        Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
-
-        #TODO the min complexity here is not the correct object in the non-diagonal case
-        min_complexity =
-            isa(regularization, UniformScaling) ? n_features_opt * log(regularization.λ) :
-            n_features_opt / output_dim * 2 * sum(log.(diag(cholesky(regularization).L)))
-        min_complexity = sqrt(abs(min_complexity))
-
-        data = vcat(
-            reshape(get_outputs(io_pairs_opt)[:, (n_train + 1):end], :, 1),
-            0.0,
-            min_complexity,
-            zeros(size(Γ, 1) - outsize, 1),
-        ) #flatten data with additional zeros
-    else
-        throw(
-            ArgumentError(
-                "Tikhonov parameter must be non-negative, instead received tikhonov_opt_val=$tikhonov_opt_val",
-            ),
+    for cv_idx in 1:n_cross_val_sets
+        internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
+            vrfi,
+            rng,
+            μ_hp, # take mean values
+            regularization,
+            n_features_opt,
+            train_idx[cv_idx],
+            test_idx[cv_idx],
+            batch_sizes,
+            input_output_pairs,
+            n_cov_samples,
+            decomp_type,
+            multithread_type,
+            cov_correction = cov_correction,
         )
+
+        if tikhonov_opt_val == 0
+            # Build the covariance
+            Γ = internal_Γ
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
+                isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
+            Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
+            data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
+
+        elseif tikhonov_opt_val > 0
+            # augment the state to add tikhonov
+            outsize = size(internal_Γ, 1)
+            Γ = zeros(outsize + n_hp, outsize + n_hp)
+            Γ[1:outsize, 1:outsize] = internal_Γ
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
+            Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
+
+            Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
+
+            data = vcat(
+                reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1),
+                0.0,
+                0.0,
+                zeros(size(Γ, 1) - outsize, 1),
+            ) #flatten data with additional zeros
+        else
+            throw(
+                ArgumentError(
+                    "Tikhonov parameter must be non-negative, instead received tikhonov_opt_val=$tikhonov_opt_val",
+                ),
+            )
+        end
+        if !isposdef(Γ)
+            Γ = posdef_correct(Γ)
+        end
+        push!(observation_vec, EKP.Observation(Dict("names" => "$(cv_idx)", "samples" => data[:], "covariances" => Γ)))
+
     end
+    observation = combine_observations(observation_vec)
 
     # [3.] set up EKP optimization
     n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
@@ -505,16 +538,12 @@ function build_models!(
     localization = optimizer_options["localization"]
     accelerator = optimizer_options["accelerator"]
 
-    if !isposdef(Γ)
-        Γ = posdef_correct(Γ)
-    end
 
     initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
 
     ekiobj = EKP.EnsembleKalmanProcess(
         initial_params,
-        data[:],
-        Γ,
+        observation,
         Inversion(),
         scheduler = scheduler,
         rng = rng,
@@ -529,34 +558,44 @@ function build_models!(
         #get parameters:
         lvec = get_ϕ_final(prior, ekiobj)
 
-        g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
-            vrfi,
-            rng,
-            lvec,
-            regularization,
-            n_features_opt,
-            n_train,
-            n_test,
-            batch_sizes,
-            io_pairs_opt,
-            decomp_type,
-            multithread_type,
-        )
         if tikhonov_opt_val > 0
-            # augment with the computational parameters (u not ϕ)
-            uvecormat = get_u_final(ekiobj)
-            if isa(uvecormat, AbstractVector)
-                umat = reshape(uvecormat, 1, :)
-            else
-                umat = uvecormat
+            g_ens = zeros(n_cross_val_sets * (output_dim * n_test + input_dim + 2), n_ensemble)
+        else
+            g_ens = zeros(n_cross_val_sets * (output_dim * n_test + 2), n_ensemble)
+        end
+        for cv_idx in 1:n_cross_val_sets
+            g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
+                vrfi,
+                rng,
+                lvec,
+                regularization,
+                n_features_opt,
+                train_idx[cv_idx],
+                test_idx[cv_idx],
+                batch_sizes,
+                input_output_pairs,
+                decomp_type,
+                multithread_type,
+            )
+            if tikhonov_opt_val > 0
+                # augment with the computational parameters (u not ϕ)
+                uvecormat = get_u_final(ekiobj)
+                if isa(uvecormat, AbstractVector)
+                    umat = reshape(uvecormat, 1, :)
+                else
+                    umat = uvecormat
+                end
+
+                g_ens_tmp = vcat(g_ens_tmp, umat)
             end
 
-            g_ens = vcat(g_ens, umat)
+            g_ens[((cv_idx - 1) * (output_dim * n_test + 2) + 1):(cv_idx * (output_dim * n_test + 2)), :] = g_ens_tmp
+
         end
+
         inflation = optimizer_options["inflation"]
         if inflation > 0
-            terminated =
-                EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+            terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
         else
             terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
         end
@@ -567,6 +606,7 @@ function build_models!(
         err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
 
     end
+    push!(optimizer, err)
 
     # [5.] extract optimal hyperparameters
     hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]

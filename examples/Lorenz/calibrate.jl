@@ -105,11 +105,21 @@ function main()
         priors = PD.constrained_gaussian("F", F_true, 1.0, 0, Inf)
     end
 
+    # Plot the prior distribution
+    p = plot(priors, title = "prior")
+    plot!(p.subplots[1], [F_true], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash, xlabel = "F") # vline on top histogram
+    plot!(p.subplots[2], [A_true], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash, xlabel = "A") # vline on top histogram
+    figpath = joinpath(figure_save_directory, "prior" * ".pdf")
+    savefig(figpath)
+    figpath = joinpath(figure_save_directory, "prior" * ".png")
+    savefig(figpath)
+
+
 
     ###
     ###  Define the data from which we want to learn the parameters
     ###
-    data_names = ["y0", "y1"]
+    data_names = ["y0_y1"]
 
 
     ###
@@ -244,8 +254,7 @@ function main()
 
 
     # Construct observation object
-    truth = Observations.Observation(yt, Γy, data_names)
-    truth_sample = yt[:, end]
+    truth = EKP.Observation(Dict("samples" => vec(mean(yt, dims = 2)), "covariances" => Γy, "names" => data_names))
     ###
     ###  Calibrate: Ensemble Kalman Inversion
     ###
@@ -261,8 +270,7 @@ function main()
 
     ekiobj = EKP.EnsembleKalmanProcess(
         initial_params,
-        truth_sample,
-        truth.obs_noise_cov,
+        truth,
         EKP.Inversion(),
         scheduler = EKP.DataMisfitController(),
         verbose = true,
@@ -306,9 +314,9 @@ function main()
         "eki",
         ekiobj,
         "truth_sample",
-        truth_sample,
+        EKP.get_obs(truth),
         "truth_sample_mean",
-        truth.mean,
+        vec(mean(yt, dims = 2)),
         "truth_input_constrained",
         params_true, #constrained here, as these are in a physically constrained space (unlike the u inputs),
     )

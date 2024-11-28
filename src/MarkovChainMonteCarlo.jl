@@ -96,8 +96,8 @@ AdvancedMH.logratio_proposal_density(
 
 function _get_proposal(prior::ParameterDistribution)
     # *only* use covariance of prior, not full distribution
-    Σ = ParameterDistributions.cov(prior)
-    return AdvancedMH.RandomWalkProposal(MvNormal(zeros(size(Σ)[1]), Σ))
+    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
+    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
 end
 
 """
@@ -298,10 +298,11 @@ function AbstractMCMC.bundle_samples(
 )
     # Turn all the transitions into a vector-of-vectors.
     vals = [vcat(t.params, t.log_density, t.accepted) for t in ts]
-
     # Check if we received any parameter names.
     if ismissing(param_names)
         param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
+        #    elseif length(param_names) < length(keys(ts[1].params))# in case bug with MV names, Chains still needs one name per dist.
+        #        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1].params))]
     else
         # Generate new array to be thread safe.
         param_names = Symbol.(param_names)
@@ -310,9 +311,9 @@ function AbstractMCMC.bundle_samples(
 
     # Bundle everything up and return a MCChains.Chains struct.
     return MCMCChains.Chains(
-        vals,
-        vcat(param_names, internal_names),
-        (parameters = param_names, internals = internal_names);
+        vals, # current state information as vec-of-vecs
+        vcat(param_names, internal_names), # parameter names which get converted to symbols
+        (parameters = param_names, internals = internal_names); # name map (one needs to be called parameters = ...)
         start = discard_initial + 1,
         thin = thinning,
     )
@@ -350,6 +351,8 @@ function AbstractMCMC.bundle_samples(
     # Check if we received any parameter names.
     if ismissing(param_names)
         param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
+        #    elseif length(param_names) < length(keys(ts[1][1].params)) # in case bug with MV names, Chains still needs one name per dist.
+        #        param_names = [Symbol(:param_, i) for i in 1:length(keys(ts[1][1].params))]
     else
         # Generate new array to be thread safe.
         param_names = Symbol.(param_names)
@@ -427,9 +430,20 @@ function MCMCWrapper(
     obs_sample = to_decorrelated(obs_sample, em)
     log_posterior_map = EmulatorPosteriorModel(prior, em, obs_sample)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
+
+    # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
+    # so create the duplicates here
+    dd = get_dimensions(prior)
+    if all(dd .== 1) # i.e if dd == [1, 1, 1, 1, 1], => all params are univariate
+        param_names = get_name(prior)
+    else # else use multiplicity to get still informative parameter names
+        pn = get_name(prior)
+        param_names = reduce(vcat, [(pn[k] * "_") .* map(x -> string(x), 1:dd[k]) for k in 1:length(pn)])
+    end
+
     sample_kwargs = (; # set defaults here
         :init_params => deepcopy(init_params),
-        :param_names => get_name(prior),
+        :param_names => param_names,
         :discard_initial => burnin,
         :chain_type => MCMCChains.Chains,
     )
@@ -587,13 +601,20 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
-    # live in same space as prior
-    p_constraints = [flat_constraints[slice] for slice in p_slices]
 
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
+
+    # live in same space as prior
+    # checks if a function distribution, by looking at if the distribution is nested
+    p_constraints = [
+        !isa(get_distribution(mcmc.prior)[pn], ParameterDistribution) ? # if not func-dist
+        flat_constraints[slice] : # constraints are slice
+        get_all_constraints(get_distribution(mcmc.prior)[pn]) # get constraints of nested dist
+        for (pn, slice) in zip(p_names, p_slices)
+    ]
 
     # distributions created as atoms and pieced together
     posterior_distribution = combine_distributions([

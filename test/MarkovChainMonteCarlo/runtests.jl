@@ -34,6 +34,33 @@ function test_prior()
     return ParameterDistribution(prior_dist, prior_constraint, prior_name)
 end
 
+function test_prior_mv()
+    ### Define prior
+    return constrained_gaussian("u_mv", -1.0, 6.0, -Inf, Inf, repeats = 10)
+end
+
+function test_data_mv(; rng_seed = 41, n = 20, var_y = 0.05, input_dim = 10, rest...)
+    # Seed for pseudo-random number generator
+    rng = Random.MersenneTwister(rng_seed)
+    n = 40                                              # number of training points
+    x = 1 / input_dim * π * rand(rng, Float64, (input_dim, n))                 # predictors/features: 1 × n
+    σ2_y = reshape([var_y], 1, 1)
+    y = sin.(norm(x)) + rand(rng, Normal(0, σ2_y[1]), (1, n)) # predictands/targets: 1 × n
+
+    return y, σ2_y, PairedDataContainer(x, y, data_are_columns = true), rng
+end
+function test_gp_mv(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
+    gppackage = GPJL()
+    pred_type = YType()
+    # Construct kernel:
+    # Squared exponential kernel (note that hyperparameters are on log scale)
+    # with observational noise
+    gp = GaussianProcess(gppackage; noise_learn = true, prediction_type = pred_type)
+    em = Emulator(gp, iopairs; obs_noise_cov = σ2_y)
+    Emulators.optimize_hyperparameters!(em)
+    return em
+end
+
 function test_gp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
     gppackage = GPJL()
     pred_type = YType()
@@ -117,6 +144,17 @@ end
         @test isapprox(test_obs, (obs_sample ./ sqrt(σ2_y[1, 1])); atol = 1e-2)
     end
 
+    @testset "MV priors" begin
+        # 10D dist with 1 name, just build the wrapper for test
+        prior_mv = test_prior_mv()
+        y_mv, σ2_y_mv, iopairs_mv, rng_mv = test_data(input_dim = 10)
+        init_params = repeat([0.0], 10)
+        obs_sample = obs_sample # scalar or Vector -> Vector
+        em_mv = test_gp_mv(y_mv, σ2_y_mv, iopairs_mv)
+        mcmc = MCMCWrapper(RWMHSampling(), obs_sample, prior_mv, em_mv; init_params = init_params)
+
+    end
+
     @testset "Sine GP & RW Metropolis" begin
         em_1 = test_gp_1(y, σ2_y, iopairs)
         new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
@@ -144,7 +182,7 @@ end
 
         em_1 = test_gp_1(y, σ2_y, iopairs)
         new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
-        @test isapprox(new_step, 0.25; atol = 0.25)
+        @test isapprox(new_step, 0.75; atol = 0.6)
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
         @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
 

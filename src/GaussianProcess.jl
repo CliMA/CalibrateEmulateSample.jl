@@ -113,6 +113,10 @@ function build_models!(
 
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
+    if length(gp.models) > 0 # check to see if gp already contains models
+        @warn "GaussianProcess already built. skipping..."
+        return
+    end
     N_models = size(output_values, 1) #size(transformed_data)[1]
 
 
@@ -228,6 +232,11 @@ function build_models!(
 
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
+    if length(gp.models) > 0 # check to see if gp already contains models
+        @warn "GaussianProcess already built. skipping..."
+        return
+    end
+
     N_models = size(output_values, 1) #size(transformed_data)[1]
 
     if gp.kernel === nothing

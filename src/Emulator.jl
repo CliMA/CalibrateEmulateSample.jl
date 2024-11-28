@@ -81,6 +81,20 @@ end
 get_machine_learning_tool(emulator::Emulator) = emulator.machine_learning_tool
 
 # Constructor for the Emulator Object
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Positional Arguments
+ - `machine_learning_tool` ::MachineLearningTool,
+ - `input_output_pairs` ::PairedDataContainer
+Keyword Arguments 
+ - `obs_noise_cov`: A matrix/uniform scaling to provide the observational noise covariance of the data - used for data processing (default `nothing`),
+ - `normalize_inputs`: Normalize the inputs to be unit Gaussian, in the smallest full-rank space of the data (default `true`),
+ - `standardize_outputs`: Standardize outputs with by dividing by a vector of provided factors (default `false`),
+ - `standardize_outputs_factors`: If standardizing, the provided dim_output-length vector of factors,
+ - `decorrelate`: Apply (truncated) SVD to the outputs. Predictions are returned in the decorrelated space, (default `true`)
+ - `retained_svd_frac`: The cumulative sum of singular values retained after output SVD truncation (default 1.0 - no truncation)
+"""
 function Emulator(
     machine_learning_tool::MachineLearningTool,
     input_output_pairs::PairedDataContainer{FT};
@@ -102,6 +116,8 @@ function Emulator(
     if obs_noise_cov !== nothing
         err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
         size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
+    else
+        @warn "The covariance of the observational noise (a.k.a obs_noise_cov) is useful for data processing. Large approximation errors can occur without it. If possible, please provide it using the keyword obs_noise_cov."
     end
     @info "test here - after checks"
 
@@ -210,7 +226,6 @@ function predict(
 
     # [1.] normalize
     normalized_new_inputs = normalize(emulator, new_inputs)
-
     # [2.]  predict. Note: ds = decorrelated, standard
     ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs, mlt_kwargs...)
 
@@ -302,6 +317,7 @@ function calculate_normalization(inputs::VOrM) where {VOrM <: AbstractVecOrMat}
         svd_in = svd(input_cov)
         sqrt_inv_sv = 1 ./ sqrt.(svd_in.S[1:rank(input_cov)])
         normalization = Diagonal(sqrt_inv_sv) * svd_in.Vt[1:rank(input_cov), :] #non-square
+        @info "reducing input dimension from $(size(input_cov,1)) to $rank(input_cov) during low rank in normalization"
     end
     return normalization
 end

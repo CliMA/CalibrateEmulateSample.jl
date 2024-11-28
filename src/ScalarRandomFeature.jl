@@ -30,6 +30,8 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     feature_decomposition::S
     "dictionary of options for hyperparameter optimizer"
     optimizer_options::Dict{S}
+    "diagnostics from optimizer"
+    optimizer::Vector
 end
 
 """
@@ -72,7 +74,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 gets the rng field
 """
-get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
+EKP.get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -94,6 +96,13 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 gets the optimizer_options field
 """
 get_optimizer_options(srfi::ScalarRandomFeatureInterface) = srfi.optimizer_options
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+gets the optimizer field
+"""
+get_optimizer(srfi::ScalarRandomFeatureInterface) = srfi.optimizer
 
 
 """
@@ -120,6 +129,8 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
      - "accelerator": use EKP accelerators (default is no acceleration)
      - "verbose" => false, verbose optimizer statements
+     - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
+     - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -144,16 +155,19 @@ function ScalarRandomFeatureInterface(
     # default optimizer settings
     optimizer_opts = Dict(
         "prior" => prior, #the hyperparameter_prior
-        "n_ensemble" => max(ndims(prior) + 1, 10), #number of ensemble
-        "n_iteration" => 5, # number of eki iterations
-        "scheduler" => EKP.DataMisfitController(), # Adaptive timestepping,
-        "cov_sample_multiplier" => 2.0, # multiplier for samples to estimate covariance in optimization scheme
+        "n_ensemble" => min(10 * ndims(prior), 100), #number of ensemble
+        "n_iteration" => 10, # number of eki iterations
+        "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping,
+        "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
         "n_features_opt" => n_features, # number of features for the optimization 
         "multithread" => "ensemble", # instead of "tullio"
         "verbose" => false, # verbose optimizer statements
-        "accelerator" => EKP.DefaultAccelerator(), # acceleration with momentum
+        "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
+        "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
+        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
+        "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
     )
 
     if !isnothing(optimizer_options)
@@ -180,6 +194,7 @@ function ScalarRandomFeatureInterface(
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
+        [],
     )
 end
 
@@ -191,6 +206,7 @@ function hyperparameter_distribution_from_flat(
 
     M = zeros(input_dim) #scalar output
     U = hyperparameters_from_flat(x, input_dim, kernel_structure)
+
     if !isposdef(U)
         println("U not posdef - correcting")
         U = posdef_correct(U)
@@ -305,37 +321,68 @@ function build_models!(
 
 
     rfms = get_rfms(srfi)
+    if length(rfms) > 0
+        @warn "ScalarRandomFeatureInterface already built. skipping..."
+        return
+    end
     fitted_features = get_fitted_features(srfi)
     n_features = get_n_features(srfi)
     batch_sizes = get_batch_sizes(srfi)
     rng = get_rng(srfi)
     decomp_type = get_feature_decomposition(srfi)
     optimizer_options = get_optimizer_options(srfi)
-
+    optimizer = get_optimizer(srfi) # empty vector
 
     # Optimize features with EKP for each output dim
     # [1.] Split data into test/train 80/20 
-    train_fraction = optimizer_options["train_fraction"]
-    n_train = Int(floor(train_fraction * n_data))
-    n_test = n_data - n_train
+    idx_shuffle = randperm(rng, n_data)
+    n_cross_val_sets = Int(optimizer_options["n_cross_val_sets"])
     n_features_opt = optimizer_options["n_features_opt"]
 
-    idx_shuffle = randperm(rng, n_data)
+    train_idx = []
+    test_idx = []
+    n_train = 0
+    n_test = 0
+    if n_cross_val_sets == 0
+        push!(train_idx, idx_shuffle)
+        push!(test_idx, idx_shuffle)
+        n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
+        n_train = n_data
+        n_test = n_data
+    else
+        train_fraction = optimizer_options["train_fraction"]
+        n_train = Int(floor(train_fraction * n_data))
+        n_test = n_data - n_train
+
+        if n_test * n_cross_val_sets > n_data
+            throw(
+                ArgumentError(
+                    "train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets",
+                ),
+            )
+        end
+
+
+        for i in 1:n_cross_val_sets
+            tmp = idx_shuffle[((i - 1) * n_test + 1):(i * n_test)]
+            push!(test_idx, tmp)
+            push!(train_idx, setdiff(collect(1:n_data), tmp))
+        end
+    end
+
+
 
     #regularization = I = 1.0 in scalar case
     regularization = I
 
-
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
     )
+    n_iteration = optimizer_options["n_iteration"]
+    diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
 
-
-        io_pairs_opt = PairedDataContainer(
-            input_values[:, idx_shuffle],
-            reshape(output_values[i, idx_shuffle], 1, size(output_values, 2)),
-        )
+        io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
 
         multithread = optimizer_options["multithread"]
         if multithread == "ensemble"
@@ -345,7 +392,7 @@ function build_models!(
         else
             throw(
                 ArgumentError(
-                    "Unknown optimizer option for multithreading, please choose from \"tullio\" (allows Tullio.jl to control threading in RandomFeatures.jl, or \"loops\" (threading optimization loops)",
+                    "Unknown optimizer option for multithreading, please choose from \"tullio\" (allows Tullio.jl to control threading in RandomFeatures.jl), or \"ensemble\" (threading is done over the ensemble)",
                 ),
             )
         end
@@ -365,47 +412,58 @@ function build_models!(
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
 
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
+        cov_correction = optimizer_options["cov_correction"]
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
+        observation_vec = []
+        for cv_idx in 1:n_cross_val_sets
+            internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
+                srfi,
+                rng,
+                μ_hp,
+                regularization,
+                n_features_opt,
+                train_idx[cv_idx],
+                test_idx[cv_idx],
+                batch_sizes,
+                io_pairs_opt,
+                n_cov_samples,
+                decomp_type,
+                multithread_type,
+                cov_correction = cov_correction,
+            )
+            Γ = internal_Γ
+            Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
+            Γ[(n_test + 1):end, (n_test + 1):end] += I
+            if !isposdef(Γ)
+                Γ = posdef_correct(Γ)
+            end
+            data = vcat(get_outputs(io_pairs_opt)[test_idx[cv_idx]], 0.0, 0.0)
 
-        internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
-            srfi,
-            rng,
-            μ_hp,
-            regularization,
-            n_features_opt,
-            n_train,
-            n_test,
-            batch_sizes,
-            io_pairs_opt,
-            n_cov_samples,
-            decomp_type,
-            multithread_type,
-        )
-        Γ = internal_Γ
-        Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
-        Γ[(n_test + 1):end, (n_test + 1):end] += I
-
+            push!(
+                observation_vec,
+                EKP.Observation(Dict("names" => "$(cv_idx)", "samples" => data[:], "covariances" => Γ)),
+            )
+        end
+        observation = combine_observations(observation_vec)
         # [3.] set up EKP optimization
         n_ensemble = optimizer_options["n_ensemble"]
         n_iteration = optimizer_options["n_iteration"]
         opt_verbose_flag = optimizer_options["verbose"]
         scheduler = optimizer_options["scheduler"]
         accelerator = optimizer_options["accelerator"]
+        localization = optimizer_options["localization"]
 
         initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
-        min_complexity = n_features_opt * log(regularization.λ)
-        min_complexity = sqrt(abs(min_complexity))
-        data = vcat(get_outputs(io_pairs_opt)[(n_train + 1):end], 0.0, min_complexity)
         ekiobj = EKP.EnsembleKalmanProcess(
             initial_params,
-            data,
-            Γ,
+            observation,
             Inversion(),
             scheduler = scheduler,
             rng = rng,
             accelerator = accelerator,
             verbose = opt_verbose_flag,
+            localization_method = localization,
         )
         err = zeros(n_iteration)
 
@@ -414,24 +472,28 @@ function build_models!(
 
             #get parameters:
             lvec = transform_unconstrained_to_constrained(prior, get_u_final(ekiobj))
+            g_ens = zeros(n_cross_val_sets * (n_test + 2), n_ensemble)
+            for cv_idx in 1:n_cross_val_sets
 
-            g_ens, _ = calculate_ensemble_mean_and_coeffnorm(
-                srfi,
-                rng,
-                lvec,
-                regularization,
-                n_features_opt,
-                n_train,
-                n_test,
-                batch_sizes,
-                io_pairs_opt,
-                decomp_type,
-                multithread_type,
-            )
+                g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
+                    srfi,
+                    rng,
+                    lvec,
+                    regularization,
+                    n_features_opt,
+                    train_idx[cv_idx],
+                    test_idx[cv_idx],
+                    batch_sizes,
+                    io_pairs_opt,
+                    decomp_type,
+                    multithread_type,
+                )
+                g_ens[((cv_idx - 1) * (n_test + 2) + 1):(cv_idx * (n_test + 2)), :] = g_ens_tmp
+            end
+
             inflation = optimizer_options["inflation"]
             if inflation > 0
-                terminated =
-                    EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, use_prior_cov = true, s = inflation) # small regularizing inflation
+                terminated = EKP.update_ensemble!(ekiobj, g_ens, additive_inflation = true, s = inflation) # small regularizing inflation
             else
                 terminated = EKP.update_ensemble!(ekiobj, g_ens) # small regularizing inflation
             end
@@ -440,8 +502,8 @@ function build_models!(
             end
 
             err[i] = get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
-
         end
+        diagnostics[:, i] = copy(err)
 
         # [5.] extract optimal hyperparameters
         hp_optimal = get_ϕ_mean_final(prior, ekiobj)[:]
@@ -483,7 +545,9 @@ function build_models!(
 
         push!(rfms, rfm_i)
         push!(fitted_features, fitted_features_i)
+
     end
+    push!(optimizer, diagnostics)
 
 end
 

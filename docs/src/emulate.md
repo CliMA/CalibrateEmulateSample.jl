@@ -29,11 +29,11 @@ The optional arguments above relate to the data processing.
 ### Emulator Training
 
 The emulator is trained when we combine the machine learning tool and the data into the `Emulator` above. 
-For any machine learning tool, we must also optimize the hyperparameters:
+For any machine learning tool, hyperparameters are optimized.
 ```julia
 optimize_hyperparameters!(emulator)
 ```
-In the Lorenz example, this line learns the hyperparameters of the Gaussian process, which depend on the choice of [kernel](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/#kernels).
+For some machine learning packages however, this may be completed during construction automatically, and for others this will not. If automatic construction took place, the `optimize_hyperparameters!` line does not perform any new task, so may be safely called. In the Lorenz example, this line learns the hyperparameters of the Gaussian process, which depend on the choice of [kernel](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/#kernels), and the choice of GP package.
 Predictions at new inputs can then be made using
 ```julia
 y, cov = Emulator.predict(emulator, new_inputs)
@@ -66,23 +66,23 @@ This arises from the optional arguments
 We normalize the input data in a standard way by centering, and scaling with the empirical covariance
 - `standardize_outputs = true` (default: `false`)
 - `standardize_outputs_factors = factor_vector` (default: `nothing`)
-To help with poor conditioning of the covariance matrix, users can also standardize each output dimension with by a multiplicative factor given by the elements of `factor_vector`
+To help with poor conditioning of the covariance matrix, users can also standardize each output dimension with by a multiplicative factor given by the elements of `factor_vector`.
 
-## Modular interface
+## [Modular interface](@id modular-interface)
 
-Each statistical emulator has the following supertype and methods:
-
-```julia
-abstract type MachineLearningTool end
-function build_models!(mlt, iopairs)
-function optimize_hyperparameters!(mlt)
-function predict(mlt, new_inputs)
-```
-Add a new tool as follows:
+Developers may contribute new tools by performing the following
 1. Create `MyMLToolName.jl`, and include "MyMLToolName.jl" in `Emulators.jl`
-2. Create a struct `MyMLTool <: MachineLearningTool` 
-3. Create these three methods to build, train, and predict with your tool (use `GaussianProcess.jl` as a guide)
+2. Create a struct `MyMLTool <: MachineLearningTool`, containing any arguments or optimizer options 
+3. Create the following three methods to build, train, and predict with your tool (use `GaussianProcess.jl` as a guide)
+```
+build_models!(mlt::MyMLTool, iopairs::PairedDataContainer) -> Nothing
+optimize_hyperparameters!(mlt::MyMLTool, args...; kwargs...) -> Nothing
+function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{Matrix, Array{,3}
+```
+!!! note "on dimensions of the predict inputs and outputs"
+    The `predict` method takes as input, an `input_dim`-by-`N_new` matrix. It return both a predicted mean and a predicted (co)variance at new inputs.
+    (i) for scalar-output methods relying on diagonalization, return `output_dim`-by-`N_new` matrices for mean and variance,
+    (ii) For vector-output methods, return `output_dim`-by-`N_new` for mean and `output_dim`-by-`output_dim`-by-`N_new` for covariances.
 
-!!! note
-    The `predict` method currently needs to return both a predicted mean and a predicted (co)variance at new inputs, which are used in the *Sample* stage.
+Please get in touch with our development team when contributing new statistical emulators, to help us ensure the smoothest interface with any new tools.
 
