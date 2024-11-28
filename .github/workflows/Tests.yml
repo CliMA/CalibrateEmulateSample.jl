@@ -1,10 +1,5 @@
 name: Tests
-
-on:
-  pull_request:
-  push:
-    tags: '*'
-    
+on: [push]
 jobs:
   test-linux-v1:
     name: test-linux-v1
