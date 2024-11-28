@@ -10,8 +10,8 @@ using ScikitLearn
 const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.3.2"))
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.3.2"))
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.5.1"))
+    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.5.1"))
 end
 
 #exports (from Emulator)
