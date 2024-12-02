@@ -119,7 +119,6 @@ function Emulator(
     else
         @warn "The covariance of the observational noise (a.k.a obs_noise_cov) is useful for data processing. Large approximation errors can occur without it. If possible, please provide it using the keyword obs_noise_cov."
     end
-    @info "test here - after checks"
 
 
     # [1.] Normalize the inputs? 
@@ -133,8 +132,6 @@ function Emulator(
         training_inputs = get_inputs(input_output_pairs)
     end
 
-    @info "test here - after normalization"
-
     # [2.] Standardize the outputs?
     if standardize_outputs
         training_outputs, obs_noise_cov =
@@ -143,7 +140,6 @@ function Emulator(
         training_outputs = get_outputs(input_output_pairs)
     end
 
-    @info "test here - after standardization"
     # [3.] Decorrelating the outputs, not performed for vector RF
     if decorrelate
         #Transform data if obs_noise_cov available 
@@ -153,7 +149,6 @@ function Emulator(
 
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         # [4.] build an emulator
-        @info "test here - just before build models"
 
         build_models!(machine_learning_tool, training_pairs)
     else
@@ -166,7 +161,6 @@ function Emulator(
         build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov)
     end
 
-    @info "test here"
     return Emulator{FT}(
         machine_learning_tool,
         training_pairs,
