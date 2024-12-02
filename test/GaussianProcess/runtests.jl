@@ -8,7 +8,7 @@ using LinearAlgebra
 using PyCall
 using ScikitLearn
 const pykernels = PyNULL()
-copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.1.1"))
+copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.5.1"))
 
 
 using CalibrateEmulateSample.Emulators
@@ -127,9 +127,7 @@ using CalibrateEmulateSample.DataContainers
     se = pykernels.RBF(1.0)
     GPkernel = var * se
 
-
     gp3 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-
     em3 = Emulator(
         gp3,
         iopairs,
@@ -138,7 +136,6 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
-
     @test_logs (:warn,) (:warn,) Emulator(
         gp3,
         iopairs,
@@ -158,7 +155,6 @@ using CalibrateEmulateSample.DataContainers
     @test length(gp3.models) == 1 # check that gp3 does not get more models added under repeated calls
 
     Emulators.optimize_hyperparameters!(em3)
-
 
     #gp3 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing,
     #               normalized=false, noise_learn=true,

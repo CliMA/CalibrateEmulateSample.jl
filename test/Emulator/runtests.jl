@@ -1,3 +1,5 @@
+include("MWE.jl")
+
 # Import modules
 using Random
 using Test

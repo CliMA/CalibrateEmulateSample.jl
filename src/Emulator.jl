@@ -149,6 +149,7 @@ function Emulator(
 
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         # [4.] build an emulator
+
         build_models!(machine_learning_tool, training_pairs)
     else
         if decorrelate || !isa(machine_learning_tool, VectorRandomFeatureInterface)
@@ -159,7 +160,6 @@ function Emulator(
         # [4.] build an emulator - providing the noise covariance as a Tikhonov regularizer
         build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov)
     end
-
 
     return Emulator{FT}(
         machine_learning_tool,

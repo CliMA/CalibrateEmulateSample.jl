@@ -1,12 +1,8 @@
 name: Tests
-
-on:
-  pull_request:
-  push:
-    tags: '*'
-
+on: [push]
 jobs:
-  test-linux:
+  test-linux-v1:
+    name: test-linux-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
@@ -15,17 +11,17 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.8.0
+      uses: styfle/cancel-workflow-action@0.12.1
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@main
 
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1
+      uses: julia-actions/setup-julia@v2
       with:
-        version: 1
+        version: '1'
         
     - name: Install Julia Project Packages
       # we add this ENV varaible to force PyCall to download and use Conda rather than
@@ -56,12 +52,13 @@ jobs:
       if: success()
 
     - name: Submit coverage
-      uses: codecov/codecov-action@v1.0.7
+      uses: codecov/codecov-action@v5
       with:
         token: ${{secrets.CODECOV_TOKEN}}
       if: success()
 
-  test-macos:
+  test-macos-v1:
+    name: test-macos-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
@@ -70,18 +67,18 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.8.0
+      uses: styfle/cancel-workflow-action@0.12.1
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@main
 
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1
+      uses: julia-actions/setup-julia@v2
       with:
-        version: 1.9.0
-                 # later versions causes hanging in package building
+        version: 1
+
     - name: Install Julia Project Packages
       env:
         PYTHON: ""
@@ -101,7 +98,8 @@ jobs:
       run: |
         LD_LIBRARY_PATH=$HOME/.julia/conda/3/lib julia --project -e 'using Pkg; Pkg.test()'
 
-  test-windows:
+  test-windows-v1:
+    name: test-windows-v1
     timeout-minutes: 60
     strategy:
       fail-fast: true
@@ -110,15 +108,15 @@ jobs:
 
     steps:
     - name: Cancel Previous Runs
-      uses: styfle/cancel-workflow-action@0.8.0
+      uses: styfle/cancel-workflow-action@0.12.1
       with:
         access_token: ${{ github.token }}
 
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@main
 
     - name: Set up Julia
-      uses: julia-actions/setup-julia@v1
+      uses: julia-actions/setup-julia@v2
       with:
         version: 1
 
