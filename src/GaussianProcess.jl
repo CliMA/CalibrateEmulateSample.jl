@@ -252,7 +252,6 @@ function build_models!(
         kern = deepcopy(gp.kernel)
         println("Using user-defined kernel", kern)
     end
-    @info "test here -after build default kernel"
 
     if gp.noise_learn
         # Add white noise to kernel
@@ -261,29 +260,20 @@ function build_models!(
         kern = kern + white
         println("Learning additive white noise")
     end
-    @info "test here - after adding noise to kernel"
     regularization_noise = gp.alg_reg_noise
 
     for i in 1:N_models
         kernel_i = deepcopy(kern)
         data_i = output_values[i, :]
         m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise)
-        @info "test here - after building pyGP.GaussianProcessRegressor"
         # ScikitLearn.fit! arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
-        println(m.kernel)
-        println(size(input_values), " ", size(data_i))
 
+        @info("Training kernel $(i), ")
         ScikitLearn.fit!(m, input_values, data_i)
-        @info "test here -after calling fit"
-        if i == 1
-            println(m.kernel.hyperparameters)
-            print("Completed training of: ")
-        end
-        println(i, ", ")
         push!(models, m)
-        println(m.kernel)
+        @info(m.kernel)
     end
 end
 
