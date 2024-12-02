@@ -8,7 +8,7 @@ using LinearAlgebra
 using PyCall
 using ScikitLearn
 const pykernels = PyNULL()
-copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.3.2"))
+copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.5.1"))
 
 
 using CalibrateEmulateSample.Emulators
