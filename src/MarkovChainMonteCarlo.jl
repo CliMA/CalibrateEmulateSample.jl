@@ -29,7 +29,7 @@ export EmulatorPosteriorModel,
     infMALASampling,
     infHMCSampling,
     infmMALASampling,
-    infmHMCSampling,    
+    infmHMCSampling,
     MCMCWrapper,
     accept_ratio,
     optimize_stepsize,
@@ -166,7 +166,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::MALASampling, prior::ParameterDistribution) = MetropolisAdjustedLangevin(_get_proposal(prior))
+MetropolisHastingsSampler(::MALASampling, prior::ParameterDistribution) =
+    MetropolisAdjustedLangevin(_get_proposal(prior))
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -185,7 +186,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::BarkerSampling, prior::ParameterDistribution) = BarkerMetropolisHastings(_get_proposal(prior))
+MetropolisHastingsSampler(::BarkerSampling, prior::ParameterDistribution) =
+    BarkerMetropolisHastings(_get_proposal(prior))
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -223,7 +225,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::infMALASampling, prior::ParameterDistribution) = infMALAMetropolisHastings(_get_proposal(prior))
+MetropolisHastingsSampler(::infMALASampling, prior::ParameterDistribution) =
+    infMALAMetropolisHastings(_get_proposal(prior))
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -242,7 +245,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::infHMCSampling, prior::ParameterDistribution) = infHMCMetropolisHastings(_get_proposal(prior))
+MetropolisHastingsSampler(::infHMCSampling, prior::ParameterDistribution) =
+    infHMCMetropolisHastings(_get_proposal(prior))
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -261,7 +265,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::infmMALASampling, prior::ParameterDistribution) = infmMALAMetropolisHastings(_get_proposal(prior))
+MetropolisHastingsSampler(::infmMALASampling, prior::ParameterDistribution) =
+    infmMALAMetropolisHastings(_get_proposal(prior))
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -280,7 +285,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-MetropolisHastingsSampler(::infmHMCSampling, prior::ParameterDistribution) = infmHMCMetropolisHastings(_get_proposal(prior))
+MetropolisHastingsSampler(::infmHMCSampling, prior::ParameterDistribution) =
+    infmHMCMetropolisHastings(_get_proposal(prior))
 
 # ------------------------------------------------------------------------------------------
 # Use emulated model in sampler
@@ -396,10 +402,10 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-        # Compute the gradient of the log-density at the current state
-        log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
-        proposed_state = current_state.params .+ (stepsize^2 / 2) .* log_gradient .+ stepsize * rand(rng, sampler.proposal)
-        return proposed_state
+    # Compute the gradient of the log-density at the current state
+    log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
+    proposed_state = current_state.params .+ (stepsize^2 / 2) .* log_gradient .+ stepsize * rand(rng, sampler.proposal)
+    return proposed_state
 end
 
 # method extending AdvancedMH.propose() for the Barker proposal
@@ -410,13 +416,13 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-# Livingstone and Zanella (2022)
+    # Livingstone and Zanella (2022)
     # Compute the gradient of the log-density at the current state
     log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
     n = length(current_state.params)
     u = rand(rng, n)
     xi = rand(rng, sampler.proposal)
-    b = u .< 1 ./ (1 .+ exp.(- log_gradient .* xi))
+    b = u .< 1 ./ (1 .+ exp.(-log_gradient .* xi))
     return current_state.params .+ b .* xi
 end
 
@@ -441,9 +447,16 @@ function AdvancedMH.propose(
         log_gradient = log_grad_proposed_state
         proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
         log_grad_proposed_state = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), proposed_state)
-        proposed_aux .+= - (sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
+        proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
-    println("L: ", L, " stepsize: ", round(stepsize, digits = 6), " proposed_state: ", round.(proposed_state, digits = 5))
+    println(
+        "L: ",
+        L,
+        " stepsize: ",
+        round(stepsize, digits = 6),
+        " proposed_state: ",
+        round.(proposed_state, digits = 5),
+    )
     return proposed_state
 end
 
@@ -455,11 +468,13 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-        # Compute the gradient of the log-density at the current state
-        ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-        log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
-        proposed_state = ρ * current_state.params .- sqrt(1 - ρ^2) * (sqrt(stepsize) / 2) .* log_gradient .+ sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
-        return proposed_state
+    # Compute the gradient of the log-density at the current state
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
+    proposed_state =
+        ρ * current_state.params .- sqrt(1 - ρ^2) * (sqrt(stepsize) / 2) .* log_gradient .+
+        sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
+    return proposed_state
 end
 
 # method extending AdvancedMH.propose() for the  ∞-HMC proposal
@@ -483,9 +498,16 @@ function AdvancedMH.propose(
         log_gradient = log_grad_proposed_state
         proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
         log_grad_proposed_state = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), proposed_state)
-        proposed_aux .+= - (sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
+        proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
-    println("L: ", L, " stepsize: ", round(stepsize, digits = 8), " proposed_state: ", round.(proposed_state, digits = 5))
+    println(
+        "L: ",
+        L,
+        " stepsize: ",
+        round(stepsize, digits = 8),
+        " proposed_state: ",
+        round.(proposed_state, digits = 5),
+    )
     return proposed_state
 end
 
@@ -497,16 +519,16 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-        # Compute the gradient of the log-density at the current state
-        ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-        log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
-        hessian = Symmetric(ForwardDiff.hessian(x -> AdvancedMH.logdensity(model, x), current_state.params))
-        K = Symmetric(inv(- hessian))
-        C_inv = I(size(K, 1))
-        xi = cholesky(K, check=false).L * randn(size(K, 1))
-        # xi = rand(rng, MvNormal(zeros(size(K, 1)), K))# or cholesky(K_u).L * randn(size(K_u, 1))
-        nu =  xi .- (stepsize / 2) .* K * ((C_inv + hessian) * current_state.params .+ log_gradient)
-        return ρ * current_state.params .+ sqrt(1 - ρ^2) * nu
+    # Compute the gradient of the log-density at the current state
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    log_gradient = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
+    hessian = Symmetric(ForwardDiff.hessian(x -> AdvancedMH.logdensity(model, x), current_state.params))
+    K = Symmetric(inv(-hessian))
+    C_inv = I(size(K, 1))
+    xi = cholesky(K, check = false).L * randn(size(K, 1))
+    # xi = rand(rng, MvNormal(zeros(size(K, 1)), K))# or cholesky(K_u).L * randn(size(K_u, 1))
+    nu = xi .- (stepsize / 2) .* K * ((C_inv + hessian) * current_state.params .+ log_gradient)
+    return ρ * current_state.params .+ sqrt(1 - ρ^2) * nu
 end
 
 # method extending AdvancedMH.propose() for the  ∞-mHMC proposal
@@ -526,13 +548,13 @@ function AdvancedMH.propose(
     proposed_state = proposed_state_init
     log_grad_proposed_state = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), current_state.params)
 
-    for t in 1:L-1
+    for t in 1:(L - 1)
         println("Iteration t = ", t)
         println("Before update, proposed_state: ", proposed_state)
         log_gradient = log_grad_proposed_state
         proposed_state .+= stepsize .* proposed_aux - (stepsize^2 / 2) .* log_grad_proposed_state
         log_grad_proposed_state = ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), proposed_state)
-        proposed_aux .+= - (stepsize / 2) .* log_gradient .- (stepsize / 2) .* log_grad_proposed_state
+        proposed_aux .+= -(stepsize / 2) .* log_gradient .- (stepsize / 2) .* log_grad_proposed_state
         println("After update, proposed_state: ", proposed_state)
         println("proposed_aux: ", proposed_aux)
     end
@@ -939,18 +961,18 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Computes the expected squared jump distance of the chain.
 """
 function esjd(chain::MCMCChains.Chains)
-    samples = chain.value[:,:,1] # N_samples x N_params x n_chains
+    samples = chain.value[:, :, 1] # N_samples x N_params x n_chains
     n_samples, n_params = size(samples)
     esjd = zeros(Float64, n_params)
     for i in 2:n_samples
-        esjd .+= (samples[i, :] .- samples[i - 1, :]).^ 2 ./ n_samples
+        esjd .+= (samples[i, :] .- samples[i - 1, :]) .^ 2 ./ n_samples
     end
     return esjd
-    
+
 end
 
 
 
 
-    
+
 end # module MarkovChainMonteCarlo

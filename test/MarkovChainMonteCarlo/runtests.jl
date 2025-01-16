@@ -122,7 +122,7 @@ function mcmc_test_template(
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
     chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 1000)
-    
+
     posterior_distribution = get_posterior(mcmc, chain)
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean = mean(posterior_distribution)
@@ -158,8 +158,8 @@ end
 
     @testset "Sine GP & RW Metropolis" begin
         em_1 = test_gp_1(y, σ2_y, iopairs)
-        new_step, posterior_mean_1,chain1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
-        esjd1=esjd(chain1)
+        new_step, posterior_mean_1, chain1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
+        esjd1 = esjd(chain1)
         @info "ESJD = $esjd1"
         @test isapprox(new_step, 0.5; atol = 0.5)
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
@@ -172,12 +172,12 @@ end
         _, posterior_mean_2, chain2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params...)
         # difference between mean_1 and mean_2 only from MCMC convergence
         @test isapprox(posterior_mean_2, posterior_mean_1; atol = 0.1)
-       # test diagnostic functions on the chain
-        esjd2=esjd(chain2)
+        # test diagnostic functions on the chain
+        esjd2 = esjd(chain2)
         @info "ESJD = $esjd2"
         # approx [0.04190683285347798, 0.1685296224916364, 0.4129400000002722]
-        @test all(isapprox.(esjd1,esjd2, rtol=0.1))
-                  
+        @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
+
     end
 
     @testset "Sine GP & pCN" begin
@@ -190,8 +190,8 @@ end
         )
 
         em_1 = test_gp_1(y, σ2_y, iopairs)
-        new_step, posterior_mean_1,chain1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
-        esjd1=esjd(chain1)
+        new_step, posterior_mean_1, chain1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params...)
+        esjd1 = esjd(chain1)
         @info "ESJD = $esjd1"
         @test isapprox(new_step, 0.75; atol = 0.6)
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
@@ -201,15 +201,15 @@ end
         norm_factor = 10.0
         norm_factor = fill(norm_factor, size(y[:, 1])) # must be size of output dim
         em_2 = test_gp_2(y, σ2_y, iopairs; norm_factor = norm_factor)
-        _, posterior_mean_2,chain2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params...)
+        _, posterior_mean_2, chain2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params...)
         # difference between mean_1 and mean_2 only from MCMC convergence
         @test isapprox(posterior_mean_2, posterior_mean_1; atol = 0.1)
 
-        esjd2=esjd(chain2)
+        esjd2 = esjd(chain2)
         @info "ESJD = $esjd2"
         # approx [0.03470825350663073, 0.161606734823579, 0.38970000000024896]
 
-        @test all(isapprox.(esjd1,esjd2, rtol=0.1))
-      
+        @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
+
     end
 end
