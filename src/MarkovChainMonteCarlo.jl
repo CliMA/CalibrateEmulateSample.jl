@@ -34,7 +34,8 @@ export EmulatorPosteriorModel,
     accept_ratio,
     optimize_stepsize,
     get_posterior,
-    sample
+    sample,
+    esjd
 
 # ------------------------------------------------------------------------------------------
 # Output space transformations between original and SVD-decorrelated coordinates.
@@ -931,4 +932,25 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     return posterior_distribution
 end
 
+# other diagnostic utilities
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Computes the expected squared jump distance of the chain.
+"""
+function esjd(chain::MCMCChains.Chains)
+    samples = chain.value[:,:,1] # N_samples x N_params x n_chains
+    n_samples, n_params = size(samples)
+    esjd = zeros(Float64, n_params)
+    for i in 2:n_samples
+        esjd .+= (samples[i, :] .- samples[i - 1, :]).^ 2 ./ n_samples
+    end
+    return esjd
+    
+end
+
+
+
+
+    
 end # module MarkovChainMonteCarlo
