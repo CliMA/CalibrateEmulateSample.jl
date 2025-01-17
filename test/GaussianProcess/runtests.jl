@@ -1,6 +1,6 @@
 # Import modules
-using Random
 using Test
+using Random
 using GaussianProcesses
 using Statistics
 using Distributions
@@ -98,9 +98,51 @@ using CalibrateEmulateSample.DataContainers
     @test size(μ1) == (1, 5)
     @test vec(σ1²) ≈ [0.017, 0.003, 0.004, 0.004, 0.009] atol = 1e-2
 
+    # GaussianProcess 1b: use GPJL to create an abstractGP dist.
+    agp = GaussianProcess(
+        AGPJL();
+        noise_learn = true,
+        alg_reg_noise = 1e-4,
+        prediction_type = pred_type,
+    )
+    @test_throws ArgumentError Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
+    gp1_opt_params = get_params(gp1)[1] # one model only
+    gp1_opt_param_names = get_param_names(gp1)[1] # one model only
+    
+    kernel_params = Dict(
+        "log_rbf_len" => [gp1_opt_params[1];;], # [1x1] matrix
+        "log_std_sqexp" => gp1_opt_params[2:end-1], # [1] vec
+        "log_std_noise" => gp1_opt_params[end],
+    )
+
+    em_agp_from_gp1 = Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+        kernel_params=kernel_params
+    )
+
+    μ1b, σ1b² = Emulators.predict(em_agp_from_gp1, new_inputs)
+
+    # gp1 and agp_from_gp2 should give similar predictions
+    @test all(isapprox(μ1,μ1b, atol=1e-12)
+    @test size(μ1) == (1, 5)
+    @test all(isapprox(σ1²,σ1b², atol=1e-12)
+    
+    
     # GaussianProcess 2: GPJL, predict_f
     pred_type = FType()
-
+    
     gp2 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
 
     em2 = Emulator(
@@ -250,5 +292,7 @@ using CalibrateEmulateSample.DataContainers
     # check match between the variances (should be similar at least)
     @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 2 * tol_mu))
 
+    
 
+    
 end

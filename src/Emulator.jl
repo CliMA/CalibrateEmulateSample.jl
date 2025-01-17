@@ -35,7 +35,7 @@ include("RandomFeature.jl")
 function throw_define_mlt()
     throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
 end
-function build_models!(mlt, iopairs)
+function build_models!(mlt, iopairs, mlt_kwargs...)
     throw_define_mlt()
 end
 function optimize_hyperparameters!(mlt)
@@ -104,7 +104,7 @@ function Emulator(
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
     decorrelate::Bool = true,
     retained_svd_frac::FT = 1.0,
-    mlt_kwargs...,
+    mlt_kwargs...
 ) where {FT <: AbstractFloat}
 
     # For Consistency checks
@@ -151,7 +151,7 @@ function Emulator(
         training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
         # [4.] build an emulator
 
-        build_models!(machine_learning_tool, training_pairs, mlt_kwargs...)
+        build_models!(machine_learning_tool, training_pairs; mlt_kwargs...)
     else
         if decorrelate || !isa(machine_learning_tool, VectorRandomFeatureInterface)
             throw(ArgumentError("$machine_learning_tool is incompatible with option Emulator(...,decorrelate = false)"))
@@ -159,7 +159,7 @@ function Emulator(
         decomposition = nothing
         training_pairs = PairedDataContainer(training_inputs, training_outputs)
         # [4.] build an emulator - providing the noise covariance as a Tikhonov regularizer
-        build_models!(machine_learning_tool, training_pairs, regularization_matrix = obs_noise_cov, mlt_kwargs...)
+        build_models!(machine_learning_tool, training_pairs; regularization_matrix = obs_noise_cov, mlt_kwargs...)
     end
 
     return Emulator{FT}(
