@@ -104,7 +104,7 @@ function Emulator(
     standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
     decorrelate::Bool = true,
     retained_svd_frac::FT = 1.0,
-    mlt_kwargs...
+    mlt_kwargs...,
 ) where {FT <: AbstractFloat}
 
     # For Consistency checks

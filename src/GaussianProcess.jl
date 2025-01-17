@@ -64,7 +64,7 @@ $(DocStringExtensions.TYPEDFIELDS)
 """
 struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
-    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject,  <:AbstractGPs.PosteriorGP, Nothing}}
+    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}
     "Kernel object."
     kernel::Union{<:GaussianProcesses.Kernel, <:PyObject, <:AbstractGPs.Kernel, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
@@ -101,7 +101,7 @@ function GaussianProcess(
 }
 
     # Initialize vector for GP models
-    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, <: Nothing}}(undef, 0)
+    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, <:Nothing}}(undef, 0)
 
     # the algorithm regularization noise is set to some small value if we are learning noise, else
     # it is fixed to the correct value (1.0)
@@ -373,64 +373,66 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         """))
     end
 
-    
+
     N_models = size(output_values, 1) #size(transformed_data)[1]
     regularization_noise = gp.alg_reg_noise
-#=    if gp.kernel === nothing
-        println("Using default squared exponential kernel, learning length scale and variance parameters")
-        # Create default squared exponential kernel
-        const_value = 1.0
-        rbf_len = fill(1.0, size(input_values, 2))
-        rbf = const_value * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_len))
-        kern = rbf
-        println("Using default squared exponential kernel:", kern)
-    else
-        kern = deepcopy(gp.kernel)
-        println("Using user-defined kernel", kern)
-    end
-
-    if gp.noise_learn
-        # Add white noise to kernel
-        white_noise_level = 1.0
-        white = white_noise_level * KernelFunctions.WhiteKernel()
-        kern += white
-        println("Learning additive white noise")
-    end
-    for i in 1:N_models
-        kernel_i = deepcopy(kern)
-        # In contrast to the GPJL and SKLJL case "data_i = output_values[i, :]"
-        data_i = output_values[i, :]
-        f = AbstractGPs.GP(kernel_i)
-        # f arguments:
-        # input_values:    (input_dim * N_dims)
-        fx = f(input_values', regularization_noise)
-        # posterior arguments:
-        # data_i:    (N_samples,)
-        post_fx = posterior(fx, data_i)
-        if i == 1
-            println(kernel_i)
-            print("Completed training of: ")
+    #=    if gp.kernel === nothing
+            println("Using default squared exponential kernel, learning length scale and variance parameters")
+            # Create default squared exponential kernel
+            const_value = 1.0
+            rbf_len = fill(1.0, size(input_values, 2))
+            rbf = const_value * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_len))
+            kern = rbf
+            println("Using default squared exponential kernel:", kern)
+        else
+            kern = deepcopy(gp.kernel)
+            println("Using user-defined kernel", kern)
         end
-        println("created GP: ", i)
-    end
-=#
+
+        if gp.noise_learn
+            # Add white noise to kernel
+            white_noise_level = 1.0
+            white = white_noise_level * KernelFunctions.WhiteKernel()
+            kern += white
+            println("Learning additive white noise")
+        end
+        for i in 1:N_models
+            kernel_i = deepcopy(kern)
+            # In contrast to the GPJL and SKLJL case "data_i = output_values[i, :]"
+            data_i = output_values[i, :]
+            f = AbstractGPs.GP(kernel_i)
+            # f arguments:
+            # input_values:    (input_dim * N_dims)
+            fx = f(input_values', regularization_noise)
+            # posterior arguments:
+            # data_i:    (N_samples,)
+            post_fx = posterior(fx, data_i)
+            if i == 1
+                println(kernel_i)
+                print("Completed training of: ")
+            end
+            println("created GP: ", i)
+        end
+    =#
     # now obtain the values
     var_sqexp = exp.(2 .* kernel_params["log_std_sqexp"]) # Vec [out]
     var_noise = exp.(2 .* kernel_params["log_std_noise"]) # Float
     rbf_invlen = 1 ./ exp.(kernel_params["log_rbf_len"])# rbf_len # mat [out x in]
-    
+
     for i in 1:N_models
-        opt_kern = var_sqexp[i] * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[i, :])) + var_noise * KernelFunctions.WhiteKernel()
+        opt_kern =
+            var_sqexp[i] * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[i, :])) +
+            var_noise * KernelFunctions.WhiteKernel()
         opt_f = AbstractGPs.GP(opt_kern)
         opt_fx = opt_f(input_values', regularization_noise)
-        
+
         data_i = output_values[i, :]
         opt_post_fx = posterior(opt_fx, data_i)
         println("optimised GP: ", i)
         push!(models, opt_post_fx)
         println(opt_post_fx.prior.kernel)
     end
-    
+
 end
 
 function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs...)
