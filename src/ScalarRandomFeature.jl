@@ -306,7 +306,8 @@ Builds the random feature method from hyperparameters. We use cosine activation 
 """
 function build_models!(
     srfi::ScalarRandomFeatureInterface,
-    input_output_pairs::PairedDataContainer{FT},
+    input_output_pairs::PairedDataContainer{FT};
+    kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
