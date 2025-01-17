@@ -113,7 +113,7 @@ using CalibrateEmulateSample.DataContainers
 
     kernel_params = Dict(
         "log_rbf_len" => [ # [1x1] matrix
-            gp1_opt_params[1]
+            gp1_opt_params[1],
         ], # [1x1] matrix
         "log_std_sqexp" => gp1_opt_params[2:(end - 1)], # [1] vec
         "log_std_noise" => gp1_opt_params[end],
