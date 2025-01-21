@@ -80,6 +80,7 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     ) # check that gp1 does not get more models added under second call
+
     Emulator(
         gp1,
         iopairs,
@@ -108,14 +109,12 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
-    gp1_opt_params = get_params(gp1)[1] # one model only
+    gp1_opt_params = Emulators.get_params(gp1)[1] # one model only
     gp1_opt_param_names = get_param_names(gp1)[1] # one model only
 
     kernel_params = Dict(
-        "log_rbf_len" => [ # [1x1] matrix
-            gp1_opt_params[1],
-        ], # [1x1] matrix
-        "log_std_sqexp" => gp1_opt_params[2:(end - 1)], # [1] vec
+        "log_rbf_len" => gp1_opt_params[1:(end - 2)],
+        "log_std_sqexp" => gp1_opt_params[end - 1],
         "log_std_noise" => gp1_opt_params[end],
     )
 
@@ -132,9 +131,10 @@ using CalibrateEmulateSample.DataContainers
     μ1b, σ1b² = Emulators.predict(em_agp_from_gp1, new_inputs)
 
     # gp1 and agp_from_gp2 should give similar predictions
-    @test all(isapprox.(μ1, μ1b, atol = 1e-12))
+    tol_small = 1e-12
+    @test all(isapprox.(μ1, μ1b, atol = tol_small))
     @test size(μ1) == (1, 5)
-    @test all(isapprox.(σ1², σ1b², atol = 1e-12))
+    @test all(isapprox.(σ1², σ1b², atol = tol_small))
 
 
     # GaussianProcess 2: GPJL, predict_f
@@ -156,7 +156,6 @@ using CalibrateEmulateSample.DataContainers
     μ2, σ2² = Emulators.predict(em2, new_inputs)
     # predict_y and predict_f should give the same mean
     @test μ2 ≈ μ1 atol = 1e-6
-
 
     # GaussianProcess 3: SKLJL
 
@@ -290,6 +289,36 @@ using CalibrateEmulateSample.DataContainers
     @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 2 * tol_mu))
 
 
+    # GaussianProcess 4b: use GPJL to create an abstractGP dist.
+    agp4 = GaussianProcess(AGPJL(); noise_learn = true, prediction_type = pred_type)
 
+    gp4_opt_params = Emulators.get_params(gp4_noise_learnt)
+    gp4_opt_param_names = get_param_names(gp4_noise_learnt)
+
+    kernel_params = [
+        Dict(
+            "log_rbf_len" => model_params[1:(end - 2)],
+            "log_std_sqexp" => model_params[end - 1],
+            "log_std_noise" => model_params[end],
+        ) for model_params in gp4_opt_params
+    ]
+
+    em_agp_from_gp4 = Emulator(
+        agp4,
+        iopairs2,
+        obs_noise_cov = Σ,
+        normalize_inputs = true,
+        retained_svd_frac = 1.0,
+        kernel_params = kernel_params,
+    )
+
+    μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs, transform_to_real = true)
+
+    # gp1 and agp_from_gp2 should give similar predictions
+    tol_small = 1e-12
+    @test all(isapprox.(μ4b, μ4_noise_learnt, rtol = tol_small))
+    @test all(isapprox.(σ4b², σ4²_noise_learnt, rtol = tol_small))
+
+    # also test at Duals?
 
 end

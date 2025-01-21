@@ -5,8 +5,7 @@ using DocStringExtensions
 # [1] For GaussianProcesses
 import GaussianProcesses: predict, get_params, get_param_names
 using GaussianProcesses
-export get_params
-export get_param_names
+
 # [2] For SciKitLearn
 using PyCall
 using ScikitLearn
@@ -26,6 +25,10 @@ export GaussianProcess
 
 export GPJL, SKLJL, AGPJL
 export YType, FType
+
+export get_params
+export get_param_names
+
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -113,11 +116,17 @@ function GaussianProcess(
 end
 
 # First we create  the GPJL implementation
-function get_params(gp::GaussianProcess{GPJL})
+"""
+Gets flattened kernel hyperparameters from a (vector of) `GaussianProcess{GPJL}` model(s). Extends GaussianProcess.jl method.
+"""
+function GaussianProcesses.get_params(gp::GaussianProcess{GPJL})
     return [get_params(model.kernel) for model in gp.models]
 end
 
-function get_param_names(gp::GaussianProcess{GPJL})
+"""
+Gets the flattened names of kernel hyperparameters from a (vector of) `GaussianProcess{GPJL}` model(s). Extends GaussianProcess.jl method.
+"""
+function GaussianProcesses.get_param_names(gp::GaussianProcess{GPJL})
     return [get_param_names(model.kernel) for model in gp.models]
 end
 
@@ -358,18 +367,20 @@ function build_models!(
     if isnothing(kernel_params)
         throw(ArgumentError("""
 AbstractGP currently does not (yet) learn hyperparameters internally. The following can be performed instead:
-1. Create and optimize a GPJL emulator and default kernel.
-2. Obtain kernel parameters from this, given as [a b], where:
-    - a is the `rbf_len`: lengthscale parameters for SEArd kernel [output_dim x input_dim] matrix
-    - b is the `log_std_sqexp` of the SQexp kernel Vector [output_dim]
+1. Create and optimize a GPJL emulator and default kernel. (here called gp_jl)
+2. Create the Kernel parameters as a vect-of-dict with
+   kernel_params = [
+       Dict(
+           "log_rbf_len" => model_params[1:end-2] # input-dim Vector,
+           "log_std_sqexp" => model_params[end-2] # Float,
+           "log_std_noise" => # Float,
+       )
+    for model_params in get_params(gp_jl)]
+    Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
+    - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim] Vector
+    - b is the `log_std_sqexp` of the SQexp kernel Float
     - c is the `log_std_noise` of the noise kernel Float
-3. Create a Dict with
-   kernel_params = Dict(
-       "log_rbf_len" => (output_dim x input_dim)-Matrix,
-       "log_std_sqexp" => (output_dim)-Vector,
-       "log_std_noise" => Float,
-   )
-4. Build a new Emulator with kwargs `kernel_params=kernel_params`
+3. Build a new Emulator with kwargs `kernel_params=kernel_params`
         """))
     end
 
@@ -415,13 +426,19 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         end
     =#
     # now obtain the values
-    var_sqexp = exp.(2 .* kernel_params["log_std_sqexp"]) # Vec [out]
-    var_noise = exp.(2 .* kernel_params["log_std_noise"]) # Float
-    rbf_invlen = 1 ./ exp.(kernel_params["log_rbf_len"])# rbf_len # mat [out x in]
+    if N_models == 1 && !(isa(kernel_params, AbstractVector)) # i.e. just a Dict
+        kernel_params_vec = [kernel_params]
+    else
+        kernel_params_vec = kernel_params
+    end
 
     for i in 1:N_models
+        var_sqexp = exp.(2 .* kernel_params_vec[i]["log_std_sqexp"]) # Float
+        var_noise = exp.(2 .* kernel_params_vec[i]["log_std_noise"]) # Float
+        rbf_invlen = 1 ./ exp.(kernel_params_vec[i]["log_rbf_len"])# Vec
+
         opt_kern =
-            var_sqexp[i] * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[i, :])) +
+            var_sqexp * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[:])) +
             var_noise * KernelFunctions.WhiteKernel()
         opt_f = AbstractGPs.GP(opt_kern)
         opt_fx = opt_f(input_values', regularization_noise)
@@ -439,12 +456,13 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(gp::GaussianProcess{AGPJL}, new_inputs::AbstractMatrix{Dual}) where {Dual}
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)
-    μ = zeros(Dual, N_models, N_samples)
-    σ2 = zeros(Dual, N_models, N_samples)
+    FTorD = eltype(new_inputs) # e.g. Float or Dual
+    μ = zeros(FTorD, N_models, N_samples)
+    σ2 = zeros(FTorD, N_models, N_samples)
     for i in 1:N_models
         pred_gp = gp.models[i]
         pred = pred_gp(new_inputs)
