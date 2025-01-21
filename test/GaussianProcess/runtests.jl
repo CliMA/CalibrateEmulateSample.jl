@@ -319,6 +319,4 @@ using CalibrateEmulateSample.DataContainers
     @test all(isapprox.(μ4b, μ4_noise_learnt, atol = tol_small))
     @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
-    # also test at Duals?
-
 end
