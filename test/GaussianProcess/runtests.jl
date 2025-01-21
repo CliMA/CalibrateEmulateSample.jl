@@ -316,8 +316,8 @@ using CalibrateEmulateSample.DataContainers
 
     # gp1 and agp_from_gp2 should give similar predictions
     tol_small = 1e-12
-    @test all(isapprox.(μ4b, μ4_noise_learnt, rtol = tol_small))
-    @test all(isapprox.(σ4b², σ4²_noise_learnt, rtol = tol_small))
+    @test all(isapprox.(μ4b, μ4_noise_learnt, atol = tol_small))
+    @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
     # also test at Duals?
 
