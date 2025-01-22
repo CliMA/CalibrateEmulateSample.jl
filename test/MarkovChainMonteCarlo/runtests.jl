@@ -161,13 +161,13 @@ function mcmc_test_template(
     init_params = 3.0,
     step = 0.25,
     rng = Random.GLOBAL_RNG,
+    target_acc = 0.25,
 )
     obs_sample = reshape(collect(obs_sample), 1) # scalar or Vector -> Vector
     init_params = reshape(collect(init_params), 1) # scalar or Vector -> Vector
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
-
     # First let's run a short chain to determine a good step size
-    new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000)
+    new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
     chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 1000)
@@ -203,6 +203,7 @@ end
         mcmc = MCMCWrapper(RWMHSampling(), obs_sample, prior_mv, em_mv; init_params = init_params)
 
     end
+
 
     @testset "Sine GP & RW Metropolis" begin
         em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
@@ -279,4 +280,42 @@ end
         @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
 
     end
+
+    @testset "Sine GP & ForwardDiff-based variants" begin
+
+
+        mcmc_params =
+            Dict(:obs_sample => obs_sample, :init_params => [3.0], :step => 0.1, :rng => rng, :target_acc => 0.6) # the target is usually higher in grad-based MCMC
+
+        em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
+        # em_1 cannot be used here
+
+        mcmc_algs = [
+            BarkerSampling(), # robust
+            #            MALASampling(), # very sensitive to :step in mcmc
+            #            infMALASampling(), # very sensitive to :step
+            InfmMALASampling(), # more robust but incorrect posterior mean
+            BarkerSampling(), # robust
+            #            HMCSampling(),  # NaNs?
+            #            infHMCSampling(), # NaNs?
+            InfmHMCSampling(), # NaNs?
+        ]
+
+        # GPJL doesnt support ForwardDiff
+        @test_throws ErrorException new_step, posterior_mean, chain =
+            mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[1], mcmc_params...)
+
+        for alg in mcmc_algs
+            @info "testing algorithm: $(alg)"
+            new_step, posterior_mean, chain = mcmc_test_template(prior, σ2_y, em_1b; mcmc_alg = alg, mcmc_params...)
+            esjd_tmp = esjd(chain)
+            @info "ESJD = $esjd_tmp"
+            @info posterior_mean
+            @test isapprox(posterior_mean, π / 2; atol = 4e-1)
+
+        end
+
+
+    end
+
 end
