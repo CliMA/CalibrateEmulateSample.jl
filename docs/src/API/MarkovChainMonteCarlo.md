@@ -24,6 +24,7 @@ MCMC sampling.
 MCMCProtocol
 RWMHSampling
 pCNMHSampling
+BarkerSampling
 MetropolisHastingsSampler
 ```
 
