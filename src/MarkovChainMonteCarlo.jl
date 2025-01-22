@@ -227,11 +227,15 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the HMC proposal.
 """
-struct HMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-HMCSampling() = HMCSampling{ForwardDiffProtocol}()
+struct HMCSampling{T <: AutodiffProtocol} <: MCMCProtocol
+    n_leapfrog_step::Int
+end
+HMCSampling() = HMCSampling{ForwardDiffProtocol}(100)
+HMCSampling(L::Int) = HMCSampling{ForwardDiffProtocol}(L)
 
 struct HMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
+    n_leapfrog_step::Int
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
@@ -240,9 +244,9 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::HMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(hmcs::HMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return HMCMetropolisHastings{typeof(proposal), T}(proposal)
+    return HMCMetropolisHastings{typeof(proposal), T}(proposal, hmcs.n_leapfrog_step)
 end
 
 """
@@ -275,11 +279,15 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional HMC proposal.
 """
-struct InfHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-InfHMCSampling() = InfHMCSampling{ForwardDiffProtocol}()
+struct InfHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol
+    n_leapfrog_step::Int
+end
+InfHMCSampling() = InfHMCSampling{ForwardDiffProtocol}(100)
+InfHMCSampling(L::Int) = InfHMCSampling{ForwardDiffProtocol}(L)
 
 struct InfHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
+    n_leapfrog_step::Int
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
@@ -288,9 +296,9 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::InfHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(ihmcs::InfHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return InfHMCMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfHMCMetropolisHastings{typeof(proposal), T}(proposal, ihmcs.n_leapfrog_step)
 end
 
 """
@@ -323,11 +331,15 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional mHMC proposal.
 """
-struct InfmHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-InfmHMCSampling() = InfmHMCSampling{ForwardDiffProtocol}()
+struct InfmHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol
+    n_leapfrog_step::Int
+end
+InfmHMCSampling() = InfmHMCSampling{ForwardDiffProtocol}(100)
+InfmHMCSampling(L::Int) = InfmHMCSampling{ForwardDiffProtocol}(L)
 
 struct InfmHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
+    n_leapfrog_step::Int
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
@@ -336,9 +348,9 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::InfmHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(imhmcs::InfmHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return InfmHMCMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfmHMCMetropolisHastings{typeof(proposal), T}(proposal, imhmcs.n_leapfrog_step)
 end
 
 
@@ -517,9 +529,9 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = autodiff_gradient(model, current_state.params, sampler)
     proposed_state =
-        current_state.params .+ (stepsize .* (rand(rng, sampler.proposal) .+ (stepsize / 2 .* log_gradient)))
+        current_state.params .+ (stepsize .* (rand(rng, sampler.proposal) .- (stepsize / 2 .* log_gradient)))
     return proposed_state
 end
 
@@ -534,9 +546,9 @@ function AdvancedMH.propose(
     # Livingstone and Zanella (2022)
     # Compute the gradient of the log-density at the current state
     n = length(current_state.params)
-    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = autodiff_gradient(model, current_state.params, sampler)
     xi = rand(rng, sampler.proposal)
-    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(log_gradient .* xi))) .* xi))
+    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
 end
 
 # method extending AdvancedMH.propose() for the HMC proposal
@@ -548,19 +560,18 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    # L = floor(1 / sqrt_step?)
-    L = 10
+    L = sampler.n_leapfrog_step
     proposed_aux_init = rand(rng, sampler.proposal)
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:L
         log_gradient = log_grad_proposed_state
-        proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
-        proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
+        proposed_state .+= sqrt(stepsize) .* proposed_aux + (stepsize / 2) .* log_grad_proposed_state
+        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        proposed_aux .+= (sqrt(stepsize) / 2) .* log_gradient .+ (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
     return proposed_state
 end
@@ -577,9 +588,9 @@ function AdvancedMH.propose(
     # inverse problems."
     # Compute the gradient of the log-density at the current state
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4) # original: ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = autodiff_gradient(model, current_state.params, sampler)
     return ρ .* current_state.params .+
-           sqrt(1 - ρ^2) .* (rand(rng, sampler.proposal) .+ ((sqrt(stepsize) / 2) .* log_gradient))
+           sqrt(1 - ρ^2) .* (rand(rng, sampler.proposal) .- ((sqrt(stepsize) / 2) .* log_gradient))
 end
 
 # method extending AdvancedMH.propose() for the  ∞-HMC proposal
@@ -591,19 +602,18 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    L = 30
-    # L = 4
+    L = sampler.n_leapfrog_step
     proposed_aux_init = rand(rng, sampler.proposal)
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:L
         log_gradient = log_grad_proposed_state
-        proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
-        proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
+        proposed_state .+= sqrt(stepsize) .* proposed_aux + (stepsize / 2) .* log_grad_proposed_state
+        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        proposed_aux .+= (sqrt(stepsize) / 2) .* log_gradient .+ (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
     return proposed_state
 end
@@ -618,7 +628,7 @@ function AdvancedMH.propose(
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4) #ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = autodiff_gradient(model, current_state.params, sampler)
     hessian = autodiff_hessian(model, current_state.params, sampler)
     K = Symmetric(inv(-hessian)) # K^{-1}: negative hessian
     C_inv = I(size(K, 1))
@@ -638,21 +648,20 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    # L = floor(1 / sqrt_step)
-    L = 4
+    L = sampler.n_leapfrog_step
     proposed_aux_init = rand(rng, sampler.proposal)
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:(L - 1)
         #        println("Iteration t = ", t)
         #        println("Before update, proposed_state: ", proposed_state)
         log_gradient = log_grad_proposed_state
-        proposed_state .+= stepsize .* proposed_aux - (stepsize^2 / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
-        proposed_aux .+= -(stepsize / 2) .* log_gradient .- (stepsize / 2) .* log_grad_proposed_state
+        proposed_state .+= stepsize .* proposed_aux + (stepsize^2 / 2) .* log_grad_proposed_state
+        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        proposed_aux .+= (stepsize / 2) .* log_gradient .+ (stepsize / 2) .* log_grad_proposed_state
         #        println("After update, proposed_state: ", proposed_state)
         #        println("proposed_aux: ", proposed_aux)
     end

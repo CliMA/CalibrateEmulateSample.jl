@@ -170,7 +170,7 @@ function mcmc_test_template(
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
-    chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 1000)
+    chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 50000)
     posterior_distribution = get_posterior(mcmc, chain)
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean = mean(posterior_distribution)
@@ -290,14 +290,16 @@ end
     em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
     # em_1 cannot be used here
 
+    L = Int(100) # number leapfrog sub-steps in HMC variants (default 100)
     mcmc_algs = [
+        RWMHSampling(), # sanity-check
         BarkerSampling(), #
         MALASampling(), # 
         InfMALASampling(), #
         InfmMALASampling(), # 
-        HMCSampling(),  # 
-        InfHMCSampling(), #
-        InfmHMCSampling(), # 
+        HMCSampling(L),  # 
+        InfHMCSampling(L), #
+        InfmHMCSampling(L), # 
     ]
 
     # GPJL doesnt support ForwardDiff
@@ -311,6 +313,9 @@ end
         @info "ESJD = $esjd_tmp"
         @info posterior_mean
         @testset "Sine GP & ForwardDiff variant:$(nameof(typeof(alg)))" begin
+            if nameof(typeof(alg)) ∈ ["HMCSampling","InfHMCSampling","InfmHMCSampling"]
+                @test alg.n_leapfrog_step == L
+            end
             @test isapprox(posterior_mean, π / 2; atol = 4e-1)
         end
 
