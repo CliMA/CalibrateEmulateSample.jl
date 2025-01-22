@@ -517,9 +517,9 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    log_gradient = autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
     proposed_state =
-        current_state.params .+ (stepsize .* ((stepsize / 2 .* log_gradient) .+ rand(rng, sampler.proposal)))
+        current_state.params .+ (stepsize .* (rand(rng, sampler.proposal) .+ (stepsize / 2 .* log_gradient)))
     return proposed_state
 end
 
@@ -534,9 +534,9 @@ function AdvancedMH.propose(
     # Livingstone and Zanella (2022)
     # Compute the gradient of the log-density at the current state
     n = length(current_state.params)
-    log_gradient = autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
     xi = rand(rng, sampler.proposal)
-    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
+    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(log_gradient .* xi))) .* xi))
 end
 
 # method extending AdvancedMH.propose() for the HMC proposal
@@ -549,16 +549,17 @@ function AdvancedMH.propose(
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
     # L = floor(1 / sqrt_step?)
+    L = 10
     proposed_aux_init = rand(rng, sampler.proposal)
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:L
         log_gradient = log_grad_proposed_state
         proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
         proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
     return proposed_state
@@ -576,7 +577,7 @@ function AdvancedMH.propose(
     # inverse problems."
     # Compute the gradient of the log-density at the current state
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4) # original: ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-    log_gradient = autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
     return ρ .* current_state.params .+
            sqrt(1 - ρ^2) .* (rand(rng, sampler.proposal) .+ ((sqrt(stepsize) / 2) .* log_gradient))
 end
@@ -596,12 +597,12 @@ function AdvancedMH.propose(
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:L
         log_gradient = log_grad_proposed_state
         proposed_state .+= sqrt(stepsize) .* proposed_aux - (stepsize / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
         proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
     return proposed_state
@@ -617,13 +618,13 @@ function AdvancedMH.propose(
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4) #ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-    log_gradient = autodiff_gradient(model, current_state.params, sampler)
+    log_gradient = -autodiff_gradient(model, current_state.params, sampler)
     hessian = autodiff_hessian(model, current_state.params, sampler)
     K = Symmetric(inv(-hessian)) # K^{-1}: negative hessian
     C_inv = I(size(K, 1))
     xi = cholesky(K, check = false).L * randn(size(K, 1))
     # xi = rand(rng, MvNormal(zeros(size(K, 1)), K))# or cholesky(K_u).L * randn(size(K_u, 1))
-    nu = K * ((C_inv + hessian) * current_state.params .- log_gradient)
+    nu = K * ((C_inv + hessian) * current_state.params .+ log_gradient)
 
     return ρ * current_state.params .+ sqrt(1 - ρ^2) .* xi .- (sqrt(1 - ρ^2) * sqrt(stepsize) / 2) .* nu
 end
@@ -643,17 +644,17 @@ function AdvancedMH.propose(
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
     proposed_state = proposed_state_init
-    log_grad_proposed_state = autodiff_gradient(model, current_state.params, sampler)
+    log_grad_proposed_state = -autodiff_gradient(model, current_state.params, sampler)
 
     for t in 1:(L - 1)
-        println("Iteration t = ", t)
-        println("Before update, proposed_state: ", proposed_state)
+        #        println("Iteration t = ", t)
+        #        println("Before update, proposed_state: ", proposed_state)
         log_gradient = log_grad_proposed_state
         proposed_state .+= stepsize .* proposed_aux - (stepsize^2 / 2) .* log_grad_proposed_state
-        log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
+        log_grad_proposed_state = -autodiff_gradient(model, proposed_state, sampler)
         proposed_aux .+= -(stepsize / 2) .* log_gradient .- (stepsize / 2) .* log_grad_proposed_state
-        println("After update, proposed_state: ", proposed_state)
-        println("proposed_aux: ", proposed_aux)
+        #        println("After update, proposed_state: ", proposed_state)
+        #        println("proposed_aux: ", proposed_aux)
     end
     return proposed_state
 end
