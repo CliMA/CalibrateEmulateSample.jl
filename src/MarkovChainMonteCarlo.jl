@@ -533,6 +533,7 @@ function AdvancedMH.propose(
 ) where {FT <: AbstractFloat}
     # Livingstone and Zanella (2022)
     # Compute the gradient of the log-density at the current state
+    n = length(current_state.params)
     log_gradient = autodiff_gradient(model, current_state.params, sampler)
     xi = rand(rng, sampler.proposal)
     return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
