@@ -12,6 +12,7 @@ using Printf
 using Random
 using Statistics
 using ForwardDiff
+using ReverseDiff
 
 using MCMCChains
 import AbstractMCMC: sample # Reexport sample()
@@ -21,6 +22,9 @@ import AdvancedMH
 export EmulatorPosteriorModel,
     MetropolisHastingsSampler,
     MCMCProtocol,
+    GradFreeProtocol,
+    ForwardDiffProtocol,
+    ReverseDiffProtocol, 
     RWMHSampling,
     pCNMHSampling,
     BarkerSampling,
@@ -72,12 +76,35 @@ end
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
 # some possible types of autodiff used
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
+"""
 abstract type AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators not compatible with autodifferentiation
+"""
 abstract type GradFreeProtocol <: AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators compatible with `ForwardDiff.jl` autodifferentiation
+"""
 abstract type ForwardDiffProtocol <: AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators compatible with `ReverseDiff.jl` autodifferentiation
+"""
+abstract type ReverseDiffProtocol <: AutodiffProtocol end 
 # ...to be implemented...
 #=
-abstract type BackwardDiffProtocol <: AutodiffProtocol end 
 abstract type ZygoteProtocol <: AutodiffProtocol end
 abstract type EnzymeProtocol <: AutodiffProtocol end
 =#
@@ -200,6 +227,8 @@ function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_prot
         )
     elseif autodiff_protocol == ForwardDiffProtocol
         return ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
+    elseif autodiff_protocol == ReverseDiffProtocol
+        return ReverseDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
     else
         throw(
             ArgumentError(
@@ -222,6 +251,8 @@ function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_proto
         )
     elseif autodiff_protocol == ForwardDiffProtocol
         return Symmetric(ForwardDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
+    elseif autodiff_protocol == ReverseDiffProtocol
+        return Symmetric(ReverseDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
     else
         throw(
             ArgumentError(

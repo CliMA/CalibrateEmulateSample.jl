@@ -205,7 +205,7 @@ uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.18.2+1"
 
 [[deps.CalibrateEmulateSample]]
-deps = ["AbstractGPs", "AbstractMCMC", "AdvancedMH", "Conda", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "ForwardDiff", "GaussianProcesses", "KernelFunctions", "LinearAlgebra", "MCMCChains", "Pkg", "Printf", "ProgressBars", "PyCall", "Random", "RandomFeatures", "ScikitLearn", "StableRNGs", "Statistics", "StatsBase"]
+deps = ["AbstractGPs", "AbstractMCMC", "AdvancedMH", "Conda", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "ForwardDiff", "GaussianProcesses", "KernelFunctions", "LinearAlgebra", "MCMCChains", "Pkg", "Printf", "ProgressBars", "PyCall", "Random", "RandomFeatures", "ReverseDiff", "ScikitLearn", "StableRNGs", "Statistics", "StatsBase"]
 path = ".."
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
 version = "0.6.0"
@@ -527,6 +527,11 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "846f7026a9decf3679419122b49f8a1fdb48d2d5"
 uuid = "559328eb-81f9-559d-9380-de523a88c83c"
 version = "1.0.16+0"
+
+[[deps.FunctionWrappers]]
+git-tree-sha1 = "d62485945ce5ae9c0c48f124a84998d755bae00e"
+uuid = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
+version = "1.1.3"
 
 [[deps.Functors]]
 deps = ["LinearAlgebra"]
@@ -1238,6 +1243,12 @@ deps = ["UUIDs"]
 git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
+
+[[deps.ReverseDiff]]
+deps = ["ChainRulesCore", "DiffResults", "DiffRules", "ForwardDiff", "FunctionWrappers", "LinearAlgebra", "LogExpFunctions", "MacroTools", "NaNMath", "Random", "SpecialFunctions", "StaticArrays", "Statistics"]
+git-tree-sha1 = "cc6cd622481ea366bb9067859446a8b01d92b468"
+uuid = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+version = "1.15.3"
 
 [[deps.Rmath]]
 deps = ["Random", "Rmath_jll"]

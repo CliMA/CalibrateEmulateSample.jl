@@ -292,7 +292,8 @@ end
 
     mcmc_algs = [
         RWMHSampling(), # sanity-check
-        BarkerSampling(), #
+        BarkerSampling(), # ForwardDiffProtocol by default
+        BarkerSampling{ReverseDiffProtocol}() # scales to high dim better, but slow.
     ]
 
     # GPJL doesnt support ForwardDiff
@@ -305,7 +306,7 @@ end
         esjd_tmp = esjd(chain)
         @info "ESJD = $esjd_tmp"
         @info posterior_mean
-        @testset "Sine GP & ForwardDiff variant:$(nameof(typeof(alg)))" begin
+        @testset "Sine GP & ForwardDiff variant:$(typeof(alg))" begin
             @test isapprox(posterior_mean, π / 2; atol = 4e-1)
         end
 

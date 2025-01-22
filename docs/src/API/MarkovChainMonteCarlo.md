@@ -22,6 +22,9 @@ MCMC sampling.
 
 ```@docs
 MCMCProtocol
+AutodiffProtocol
+ForwardDiffProtocol
+ReverseDiffProtocol
 RWMHSampling
 pCNMHSampling
 BarkerSampling
