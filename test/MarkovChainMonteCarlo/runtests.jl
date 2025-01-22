@@ -304,7 +304,7 @@ end
 
     # GPJL doesnt support ForwardDiff
     @test_throws ErrorException new_step, posterior_mean, chain =
-        mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[1], mcmc_params...)
+        mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[2], mcmc_params...)
 
     for alg in mcmc_algs
         @info "testing algorithm: $(nameof(typeof(alg)))"
