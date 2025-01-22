@@ -387,7 +387,7 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
 
     N_models = size(output_values, 1) #size(transformed_data)[1]
     regularization_noise = gp.alg_reg_noise
-    
+
     # now obtain the values of the hyperparameters
     if N_models == 1 && !(isa(kernel_params, AbstractVector)) # i.e. just a Dict
         kernel_params_vec = [kernel_params]
