@@ -387,45 +387,8 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
 
     N_models = size(output_values, 1) #size(transformed_data)[1]
     regularization_noise = gp.alg_reg_noise
-    #=    if gp.kernel === nothing
-            println("Using default squared exponential kernel, learning length scale and variance parameters")
-            # Create default squared exponential kernel
-            const_value = 1.0
-            rbf_len = fill(1.0, size(input_values, 2))
-            rbf = const_value * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_len))
-            kern = rbf
-            println("Using default squared exponential kernel:", kern)
-        else
-            kern = deepcopy(gp.kernel)
-            println("Using user-defined kernel", kern)
-        end
-
-        if gp.noise_learn
-            # Add white noise to kernel
-            white_noise_level = 1.0
-            white = white_noise_level * KernelFunctions.WhiteKernel()
-            kern += white
-            println("Learning additive white noise")
-        end
-        for i in 1:N_models
-            kernel_i = deepcopy(kern)
-            # In contrast to the GPJL and SKLJL case "data_i = output_values[i, :]"
-            data_i = output_values[i, :]
-            f = AbstractGPs.GP(kernel_i)
-            # f arguments:
-            # input_values:    (input_dim * N_dims)
-            fx = f(input_values', regularization_noise)
-            # posterior arguments:
-            # data_i:    (N_samples,)
-            post_fx = posterior(fx, data_i)
-            if i == 1
-                println(kernel_i)
-                print("Completed training of: ")
-            end
-            println("created GP: ", i)
-        end
-    =#
-    # now obtain the values
+    
+    # now obtain the values of the hyperparameters
     if N_models == 1 && !(isa(kernel_params, AbstractVector)) # i.e. just a Dict
         kernel_params_vec = [kernel_params]
     else
