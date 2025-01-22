@@ -185,6 +185,7 @@ end
     mcmc_params =
         Dict(:mcmc_alg => RWMHSampling(), :obs_sample => obs_sample, :init_params => [3.0], :step => 0.5, :rng => rng)
 
+
     @testset "Constructor: standardize" begin
         em = test_gp_1(y, σ2_y, iopairs)
         test_obs = MarkovChainMonteCarlo.to_decorrelated(obs_sample, em)
@@ -281,40 +282,37 @@ end
 
     end
 
-    @testset "Sine GP & ForwardDiff-based variants" begin
 
 
-        mcmc_params =
-            Dict(:obs_sample => obs_sample, :init_params => [3.0], :step => 0.1, :rng => rng, :target_acc => 0.6) # the target is usually higher in grad-based MCMC
 
-        em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
-        # em_1 cannot be used here
+    mcmc_params = Dict(:obs_sample => obs_sample, :init_params => [3.0], :step => 0.01, :rng => rng, :target_acc => 0.6) # the target is usually higher in grad-based MCMC
 
-        mcmc_algs = [
-            BarkerSampling(), # robust
-            #            MALASampling(), # very sensitive to :step in mcmc
-            #            infMALASampling(), # very sensitive to :step
-            InfmMALASampling(), # more robust but incorrect posterior mean
-            BarkerSampling(), # robust
-            #            HMCSampling(),  # NaNs?
-            #            infHMCSampling(), # NaNs?
-            InfmHMCSampling(), # NaNs?
-        ]
+    em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
+    # em_1 cannot be used here
 
-        # GPJL doesnt support ForwardDiff
-        @test_throws ErrorException new_step, posterior_mean, chain =
-            mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[1], mcmc_params...)
+    mcmc_algs = [
+        BarkerSampling(), #
+        MALASampling(), # 
+        InfMALASampling(), #
+        InfmMALASampling(), # 
+        HMCSampling(),  # 
+        InfHMCSampling(), #
+        InfmHMCSampling(), # 
+    ]
 
-        for alg in mcmc_algs
-            @info "testing algorithm: $(alg)"
-            new_step, posterior_mean, chain = mcmc_test_template(prior, σ2_y, em_1b; mcmc_alg = alg, mcmc_params...)
-            esjd_tmp = esjd(chain)
-            @info "ESJD = $esjd_tmp"
-            @info posterior_mean
+    # GPJL doesnt support ForwardDiff
+    @test_throws ErrorException new_step, posterior_mean, chain =
+        mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[1], mcmc_params...)
+
+    for alg in mcmc_algs
+        @info "testing algorithm: $(nameof(typeof(alg)))"
+        new_step, posterior_mean, chain = mcmc_test_template(prior, σ2_y, em_1b; mcmc_alg = alg, mcmc_params...)
+        esjd_tmp = esjd(chain)
+        @info "ESJD = $esjd_tmp"
+        @info posterior_mean
+        @testset "Sine GP & ForwardDiff variant:$(nameof(typeof(alg)))" begin
             @test isapprox(posterior_mean, π / 2; atol = 4e-1)
-
         end
-
 
     end
 
