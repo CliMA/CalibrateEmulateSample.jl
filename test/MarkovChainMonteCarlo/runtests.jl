@@ -290,16 +290,9 @@ end
     em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
     # em_1 cannot be used here
 
-    L = Int(100) # number leapfrog sub-steps in HMC variants (default 100)
     mcmc_algs = [
         RWMHSampling(), # sanity-check
         BarkerSampling(), #
-        MALASampling(), # 
-        InfMALASampling(), #
-        InfmMALASampling(), # 
-        HMCSampling(L),  # 
-        InfHMCSampling(L), #
-        InfmHMCSampling(L), # 
     ]
 
     # GPJL doesnt support ForwardDiff
@@ -313,9 +306,6 @@ end
         @info "ESJD = $esjd_tmp"
         @info posterior_mean
         @testset "Sine GP & ForwardDiff variant:$(nameof(typeof(alg)))" begin
-            if nameof(typeof(alg)) ∈ ["HMCSampling","InfHMCSampling","InfmHMCSampling"]
-                @test alg.n_leapfrog_step == L
-            end
             @test isapprox(posterior_mean, π / 2; atol = 4e-1)
         end
 
