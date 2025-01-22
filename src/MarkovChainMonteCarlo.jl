@@ -314,13 +314,7 @@ function AdvancedMH.transition(
     model::AdvancedMH.DensityModel,
     params,
     log_density::Real,
-) where {
-    MHS <: Union{
-        pCNMetropolisHastings,
-        RWMetropolisHastings,
-        BarkerMetropolisHastings,
-    },
-}
+) where {MHS <: Union{pCNMetropolisHastings, RWMetropolisHastings, BarkerMetropolisHastings}}
     return MCMCState(params, log_density, true)
 end
 
