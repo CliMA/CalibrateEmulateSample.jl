@@ -26,10 +26,10 @@ export EmulatorPosteriorModel,
     MALASampling,
     BarkerSampling,
     HMCSampling,
-    infMALASampling,
-    infHMCSampling,
-    infmMALASampling,
-    infmHMCSampling,
+    InfMALASampling,
+    InfHMCSampling,
+    InfmMALASampling,
+    InfmHMCSampling,
     MCMCWrapper,
     accept_ratio,
     optimize_stepsize,
@@ -178,7 +178,7 @@ $(DocStringExtensions.TYPEDEF)
 new parameters according to the MALA.
 """
 struct MALASampling{T <: AutodiffProtocol} <: MCMCProtocol end
-MALASampling() = MALASampling{ForwardDiffType}()
+MALASampling() = MALASampling{ForwardDiffProtocol}()
 
 struct MetropolisAdjustedLangevin{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
@@ -203,7 +203,7 @@ $(DocStringExtensions.TYPEDEF)
 new parameters according to the Barker proposal.
 """
 struct BarkerSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-BarkerSampling() = BarkerSampling{ForwardDiffType}()
+BarkerSampling() = BarkerSampling{ForwardDiffProtocol}()
 
 struct BarkerMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
@@ -228,7 +228,7 @@ $(DocStringExtensions.TYPEDEF)
 new parameters according to the HMC proposal.
 """
 struct HMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-HMCSampling() = HMCSampling{ForwardDiffType}()
+HMCSampling() = HMCSampling{ForwardDiffProtocol}()
 
 struct HMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
@@ -251,22 +251,22 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional MALA proposal.
 """
-struct infMALASampling{T <: AutodiffProtocol} <: MCMCProtocol end
-infMALASampling() = infMALASampling{ForwardDiffType}()
+struct InfMALASampling{T <: AutodiffProtocol} <: MCMCProtocol end
+InfMALASampling() = InfMALASampling{ForwardDiffProtocol}()
 
-struct infMALAMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct InfMetropolisAdjustedLangevin{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
-    sampler::infMALAMetropolisHastings,
+    sampler::InfMetropolisAdjustedLangevin,
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::infMALASampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(::InfMALASampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return infMALAMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfMetropolisAdjustedLangevin{typeof(proposal), T}(proposal)
 end
 
 """
@@ -275,22 +275,22 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional HMC proposal.
 """
-struct infHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-infHMCSampling() = infHMCSampling{ForwardDiffType}()
+struct InfHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
+InfHMCSampling() = InfHMCSampling{ForwardDiffProtocol}()
 
-struct infHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct InfHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
-    sampler::infHMCMetropolisHastings,
+    sampler::InfHMCMetropolisHastings,
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::infHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(::InfHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return infHMCMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfHMCMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
 """
@@ -299,22 +299,22 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional mMALA proposal.
 """
-struct infmMALASampling{T <: AutodiffProtocol} <: MCMCProtocol end
-infmMALASampling() = infmMALASampling{ForwardDiffType}()
+struct InfmMALASampling{T <: AutodiffProtocol} <: MCMCProtocol end
+InfmMALASampling() = InfmMALASampling{ForwardDiffProtocol}()
 
-struct infmMALAMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct InfmMetropolisAdjustedLangevin{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
-    sampler::infmMALAMetropolisHastings,
+    sampler::InfmMetropolisAdjustedLangevin,
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::infmMALASampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(::InfmMALASampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return infmMALAMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfmMetropolisAdjustedLangevin{typeof(proposal), T}(proposal)
 end
 
 """
@@ -323,22 +323,22 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the infinite-dimensional mHMC proposal.
 """
-struct infmHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
-infmHMCSampling() = infmHMCSampling{ForwardDiffType}()
+struct InfmHMCSampling{T <: AutodiffProtocol} <: MCMCProtocol end
+InfmHMCSampling() = InfmHMCSampling{ForwardDiffProtocol}()
 
-struct infmHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct InfmHMCMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
-    sampler::infmHMCMetropolisHastings,
+    sampler::InfmHMCMetropolisHastings,
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::infmHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+function MetropolisHastingsSampler(::InfmHMCSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
     proposal = _get_proposal(prior)
-    return infmHMCMetropolisHastings{typeof(proposal), T}(proposal)
+    return InfmHMCMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
 
@@ -363,7 +363,7 @@ function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_prot
 
 end
 
-autodiff_gradient(model::AdvancedMH.DensityModel, params, sampler::MP) where {MP <: MCMCProtocol} =
+autodiff_gradient(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH <: AdvancedMH.MHSampler} =
     autodiff_gradient(model::AdvancedMH.DensityModel, params, typeof(sampler).parameters[2]) # hacky way of getting the "AutodiffProtocol"
 
 function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_protocol)
@@ -384,7 +384,7 @@ function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_proto
     end
 end
 
-autodiff_hessian(model::AdvancedMH.DensityModel, params, samplersampler::MP) where {MP <: MCMCProtocol} =
+autodiff_hessian(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH <: AdvancedMH.MHSampler} =
     autodiff_hessian(model, params, typeof(sampler).parameters[2])
 
 
@@ -472,8 +472,12 @@ function AdvancedMH.transition(
         pCNMetropolisHastings,
         RWMetropolisHastings,
         HMCMetropolisHastings,
+        InfHMCMetropolisHastings,
+        InfmHMCMetropolisHastings,
         BarkerMetropolisHastings,
         MetropolisAdjustedLangevin,
+        InfMetropolisAdjustedLangevin,
+        InfmMetropolisAdjustedLangevin,
     },
 }
     return MCMCState(params, log_density, true)
@@ -514,7 +518,8 @@ function AdvancedMH.propose(
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
     log_gradient = autodiff_gradient(model, current_state.params, sampler)
-    proposed_state = current_state.params .+ (stepsize^2 / 2) .* log_gradient .+ stepsize * rand(rng, sampler.proposal)
+    proposed_state =
+        current_state.params .+ (stepsize .* ((stepsize / 2 .* log_gradient) .+ rand(rng, sampler.proposal)))
     return proposed_state
 end
 
@@ -529,11 +534,8 @@ function AdvancedMH.propose(
     # Livingstone and Zanella (2022)
     # Compute the gradient of the log-density at the current state
     log_gradient = autodiff_gradient(model, current_state.params, sampler)
-    n = length(current_state.params)
-    u = rand(rng, n)
     xi = rand(rng, sampler.proposal)
-    b = u .< 1 ./ (1 .+ exp.(-log_gradient .* xi))
-    return current_state.params .+ b .* xi
+    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
 end
 
 # method extending AdvancedMH.propose() for the HMC proposal
@@ -545,8 +547,7 @@ function AdvancedMH.propose(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    # L = floor(1 / sqrt_step)
-    L = 10
+    # L = floor(1 / sqrt_step?)
     proposed_aux_init = rand(rng, sampler.proposal)
     proposed_state_init = current_state.params
     proposed_aux = proposed_aux_init
@@ -559,38 +560,30 @@ function AdvancedMH.propose(
         log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
         proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
-    println(
-        "L: ",
-        L,
-        " stepsize: ",
-        round(stepsize, digits = 6),
-        " proposed_state: ",
-        round.(proposed_state, digits = 5),
-    )
     return proposed_state
 end
 
 # method extending AdvancedMH.propose() for  ∞-MALA
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
-    sampler::infMALAMetropolisHastings,
+    sampler::InfMetropolisAdjustedLangevin,
     model::AdvancedMH.DensityModel,
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
+    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional
+    # inverse problems."
     # Compute the gradient of the log-density at the current state
-    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4) # original: ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     log_gradient = autodiff_gradient(model, current_state.params, sampler)
-    proposed_state =
-        ρ * current_state.params .- sqrt(1 - ρ^2) * (sqrt(stepsize) / 2) .* log_gradient .+
-        sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
-    return proposed_state
+    return ρ .* current_state.params .+
+           sqrt(1 - ρ^2) .* (rand(rng, sampler.proposal) .+ ((sqrt(stepsize) / 2) .* log_gradient))
 end
 
 # method extending AdvancedMH.propose() for the  ∞-HMC proposal
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
-    sampler::infHMCMetropolisHastings,
+    sampler::InfHMCMetropolisHastings,
     model::AdvancedMH.DensityModel,
     current_state::MCMCState;
     stepsize::FT = 1.0,
@@ -610,41 +603,34 @@ function AdvancedMH.propose(
         log_grad_proposed_state = autodiff_gradient(model, proposed_state, sampler)
         proposed_aux .+= -(sqrt(stepsize) / 2) .* log_gradient .- (sqrt(stepsize) / 2) .* log_grad_proposed_state
     end
-    println(
-        "L: ",
-        L,
-        " stepsize: ",
-        round(stepsize, digits = 8),
-        " proposed_state: ",
-        round.(proposed_state, digits = 5),
-    )
     return proposed_state
 end
 
 # method extending AdvancedMH.propose() for  ∞-mMALA
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
-    sampler::infmMALAMetropolisHastings,
+    sampler::InfmMetropolisAdjustedLangevin,
     model::AdvancedMH.DensityModel,
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     # Compute the gradient of the log-density at the current state
-    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4) #ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     log_gradient = autodiff_gradient(model, current_state.params, sampler)
     hessian = autodiff_hessian(model, current_state.params, sampler)
-    K = Symmetric(inv(-hessian))
+    K = Symmetric(inv(-hessian)) # K^{-1}: negative hessian
     C_inv = I(size(K, 1))
     xi = cholesky(K, check = false).L * randn(size(K, 1))
     # xi = rand(rng, MvNormal(zeros(size(K, 1)), K))# or cholesky(K_u).L * randn(size(K_u, 1))
-    nu = xi .- (stepsize / 2) .* K * ((C_inv + hessian) * current_state.params .+ log_gradient)
-    return ρ * current_state.params .+ sqrt(1 - ρ^2) * nu
+    nu = K * ((C_inv + hessian) * current_state.params .- log_gradient)
+
+    return ρ * current_state.params .+ sqrt(1 - ρ^2) .* xi .- (sqrt(1 - ρ^2) * sqrt(stepsize) / 2) .* nu
 end
 
 # method extending AdvancedMH.propose() for the  ∞-mHMC proposal
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
-    sampler::infmHMCMetropolisHastings,
+    sampler::InfmHMCMetropolisHastings,
     model::AdvancedMH.DensityModel,
     current_state::MCMCState;
     stepsize::FT = 1.0,
@@ -835,19 +821,19 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
     fixed stepsize.
   - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned 
     Crank-Nicholson algorithm, which has a well-behaved small-stepsize limit.
-[`MALASampling`](@ref): Metropolis-Hastings sampling using the Metropolis
+  - [`MALASampling`](@ref): Metropolis-Hastings sampling using the Metropolis
     -adjusted Langevin algorithm, which exploits the gradient information of the target.
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
   - [`HMCSampling`](@ref): Metropolis-Hastings sampling using the Hamiltonian
     Monte Carlo algorithm, which is a momentum-added gradient-based MCMC.
-  - [`infMALASampling`](@ref): Metropolis-Hastings sampling using the infinite dimensional
+  - [`InfMALASampling`](@ref): Metropolis-Hastings sampling using the infinite dimensional
     MALA, which exploits the gradient information and has a well-behaved small-stepsize limit.
-  - [`infHMCSampling`](@ref): Metropolis-Hastings sampling using the infinite dimensional
+  - [`InfHMCSampling`](@ref): Metropolis-Hastings sampling using the infinite dimensional
     HMC, which is a momentum-added gradient-based and has a well-behaved small-stepsize limit.
-  - [`infmMALASampling`](@ref): Metropolis-Hastings sampling using the ∞-mMALA,
+  - [`InfmMALASampling`](@ref): Metropolis-Hastings sampling using the ∞-mMALA,
     which is geometry-informed and has a well-behaved small-stepsize limit.
-  - [`infmHMCSampling`](@ref): Metropolis-Hastings sampling using the ∞-mHMC,
+  - [`InfmHMCSampling`](@ref): Metropolis-Hastings sampling using the ∞-mHMC,
     which is geometry-informed and has a well-behaved small-stepsize limit.
 
 - `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
@@ -982,6 +968,7 @@ function optimize_stepsize(
     init_stepsize = 1.0,
     N = 2000,
     max_iter = 20,
+    target_acc = 0.25,
     sample_kwargs...,
 )
     increase = false
@@ -996,9 +983,9 @@ function optimize_stepsize(
         _find_mcmc_step_log(it, stepsize, acc_ratio, trial_chain)
 
         change_step = true
-        if acc_ratio < 0.15
+        if acc_ratio < target_acc - 0.1
             decrease = true
-        elseif acc_ratio > 0.35
+        elseif acc_ratio > target_acc + 0.1
             increase = true
         else
             change_step = false
@@ -1010,9 +997,9 @@ function optimize_stepsize(
             decrease = false
         end
 
-        if acc_ratio < 0.15
+        if acc_ratio < target_acc - 0.1
             stepsize *= 2^(-factor[1])
-        elseif acc_ratio > 0.35
+        elseif acc_ratio > target_acc + 0.1
             stepsize *= 2^(factor[1])
         end
 
