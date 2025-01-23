@@ -219,20 +219,14 @@ end
 ## -------- Autodifferentiation procedures ------ ##
 
 function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_protocol)
-    if autodiff_protocol == GradFreeProtocol
-        throw(
-            ArgumentError(
-                "Calling gradient on a Sampling with `GradFreeProtocol`. \n Please construct the `XYZSampling{<:AutodiffProtocol}()` object with `AutodiffProtocol` from the implemented options that is compatible with the chosen Emulator (e.g., `AbstractGP` emulators are compatible with `ForwardDiffProtocol`).",
-            ),
-        )
-    elseif autodiff_protocol == ForwardDiffProtocol
+    if autodiff_protocol == ForwardDiffProtocol
         return ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
     elseif autodiff_protocol == ReverseDiffProtocol
         return ReverseDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
     else
         throw(
             ArgumentError(
-                "autodifferentiation protocol $(autodiff_protocol) has no `autodiff_gradient` method implemented.",
+                "Calling `autodiff_gradient(...)` on a sampler with protocol $(autodiff_protocol) that has *no* gradient implementation.\n Please select from a protocol with a gradient implementation (e.g., `ForwardDiffProtocol`).",
             ),
         )
     end
@@ -243,22 +237,17 @@ autodiff_gradient(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH
     autodiff_gradient(model::AdvancedMH.DensityModel, params, typeof(sampler).parameters[2]) # hacky way of getting the "AutodiffProtocol"
 
 function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_protocol)
-    if autodiff_protocol == GradFreeProtocol
-        throw(
-            ArgumentError(
-                "Calling hessian on a Sampling with `GradFreeProtocol`. \n Please construct the `XYZSampling{<:AutodiffProtocol}()` object with `AutodiffProtocol` from the implemented options that is compatible with the chosen Emulator (e.g., `AbstractGP` emulators are compatible with `ForwardDiffProtocol`).",
-            ),
-        )
-    elseif autodiff_protocol == ForwardDiffProtocol
+    if autodiff_protocol == ForwardDiffProtocol
         return Symmetric(ForwardDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
     elseif autodiff_protocol == ReverseDiffProtocol
         return Symmetric(ReverseDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
     else
         throw(
             ArgumentError(
-                "autodifferentiation protocol $(autodiff_protocol) has no `autodiff_hessian` method implemented.",
+                "Calling `autodiff_hessian(...)` on a sampler with protocol $(autodiff_protocol) that has *no* hessian implementation.\n Please select from a protocol with a hessian implementation (e.g., `ForwardDiffProtocol`).",
             ),
         )
+
     end
 end
 
