@@ -296,12 +296,15 @@ end
         BarkerSampling{ReverseDiffProtocol}(), # scales to high dim better, but slow.
     ]
 
+    bad_mcmc_alg = BarkerSampling{GradFreeProtocol}()
+    @test_throws ArgumentError mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = bad_mcmc_alg, mcmc_params...)
+
+
     # GPJL doesnt support ForwardDiff
-    @test_throws ErrorException new_step, posterior_mean, chain =
-        mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[2], mcmc_params...)
+    @test_throws ErrorException mcmc_test_template(prior, σ2_y, em_1; mcmc_alg = mcmc_algs[2], mcmc_params...)
 
     for alg in mcmc_algs
-        @info "testing algorithm: $(nameof(typeof(alg)))"
+        @info "testing algorithm: $(typeof(alg))"
         new_step, posterior_mean, chain = mcmc_test_template(prior, σ2_y, em_1b; mcmc_alg = alg, mcmc_params...)
         esjd_tmp = esjd(chain)
         @info "ESJD = $esjd_tmp"

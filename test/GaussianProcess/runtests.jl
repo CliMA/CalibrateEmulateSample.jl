@@ -109,6 +109,7 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     )
+
     gp1_opt_params = Emulators.get_params(gp1)[1] # one model only
     gp1_opt_param_names = get_param_names(gp1)[1] # one model only
 
@@ -127,6 +128,18 @@ using CalibrateEmulateSample.DataContainers
         retained_svd_frac = 1.0,
         kernel_params = kernel_params,
     )
+    optimize_hyperparameters!(em_agp_from_gp1)
+    # skip rebuild:
+    @test_logs (:warn,) (:warn,) Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+        kernel_params = kernel_params,
+    )
+
 
     μ1b, σ1b² = Emulators.predict(em_agp_from_gp1, new_inputs)
 
