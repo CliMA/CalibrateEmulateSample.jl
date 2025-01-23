@@ -24,7 +24,7 @@ export EmulatorPosteriorModel,
     MCMCProtocol,
     GradFreeProtocol,
     ForwardDiffProtocol,
-    ReverseDiffProtocol, 
+    ReverseDiffProtocol,
     RWMHSampling,
     pCNMHSampling,
     BarkerSampling,
@@ -102,7 +102,7 @@ $(DocStringExtensions.TYPEDEF)
 
 Type to construct samplers for emulators compatible with `ReverseDiff.jl` autodifferentiation
 """
-abstract type ReverseDiffProtocol <: AutodiffProtocol end 
+abstract type ReverseDiffProtocol <: AutodiffProtocol end
 # ...to be implemented...
 #=
 abstract type ZygoteProtocol <: AutodiffProtocol end

@@ -293,7 +293,7 @@ end
     mcmc_algs = [
         RWMHSampling(), # sanity-check
         BarkerSampling(), # ForwardDiffProtocol by default
-        BarkerSampling{ReverseDiffProtocol}() # scales to high dim better, but slow.
+        BarkerSampling{ReverseDiffProtocol}(), # scales to high dim better, but slow.
     ]
 
     # GPJL doesnt support ForwardDiff
