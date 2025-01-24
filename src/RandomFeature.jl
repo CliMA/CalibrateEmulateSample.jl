@@ -548,7 +548,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
 """
-function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
+function nice_cov(sample_mat::AA, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
 
     n_sample_cov = size(sample_mat, 2)
     Γ = cov(sample_mat, dims = 2)
@@ -564,7 +564,7 @@ function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: Ab
     max_exponent = 2 * 5 # must be even
     interp_steps = 100
     # use find the variability in the corr coeff matrix entries
-    std_corrs = approximate_corr_std.(corr, n_sample_cov, n_samples) # Found in EKP.Localizers !! slowest part of code -> could speed up by precomputing an interpolation of [-1,1]
+    std_corrs = (1 .- corr) / sqrt(n_sample_cov)
 
     std_tol = sqrt(sum(std_corrs .^ 2))
     α_min_exceeded = [max_exponent]
