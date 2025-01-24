@@ -548,7 +548,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
 """
-function nice_cov(sample_mat::AA, n_samples = 400, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
+function nice_cov(sample_mat::AA, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
 
     n_sample_cov = size(sample_mat, 2)
     Γ = cov(sample_mat, dims = 2)
