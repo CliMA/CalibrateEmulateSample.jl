@@ -3,6 +3,7 @@ module MarkovChainMonteCarlo
 
 using ..Emulators
 using ..ParameterDistributions
+using ..EnsembleKalmanProcesses
 
 import Distributions: sample # Reexport sample()
 using Distributions
@@ -61,11 +62,22 @@ function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <
         return data
     end
 end
+
 function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
     # method for single sample
     out_data = to_decorrelated(reshape(data, :, 1), em)
-    return vec(out_data)
+    return [vec(out_data)]
 end
+
+function to_decorrelated(data::AVV, em::Emulator{FT}) where {AVV <: AbstractVector, FT <: AbstractFloat}
+    # method for vector of samples
+    if isa(data[1], AbstractVector)
+        return [vec(to_decorrelated(reshape(d, :, 1), em)) for d in data] # calls matrix version
+    else # 
+        return to_decorrelated(convert.(FT, data))
+    end
+end
+
 
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -263,6 +275,38 @@ autodiff_hessian(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
+Defines the internal log-density function over a vector of observation samples using an assumed conditionally indepedent likelihood, that is with a log-likelihood of `ℓ(y,θ) = sum^n_i log( p(y_i|θ) )`. 
+"""
+function emulator_log_density_model(
+    θ,
+    prior::ParameterDistribution,
+    em::Emulator{FT},
+    obs_vec::AV,
+) where {FT <: AbstractFloat, AV <: AbstractVector}
+
+    # θ: model params we evaluate at; in original coords.
+    # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
+
+    # Recall predict() written to return multiple N_samples: expects input to be a 
+    # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
+    # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
+    # have to reshape()/re-cast input/output; simpler to do here than add a 
+    # predict() method.
+    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
+    #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
+
+    if isa(g_cov[1], Real)
+
+        return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+    else
+        return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+    end
+
+end
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
 Factory which constructs `AdvancedMH.DensityModel` objects given a prior on the model 
 parameters (`prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given 
 parameters. Together these yield the log posterior density we're attempting to sample from 
@@ -271,30 +315,10 @@ with the MCMC, which is the role of the `DensityModel` class in the `AbstractMCM
 function EmulatorPosteriorModel(
     prior::ParameterDistribution,
     em::Emulator{FT},
-    obs_sample::AbstractVector{FT},
-) where {FT <: AbstractFloat}
-    return AdvancedMH.DensityModel(
-        function (θ)
-            # θ: model params we evaluate at; in original coords.
-            # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
-            #
-            # Recall predict() written to return multiple N_samples: expects input to be a 
-            # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
-            # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
-            # have to reshape()/re-cast input/output; simpler to do here than add a 
-            # predict() method.
-            g, g_cov =
-                Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
-            #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
+    obs_vec::AV,
+) where {FT <: AbstractFloat, AV <: AbstractVector}
 
-            if isa(g_cov[1], Real)
-                return logpdf(MvNormal(obs_sample, g_cov[1] * I), vec(g)) + logpdf(prior, θ)
-            else
-                return logpdf(MvNormal(obs_sample, g_cov[1]), vec(g)) + logpdf(prior, θ)
-            end
-
-        end,
-    )
+    return AdvancedMH.DensityModel(x -> emulator_log_density_model(x, prior, em, obs_vec))
 end
 
 # ------------------------------------------------------------------------------------------
@@ -324,7 +348,6 @@ end
 MCMCState(model::AdvancedMH.DensityModel, params, accepted = true) =
     MCMCState(params, logdensity(model, params), accepted)
 
-# Calculate the log density of the model given some parameterization.
 AdvancedMH.logdensity(model::AdvancedMH.DensityModel, t::MCMCState) = t.log_density
 
 # AdvancedMH.transition() is only called to create a new proposal, so create a MCMCState
@@ -394,7 +417,6 @@ function AbstractMCMC.step(
 ) where {FT <: AbstractFloat}
     # Generate a new proposal.
     new_params = AdvancedMH.propose(rng, sampler, model, current_state; stepsize = stepsize)
-
     # Calculate the log acceptance probability and the log density of the candidate.
     new_log_density = AdvancedMH.logdensity(model, new_params)
     log_α =
@@ -516,9 +538,13 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper
+struct MCMCWrapper{AMorAV <: Union{AbstractVector, AbstractMatrix}, AV <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
+    "A vector, matrix, or vector or vectors describing the observation(s) provided by the user."
+    observations::AMorAV
+    "Vector of observations describing the data samples to actually used during MCMC sampling (having been transformed into a space consistent with emulator outputs)."
+    decorrelated_observations::AV
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel
     "Object describing a MCMC sampling algorithm and its settings."
@@ -556,15 +582,18 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
 """
 function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
-    obs_sample::AbstractVector{FT},
+    observation::AMorAV,
     prior::ParameterDistribution,
-    emulator::Emulator;
-    init_params::AbstractVector{FT},
-    burnin::IT = 0,
+    em::Emulator;
+    init_params::AV,
+    burnin::Int = 0,
     kwargs...,
-) where {FT <: AbstractFloat, IT <: Integer}
-    obs_sample = to_decorrelated(obs_sample, emulator)
-    log_posterior_map = EmulatorPosteriorModel(prior, emulator, obs_sample)
+) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
+
+    # decorrelate observations into a vector
+    decorrelated_obs = to_decorrelated(observation, em)
+
+    log_posterior_map = EmulatorPosteriorModel(prior, em, decorrelated_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
@@ -584,7 +613,7 @@ function MCMCWrapper(
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(prior, observation, decorrelated_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
 end
 
 """

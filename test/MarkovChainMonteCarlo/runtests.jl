@@ -163,7 +163,10 @@ function mcmc_test_template(
     rng = Random.GLOBAL_RNG,
     target_acc = 0.25,
 )
-    obs_sample = reshape(collect(obs_sample), 1) # scalar or Vector -> Vector
+    if !isa(obs_sample, AbstractVector)
+        obs_sample = reshape(collect(obs_sample), 1) # scalar or Vector -> Vector
+    end
+
     init_params = reshape(collect(init_params), 1) # scalar or Vector -> Vector
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
     # First let's run a short chain to determine a good step size
@@ -189,9 +192,9 @@ end
     @testset "Constructor: standardize" begin
         em = test_gp_1(y, σ2_y, iopairs)
         test_obs = MarkovChainMonteCarlo.to_decorrelated(obs_sample, em)
-        # The MCMC stored a SVD-transformed sample,
+        # The MCMC stored a SVD-transformed sample, in a vector
         # 1.0/sqrt(0.05) * obs_sample ≈ 4.472
-        @test isapprox(test_obs, (obs_sample ./ sqrt(σ2_y[1, 1])); atol = 1e-2)
+        @test isapprox(test_obs[1], (obs_sample ./ sqrt(σ2_y[1, 1])); atol = 1e-2)
     end
 
     @testset "MV priors" begin
@@ -237,6 +240,15 @@ end
         # approx [0.04190683285347798, 0.1685296224916364, 0.4129400000002722]
         @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
 
+        # test with many slightly different samples
+        obs_sample2 = [obs_sample + 0.01 * randn(length(obs_sample)) for i in 1:100]
+        mcmc_params2 = mcmc_params
+        mcmc_params2[:obs_sample] = obs_sample2
+        em_1 = test_gp_1(y, σ2_y, iopairs)
+        new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params2...)
+        @test isapprox(new_step, 0.5; atol = 0.5)
+        # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
+        @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
 
     end
 
