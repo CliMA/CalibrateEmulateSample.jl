@@ -170,7 +170,7 @@ function mcmc_test_template(
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
-    chain = MCMC.sample(rng, mcmc, 100_000; stepsize = new_step, discard_initial = 50000)
+    chain = MCMC.sample(rng, mcmc, 50_000; stepsize = new_step, discard_initial = 10000)
     posterior_distribution = get_posterior(mcmc, chain)
     #post_mean = mean(posterior, dims=1)[1]
     posterior_mean = mean(posterior_distribution)
@@ -285,7 +285,7 @@ end
 
 
 
-    mcmc_params = Dict(:obs_sample => obs_sample, :init_params => [3.0], :step => 0.01, :rng => rng, :target_acc => 0.6) # the target is usually higher in grad-based MCMC
+    mcmc_params = Dict(:obs_sample => obs_sample, :init_params => [3.0], :step => 0.25, :rng => rng, :target_acc => 0.6) # the target is usually higher in grad-based MCMC
 
     em_1, em_1b = test_gp_and_agp_1(y, σ2_y, iopairs)
     # em_1 cannot be used here
