@@ -354,6 +354,7 @@ function build_models!(
     vrfi::VectorRandomFeatureInterface,
     input_output_pairs::PairedDataContainer{FT};
     regularization_matrix::Union{M, Nothing} = nothing,
+    kwargs...,
 ) where {FT <: AbstractFloat, M <: AbstractMatrix}
 
     # get inputs and outputs 

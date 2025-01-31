@@ -11,6 +11,8 @@ using LinearAlgebra
 using Printf
 using Random
 using Statistics
+using ForwardDiff
+using ReverseDiff
 
 using MCMCChains
 import AbstractMCMC: sample # Reexport sample()
@@ -20,13 +22,18 @@ import AdvancedMH
 export EmulatorPosteriorModel,
     MetropolisHastingsSampler,
     MCMCProtocol,
+    GradFreeProtocol,
+    ForwardDiffProtocol,
+    ReverseDiffProtocol,
     RWMHSampling,
     pCNMHSampling,
+    BarkerSampling,
     MCMCWrapper,
     accept_ratio,
     optimize_stepsize,
     get_posterior,
-    sample
+    sample,
+    esjd
 
 # ------------------------------------------------------------------------------------------
 # Output space transformations between original and SVD-decorrelated coordinates.
@@ -68,6 +75,47 @@ end
 # only change is made. We do the latter here because doing the former would require more
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
+# some possible types of autodiff used
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
+"""
+abstract type AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators not compatible with autodifferentiation
+"""
+abstract type GradFreeProtocol <: AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators compatible with `ForwardDiff.jl` autodifferentiation
+"""
+abstract type ForwardDiffProtocol <: AutodiffProtocol end
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type to construct samplers for emulators compatible with `ReverseDiff.jl` autodifferentiation
+"""
+abstract type ReverseDiffProtocol <: AutodiffProtocol end
+# ...to be implemented...
+#=
+abstract type ZygoteProtocol <: AutodiffProtocol end
+abstract type EnzymeProtocol <: AutodiffProtocol end
+=#
+
+function _get_proposal(prior::ParameterDistribution)
+    # *only* use covariance of prior, not full distribution
+    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
+    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
+end
+
+
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -82,10 +130,12 @@ $(DocStringExtensions.TYPEDEF)
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
 new parameters as as vanilla random walk, based on the covariance of `prior`.
 """
-struct RWMHSampling <: MCMCProtocol end
+struct RWMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 
-struct RWMetropolisHastings{D} <: AdvancedMH.MHSampler
-    proposal::D
+RWMHSampling() = RWMHSampling{GradFreeProtocol}()
+
+struct RWMetropolisHastings{PT, ADT <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    proposal::PT
 end
 # Define method needed by AdvancedMH for new Sampler
 AdvancedMH.logratio_proposal_density(
@@ -93,12 +143,6 @@ AdvancedMH.logratio_proposal_density(
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
-
-function _get_proposal(prior::ParameterDistribution)
-    # *only* use covariance of prior, not full distribution
-    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
-    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
-end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -115,7 +159,10 @@ Constructor for all `Sampler` objects, with one method for each supported MCMC a
     (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
     inference isn't prior-dominated.
 """
-MetropolisHastingsSampler(::RWMHSampling, prior::ParameterDistribution) = RWMetropolisHastings(_get_proposal(prior))
+function MetropolisHastingsSampler(::RWMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+    proposal = _get_proposal(prior)
+    return RWMetropolisHastings{typeof(proposal), T}(proposal)
+end
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -125,9 +172,10 @@ new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, 
 usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based 
 on the covariance of `prior`.
 """
-struct pCNMHSampling <: MCMCProtocol end
+struct pCNMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
+pCNMHSampling() = pCNMHSampling{GradFreeProtocol}()
 
-struct pCNMetropolisHastings{D} <: AdvancedMH.MHSampler
+struct pCNMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     proposal::D
 end
 # Define method needed by AdvancedMH for new Sampler
@@ -136,8 +184,78 @@ AdvancedMH.logratio_proposal_density(
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+function MetropolisHastingsSampler(::pCNMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+    proposal = _get_proposal(prior)
+    return pCNMetropolisHastings{typeof(proposal), T}(proposal)
+end
 
-MetropolisHastingsSampler(::pCNMHSampling, prior::ParameterDistribution) = pCNMetropolisHastings(_get_proposal(prior))
+#------ The following are gradient-based samplers
+
+"""
+$(DocStringExtensions.TYPEDEF)
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
+new parameters according to the Barker proposal.
+"""
+struct BarkerSampling{T <: AutodiffProtocol} <: MCMCProtocol end
+BarkerSampling() = BarkerSampling{ForwardDiffProtocol}()
+
+struct BarkerMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    proposal::D
+end
+# Define method needed by AdvancedMH for new Sampler
+AdvancedMH.logratio_proposal_density(
+    sampler::BarkerMetropolisHastings,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate,
+) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
+
+function MetropolisHastingsSampler(::BarkerSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
+    proposal = _get_proposal(prior)
+    return BarkerMetropolisHastings{typeof(proposal), T}(proposal)
+end
+
+
+## -------- Autodifferentiation procedures ------ ##
+
+function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_protocol)
+    if autodiff_protocol == ForwardDiffProtocol
+        return ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
+    elseif autodiff_protocol == ReverseDiffProtocol
+        return ReverseDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
+    else
+        throw(
+            ArgumentError(
+                "Calling `autodiff_gradient(...)` on a sampler with protocol $(autodiff_protocol) that has *no* gradient implementation.\n Please select from a protocol with a gradient implementation (e.g., `ForwardDiffProtocol`).",
+            ),
+        )
+    end
+
+end
+
+autodiff_gradient(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH <: AdvancedMH.MHSampler} =
+    autodiff_gradient(model::AdvancedMH.DensityModel, params, typeof(sampler).parameters[2]) # hacky way of getting the "AutodiffProtocol"
+
+function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_protocol)
+    if autodiff_protocol == ForwardDiffProtocol
+        return Symmetric(ForwardDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
+    elseif autodiff_protocol == ReverseDiffProtocol
+        return Symmetric(ReverseDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
+    else
+        throw(
+            ArgumentError(
+                "Calling `autodiff_hessian(...)` on a sampler with protocol $(autodiff_protocol) that has *no* hessian implementation.\n Please select from a protocol with a hessian implementation (e.g., `ForwardDiffProtocol`).",
+            ),
+        )
+
+    end
+end
+
+autodiff_hessian(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH <: AdvancedMH.MHSampler} =
+    autodiff_hessian(model, params, typeof(sampler).parameters[2])
+
+
+
 
 # ------------------------------------------------------------------------------------------
 # Use emulated model in sampler
@@ -216,7 +334,7 @@ function AdvancedMH.transition(
     model::AdvancedMH.DensityModel,
     params,
     log_density::Real,
-) where {MHS <: Union{pCNMetropolisHastings, RWMetropolisHastings}}
+) where {MHS <: Union{pCNMetropolisHastings, RWMetropolisHastings, BarkerMetropolisHastings}}
     return MCMCState(params, log_density, true)
 end
 
@@ -243,6 +361,22 @@ function AdvancedMH.propose(
     # inverse problems." for relating ρ to Euler stepsize:
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     return ρ * current_state.params .+ sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
+end
+
+# method extending AdvancedMH.propose() for the Barker proposal
+function AdvancedMH.propose(
+    rng::Random.AbstractRNG,
+    sampler::BarkerMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    current_state::MCMCState;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    # Livingstone and Zanella (2022)
+    # Compute the gradient of the log-density at the current state
+    n = length(current_state.params)
+    log_gradient = autodiff_gradient(model, current_state.params, sampler)
+    xi = rand(rng, sampler.proposal)
+    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
 end
 
 # Copy a MCMCState and set accepted = false
@@ -408,12 +542,14 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
     fixed stepsize.
   - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned 
     Crank-Nicholson algorithm, which has a well-behaved small-stepsize limit.
+  - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
+    proposal, which has a robustness to choosing step-size parameters.
 
 - `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
   Observation struct using `get_obs_sample`.
 - `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
   object containing the parameters' prior distributions.
-- `em`: [`Emulator`](@ref) to sample from. 
+- `emulator`: [`Emulator`](@ref) to sample from.
 - `stepsize`: MCMC step size, applied as a scaling to the prior covariance.
 - `init_params`: Starting parameter values for MCMC sampling.
 - `burnin`: Initial number of MCMC steps to discard from output (pre-convergence).
@@ -422,13 +558,13 @@ function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     obs_sample::AbstractVector{FT},
     prior::ParameterDistribution,
-    em::Emulator;
+    emulator::Emulator;
     init_params::AbstractVector{FT},
     burnin::IT = 0,
     kwargs...,
 ) where {FT <: AbstractFloat, IT <: Integer}
-    obs_sample = to_decorrelated(obs_sample, em)
-    log_posterior_map = EmulatorPosteriorModel(prior, em, obs_sample)
+    obs_sample = to_decorrelated(obs_sample, emulator)
+    log_posterior_map = EmulatorPosteriorModel(prior, emulator, obs_sample)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
@@ -541,6 +677,7 @@ function optimize_stepsize(
     init_stepsize = 1.0,
     N = 2000,
     max_iter = 20,
+    target_acc = 0.25,
     sample_kwargs...,
 )
     increase = false
@@ -555,9 +692,9 @@ function optimize_stepsize(
         _find_mcmc_step_log(it, stepsize, acc_ratio, trial_chain)
 
         change_step = true
-        if acc_ratio < 0.15
+        if acc_ratio < target_acc - 0.1
             decrease = true
-        elseif acc_ratio > 0.35
+        elseif acc_ratio > target_acc + 0.1
             increase = true
         else
             change_step = false
@@ -569,9 +706,9 @@ function optimize_stepsize(
             decrease = false
         end
 
-        if acc_ratio < 0.15
+        if acc_ratio < target_acc - 0.1
             stepsize *= 2^(-factor[1])
-        elseif acc_ratio > 0.35
+        elseif acc_ratio > target_acc + 0.1
             stepsize *= 2^(factor[1])
         end
 
@@ -622,5 +759,26 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     ])
     return posterior_distribution
 end
+
+# other diagnostic utilities
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Computes the expected squared jump distance of the chain.
+"""
+function esjd(chain::MCMCChains.Chains)
+    samples = chain.value[:, :, 1] # N_samples x N_params x n_chains
+    n_samples, n_params = size(samples)
+    esjd = zeros(Float64, n_params)
+    for i in 2:n_samples
+        esjd .+= (samples[i, :] .- samples[i - 1, :]) .^ 2 ./ n_samples
+    end
+    return esjd
+
+end
+
+
+
+
 
 end # module MarkovChainMonteCarlo

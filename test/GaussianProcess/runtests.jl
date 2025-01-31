@@ -1,6 +1,6 @@
 # Import modules
-using Random
 using Test
+using Random
 using GaussianProcesses
 using Statistics
 using Distributions
@@ -80,6 +80,7 @@ using CalibrateEmulateSample.DataContainers
         standardize_outputs = false,
         retained_svd_frac = 1.0,
     ) # check that gp1 does not get more models added under second call
+
     Emulator(
         gp1,
         iopairs,
@@ -97,6 +98,57 @@ using CalibrateEmulateSample.DataContainers
     @test vec(μ1) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol = 0.3
     @test size(μ1) == (1, 5)
     @test vec(σ1²) ≈ [0.017, 0.003, 0.004, 0.004, 0.009] atol = 1e-2
+
+    # GaussianProcess 1b: use GPJL to create an abstractGP dist.
+    agp = GaussianProcess(AGPJL(); noise_learn = true, alg_reg_noise = 1e-4, prediction_type = pred_type)
+    @test_throws ArgumentError Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+    )
+
+    gp1_opt_params = Emulators.get_params(gp1)[1] # one model only
+    gp1_opt_param_names = get_param_names(gp1)[1] # one model only
+
+    kernel_params = Dict(
+        "log_rbf_len" => gp1_opt_params[1:(end - 2)],
+        "log_std_sqexp" => gp1_opt_params[end - 1],
+        "log_std_noise" => gp1_opt_params[end],
+    )
+
+    em_agp_from_gp1 = Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+        kernel_params = kernel_params,
+    )
+    optimize_hyperparameters!(em_agp_from_gp1)
+    # skip rebuild:
+    @test_logs (:warn,) (:warn,) Emulator(
+        agp,
+        iopairs,
+        obs_noise_cov = nothing,
+        normalize_inputs = false,
+        standardize_outputs = false,
+        retained_svd_frac = 1.0,
+        kernel_params = kernel_params,
+    )
+
+
+    μ1b, σ1b² = Emulators.predict(em_agp_from_gp1, new_inputs)
+
+    # gp1 and agp_from_gp2 should give similar predictions
+    tol_small = 1e-12
+    @test all(isapprox.(μ1, μ1b, atol = tol_small))
+    @test size(μ1) == (1, 5)
+    @test all(isapprox.(σ1², σ1b², atol = tol_small))
+
 
     # GaussianProcess 2: GPJL, predict_f
     pred_type = FType()
@@ -117,7 +169,6 @@ using CalibrateEmulateSample.DataContainers
     μ2, σ2² = Emulators.predict(em2, new_inputs)
     # predict_y and predict_f should give the same mean
     @test μ2 ≈ μ1 atol = 1e-6
-
 
     # GaussianProcess 3: SKLJL
 
@@ -250,5 +301,35 @@ using CalibrateEmulateSample.DataContainers
     # check match between the variances (should be similar at least)
     @test all(isapprox.(σ4²_noise_from_Σ, σ4²_noise_learnt, rtol = 2 * tol_mu))
 
+
+    # GaussianProcess 4b: use GPJL to create an abstractGP dist.
+    agp4 = GaussianProcess(AGPJL(); noise_learn = true, prediction_type = pred_type)
+
+    gp4_opt_params = Emulators.get_params(gp4_noise_learnt)
+    gp4_opt_param_names = get_param_names(gp4_noise_learnt)
+
+    kernel_params = [
+        Dict(
+            "log_rbf_len" => model_params[1:(end - 2)],
+            "log_std_sqexp" => model_params[end - 1],
+            "log_std_noise" => model_params[end],
+        ) for model_params in gp4_opt_params
+    ]
+
+    em_agp_from_gp4 = Emulator(
+        agp4,
+        iopairs2,
+        obs_noise_cov = Σ,
+        normalize_inputs = true,
+        retained_svd_frac = 1.0,
+        kernel_params = kernel_params,
+    )
+
+    μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs, transform_to_real = true)
+
+    # gp1 and agp_from_gp2 should give similar predictions
+    tol_small = 1e-12
+    @test all(isapprox.(μ4b, μ4_noise_learnt, atol = tol_small))
+    @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
 end
