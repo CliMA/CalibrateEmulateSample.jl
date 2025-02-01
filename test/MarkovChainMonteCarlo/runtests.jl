@@ -259,8 +259,8 @@ end
         @test isapprox(new_step, 0.5; atol = 0.5)
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
         @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
-        
-        
+
+
     end
 
     @testset "Sine GP & pCN" begin

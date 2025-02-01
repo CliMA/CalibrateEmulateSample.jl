@@ -74,7 +74,7 @@ function to_decorrelated(data::AVV, em::Emulator{FT}) where {AVV <: AbstractVect
     if isa(data[1], AbstractVector)
         return [vec(to_decorrelated(reshape(d, :, 1), em)) for d in data] # calls matrix version
     else # 
-        return to_decorrelated(convert.(FT, data))
+        return to_decorrelated(convert.(FT, data), em)
     end
 end
 
