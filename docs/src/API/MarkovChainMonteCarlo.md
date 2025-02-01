@@ -8,7 +8,14 @@ CurrentModule = CalibrateEmulateSample.MarkovChainMonteCarlo
 
 ```@docs
 MCMCWrapper
-MCMCWrapper(args...; kwargs...)
+MCMCWrapper(
+    mcmc_alg::MCMCProtocol,
+    observation::AMorAV,
+    prior::ParameterDistribution,
+    em::Emulator;
+    kwargs...,
+) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
+
 sample
 get_posterior
 optimize_stepsize
