@@ -68,7 +68,7 @@ end
 
 function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
     # method for Matrix with columns that are samples
-    return [vec(to_decorrelated(cd, em), single_vec = false) for cd in eachcolumn(data)]
+    return [vec(to_decorrelated(cd, em, single_vec = false)) for cd in eachcol(data)]
 
 end
 

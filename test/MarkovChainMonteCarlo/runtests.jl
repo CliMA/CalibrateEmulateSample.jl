@@ -163,8 +163,8 @@ function mcmc_test_template(
     rng = Random.GLOBAL_RNG,
     target_acc = 0.25,
 )
-    if !isa(obs_sample, AbstractVector)
-        obs_sample = reshape(collect(obs_sample), 1) # scalar or Vector -> Vector
+    if !isa(obs_sample, AbstractVecOrMat)
+        obs_sample = reshape(collect(obs_sample), 1) # scalar -> Vector 
     end
 
     init_params = reshape(collect(init_params), 1) # scalar or Vector -> Vector
