@@ -260,7 +260,7 @@ end
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
         @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
 
-        
+
         # test with int data
         obs_sample3 = [1]
         mcmc_params3 = mcmc_params
