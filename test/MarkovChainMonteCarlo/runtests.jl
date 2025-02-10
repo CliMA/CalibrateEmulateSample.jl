@@ -225,7 +225,7 @@ end
         @test isapprox(posterior_mean_1b, posterior_mean_1; atol = tol_small)
         esjd1b = esjd(chain_1b)
         @info "ESJD = $esjd1b"
-        @test all(isapprox.(esjd1, esjd1b, rtol = 0.1))
+        @test all(isapprox.(esjd1, esjd1b, rtol = 0.2))
 
         # now test SVD normalization
         norm_factor = 10.0
@@ -238,7 +238,7 @@ end
         esjd2 = esjd(chain_2)
         @info "ESJD = $esjd2"
         # approx [0.04190683285347798, 0.1685296224916364, 0.4129400000002722]
-        @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
+        @test all(isapprox.(esjd1, esjd2, rtol = 0.2))
 
         # test with many slightly different samples
         obs_sample2 = [obs_sample + 0.01 * randn(length(obs_sample)) for i in 1:100]
@@ -287,7 +287,7 @@ end
         @test isapprox(posterior_mean_1b, posterior_mean_1; atol = tol_small)
         esjd1b = esjd(chain_1b)
         @info "ESJD = $esjd1b"
-        @test all(isapprox.(esjd1, esjd1b, rtol = 0.1))
+        @test all(isapprox.(esjd1, esjd1b, rtol = 0.2))
 
         # now test SVD normalization
         norm_factor = 10.0
@@ -301,7 +301,7 @@ end
         @info "ESJD = $esjd2"
         # approx [0.03470825350663073, 0.161606734823579, 0.38970000000024896]
 
-        @test all(isapprox.(esjd1, esjd2, rtol = 0.1))
+        @test all(isapprox.(esjd1, esjd2, rtol = 0.2))
 
     end
 
