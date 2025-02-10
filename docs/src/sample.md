@@ -30,6 +30,9 @@ mcmc = MCMCWrapper(
 ```
 The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the sampling method.
 
+!!! note "for many samples"
+    If one has several samples of conditionally-independent data (that is, ``p({y_1,\dots,y_n}\mid\theta)`` is a product of ``\prod_i p(y_i\mid\theta)``), then one can feed in `truth_sample` as a vector of these samples ``y_ii`` or as a matrix. The resulting sampler will evaluate the likelihood at all y_i for every sample step. 
+
 For good efficiency, one often needs to run MCMC with a problem-dependent step size. We provide a simple utility to help choose this. Here the optimizer runs short chains (of length `N`), and adjusts the step-size until the MCMC acceptance rate falls within an acceptable range, returning this step size.
 ```julia
 new_step = optimize_stepsize(
