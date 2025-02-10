@@ -46,8 +46,11 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Transform samples from the original (correlated) coordinate system to the SVD-decorrelated
 coordinate system used by [`Emulator`](@ref). Used in the constructor for [`MCMCWrapper`](@ref).
+
+The keyword `single_vec` wraps the output in a vector if `true` (default).
 """
-function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
+function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}; single_vec = true) where {FT <: AbstractFloat}
+    # method for a single sample
     if em.standardize_outputs && em.standardize_outputs_factors !== nothing
         # standardize() data by scale factors, if they were given
         data = data ./ em.standardize_outputs_factors
@@ -57,23 +60,24 @@ function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <
         # Use SVD decomposition of obs noise cov, if given, to transform data to 
         # decorrelated coordinates.
         inv_sqrt_singvals = Diagonal(1.0 ./ sqrt.(decomp.S))
-        return inv_sqrt_singvals * decomp.Vt * data
+        return single_vec ? [vec(inv_sqrt_singvals * decomp.Vt * data)] : inv_sqrt_singvals * decomp.Vt * data
     else
-        return data
+        return single_vec ? [vec(data)] : data
     end
 end
 
-function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
-    # method for single sample
-    out_data = to_decorrelated(reshape(data, :, 1), em)
-    return [vec(out_data)]
+function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
+    # method for Matrix with columns that are samples
+    return [vec(to_decorrelated(cd, em), single_vec = false) for cd in eachcolumn(data)]
+
 end
+
 
 function to_decorrelated(data::AVV, em::Emulator{FT}) where {AVV <: AbstractVector, FT <: AbstractFloat}
     # method for vector of samples
     if isa(data[1], AbstractVector)
-        return [vec(to_decorrelated(reshape(d, :, 1), em)) for d in data] # calls matrix version
-    else # 
+        return [vec(to_decorrelated(d, em, single_vec = false)) for d in data]
+    else # turns out it is just one vector of a non-float type
         return to_decorrelated(convert.(FT, data), em)
     end
 end
@@ -541,9 +545,9 @@ $(DocStringExtensions.TYPEDFIELDS)
 struct MCMCWrapper{AMorAV <: Union{AbstractVector, AbstractMatrix}, AV <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
-    "A vector, matrix, or vector or vectors describing the observation(s) provided by the user."
+    "A vector or [Nx1] matrix, describing a single observation data (or NxM column-matrix / vector or vectors for multiple observations) provided by the user."
     observations::AMorAV
-    "Vector of observations describing the data samples to actually used during MCMC sampling (having been transformed into a space consistent with emulator outputs)."
+    "Vector of observations describing the data samples to actually used during MCMC sampling (that have been transformed into a space consistent with emulator outputs)."
     decorrelated_observations::AV
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel

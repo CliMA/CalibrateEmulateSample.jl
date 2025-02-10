@@ -241,6 +241,7 @@ end
         @test all(isapprox.(esjd1, esjd2, rtol = 0.2))
 
         # test with many slightly different samples
+        # as vec of vec
         obs_sample2 = [obs_sample + 0.01 * randn(length(obs_sample)) for i in 1:100]
         mcmc_params2 = mcmc_params
         mcmc_params2[:obs_sample] = obs_sample2
@@ -250,6 +251,16 @@ end
         # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
         @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
 
+        # as column matrix
+        obs_sample2mat = reduce(hcat, obs_sample2)
+        mcmc_params2mat = mcmc_params
+        mcmc_params2mat[:obs_sample] = obs_sample2mat
+        new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; mcmc_params2mat...)
+        @test isapprox(new_step, 0.5; atol = 0.5)
+        # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
+        @test isapprox(posterior_mean_1, π / 2; atol = 4e-1)
+
+        
         # test with int data
         obs_sample3 = [1]
         mcmc_params3 = mcmc_params
