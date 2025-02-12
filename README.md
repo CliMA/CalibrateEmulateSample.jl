@@ -20,10 +20,10 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
 [docs-dev-url]: https://CliMA.github.io/CalibrateEmulateSample.jl/dev/
 
-[docs-bld-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Docs.yml/badge.svg?branch=main
+[docs-bld-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Docs.yml/badge.svg
 [docs-bld-url]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Docs.yml
 
-[unit-tests-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Tests.yml/badge.svg?branch=main
+[unit-tests-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Tests.yml/badge.svg
 [unit-tests-url]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Tests.yml
 
 [codecov-img]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl/branch/master/graph/badge.svg
