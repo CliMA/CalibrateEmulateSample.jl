@@ -4,7 +4,7 @@ export run_G
 export run_G_ensemble
 export lorenz_forward
 
-using ChunkSplitter
+using ChunkSplitters
 
 include("GModel_common.jl")
 
