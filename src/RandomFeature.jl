@@ -17,6 +17,7 @@ export get_eps
 export rank
 export shrinkage_cov, nice_cov
 
+using ChunkSplitters
 
 abstract type RandomFeatureInterface <: MachineLearningTool end
 
@@ -822,66 +823,66 @@ function estimate_mean_and_coeffnorm_covariance(
     println("estimate cov with " * string(n_samples) * " iterations...")
 
     nthreads = Threads.nthreads()
+
+    coeffl2norm = zeros(1, n_samples)
+    complexity = zeros(1, n_samples)
+    means = zeros(output_dim, n_samples, n_test)
+    mean_of_covs = zeros(output_dim, output_dim, n_test)
+
+    # buffers & rng
+    moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
+    buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
     rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
 
-    c_list = [zeros(1, n_samples) for i in 1:nthreads]
-    cp_list = [zeros(1, n_samples) for i in 1:nthreads]
-    m_list = [zeros(output_dim, n_samples, n_test) for i in 1:nthreads]
-    moc_list = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
-    moc_tmp_list = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
-    mtmp_list = [zeros(output_dim, n_test) for i in 1:nthreads]
-    buffer_list = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
+    chunked_samples = chunks(1:n_samples, n = nthreads) # could probs do without this package. But gives (tid, idx for tid)
 
-
-    Threads.@threads for i in ProgressBar(1:n_samples)
-        tid = Threads.threadid()
+    Threads.@threads for (tid, s_idx) in enumerate(chunked_samples)
         rngtmp = rng_list[tid]
-        mtmp = mtmp_list[tid]
-        moc_tmp = moc_tmp_list[tid]
-        buffer = buffer_list[tid]
-        for j in 1:repeats
+        for i in s_idx
 
-            c, cplxty = calculate_mean_cov_and_coeffs(
-                rfi,
-                rngtmp,
-                l,
-                regularization,
-                n_features,
-                train_idx,
-                test_idx,
-                batch_sizes,
-                io_pairs,
-                decomp_type,
-                mtmp,
-                moc_tmp,
-                buffer,
-                multithread_type,
-            )
+            for j in 1:repeats
+                @. mtmp[tid] = 0
+                @. moc_tmp[tid] = 0
+                @. buffer[tid] = 0
+
+                c, cplxty = calculate_mean_cov_and_coeffs(
+                    rfi,
+                    rngtmp,
+                    l,
+                    regularization,
+                    n_features,
+                    train_idx,
+                    test_idx,
+                    batch_sizes,
+                    io_pairs,
+                    decomp_type,
+                    mtmp[tid],
+                    moc_tmp[tid],
+                    buffer[tid],
+                    multithread_type,
+                )
 
 
-            # m output_dim x n_test
-            # v output_dim x output_dim x n_test
-            # c n_features
-            # cplxty 1
+                # m output_dim x n_test
+                # v output_dim x output_dim x n_test
+                # c n_features
+                # cplxty 1
 
-            # update vbles needed for cov
-            # update vbles needed for cov
-            m_list[tid][:, i, :] += mtmp ./ repeats
-            c_list[tid][1, i] += sqrt(sum(abs2, c)) / repeats
-            cp_list[tid][1, i] += cplxty / repeats
+                # update vbles needed for cov
+                # update vbles needed for cov
+                means[:, i, :] += mtmp[tid] ./ repeats
+                coeffl2norm[1, i] += sqrt(sum(abs2, c)) / repeats
+                complexity[1, i] += cplxty / repeats
 
-            # update vbles needed for mean
-            @. moc_list[tid] += moc_tmp ./ (repeats * n_samples)
-
+                # update vbles needed for mean
+                @. mean_of_covs += moc_tmp[tid] ./ (repeats * n_samples)
+            end
         end
     end
 
     #put back together after threading
-    mean_of_covs = sum(moc_list)
-    means = sum(m_list)
-    coeffl2norm = sum(c_list)
-    complexity = sum(cp_list)
     means = permutedims(means, (3, 2, 1))
     mean_of_covs = permutedims(mean_of_covs, (3, 1, 2))
 
@@ -950,57 +951,59 @@ function calculate_ensemble_mean_and_coeffnorm(
     println("calculating " * string(N_ens) * " ensemble members...")
 
     nthreads = Threads.nthreads()
-    c_list = [zeros(1, N_ens) for i in 1:nthreads]
-    cp_list = [zeros(1, N_ens) for i in 1:nthreads]
-    m_list = [zeros(output_dim, N_ens, n_test) for i in 1:nthreads]
-    moc_list = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
-    buffer_list = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
-    moc_tmp_list = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
-    mtmp_list = [zeros(output_dim, n_test) for i in 1:nthreads]
+
+    coeffl2norm = zeros(1, N_ens)
+    complexity = zeros(1, N_ens)
+    means = zeros(output_dim, N_ens, n_test)
+    mean_of_covs = zeros(output_dim, output_dim, n_test)
+
+    # buffers & rng
+    moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
+    buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
     rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
-    Threads.@threads for i in ProgressBar(1:N_ens)
-        tid = Threads.threadid()
+
+    chunked_ensemble = chunks(1:N_ens, n = nthreads) # could probs do without this. But gives (tid, idx for tid)
+
+    Threads.@threads for (tid, s_idx) in enumerate(chunked_ensemble)
         rngtmp = rng_list[tid]
-        mtmp = mtmp_list[tid]
-        moc_tmp = moc_tmp_list[tid]
-        buffer = buffer_list[tid]
-        l = lmat[:, i]
-        for j in collect(1:repeats)
+        for i in s_idx
+            l = lmat[:, i]
+            for j in collect(1:repeats)
+                @. mtmp[tid] = 0
+                @. moc_tmp[tid] = 0
+                @. buffer[tid] = 0
 
-            c, cplxty = calculate_mean_cov_and_coeffs(
-                rfi,
-                rngtmp,
-                l,
-                regularization,
-                n_features,
-                train_idx,
-                test_idx,
-                batch_sizes,
-                io_pairs,
-                decomp_type,
-                mtmp,
-                moc_tmp,
-                buffer,
-                multithread_type,
-            )
+                c, cplxty = calculate_mean_cov_and_coeffs(
+                    rfi,
+                    rngtmp,
+                    l,
+                    regularization,
+                    n_features,
+                    train_idx,
+                    test_idx,
+                    batch_sizes,
+                    io_pairs,
+                    decomp_type,
+                    mtmp[tid],
+                    moc_tmp[tid],
+                    buffer[tid],
+                    multithread_type,
+                )
 
-            # m output_dim x n_test
-            # v output_dim x output_dim x n_test
-            # c n_features
-            m_list[tid][:, i, :] += mtmp ./ repeats
-            @. moc_list[tid] += moc_tmp ./ (repeats * N_ens)
-            c_list[tid][1, i] += sqrt(sum(c .^ 2)) / repeats
-            cp_list[tid][1, i] += cplxty / repeats
+                # m output_dim x n_test
+                # v output_dim x output_dim x n_test
+                # c n_features
+                means[:, i, :] += mtmp[tid] ./ repeats
+                @. mean_of_covs += moc_tmp[tid] ./ (repeats * N_ens)
+                coeffl2norm[1, i] += sqrt(sum(c .^ 2)) / repeats
+                complexity[1, i] += cplxty / repeats
 
+            end
         end
     end
-
     # put back together after threading
-    mean_of_covs = sum(moc_list)
-    means = sum(m_list)
-    coeffl2norm = sum(c_list)
-    complexity = sum(cp_list)
     means = permutedims(means, (3, 2, 1))
     mean_of_covs = permutedims(mean_of_covs, (3, 1, 2))
     blockcovmat = zeros(n_test * output_dim, n_test * output_dim)
