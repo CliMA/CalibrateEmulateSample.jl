@@ -1,7 +1,7 @@
 name = "CalibrateEmulateSample"
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
 authors = ["CLIMA contributors <clima-software@caltech.edu>"]
-version = "0.6.1"
+version = "0.7.0"
 
 [deps]
 AbstractGPs = "99985d1d-32ba-4be9-9821-2ec096f28918"
