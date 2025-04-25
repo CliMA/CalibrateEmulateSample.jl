@@ -1,4 +1,3 @@
-
 using RandomFeatures
 const RF = RandomFeatures
 using EnsembleKalmanProcesses
@@ -530,7 +529,7 @@ function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
     μ_shrink = 1 / n_out * tr(Γ)
     δ_shrink = norm(Γ - μ_shrink * I)^2 / n_out # (scaled) frob norm of Γ_m
     #once de-meaning, we need to correct the sample covariance with an n_sample -> n_sample-1
-    β_shrink = sum([norm(c * c' - -Γ)^2 / n_out for c in eachcol(sample_mat_zeromean)]) / (n_sample - 1)^2
+    β_shrink = sum([norm(c * c' - Γ)^2 / n_out for c in eachcol(sample_mat_zeromean)]) / (n_sample - 1)^2
 
     γ_shrink = min(β_shrink / δ_shrink, 1) # clipping is typically rare
     #  γμI + (1-γ)Γ

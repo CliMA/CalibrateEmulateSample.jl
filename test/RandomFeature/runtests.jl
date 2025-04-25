@@ -116,7 +116,7 @@ rng = Random.MersenneTwister(seed)
         # normal condition number should be huge around 10^18
         # shrinkage cov will have condition number around 1 and be close to I
         good_cov = shrinkage_cov(samples)
-        @test (cond(good_cov) < 1.1) && ((good_cov[1] < 1.2) && (good_cov[1] > 0.8))
+        @test (cond(good_cov) < 10) && ((good_cov[1] < 1.5) && (good_cov[1] > 0.5))
 
         # test NICE utility
         samples = rand(MvNormal(zeros(100), I), 20)
