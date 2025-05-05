@@ -296,6 +296,7 @@ if ~isdir(data_save_directory)
 end
 
 # Create plots
+using Plots.Measures
 gr(size=(2*1.6*300,300))
 p1 = plot(
     range(0, nx - 1, step = 1),
@@ -305,6 +306,8 @@ p1 = plot(
     linewidth = 2,
     xlabel = "Spatial index",
     ylabel = "Forcing (input)",
+    left_margin = 10mm,
+    bottom_margin = 10mm,
 )
 
 p2 = plot(
@@ -316,6 +319,8 @@ p2 = plot(
     linewidth = 2,
     xlabel = "Spatial index",
     ylabel = "Lorenz state (output)",
+    left_margin = 10mm,
+    bottom_margin = 10mm,
 )
 l = @layout [a b]
 plt = plot(p1,p2, layout = l)
