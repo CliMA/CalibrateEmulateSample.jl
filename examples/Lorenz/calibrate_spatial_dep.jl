@@ -296,20 +296,31 @@ if ~isdir(data_save_directory)
 end
 
 # Create plots
+gr(size=(2*1.6*300,300))
 p1 = plot(
     range(0, nx - 1, step = 1),
     [gamma mean(final_ensemble,dims=2)],
-    ribbon = 2*sqrt.(diag(obs_noise_cov)),
     label = ["solution" "EKI"],
     color = [:black :lightgreen],
     linewidth = 2,
     xlabel = "Spatial index",
-    ylabel = "Gamma",
-    title = "Optimized parameters for ensemble size = 50",
-    show = true,
+    ylabel = "Forcing (input)",
 )
-show(p1)
-savefig(p1, figure_save_directory * "solution_spatial_dep_ens$(N_ens).png")
+
+p2 = plot(
+    1:length(y),
+    [y get_g_mean_final(ekpobj)],
+    ribbon = sqrt.(diag(get_obs_noise_cov(ekpobj))),
+    label = ["data" "mean-final-output"],
+    color = [:black :lightgreen],
+    linewidth = 2,
+    xlabel = "Spatial index",
+    ylabel = "Lorenz state (output)",
+)
+l = @layout [a b]
+plt = plot(p1,p2, layout = l)
+
+savefig(plt, figure_save_directory * "solution_spatial_dep_ens$(N_ens).png")
 
 # save objects
 save(

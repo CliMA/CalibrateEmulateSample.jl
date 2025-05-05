@@ -270,7 +270,7 @@ function main()
         plot!(pp, posterior)
         for (i,sp) in enumerate(pp.subplots)
             vline!(sp, [gamma[i]], lc="black", lw=4)
-            vline!(sp, [get_ϕ_mean_final(ekpobj)[i]], lc="magenta", lw=4)
+            vline!(sp, [get_ϕ_mean_final(prior, ekpobj)[i]], lc="magenta", lw=4)
         end
         figpath = joinpath(figure_save_directory, "posterior_hist" * case)
         savefig(figpath*".png")
