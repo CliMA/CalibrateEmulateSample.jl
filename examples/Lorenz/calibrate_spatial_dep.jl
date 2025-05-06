@@ -165,6 +165,8 @@ x_spun_up = lorenz_solve(true_parameters, x_initial, picking_initial_condition) 
 
 #intital condition used for the data
 x0 = x_spun_up[:, end]  #last element of the run is the initial condition for creating the data
+
+
 #Creating my sythetic data
 T = 104.0
 ny = nx * 2   #number of data points
@@ -195,10 +197,10 @@ y_ens = hcat(
     [
         lorenz_forward(
             true_parameters,
-            (x0 .+ ic_cov_sqrt * rand(rng, Normal(0.0, 1.0), nx, n_samples))[:, j],
+            (x0 .+ ic_cov_sqrt * rand(rng_i, Normal(0.0, 1.0), nx, n_samples))[:, j],
             lorenz_config_settings,
             observation_config,
-        ) for j in 1:N_ens
+        ) for j in 1:n_samples
             ]...,
 )
 
