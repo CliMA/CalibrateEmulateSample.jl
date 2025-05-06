@@ -167,6 +167,8 @@ x_spun_up = lorenz_solve(true_parameters, x_initial, picking_initial_condition) 
 x0 = x_spun_up[:, end]  #last element of the run is the initial condition for creating the data
 
 
+
+
 #Creating my sythetic data
 T = 104.0
 ny = nx * 2   #number of data points
@@ -298,6 +300,12 @@ if ~isdir(data_save_directory)
 end
 
 # Create plots
+
+gr(size=(1.6*400,400))
+hm = heatmap(x_spun_up[:,end-10000:end], c = :viridis)
+savefig(hm, joinpath(figure_save_directory, "spun_up_heatmap.png"))
+savefig(hm, joinpath(figure_save_directory,"spun_up_heatmap.pdf"))
+
 using Plots.Measures
 gr(size=(2*1.6*300,300))
 p1 = plot(
