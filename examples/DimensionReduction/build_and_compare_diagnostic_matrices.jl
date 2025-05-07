@@ -23,20 +23,8 @@ if !isfile("ekp_1.jld2")
     include("generate_inverse_problem_data.jl") # will run n trials
 else
     include("forward_maps.jl")
-    loaded1 = load("ekp_1.jld2")
-    ekp = loaded1["ekp"]
-    prior = loaded1["prior"]
-    obs_noise_cov = loaded1["obs_noise_cov"]
-    input_dim = size(get_u(ekp,1),1)
-    output_dim = size(get_g(ekp,1),1)
 end
 
-# new terminology
-prior_cov = cov(prior)
-prior_invrt = sqrt(inv(prior_cov))
-prior_rt = sqrt(prior_cov)
-obs_invrt = sqrt(inv(obs_noise_cov))
-obs_inv = inv(obs_noise_cov)
 
 Hu_evals = []
 Hg_evals = []
@@ -44,6 +32,8 @@ Hu_mean_evals = []
 Hg_mean_evals = []
 Hu_ekp_prior_evals = []
 Hg_ekp_prior_evals = []
+Hu_ekp_final_evals = []
+Hg_ekp_final_evals = []
 
 sim_Hu_means = []
 sim_Hg_means = []
@@ -51,17 +41,27 @@ sim_G_samples = []
 sim_U_samples = []
 sim_Hu_ekp_prior = []
 sim_Hg_ekp_prior = []
+sim_Hu_ekp_final = []
+sim_Hg_ekp_final = []
 
-for i = 1:n_trials
+for trial  = 1:n_trials
 
     # Load the EKP iterations
-    loaded = load("ekp_$(i).jld2")
+    loaded = load("ekp_$(trial).jld2")
     ekp = loaded["ekp"]
     prior = loaded["prior"]
     obs_noise_cov = loaded["obs_noise_cov"]
     y = loaded["y"]
     model = loaded["model"]
+    input_dim = size(get_u(ekp,1),1)
+    output_dim = size(get_g(ekp,1),1)
 
+    prior_cov = cov(prior)
+    prior_invrt = sqrt(inv(prior_cov))
+    prior_rt = sqrt(prior_cov)
+    obs_invrt = sqrt(inv(obs_noise_cov))
+    obs_inv = inv(obs_noise_cov)
+    
     # random samples
     prior_samples = sample(prior, n_samples)
     
@@ -84,8 +84,8 @@ for i = 1:n_trials
     Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt 
     Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt 
 
-    # [2] One-point approximation at mean value with SL grad
-    @info "Construct with mean value (1 sample), SL grad"
+    # [2a] One-point approximation at mean value with SL grad
+    @info "Construct with mean value prior (1 sample), SL grad"
     g = get_g(ekp,1)
     u = get_u(ekp,1)
     N_ens = get_N_ens(ekp)
@@ -94,11 +94,32 @@ for i = 1:n_trials
     svdCuu = svd(Cuu) 
     nz = min(N_ens-1, input_dim) # nonzero sv's
     pinvCuu = svdCuu.U[:,1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz,:] # can replace with localized covariance
+    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
     Cug = C_at_prior[input_dim+1:end,1:input_dim]
-    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
-    Hu_ekp_prior = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt 
-    Hg_ekp_prior = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
-
+#    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
+#    Hu_ekp_prior = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt 
+#    Hg_ekp_prior = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
+    Hu_ekp_prior = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt 
+    Hg_ekp_prior = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt 
+    
+    # [2b] One-point approximation at mean value with SL grad
+    @info "Construct with mean value final (1 sample), SL grad"
+    final_it = length(get_g(ekp))
+    g = get_g(ekp, final_it)
+    u = get_u(ekp, final_it)
+    C_at_final = cov([u;g], dims=2) # basic cross-cov
+    Cuu = C_at_final[1:input_dim, 1:input_dim]
+    svdCuu = svd(Cuu) 
+    nz = min(N_ens-1, input_dim) # nonzero sv's
+    pinvCuu = svdCuu.U[:,1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz,:] # can replace with localized covariance
+    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
+    Cug = C_at_final[input_dim+1:end,1:input_dim]
+#    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
+#    Hu_ekp_final = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt # here still using prior roots not Cuu
+#    Hg_ekp_final = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
+    Hu_ekp_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt 
+    Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt 
+    
     # cosine similarity of evector directions
     svdHu = svd(Hu)
     svdHg = svd(Hg)
@@ -106,15 +127,25 @@ for i = 1:n_trials
     svdHg_mean = svd(Hg_mean)
     svdHu_ekp_prior = svd(Hu_ekp_prior)
     svdHg_ekp_prior = svd(Hg_ekp_prior)
+    svdHu_ekp_final = svd(Hu_ekp_final)
+    svdHg_ekp_final = svd(Hg_ekp_final)
     @info """
 
-    samples -> mean value
+    samples -> mean 
     $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
     $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
 
-    samples + deriv -> mean + (no deriv)
-    $(cossim_cols(svdHu_mean.V, svdHu_ekp_prior.V)[1:3])
-    $(cossim_cols(svdHg_mean.V, svdHg_ekp_prior.V)[1:3])
+    samples + deriv -> mean + (no deriv) prior
+    $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
+
+    samples + deriv -> mean + (no deriv) final
+    $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
+
+    mean+(no deriv): prior -> final
+    $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
+    $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
 
     """
     push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
@@ -125,8 +156,12 @@ for i = 1:n_trials
     push!(Hg_mean_evals, svdHg_mean.S)
     push!(Hu_ekp_prior_evals, svdHu_ekp_prior.S)
     push!(Hg_ekp_prior_evals, svdHg_ekp_prior.S)
+    push!(Hu_ekp_final_evals, svdHu_ekp_final.S)
+    push!(Hg_ekp_final_evals, svdHg_ekp_final.S)
     push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
     push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
+    push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
+    push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
 
     # cosine similarity to output svd from samples
     G_samples = forward_map(prior_samples, model)'
@@ -135,7 +170,20 @@ for i = 1:n_trials
     
     push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
     push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
-    
+
+    save(
+        "diagnostic_matrices_$(trial).jld2",
+        "Hu", Hu,
+        "Hg", Hg,
+        "Hu_mean", Hu_mean,
+        "Hg_mean", Hg_mean,
+        "Hu_ekp_prior", Hu_ekp_prior,
+        "Hg_ekp_prior", Hg_ekp_prior,
+        "Hu_ekp_final", Hu_ekp_final,
+        "Hg_ekp_final", Hg_ekp_final,
+        "svdU", svdU,
+        "svdG", svdG,
+    )
 end
 
 using Plots.Measures
@@ -150,19 +198,17 @@ default(
 normal_Hg_evals = [ev ./ ev[1] for ev in Hg_evals]
 normal_Hg_mean_evals = [ev ./ ev[1] for ev in Hg_mean_evals]
 normal_Hg_ekp_prior_evals = [ev ./ ev[1] for ev in Hg_ekp_prior_evals]
+normal_Hg_ekp_final_evals = [ev ./ ev[1] for ev in Hg_ekp_final_evals]
+
+loaded1 = load("ekp_1.jld2")
+ekp_tmp = loaded1["ekp"]
+input_dim = size(get_u(ekp_tmp,1),1)
+output_dim = size(get_g(ekp_tmp,1),1)
 
 truncation = 15
 truncation = Int(minimum([truncation,input_dim, output_dim]))
+# color names in https://github.com/JuliaGraphics/Colors.jl/blob/master/src/names_data.jl
 
-#= plot(
-    1:truncation,
-    (mean(sim_Hg_means) .* mean(normal_Hg_evals))[1:truncation],
-    ribbon = (std(sim_Hg_means) .* mean(normal_Hg_evals)/sqrt(n_trials))[1:truncation],
-    color = :red,
-    label = "sim (samples v mean)",
-
-)
-=#
 pg = plot(
     1:truncation,
     mean(sim_Hg_means)[1:truncation], 
@@ -178,7 +224,16 @@ plot!(
     mean(sim_Hg_ekp_prior)[1:truncation], 
     ribbon = (std(sim_Hg_ekp_prior)/sqrt(n_trials))[1:truncation],
     color = :red,
-    label = "sim (samples v mean-no-der)",
+    alpha = 0.3,
+    label = "sim (samples v mean-no-der) prior",
+)
+plot!(
+    pg,
+    1:truncation,
+    mean(sim_Hg_ekp_final)[1:truncation], 
+    ribbon = (std(sim_Hg_ekp_final)/sqrt(n_trials))[1:truncation],
+    color = :gold,
+    label = "sim (samples v mean-no-der) final",
 )
 
 plot!(
@@ -209,6 +264,15 @@ plot!(
 plot!(
     pg,
     1:truncation,
+    mean(normal_Hg_ekp_final_evals)[1:truncation],
+    color = :black,
+    alpha = 0.3,
+)
+
+
+plot!(
+    pg,
+    1:truncation,
     mean(sim_G_samples)[1:truncation], 
     ribbon = (std(sim_G_samples)/sqrt(n_trials))[1:truncation],
     color = :green,
@@ -221,14 +285,8 @@ title!(pg, "Similarity of spectrum of output diagnostic")
 normal_Hu_evals = [ev ./ ev[1] for ev in Hu_evals]
 normal_Hu_mean_evals = [ev ./ ev[1] for ev in Hu_mean_evals]
 normal_Hu_ekp_prior_evals = [ev ./ ev[1] for ev in Hu_ekp_prior_evals]
+normal_Hu_ekp_final_evals = [ev ./ ev[1] for ev in Hu_ekp_final_evals]
 
-#= plot(
-    1:truncation,
-    (mean(sim_Hu_means) .* mean(normal_Hu_evals))[1:truncation],
-    ribbon = (std(sim_Hu_means) .* mean(normal_Hu_evals)/sqrt(n_trials))[1:truncation],
-    color = :red,
-    label = "similarity scaled by eval",
-)=#
 
 pu = plot(
     1:truncation,
@@ -264,6 +322,14 @@ plot!(
 plot!(
     pu,
     1:truncation,
+    mean(normal_Hu_ekp_final_evals)[1:truncation],
+    color = :black,
+    alpha = 0.3,
+)
+
+plot!(
+    pu,
+    1:truncation,
     mean(sim_U_samples)[1:truncation], 
     ribbon = (std(sim_U_samples)/sqrt(n_trials))[1:truncation],
     color = :green,
@@ -276,7 +342,16 @@ plot!(
     mean(sim_Hu_ekp_prior)[1:truncation], 
     ribbon = (std(sim_Hu_ekp_prior)/sqrt(n_trials))[1:truncation],
     color = :red,
-    label = "sim (samples v mean-no-der)",
+    alpha = 0.3,
+    label = "sim (samples v mean-no-der) prior",
+)
+plot!(
+    pu,
+    1:truncation,
+    mean(sim_Hu_ekp_final)[1:truncation], 
+    ribbon = (std(sim_Hu_ekp_final)/sqrt(n_trials))[1:truncation],
+    color = :gold,
+    label = "sim (samples v mean-no-der) final",
 )
 
 title!(pu, "Similarity of spectrum of input diagnostic")

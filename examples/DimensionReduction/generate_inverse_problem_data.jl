@@ -15,9 +15,9 @@ n_trials = 20
 @info "solving $(n_trials) inverse problems with different random forward maps"
 
 for trial = 1:n_trials
-    prior, y, obs_noise_cov, model = linear_exp_inverse_problem(input_dim, output_dim, rng)
+    prior, y, obs_noise_cov, model, true_parameter = linear_exp_inverse_problem(input_dim, output_dim, rng)
     
-    n_ensemble = 50
+    n_ensemble = 80
     n_iters_max = 20
     
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
@@ -43,5 +43,6 @@ for trial = 1:n_trials
         "y", y,
         "obs_noise_cov", obs_noise_cov,
         "model", model,
+        "true_parameter", true_parameter
     )
 end
