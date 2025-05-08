@@ -196,13 +196,13 @@ for trial = 1:n_trials
 
     Reduced space dimension(input, output):  $((r_in, r_out))
 
-    Mean of final-mean to true in reduced space:
-    Using Full space optimization: $(norm(mean_final_in_red - true_r)) 
-    Using Red. space optimization: $(norm(mean_red_final - true_r))
+    Norm of final-mean to true in reduced space:
+    Using Full space optimization: $((1.0/r_in)*norm(mean_final_in_red - true_r)) 
+    Using Red. space optimization: $((1.0/r_in)*norm(mean_red_final - true_r))
 
-    Mean of final-mean to true in full space:
-    Using Full space optimization: $(norm(mean_final - true_parameter))
-    Using Red. space optimization: $(norm(mean_red_final_full - true_parameter))
+    Norm of final-mean to true in full space:
+    Using Full space optimization: $((1.0/input_dim)*norm(mean_final - true_parameter))
+    Using Red. space optimization: $((1.0/input_dim)*norm(mean_red_final_full - true_parameter))
     """
     #@info norm(cov(get_u_final(ekp),dims=2) - cov(get_u_final(ekp_r), dims=2))
     #=
