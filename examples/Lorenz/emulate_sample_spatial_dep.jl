@@ -15,6 +15,7 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
@@ -36,30 +37,22 @@ end
 function main()
     
     cases = [
-        "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-scalar-diagin", # diagonalize, train scalar RF, assume diag inputs (most comparable to GP)
+        "GP", # VERY SLOW DO NOT RUN
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
         "RF-vector-svd-diag",
         "RF-vector-svd-nondiag",
-        "RF-vector-nosvd-diag",
-        "RF-vector-nosvd-nondiag",
         "RF-vector-svd-nonsep",
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = [3] # 1:8 # e.g. 1:8 or [7]
+    mask = [2]# 1:8 # e.g. 1:8 or [7]
     for (case) in cases[mask]
 
 
         println("case: ", case)
         min_iter = 1
-        max_iter = 5 # number of EKP iterations to use data from is at most this
-        overrides = Dict(
-#            "verbose" => true,
-            "scheduler" => DataMisfitController(terminate_at = 100.0),
-            "cov_sample_multiplier" => 1.0,
-            "n_iteration" => 5,
-        )
+        max_iter = 6 # number of EKP iterations to use data from is at most this
+        
         # we do not want termination, as our priors have relatively little interpretation
 
         ####
@@ -114,6 +107,12 @@ function main()
                 noise_learn = false,
             )
         elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
+            overrides = Dict(
+                "verbose" => true,
+            "scheduler" => DataMisfitController(terminate_at = 100.0),
+            "cov_sample_multiplier" => 1.0,
+            "n_iteration" => 8,
+        )
             n_features = 100
             kernel_structure =
                 case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
@@ -126,11 +125,20 @@ function main()
                 optimizer_options = overrides,
             )
         elseif case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag", "RF-vector-svd-nondiag", "RF-vector-nosvd-nondiag"]
+             overrides = Dict(
+                 "verbose" => true,
+                 "scheduler" => DataMisfitController(terminate_at = 1e8),
+                 "cov_sample_multiplier" => 0.1,
+                 "n_features_opt" => 100,
+                 "n_iteration" => 10,
+                 "train_fraction" => 0.9,
+                 "n_ensemble" => 20,
+            )
             # do we want to assume that the outputs are decorrelated in the machine-learning problem?
             kernel_structure =
                 case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ?
                 SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor(nugget)) :
-                SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(3, nugget))
+                SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget))
             n_features = 500
 
             mlt = VectorRandomFeatureInterface(
@@ -142,9 +150,20 @@ function main()
                 optimizer_options = overrides,
             )
         elseif case ∈ ["RF-vector-svd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
+            overrides = Dict(
+                "verbose" => true,
+                "scheduler" => DataMisfitController(terminate_at = 100.0),
+                "cov_sample_multiplier" => 0.1,
+                "n_features_opt" => 100,
+                "n_iteration" => 5,
+                "train_fraction" => 0.98,
+                "n_ensemble" => 40,
+                "n_cross_val_sets" =>2,
+                "localization" => Localizers.SECNice()
+            )
+            kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
             n_features = 500
-
+            
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -266,29 +285,16 @@ function main()
             mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
 
         # marginal histogram
-        pp = plot(prior)
+        pp = plot(priors, c=:gray)
         plot!(pp, posterior)
         for (i,sp) in enumerate(pp.subplots)
-            vline!(sp, [gamma[i]], lc="black", lw=4)
-            vline!(sp, [get_ϕ_mean_final(prior, ekpobj)[i]], lc="magenta", lw=4)
+            vline!(sp, [truth_params_constrained[i]], lc=:black, lw=4)
+            vline!(sp, [get_ϕ_mean_final(priors, ekpobj)[i]], lc=:magenta, lw=4)
         end
-        figpath = joinpath(figure_save_directory, "posterior_hist" * case)
+        figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
         savefig(figpath*".png")
-        figpath = joinpath(figure_save_directory, "posterior_hist" * case)
+        figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
         savefig(figpath*".pdf")
-        
-        #=
-        gr(dpi = 300, size = (2400, 2400))
-        p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true)
-        plot!(p.subplots[1], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
-        plot!(p.subplots[3], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
-        plot!(p.subplots[2], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
-        plot!(p.subplots[2], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
-        figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".pdf")
-        savefig(figpath)
-        figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".png")
-        savefig(figpath)
-        =#
 
         # Save data
         save(

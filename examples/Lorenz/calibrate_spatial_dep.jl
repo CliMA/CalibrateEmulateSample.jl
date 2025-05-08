@@ -170,7 +170,7 @@ x0 = x_spun_up[:, end]  #last element of the run is the initial condition for cr
 
 
 #Creating my sythetic data
-T = 104.0
+T = 14.0
 ny = nx * 2   #number of data points
 lorenz_config_settings = LorenzConfig(t, T)
 
@@ -181,18 +181,12 @@ observation_config = ObservationConfig(T_start, T_end)
 
 model_out_y = lorenz_forward(true_parameters, x0, lorenz_config_settings, observation_config)
 
-#Observation covariance R (Not including internal variability...)
-model_out_vars = (0.1 * model_out_y) .^ 2
-R = Diagonal(model_out_vars)
-R_sqrt = sqrt(R)
-R_inv_var = sqrt(inv(R))
-
-# Need a way to perturb the initial condition when doing the EKI updates
-# Solving for initial condition perturbation covariance
-covT = 2000.0  #time to simulate to calculate a covariance matrix of the system
+#Observation covariance
+# [Don't need to do this bit really] - initial condition perturbations
+covT = 1000.0  #time to simulate to calculate a covariance matrix of the system
 cov_solve = lorenz_solve(true_parameters, x0, LorenzConfig(t, covT))
 ic_cov = 0.1 * cov(cov_solve, dims = 2)
-ic_cov_sqrt = sqrt(ic_cov)
+ic_cov_sqrt = sqrt(ic_cov) 
 
 n_samples = 200
 y_ens = hcat(
@@ -207,7 +201,7 @@ y_ens = hcat(
 )
 
 # estimate noise from IC-effect + R
-obs_noise_cov = R + cov(y_ens, dims=2)
+obs_noise_cov = cov(y_ens, dims=2)
 y = y_ens[1]
 
 #Observations y
