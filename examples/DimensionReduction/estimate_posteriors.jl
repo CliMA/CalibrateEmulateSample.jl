@@ -144,7 +144,6 @@ for trial = 1:n_trials
         if red_model_id == "expcubic1d"
             G_ens = exp.(β[4]*(params_i).^3 .+ β[3]*(params_i).^2 .+ β[2]*params_i .+ β[1]) .+ Ylb # use linear forward map in reduced space
         elseif red_model_id == "G"
-            # uninformative eigenvectors
             sv_in = reduce(hcat, repeat([svdu.S], n_ensemble)) # repeat SVs, then replace first by params
             sv_in[1:size(params_i,1),:] = params_i
             # evaluate true G
