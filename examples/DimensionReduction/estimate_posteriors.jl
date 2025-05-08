@@ -14,7 +14,16 @@ output_dim = 50
 
 include("common_inverse_problem.jl")
 
-n_trials = 1 
+n_trials = 10
+
+r_in = 6
+r_out = 1
+
+in_diag = "Hu_ekp_prior"
+out_diag = "Hg_ekp_prior"
+Hu = diagnostic_mats[in_diag]
+Hg = diagnostic_mats[out_diag]
+@info "Diagnostic matrices = ($(in_diag), $(out_diag))"
 
 if !isfile("ekp_1.jld2")
     include("generate_inverse_problem_data.jl") # will run n trials
@@ -64,112 +73,138 @@ for trial = 1:n_trials
             break
         end
     end
-    @info get_error(ekp)
 
     ekp_u = get_u(ekp)
     ekp_g = get_g(ekp)
     
     # [2] Create emulator in truncated space, and run EKS on this
-    min_iter = 1
+    min_iter = 
     max_iter = 8
     i_pairs = reduce(hcat, get_u(ekp)[min_iter:max_iter])
     o_pairs = reduce(hcat, get_g(ekp)[min_iter:max_iter])
 
     # Reduce space diagnostic matrix
-    in_diag = "Hu"
-    out_diag = "Hg"
-    Hu = diagnostic_mats[in_diag]
-    Hg = diagnostic_mats[out_diag]
-    @info "Diagnostic matrices = ($(in_diag), $(out_diag))"
     svdu = svd(Hu)
+
+    #=
+    # find by tolerance doesn't work well...
     tol = 0.999 # <1
     r_in_vec = accumulate(+,svdu.S) ./sum(svdu.S)
     r_in = sum(r_in_vec .< tol) + 1 # number evals needed for "tol" amount of information
+    =#
     U_r = svdu.V[:,1:r_in]
-    U_top = svdu.V[:,r_in+1:end]
     
+    #=
     svdg = svd(Hg)
     r_out_vec = accumulate(+,svdg.S) ./sum(svdg.S)
     r_out = sum(r_out_vec .< tol) + 1 # number evals needed for "tol" amount of information
+    =#
     V_r = svdg.V[:,1:r_out]
-    V_top = svdg.V[:,r_out+1:end]
-    @info "dimensions of subspace retaining $(100*tol)% information: \n ($(r_in),$(r_out)) out of ($(input_dim),$(output_dim))"
     
     X_r = U_r' * prior_invrt * i_pairs
     Y_r = V_r' * obs_invrt * o_pairs
-
+    
     # true
     true_parameter = reshape(ones(input_dim),:,1)
     true_r = U_r' * prior_invrt * true_parameter
     y_r = V_r' * obs_invrt * y
-    @info true_r
-    @info y_r
 
     # [2a] exp-cubic model for regressor
-    Ylb = min(1, minimum(Y_r) - abs(mean(Y_r))) # some loose lower bound
-    logY_r = log.(Y_r .- Ylb)
-    β = logY_r / [ones(size(X_r)); X_r; X_r.^2; X_r.^3] # = ([1  X_r]' \ Y_r')'
-    # invert relationship by
-    # exp(β*X_r) + Ylb
-    if r_in ==1 & r_out == 1  
-        sc = scatter(X_r,logY_r)
-        xmin = minimum(X_r)
-        xmax = maximum(X_r)
-        xrange = range(xmin,xmax,100)
-        expcubic = (exp.(β[4]*reshape(xrange,1,:).^3 + β[3]*reshape(xrange,1,:).^2 .+ β[2]*reshape(xrange,1,:) .+ β[1]) .+ Ylb)'
-        plot!(sc, xrange, expcubic, legend=false)
-        hline!(sc, [y_r])
-        savefig(sc, "linreg_learn_scatter.png")
-    end
-    
-    # [2b] gp model for regressor
-    
+    red_model_ids = ["expcubic1d","G"]
+    red_model_id = red_model_ids[2]
+    if red_model_id == "expcubic1d"
+        Ylb = min(1, minimum(Y_r) - abs(mean(Y_r))) # some loose lower bound
+        logY_r = log.(Y_r .- Ylb)
+        β = logY_r / [ones(size(X_r)); X_r; X_r.^2; X_r.^3] # = ([1  X_r]' \ Y_r')'
+        # invert relationship by
+        # exp(β*X_r) + Ylb
+        if r_in ==1 & r_out == 1  
+            sc = scatter(X_r,logY_r)
+            xmin = minimum(X_r)
+            xmax = maximum(X_r)
+            xrange = reshape(range(xmin,xmax,100), 1, :)
+            expcubic = (β[4]*xrange.^3 + β[3]*xrange.^2 .+ β[2]*xrange .+ β[1])'
+            plot!(sc, xrange, expcubic, legend=false)
+            hline!(sc, [log.(y_r .- Ylb)])
+            savefig(sc, "linreg_learn_scatter.png")
+        end
+    end       
 
-    
     # now apply EKS to the new problem
-
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
     initial_r = U_r' * prior_invrt * initial_ensemble
-    prior_r = ParameterDistribution(Samples(U_r' * prior_invrt * sample(rng,prior,1000)), no_constraint(), "prior_r")
+    prior_r = ParameterDistribution(Samples(U_r' * prior_invrt * sample(rng,prior,1000)), repeat([no_constraint()], r_in), "prior_r")
+    
     obs_noise_cov_r = V_r' * V_r # Vr' * invrt(noise) * noise * invrt(noise) * Vr
     ekp_r = EnsembleKalmanProcess(initial_r, y_r, obs_noise_cov_r, Sampler(mean(prior_r)[:], cov(prior_r)); rng = rng)
     
     n_iters = [0]
     for i in 1:n_iters_max
         params_i = get_ϕ_final(prior_r, ekp_r)
-        G_ens = exp.(β[4]*(params_i).^3 .+ β[3]*(params_i).^2 .+ β[2]*params_i .+ β[1]) .+ Ylb # use linear forward map in reduced space
+        if red_model_id == "expcubic1d"
+            G_ens = exp.(β[4]*(params_i).^3 .+ β[3]*(params_i).^2 .+ β[2]*params_i .+ β[1]) .+ Ylb # use linear forward map in reduced space
+        elseif red_model_id == "G"
+            # uninformative eigenvectors
+            sv_in = reduce(hcat, repeat([svdu.S], n_ensemble)) # repeat SVs, then replace first by params
+            sv_in[1:size(params_i,1),:] = params_i
+            # evaluate true G
+            G_ens_full = reduce(hcat, [forward_map(prior_rt * svdu.V * sv, model) for sv in eachcol(sv_in)] )
+            # project data back
+            G_ens = V_r' * obs_invrt * G_ens_full
+        end
+           
         terminate = update_ensemble!(ekp_r, G_ens)
         if !isnothing(terminate)
             n_iters[1] = i-1
             break
         end
     end
-    @info get_error(ekp_r)
-    @info get_u_mean_final(ekp_r)
-    ekp_rlin_u = get_u(ekp_r)
-    ekp_rlin_g = get_g(ekp_r)
+    ekp_r_u = get_u(ekp_r)
+    ekp_r_g = get_g(ekp_r)
     
     # map to same space: [here in reduced space first]
     spinup = 10*n_ensemble
-    ekp_rlin_u = reduce(hcat,ekp_rlin_u)
-    ekp_rlin_g = reduce(hcat,ekp_rlin_g)
+    ekp_r_u = reduce(hcat,ekp_r_u)
+    ekp_r_g = reduce(hcat,ekp_r_g)
     ekp_u = reduce(hcat, ekp_u)
     ekp_g = reduce(hcat, ekp_g)
     projected_ekp_u = U_r' * prior_invrt * ekp_u
     projected_ekp_g = V_r' * obs_invrt * ekp_g
-
+    
     if r_in ==1 && r_out == 1
         pp1 = histogram(projected_ekp_u[:,spinup:end]', color= :gray, label="projected G", title="projected EKP samples (input)", legend=true)
-      #  histogram!(pp1, ekp_rlin_u[:,spinup:end]', color = :blue, label="reduced linear")
-      # pp1 = histogram(ekp_rlin_u[:,spinup:end]', color = :blue, label="reduced linear", yscale=:log10)
+        histogram!(pp1, ekp_r_u[:,spinup:end]', color = :blue, label="reduced")
+        # pp1 = histogram(ekp_rlin_u[:,spinup:end]', color = :blue, label="reduced linear", yscale=:log10)
 
         pp2 = histogram(projected_ekp_g[:,spinup:end]', color= :gray, title ="projected EKP samples (output)")
-      #  histogram!(pp2, ekp_rlin_g[:,spinup:end]', color = :blue, legend=false)
-      #pp2 = histogram!(ekp_rlin_g[:,spinup:end]', color = :blue, legend=false, yscale=:log10)
+        histogram!(pp2, ekp_r_g[:,spinup:end]', color = :blue, legend=false)
+        #pp2 = histogram!(ekp_rlin_g[:,spinup:end]', color = :blue, legend=false, yscale=:log10)
         l = @layout [a b]
         pp = plot(pp1, pp2, layout=l)
-        savefig(pp,"projected_histogram_linreg.png")
+        savefig(pp,"projected_histograms.png")
     end
+
+    # compare in original space
+    mean_final = get_u_mean_final(ekp)
+    mean_final_in_red =  U_r' * prior_invrt * mean_final
+    mean_red_final = get_u_mean_final(ekp_r)
+    sv_in = svdu.S
+    sv_in[1:r_in] = mean_red_final
+    mean_red_final_full = prior_rt * svdu.V * sv_in
+    
+    @info """
+
+    Reduced space dimension(input, output):  $((r_in, r_out))
+
+    Mean of final-mean to true in reduced space:
+    Using Full space optimization: $(norm(mean_final_in_red - true_r)) 
+    Using Red. space optimization: $(norm(mean_red_final - true_r))
+
+    Mean of final-mean to true in full space:
+    Using Full space optimization: $(norm(mean_final - true_parameter))
+    Using Red. space optimization: $(norm(mean_red_final_full - true_parameter))
+    """
+    #@info norm(cov(get_u_final(ekp),dims=2) - cov(get_u_final(ekp_r), dims=2))
     #=
     # 500 dim marginal plot..
     pp = plot(prior)
