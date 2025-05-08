@@ -36,7 +36,7 @@ function linear_exp_inverse_problem(input_dim, output_dim, rng)
     obs_noise_std = 1.0
     obs_noise_cov = (obs_noise_std^2)*I(output_dim)
     noise = rand(rng, MvNormal(zeros(output_dim), obs_noise_cov))
-true_parameter = reshape(ones(input_dim),:,1)
+    true_parameter = reshape(ones(input_dim),:,1)
     y = vec(forward_map(true_parameter, model) + noise)
     return prior, y, obs_noise_cov, model, true_parameter
 end

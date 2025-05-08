@@ -65,6 +65,7 @@ for trial = 1:n_trials
         end
     end
     @info get_error(ekp)
+
     ekp_u = get_u(ekp)
     ekp_g = get_g(ekp)
     
@@ -96,7 +97,13 @@ for trial = 1:n_trials
     
     X_r = U_r' * prior_invrt * i_pairs
     Y_r = V_r' * obs_invrt * o_pairs
+
+    # true
+    true_parameter = reshape(ones(input_dim),:,1)
+    true_r = U_r' * prior_invrt * true_parameter
     y_r = V_r' * obs_invrt * y
+    @info true_r
+    @info y_r
 
     # [2a] exp-cubic model for regressor
     Ylb = min(1, minimum(Y_r) - abs(mean(Y_r))) # some loose lower bound
@@ -124,7 +131,6 @@ for trial = 1:n_trials
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
     initial_r = U_r' * prior_invrt * initial_ensemble
     prior_r = ParameterDistribution(Samples(U_r' * prior_invrt * sample(rng,prior,1000)), no_constraint(), "prior_r")
-    @info y_r
     obs_noise_cov_r = V_r' * V_r # Vr' * invrt(noise) * noise * invrt(noise) * Vr
     ekp_r = EnsembleKalmanProcess(initial_r, y_r, obs_noise_cov_r, Sampler(mean(prior_r)[:], cov(prior_r)); rng = rng)
     
@@ -139,6 +145,7 @@ for trial = 1:n_trials
         end
     end
     @info get_error(ekp_r)
+    @info get_u_mean_final(ekp_r)
     ekp_rlin_u = get_u(ekp_r)
     ekp_rlin_g = get_g(ekp_r)
     
