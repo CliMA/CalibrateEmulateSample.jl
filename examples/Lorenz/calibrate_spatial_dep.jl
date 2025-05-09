@@ -186,7 +186,7 @@ model_out_y = lorenz_forward(true_parameters, x0, lorenz_config_settings, observ
 covT = 1000.0  #time to simulate to calculate a covariance matrix of the system
 cov_solve = lorenz_solve(true_parameters, x0, LorenzConfig(t, covT))
 ic_cov = 0.1 * cov(cov_solve, dims = 2)
-ic_cov_sqrt = sqrt(ic_cov) 
+ic_cov_sqrt = sqrt(ic_cov)
 
 n_samples = 200
 y_ens = hcat(
@@ -197,15 +197,15 @@ y_ens = hcat(
             lorenz_config_settings,
             observation_config,
         ) for j in 1:n_samples
-            ]...,
+    ]...,
 )
 
 # estimate noise from IC-effect + R
-obs_noise_cov = cov(y_ens, dims=2)
-y = y_ens[1]
+obs_noise_cov = cov(y_ens, dims = 2)
+y_mean = mean(y_ens, dims = 2)
+y = y_ens[:, 1]
 
-#Observations y
-y = model_out_y + R_sqrt * rand(rng_i, Normal(0.0, 1.0), ny)
+
 
 pl = 2.0
 psig = 3.0
@@ -234,7 +234,7 @@ prior = ParameterDistribution(distribution, constraint, name)
 
 # EKP parameters
 N_ens = 50
-N_iter = 20 
+N_iter = 20
 tolerance = 1.0
 
 rng_seed = 2498
@@ -247,20 +247,13 @@ initial_params = construct_initial_ensemble(rng, prior, N_ens)
 method = Inversion()
 
 @info "Ensemble size: $(N_ens)"
-ekpobj = EKP.EnsembleKalmanProcess(
-    initial_params,
-    y,
-    obs_noise_cov,
-    method;
-    rng = copy(rng),
-    verbose = true,    
-)
+ekpobj = EKP.EnsembleKalmanProcess(initial_params, y, obs_noise_cov, method; rng = copy(rng), verbose = true)
 
 count = 0
 n_iter = [0]
 for i in 1:N_iter
     params_i = get_ϕ_final(prior, ekpobj)
-    
+
     # If RMSE convergence criteria is not satisfied 
     G_ens = hcat(
         [
@@ -270,12 +263,12 @@ for i in 1:N_iter
                 lorenz_config_settings,
                 observation_config,
             ) for j in 1:N_ens
-                ]...,
+        ]...,
     )
     # Update 
     terminate = EKP.update_ensemble!(ekpobj, G_ens)
     if !isnothing(terminate)
-        n_iter[1] = i-1
+        n_iter[1] = i - 1
         break
     end
 end
@@ -295,16 +288,16 @@ end
 
 # Create plots
 
-gr(size=(1.6*400,400))
-hm = heatmap(x_spun_up[:,end-10000:end], c = :viridis)
+gr(size = (1.6 * 400, 400))
+hm = heatmap(x_spun_up[:, (end - 10000):end], c = :viridis)
 savefig(hm, joinpath(figure_save_directory, "spun_up_heatmap.png"))
-savefig(hm, joinpath(figure_save_directory,"spun_up_heatmap.pdf"))
+savefig(hm, joinpath(figure_save_directory, "spun_up_heatmap.pdf"))
 
 using Plots.Measures
-gr(size=(2*1.6*300,300))
+gr(size = (2 * 1.6 * 300, 300))
 p1 = plot(
     range(0, nx - 1, step = 1),
-    [gamma mean(final_ensemble,dims=2)],
+    [gamma mean(final_ensemble, dims = 2)],
     label = ["solution" "EKI"],
     color = [:black :lightgreen],
     linewidth = 2,
@@ -327,21 +320,13 @@ p2 = plot(
     bottom_margin = 10mm,
 )
 l = @layout [a b]
-plt = plot(p1,p2, layout = l)
+plt = plot(p1, p2, layout = l)
 
 savefig(plt, figure_save_directory * "solution_spatial_dep_ens$(N_ens).png")
 
 # save objects
-save(
-    joinpath(data_save_directory, "ekp_spatial_dep.jld2"),
-    "ekpobj",
-    ekpobj,
-)
-save(
-    joinpath(data_save_directory, "priors_spatial_dep.jld2"),
-    "prior",
-    prior,
-)
+save(joinpath(data_save_directory, "ekp_spatial_dep.jld2"), "ekpobj", ekpobj)
+save(joinpath(data_save_directory, "priors_spatial_dep.jld2"), "prior", prior)
 
 u_stored = EKP.get_u(ekpobj, return_array = false)
 g_stored = EKP.get_g(ekpobj, return_array = false)
@@ -356,7 +341,7 @@ save(
     "truth_sample",
     y,
     "truth_sample_mean",
-    model_out_y,
+    mean(y_ens, dims = 2),
     "truth_input_constrained",
     gamma,
 )

@@ -35,7 +35,7 @@ end
 
 
 function main()
-    
+
     cases = [
         "GP", # VERY SLOW DO NOT RUN
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
@@ -52,7 +52,7 @@ function main()
         println("case: ", case)
         min_iter = 1
         max_iter = 6 # number of EKP iterations to use data from is at most this
-        
+
         # we do not want termination, as our priors have relatively little interpretation
 
         ####
@@ -60,7 +60,7 @@ function main()
         exp_name = "Lorenz_histogram_spatial_dep"
         rng_seed = 44011
         rng = Random.MersenneTwister(rng_seed)
-        
+
         # loading relevant data
         homedir = pwd()
         println(homedir)
@@ -72,11 +72,7 @@ function main()
             joinpath(data_save_directory, "calibrate_results_spatial_dep.jld2"),
         ]
         if !isfile(data_save_files[1])
-            throw(
-                ErrorException(
-                    "data files not found. \n First run: \n > julia --project calibrate_spatial_dep.jl",
-                ),
-            )
+            throw(ErrorException("data files not found. \n First run: \n > julia --project calibrate_spatial_dep.jl"))
         end
 
         ekpobj = load(data_save_files[1])["ekpobj"]
@@ -109,10 +105,10 @@ function main()
         elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
             overrides = Dict(
                 "verbose" => true,
-            "scheduler" => DataMisfitController(terminate_at = 100.0),
-            "cov_sample_multiplier" => 1.0,
-            "n_iteration" => 8,
-        )
+                "scheduler" => DataMisfitController(terminate_at = 100.0),
+                "cov_sample_multiplier" => 1.0,
+                "n_iteration" => 8,
+            )
             n_features = 100
             kernel_structure =
                 case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
@@ -125,14 +121,14 @@ function main()
                 optimizer_options = overrides,
             )
         elseif case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag", "RF-vector-svd-nondiag", "RF-vector-nosvd-nondiag"]
-             overrides = Dict(
-                 "verbose" => true,
-                 "scheduler" => DataMisfitController(terminate_at = 1e8),
-                 "cov_sample_multiplier" => 0.1,
-                 "n_features_opt" => 100,
-                 "n_iteration" => 10,
-                 "train_fraction" => 0.9,
-                 "n_ensemble" => 20,
+            overrides = Dict(
+                "verbose" => true,
+                "scheduler" => DataMisfitController(terminate_at = 1e8),
+                "cov_sample_multiplier" => 0.1,
+                "n_features_opt" => 100,
+                "n_iteration" => 10,
+                "train_fraction" => 0.9,
+                "n_ensemble" => 20,
             )
             # do we want to assume that the outputs are decorrelated in the machine-learning problem?
             kernel_structure =
@@ -158,12 +154,12 @@ function main()
                 "n_iteration" => 5,
                 "train_fraction" => 0.98,
                 "n_ensemble" => 40,
-                "n_cross_val_sets" =>2,
-                "localization" => Localizers.SECNice()
+                "n_cross_val_sets" => 2,
+                "localization" => Localizers.SECNice(),
             )
             kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
             n_features = 500
-            
+
             mlt = VectorRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -285,16 +281,16 @@ function main()
             mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
 
         # marginal histogram
-        pp = plot(priors, c=:gray)
+        pp = plot(priors, c = :gray)
         plot!(pp, posterior)
-        for (i,sp) in enumerate(pp.subplots)
-            vline!(sp, [truth_params_constrained[i]], lc=:black, lw=4)
-            vline!(sp, [get_ϕ_mean_final(priors, ekpobj)[i]], lc=:magenta, lw=4)
+        for (i, sp) in enumerate(pp.subplots)
+            vline!(sp, [truth_params_constrained[i]], lc = :black, lw = 4)
+            vline!(sp, [get_ϕ_mean_final(priors, ekpobj)[i]], lc = :magenta, lw = 4)
         end
         figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
-        savefig(figpath*".png")
+        savefig(figpath * ".png")
         figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
-        savefig(figpath*".pdf")
+        savefig(figpath * ".pdf")
 
         # Save data
         save(
