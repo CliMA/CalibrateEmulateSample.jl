@@ -19,11 +19,6 @@ n_trials = 10
 r_in = 6
 r_out = 1
 
-in_diag = "Hu_ekp_prior"
-out_diag = "Hg_ekp_prior"
-Hu = diagnostic_mats[in_diag]
-Hg = diagnostic_mats[out_diag]
-@info "Diagnostic matrices = ($(in_diag), $(out_diag))"
 
 if !isfile("ekp_1.jld2")
     include("generate_inverse_problem_data.jl") # will run n trials
@@ -31,6 +26,12 @@ end
 if !isfile("diagnostic_matrices_1.jld2")
     include("build_an_compare_diagnostic_matrices.jl") # will run n trials
 end
+
+in_diag = "Hu_ekp_prior"
+out_diag = "Hg_ekp_prior"
+@info "Diagnostic matrices = ($(in_diag), $(out_diag))"
+
+
 
 for trial = 1:n_trials
 
@@ -84,7 +85,10 @@ for trial = 1:n_trials
     o_pairs = reduce(hcat, get_g(ekp)[min_iter:max_iter])
 
     # Reduce space diagnostic matrix
+    Hu = diagnostic_mats[in_diag]
+    Hg = diagnostic_mats[out_diag]
     svdu = svd(Hu)
+    svdg = svd(Hg)
 
     #=
     # find by tolerance doesn't work well...
