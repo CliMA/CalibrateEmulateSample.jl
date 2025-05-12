@@ -24,7 +24,7 @@ if !isfile("ekp_1.jld2")
     include("generate_inverse_problem_data.jl") # will run n trials
 end
 if !isfile("diagnostic_matrices_1.jld2")
-    include("build_an_compare_diagnostic_matrices.jl") # will run n trials
+    include("build_and_compare_diagnostic_matrices.jl") # will run n trials
 end
 
 in_diag = "Hu_ekp_prior"
@@ -108,7 +108,6 @@ for trial in 1:n_trials
     Y_r = V_r' * obs_invrt * o_pairs
 
     # true
-    true_parameter = reshape(ones(input_dim), :, 1)
     true_r = U_r' * prior_invrt * true_parameter
     y_r = V_r' * obs_invrt * y
 

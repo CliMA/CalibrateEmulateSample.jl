@@ -43,6 +43,7 @@ sim_Hu_ekp_prior = []
 sim_Hg_ekp_prior = []
 sim_Hu_ekp_final = []
 sim_Hg_ekp_final = []
+sim_Huy_ekp_final = []
 
 for trial in 1:n_trials
 
@@ -113,12 +114,17 @@ for trial in 1:n_trials
     nz = min(N_ens - 1, input_dim) # nonzero sv's
     pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
     Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
-    Cug = C_at_final[(input_dim + 1):end, 1:input_dim]
+    Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
     #    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
     #    Hu_ekp_final = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt # here still using prior roots not Cuu
     #    Hg_ekp_final = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
     Hu_ekp_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    myCug = Cug'
+    Huy_ekp_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum(
+       (y - gg) * (y - gg)' for gg in eachcol(g)
+    )*obs_inv*myCug' * Cuu_invrt
 
     # cosine similarity of evector directions
     svdHu = svd(Hu)
@@ -129,6 +135,7 @@ for trial in 1:n_trials
     svdHg_ekp_prior = svd(Hg_ekp_prior)
     svdHu_ekp_final = svd(Hu_ekp_final)
     svdHg_ekp_final = svd(Hg_ekp_final)
+    svdHuy_ekp_final = svd(Huy_ekp_final)
     @info """
 
     samples -> mean 
@@ -147,6 +154,8 @@ for trial in 1:n_trials
     $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
     $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
 
+    y-aware -> samples
+    $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
     """
     push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
     push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
@@ -162,6 +171,7 @@ for trial in 1:n_trials
     push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
     push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
     push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
+    push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
 
     # cosine similarity to output svd from samples
     G_samples = forward_map(prior_samples, model)'
@@ -189,6 +199,8 @@ for trial in 1:n_trials
         Hu_ekp_final,
         "Hg_ekp_final",
         Hg_ekp_final,
+        "Huy_ekp_final",
+        Huy_ekp_final,
         "svdU",
         svdU,
         "svdG",
@@ -333,6 +345,14 @@ plot!(
     ribbon = (std(sim_Hu_ekp_final) / sqrt(n_trials))[1:truncation],
     color = :gold,
     label = "sim (samples v mean-no-der) final",
+)
+plot!(
+    pu,
+    1:truncation,
+    mean(sim_Huy_ekp_final)[1:truncation],
+    ribbon = (std(sim_Huy_ekp_final) / sqrt(n_trials))[1:truncation],
+    color = :purple,
+    label = "sim (samples v y-aware) final",
 )
 
 title!(pu, "Similarity of spectrum of input diagnostic")
