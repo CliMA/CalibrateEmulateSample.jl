@@ -37,10 +37,10 @@ end
 function main()
 
     cases = [
-        "GP", # VERY SLOW DO NOT RUN
+        "GP", # SLOW
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-        "RF-vector-svd-diag",
-        "RF-vector-svd-nondiag",
+        "RF-vector-svd-diag", # inaccurate
+        "RF-vector-svd-nondiag", 
         "RF-vector-svd-nonsep",
     ]
 
@@ -94,7 +94,7 @@ function main()
         # choice of machine-learning tool in the emulation stage
         nugget = 0.001
         if case == "GP"
-            gppackage = Emulators.GPJL()
+            gppackage = Emulators.GPJL() 
             pred_type = Emulators.YType()
             mlt = GaussianProcess(
                 gppackage;
@@ -108,8 +108,9 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 100.0),
                 "cov_sample_multiplier" => 1.0,
                 "n_iteration" => 8,
+                "n_features_opt" => 40,
             )
-            n_features = 100
+            n_features = 200
             kernel_structure =
                 case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
                 SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
@@ -210,7 +211,7 @@ function main()
         end
 
         standardize = false
-        retained_svd_frac = 1.0
+        retained_svd_frac = 0.99 # keep 99% of the singular values
         normalized = true
         # do we want to use SVD to decorrelate outputs
         decorrelate = case ∈ ["RF-vector-nosvd-diag", "RF-vector-nosvd-nondiag"] ? false : true
@@ -283,9 +284,10 @@ function main()
         # marginal histogram
         pp = plot(priors, c = :gray)
         plot!(pp, posterior)
+        final_params_constrained = get_ϕ_mean_final(priors, ekpobj)
         for (i, sp) in enumerate(pp.subplots)
             vline!(sp, [truth_params_constrained[i]], lc = :black, lw = 4)
-            vline!(sp, [get_ϕ_mean_final(priors, ekpobj)[i]], lc = :magenta, lw = 4)
+            vline!(sp, [final_params_constrained[i]], lc = :magenta, lw = 4)
         end
         figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
         savefig(figpath * ".png")
@@ -294,9 +296,15 @@ function main()
 
         # Save data
         save(
-            joinpath(data_save_directory, "posterior.jld2"),
+            joinpath(data_save_directory, "posterior_*case.jld2"),
             "posterior",
             posterior,
+            "priors",
+            priors,
+            "truth_params_constrained",
+            truth_params_constrained,
+            "final_params_constrained",
+            final_params_constrained,
             "input_output_pairs",
             input_output_pairs,
             "truth_params",
