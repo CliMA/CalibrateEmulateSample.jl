@@ -2,12 +2,12 @@
 
 # some context calues from emulate_sample_spatial_dep.jl
 cases = [
-        "GP", # SLOW
-        "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-        "RF-vector-svd-diag", # inaccurate
-        "RF-vector-svd-nondiag", 
-        "RF-vector-svd-nonsep",
-    ]
+    "GP", # SLOW
+    "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
+    "RF-vector-svd-diag", # inaccurate
+    "RF-vector-svd-nondiag",
+    "RF-vector-svd-nonsep",
+]
 case = cases[2]
 
 # load packages
@@ -45,14 +45,14 @@ posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name
 constrained_posterior_samples =
     mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
 
-quantiles = reduce(hcat,[quantile(row, [0.05, 0.5, 0.95]) for row in eachrow(constrained_posterior_samples)])' # rows are quantiles for row of posterior samples
+quantiles = reduce(hcat, [quantile(row, [0.05, 0.5, 0.95]) for row in eachrow(constrained_posterior_samples)])' # rows are quantiles for row of posterior samples
 
 
 # plot - EKI results
 gr(size = (2 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
 p1 = plot(
-    range(0, nx-1, step = 1),
-    [truth_params  final_params],
+    range(0, nx - 1, step = 1),
+    [truth_params final_params],
     label = ["solution" "EKI"],
     color = [:black :lightgreen],
     linewidth = 4,
@@ -73,15 +73,9 @@ p2 = plot(
     ylabel = "State mean/std output)",
     left_margin = 15mm,
     bottom_margin = 15mm,
-    xticks= (Int.(0:10:ny), [0,10,20,30,(40,0),10,20,30,40])
+    xticks = (Int.(0:10:ny), [0, 10, 20, 30, (40, 0), 10, 20, 30, 40]),
 )
-plot!(p2,
-      1:length(y),
-      get_g_mean_final(ekpobj),
-      label = "mean-final-output",
-      color = :lightgreen,
-      linewidth = 4,
-)
+plot!(p2, 1:length(y), get_g_mean_final(ekpobj), label = "mean-final-output", color = :lightgreen, linewidth = 4)
 
 l = @layout [a b]
 plt = plot(p1, p2, layout = l)
@@ -94,7 +88,7 @@ savefig(plt, figure_save_directory * "solution_spatial_dep_ens$(N_ens).pdf")
 
 gr(size = (1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
 p1 = plot(
-    range(0, nx-1, step = 1),
+    range(0, nx - 1, step = 1),
     [truth_params final_params],
     label = ["solution" "EKI-opt"],
     color = [:black :lightgreen],
@@ -107,12 +101,12 @@ p1 = plot(
 
 plot!(
     p1,
-    range(0, nx-1, step = 1),
-    quantiles[:,2], # median of all vals
+    range(0, nx - 1, step = 1),
+    quantiles[:, 2], # median of all vals
     color = :blue,
     label = "posterior",
     linewidth = 4,
-    ribbon = [quantiles[:,2] - quantiles[:,1] quantiles[:,3] - quantiles[:,2]],
+    ribbon = [quantiles[:, 2] - quantiles[:, 1] quantiles[:, 3] - quantiles[:, 2]],
     fillalpha = 0.1,
 )
 
