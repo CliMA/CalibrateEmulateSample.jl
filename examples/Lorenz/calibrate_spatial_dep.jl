@@ -296,7 +296,7 @@ savefig(hm, joinpath(figure_save_directory, "spun_up_heatmap.pdf"))
 using Plots.Measures
 gr(size = (2 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
 p1 = plot(
-    range(0, nx-1, step = 1),
+    range(0, nx - 1, step = 1),
     [gamma mean(final_ensemble, dims = 2)],
     label = ["solution" "EKI"],
     color = [:black :lightgreen],
@@ -318,15 +318,9 @@ p2 = plot(
     ylabel = "State mean/std output)",
     left_margin = 15mm,
     bottom_margin = 15mm,
-    xticks= (Int.(0:10:ny), [0,10,20,30,(40,0),10,20,30,40])
+    xticks = (Int.(0:10:ny), [0, 10, 20, 30, (40, 0), 10, 20, 30, 40]),
 )
-plot!(p2,
-      1:length(y),
-      get_g_mean_final(ekpobj),
-      label = "mean-final-output",
-      color = :lightgreen,
-      linewidth = 4,
-)
+plot!(p2, 1:length(y), get_g_mean_final(ekpobj), label = "mean-final-output", color = :lightgreen, linewidth = 4)
 
 l = @layout [a b]
 plt = plot(p1, p2, layout = l)

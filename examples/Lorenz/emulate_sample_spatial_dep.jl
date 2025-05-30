@@ -40,7 +40,7 @@ function main()
         "GP", # SLOW
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
         "RF-vector-svd-diag", # inaccurate
-        "RF-vector-svd-nondiag", 
+        "RF-vector-svd-nondiag",
         "RF-vector-svd-nonsep",
     ]
 
@@ -94,7 +94,7 @@ function main()
         # choice of machine-learning tool in the emulation stage
         nugget = 0.001
         if case == "GP"
-            gppackage = Emulators.GPJL() 
+            gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
             mlt = GaussianProcess(
                 gppackage;
