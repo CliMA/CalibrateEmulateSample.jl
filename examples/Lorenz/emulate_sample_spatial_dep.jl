@@ -296,7 +296,7 @@ function main()
 
         # Save data
         save(
-            joinpath(data_save_directory, "posterior_*case.jld2"),
+            joinpath(data_save_directory, "posterior_$(case).jld2"),
             "posterior",
             posterior,
             "priors",
