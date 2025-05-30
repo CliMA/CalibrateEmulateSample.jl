@@ -309,10 +309,10 @@ p1 = plot(
 
 p2 = plot(
     1:length(y),
-    [y get_g_mean_final(ekpobj)],
+    y,
     ribbon = sqrt.(diag(get_obs_noise_cov(ekpobj))),
-    label = ["data" "mean-final-output"],
-    color = [:black :lightgreen],
+    label = "data",
+    color = :black,
     linewidth = 4,
     xlabel = "Spatial index",
     ylabel = "State mean/std output)",
@@ -320,6 +320,14 @@ p2 = plot(
     bottom_margin = 15mm,
     xticks= (Int.(0:10:ny), [0,10,20,30,(40,0),10,20,30,40])
 )
+plot!(p2,
+      1:length(y),
+      get_g_mean_final(ekpobj),
+      label = "mean-final-output",
+      color = :lightgreen,
+      linewidth = 4,
+)
+
 l = @layout [a b]
 plt = plot(p1, p2, layout = l)
 
