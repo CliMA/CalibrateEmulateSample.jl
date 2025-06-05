@@ -102,7 +102,7 @@ function main()
                 prediction_type = pred_type,
                 noise_learn = false,
             )
-        elseif case == "RF-scalar", "RF-scalar-diagin"
+        elseif case == "RF-scalar"
             overrides = Dict(
                 "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 100.0),
