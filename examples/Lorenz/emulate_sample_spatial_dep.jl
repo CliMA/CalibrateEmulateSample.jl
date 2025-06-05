@@ -74,7 +74,6 @@ function main()
 
         ekpobj = load(data_save_files[1])["ekpobj"]
         priors = load(data_save_files[2])["prior"]
-        truth_sample_mean = load(data_save_files[3])["truth_sample_mean"]
         truth_sample = load(data_save_files[3])["truth_sample"]
         truth_params_constrained = load(data_save_files[3])["truth_input_constrained"] #true parameters in constrained space
         truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
@@ -109,8 +108,7 @@ function main()
             )
             n_features = 200
             kernel_structure =
-                case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
-                SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
+                case == SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -118,6 +116,8 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
+        else
+            throw(ArgumentError("case $(case) not recognised, please choose from the list $(cases)"
         end
 
         # Standardize the output data
@@ -163,7 +163,7 @@ function main()
         retained_svd_frac = 0.99 # keep 99% of the singular values
         normalized = true
         # do we want to use SVD to decorrelate outputs
-        decorrelate = case ∈ ["RF-vector-nosvd-diag", "RF-vector-nosvd-nondiag"] ? false : true
+        decorrelate = true
 
 
         emulator = Emulator(
