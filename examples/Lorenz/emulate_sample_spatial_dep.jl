@@ -39,13 +39,10 @@ function main()
     cases = [
         "GP", # SLOW
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-        "RF-vector-svd-diag", # inaccurate
-        "RF-vector-svd-nondiag",
-        "RF-vector-svd-nonsep",
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = [2]# 1:8 # e.g. 1:8 or [7]
+    mask = [2]# 1:1 # e.g. 1:2 or [2]
     for (case) in cases[mask]
 
 
