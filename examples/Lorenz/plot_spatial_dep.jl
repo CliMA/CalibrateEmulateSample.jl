@@ -113,5 +113,4 @@ plot!(
 
 figpath = joinpath(figure_save_directory, "posterior_ribbons_" * case)
 savefig(figpath * ".png")
-figpath = joinpath(figure_save_directory, "posterior_ribbons_" * case)
 savefig(figpath * ".pdf")
