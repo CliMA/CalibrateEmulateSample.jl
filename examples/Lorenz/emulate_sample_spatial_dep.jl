@@ -102,7 +102,7 @@ function main()
                 prediction_type = pred_type,
                 noise_learn = false,
             )
-        elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
+        elseif case == "RF-scalar", "RF-scalar-diagin"
             overrides = Dict(
                 "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 100.0),
@@ -117,54 +117,6 @@ function main()
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = overrides,
-            )
-        elseif case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag", "RF-vector-svd-nondiag", "RF-vector-nosvd-nondiag"]
-            overrides = Dict(
-                "verbose" => true,
-                "scheduler" => DataMisfitController(terminate_at = 1e8),
-                "cov_sample_multiplier" => 0.1,
-                "n_features_opt" => 100,
-                "n_iteration" => 10,
-                "train_fraction" => 0.9,
-                "n_ensemble" => 20,
-            )
-            # do we want to assume that the outputs are decorrelated in the machine-learning problem?
-            kernel_structure =
-                case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ?
-                SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor(nugget)) :
-                SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget))
-            n_features = 500
-
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                n_params,
-                output_dim,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = overrides,
-            )
-        elseif case ∈ ["RF-vector-svd-nonsep"]
-            overrides = Dict(
-                "verbose" => true,
-                "scheduler" => DataMisfitController(terminate_at = 100.0),
-                "cov_sample_multiplier" => 0.1,
-                "n_features_opt" => 100,
-                "n_iteration" => 5,
-                "train_fraction" => 0.98,
-                "n_ensemble" => 40,
-                "n_cross_val_sets" => 2,
-                "localization" => Localizers.SECNice(),
-            )
-            kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
-            n_features = 500
-
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                n_params,
-                output_dim,
                 rng = rng,
                 kernel_structure = kernel_structure,
                 optimizer_options = overrides,
