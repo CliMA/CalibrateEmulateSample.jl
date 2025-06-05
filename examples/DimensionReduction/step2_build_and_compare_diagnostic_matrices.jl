@@ -162,7 +162,7 @@ for trial in 1:num_trials
     end
     Vgy_ekp_final = hcat(Vgy_ekp_final, randn(dim_g, dim_g - num_vecs))
     Hgy_ekp_final = Vgy_ekp_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_ekp_final'
-    Hgy_ekp_final = Hg_ekp_final
+
 
     # cosine similarity of evector directions
     svdHu = svd(Hu)
