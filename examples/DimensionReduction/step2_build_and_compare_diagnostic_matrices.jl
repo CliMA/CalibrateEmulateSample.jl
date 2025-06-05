@@ -5,6 +5,14 @@ using Statistics
 using Distributions
 using Plots
 using JLD2
+using Manopt, Manifolds
+
+include("./settings.jl")
+
+if !isfile("data/ekp_$(problem)_1.jld2")
+    include("step1_generate_inverse_problem_data.jl")
+end
+
 #Utilities
 function cossim(x::VV1, y::VV2) where {VV1 <: AbstractVector, VV2 <: AbstractVector}
     return dot(x, y) / (norm(x) * norm(y))
@@ -16,15 +24,7 @@ function cossim_cols(X::AM1, Y::AM2) where {AM1 <: AbstractMatrix, AM2 <: Abstra
     return [cossim_pos(c1, c2) for (c1, c2) in zip(eachcol(X), eachcol(Y))]
 end
 
-n_samples = 2000 # paper uses 5e5
-n_trials = 20 # get from generate_inverse_problem_data
-
-if !isfile("ekp_1.jld2")
-    include("generate_inverse_problem_data.jl") # will run n trials
-else
-    include("forward_maps.jl")
-end
-
+n_samples = step2_num_prior_samples
 
 Hu_evals = []
 Hg_evals = []
@@ -44,11 +44,11 @@ sim_Hg_ekp_prior = []
 sim_Hu_ekp_final = []
 sim_Hg_ekp_final = []
 sim_Huy_ekp_final = []
+sim_Hgy_ekp_final = []
 
-for trial in 1:n_trials
-
+for trial in 1:num_trials
     # Load the EKP iterations
-    loaded = load("ekp_$(trial).jld2")
+    loaded = load("data/ekp_$(problem)_$(trial).jld2")
     ekp = loaded["ekp"]
     prior = loaded["prior"]
     obs_noise_cov = loaded["obs_noise_cov"]
@@ -66,24 +66,29 @@ for trial in 1:n_trials
     # random samples
     prior_samples = sample(prior, n_samples)
 
-    # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
-    @info "Construct good matrix ($(n_samples) samples of prior, perfect grad)"
-    gradG_samples = jac_forward_map(prior_samples, model)
-    Hu = zeros(input_dim, input_dim)
-    Hg = zeros(output_dim, output_dim)
+    if has_jac(model)
+        # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
+        @info "Construct good matrix ($(n_samples) samples of prior, perfect grad)"
+        gradG_samples = jac_forward_map(prior_samples, model)
+        Hu = zeros(input_dim, input_dim)
+        Hg = zeros(output_dim, output_dim)
 
-    for j in 1:n_samples
-        Hu .+= 1 / n_samples * prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
-        Hg .+= 1 / n_samples * obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
+        for j in 1:n_samples
+            Hu .+= 1 / n_samples * prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
+            Hg .+= 1 / n_samples * obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
+        end
+
+        # [1b] One-point approximation at mean value, with perfect grad
+        @info "Construct with mean value (1 sample), perfect grad"
+        prior_mean_appr = mean(prior) # approximate mean
+        gradG_at_mean = jac_forward_map(prior_mean_appr, model)[1]
+        # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
+        Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
+        Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
+    else
+        Hu = Hu_mean = NaN * zeros(input_dim)
+        Hg = Hg_mean = NaN * zeros(output_dim)
     end
-
-    # [1b] One-point approximation at mean value, with perfect grad
-    @info "Construct with mean value (1 sample), perfect grad"
-    prior_mean_appr = mean(prior) # approximate mean
-    gradG_at_mean = jac_forward_map(prior_mean_appr, model)[1]
-    # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
-    Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
-    Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
 
     # [2a] One-point approximation at mean value with SL grad
     @info "Construct with mean value prior (1 sample), SL grad"
@@ -122,9 +127,42 @@ for trial in 1:n_trials
     Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
 
     myCug = Cug'
-    Huy_ekp_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum(
+    Huy_ekp_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum( # TODO: Check if whitening is correct
        (y - gg) * (y - gg)' for gg in eachcol(g)
     )*obs_inv*myCug' * Cuu_invrt
+
+    dim_g = size(g, 1)
+    Vgy_ekp_final = zeros(dim_g, 0)
+    num_vecs = 10
+    @assert num_vecs ≤ dim_g
+    for k in 1:num_vecs
+        println("vector $k")
+        counter = 0
+        M = Grassmann(dim_g, 1)
+        f = (_, v) -> begin
+            counter += 1
+            Vs = hcat(Vgy_ekp_final, vec(v))
+            Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
+            res = sum( # TODO: Check if whitening is correct
+                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
+                for gg in eachcol(g)
+            )
+            mod(counter, 100) == 1 && println("   iter $counter: $res")
+            res
+        end
+        v00 = eigvecs(Hg_ekp_final)[:,k:k]
+        v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
+        v0 = [v0i / norm(v0i) for v0i in v0]
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5.0, 5.0))
+        # Orthogonalize
+        proj = bestvec - Vgy_ekp_final * (Vgy_ekp_final' * bestvec)
+        bestvec = proj / norm(proj)
+
+        Vgy_ekp_final = hcat(Vgy_ekp_final, bestvec)
+    end
+    Vgy_ekp_final = hcat(Vgy_ekp_final, randn(dim_g, dim_g - num_vecs))
+    Hgy_ekp_final = Vgy_ekp_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_ekp_final'
+    Hgy_ekp_final = Hg_ekp_final
 
     # cosine similarity of evector directions
     svdHu = svd(Hu)
@@ -136,29 +174,31 @@ for trial in 1:n_trials
     svdHu_ekp_final = svd(Hu_ekp_final)
     svdHg_ekp_final = svd(Hg_ekp_final)
     svdHuy_ekp_final = svd(Huy_ekp_final)
-    @info """
+    svdHgy_ekp_final = svd(Hgy_ekp_final)
+    if has_jac(model)
+        @info """
 
-    samples -> mean 
-    $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
+        samples -> mean 
+        $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
+        $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
 
-    samples + deriv -> mean + (no deriv) prior
-    $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
+        samples + deriv -> mean + (no deriv) prior
+        $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
+        $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
 
-    samples + deriv -> mean + (no deriv) final
-    $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
+        samples + deriv -> mean + (no deriv) final
+        $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
+        $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
 
-    mean+(no deriv): prior -> final
-    $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
-    $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
+        mean+(no deriv): prior -> final
+        $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
+        $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
 
-    y-aware -> samples
-    $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
-    """
-    push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
-    push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
+        y-aware -> samples
+        $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
+        $(cossim_cols(svdHg.V, svdHgy_ekp_final.V)[1:3])
+        """
+    end
     push!(Hu_evals, svdHu.S)
     push!(Hg_evals, svdHg.S)
     push!(Hu_mean_evals, svdHu_mean.S)
@@ -167,44 +207,41 @@ for trial in 1:n_trials
     push!(Hg_ekp_prior_evals, svdHg_ekp_prior.S)
     push!(Hu_ekp_final_evals, svdHu_ekp_final.S)
     push!(Hg_ekp_final_evals, svdHg_ekp_final.S)
-    push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
-    push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
-    push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
-    push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
-    push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
+    if has_jac(model)
+        push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
+        push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
+        push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
+        push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
+        push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
+        push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
+        push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
+        push!(sim_Hgy_ekp_final, cossim_cols(svdHg.V, svdHgy_ekp_final.V))
+    end
 
     # cosine similarity to output svd from samples
     G_samples = forward_map(prior_samples, model)'
     svdG = svd(G_samples) # nonsquare, so permuted so evectors are V
     svdU = svd(prior_samples')
 
-    push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
-    push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
+    if has_jac(model)
+        push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
+        push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
+    end
 
     save(
-        "diagnostic_matrices_$(trial).jld2",
-        "Hu",
-        Hu,
-        "Hg",
-        Hg,
-        "Hu_mean",
-        Hu_mean,
-        "Hg_mean",
-        Hg_mean,
-        "Hu_ekp_prior",
-        Hu_ekp_prior,
-        "Hg_ekp_prior",
-        Hg_ekp_prior,
-        "Hu_ekp_final",
-        Hu_ekp_final,
-        "Hg_ekp_final",
-        Hg_ekp_final,
-        "Huy_ekp_final",
-        Huy_ekp_final,
-        "svdU",
-        svdU,
-        "svdG",
-        svdG,
+        "data/diagnostic_matrices_$(problem)_$(trial).jld2",
+        "Hu", Hu,
+        "Hg", Hg,
+        "Hu_mean", Hu_mean,
+        "Hg_mean", Hg_mean,
+        "Hu_ekp_prior", Hu_ekp_prior,
+        "Hg_ekp_prior", Hg_ekp_prior,
+        "Hu_ekp_final", Hu_ekp_final,
+        "Hg_ekp_final", Hg_ekp_final,
+        "Huy_ekp_final", Huy_ekp_final,
+        "Hgy_ekp_final", Hgy_ekp_final,
+        "svdU", svdU,
+        "svdG", svdG,
     )
 end
 
@@ -217,7 +254,7 @@ normal_Hg_mean_evals = [ev ./ ev[1] for ev in Hg_mean_evals]
 normal_Hg_ekp_prior_evals = [ev ./ ev[1] for ev in Hg_ekp_prior_evals]
 normal_Hg_ekp_final_evals = [ev ./ ev[1] for ev in Hg_ekp_final_evals]
 
-loaded1 = load("ekp_1.jld2")
+loaded1 = load("data/ekp_$(problem)_1.jld2")
 ekp_tmp = loaded1["ekp"]
 input_dim = size(get_u(ekp_tmp, 1), 1)
 output_dim = size(get_g(ekp_tmp, 1), 1)
@@ -229,7 +266,7 @@ truncation = Int(minimum([truncation, input_dim, output_dim]))
 pg = plot(
     1:truncation,
     mean(sim_Hg_means)[1:truncation],
-    ribbon = (std(sim_Hg_means) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hg_means) / sqrt(num_trials))[1:truncation],
     color = :blue,
     label = "sim (samples v mean)",
     legend = false,
@@ -239,7 +276,7 @@ plot!(
     pg,
     1:truncation,
     mean(sim_Hg_ekp_prior)[1:truncation],
-    ribbon = (std(sim_Hg_ekp_prior) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hg_ekp_prior) / sqrt(num_trials))[1:truncation],
     color = :red,
     alpha = 0.3,
     label = "sim (samples v mean-no-der) prior",
@@ -248,9 +285,17 @@ plot!(
     pg,
     1:truncation,
     mean(sim_Hg_ekp_final)[1:truncation],
-    ribbon = (std(sim_Hg_ekp_final) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hg_ekp_final) / sqrt(num_trials))[1:truncation],
     color = :gold,
     label = "sim (samples v mean-no-der) final",
+)
+plot!(
+    pg,
+    1:truncation,
+    mean(sim_Hgy_ekp_final)[1:truncation],
+    ribbon = (std(sim_Hgy_ekp_final) / sqrt(num_trials))[1:truncation],
+    color = :purple,
+    label = "sim (samples v y-aware) final",
 )
 
 plot!(pg, 1:truncation, mean(normal_Hg_evals)[1:truncation], color = :black, label = "normalized eval (samples)")
@@ -279,7 +324,7 @@ plot!(
     pg,
     1:truncation,
     mean(sim_G_samples)[1:truncation],
-    ribbon = (std(sim_G_samples) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_G_samples) / sqrt(num_trials))[1:truncation],
     color = :green,
     label = "similarity (PCA)",
 )
@@ -296,7 +341,7 @@ normal_Hu_ekp_final_evals = [ev ./ ev[1] for ev in Hu_ekp_final_evals]
 pu = plot(
     1:truncation,
     mean(sim_Hu_means)[1:truncation],
-    ribbon = (std(sim_Hu_means) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hu_means) / sqrt(num_trials))[1:truncation],
     color = :blue,
     label = "sim (samples v mean)",
 )
@@ -324,7 +369,7 @@ plot!(
     pu,
     1:truncation,
     mean(sim_U_samples)[1:truncation],
-    ribbon = (std(sim_U_samples) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_U_samples) / sqrt(num_trials))[1:truncation],
     color = :green,
     label = "similarity (PCA)",
 )
@@ -333,7 +378,7 @@ plot!(
     pu,
     1:truncation,
     mean(sim_Hu_ekp_prior)[1:truncation],
-    ribbon = (std(sim_Hu_ekp_prior) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hu_ekp_prior) / sqrt(num_trials))[1:truncation],
     color = :red,
     alpha = 0.3,
     label = "sim (samples v mean-no-der) prior",
@@ -342,7 +387,7 @@ plot!(
     pu,
     1:truncation,
     mean(sim_Hu_ekp_final)[1:truncation],
-    ribbon = (std(sim_Hu_ekp_final) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Hu_ekp_final) / sqrt(num_trials))[1:truncation],
     color = :gold,
     label = "sim (samples v mean-no-der) final",
 )
@@ -350,7 +395,7 @@ plot!(
     pu,
     1:truncation,
     mean(sim_Huy_ekp_final)[1:truncation],
-    ribbon = (std(sim_Huy_ekp_final) / sqrt(n_trials))[1:truncation],
+    ribbon = (std(sim_Huy_ekp_final) / sqrt(num_trials))[1:truncation],
     color = :purple,
     label = "sim (samples v y-aware) final",
 )
@@ -360,4 +405,4 @@ title!(pu, "Similarity of spectrum of input diagnostic")
 layout = @layout [a b]
 p = plot(pu, pg, layout = layout)
 
-savefig(p, "spectrum_comparison.png")
+savefig(p, "figures/spectrum_comparison_$problem.png")
