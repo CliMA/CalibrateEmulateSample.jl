@@ -10,10 +10,10 @@ using Statistics
 include("./settings.jl")
 rng = Random.MersenneTwister(rng_seed)
 
-if !isfile("data/ekp_$(problem)_1.jld2")
+if !isfile("datafiles/ekp_$(problem)_1.jld2")
     include("step1_generate_inverse_problem_data.jl")
 end
-if !isfile("data/diagnostic_matrices_$(problem)_1.jld2")
+if !isfile("datafiles/diagnostic_matrices_$(problem)_1.jld2")
     include("step2_build_and_compare_diagnostic_matrices.jl")
 end
 
@@ -23,7 +23,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
 
     for trial in 1:num_trials
         # Load the EKP iterations
-        loaded = load("data/ekp_$(problem)_$(trial).jld2")
+        loaded = load("datafiles/ekp_$(problem)_$(trial).jld2")
         ekp = loaded["ekp"]
         prior = loaded["prior"]
         obs_noise_cov = loaded["obs_noise_cov"]
@@ -40,7 +40,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         obs_inv = inv(obs_noise_cov)
 
         # Load diagnostic container
-        diagnostic_mats = load("data/diagnostic_matrices_$(problem)_$(trial).jld2")
+        diagnostic_mats = load("datafiles/diagnostic_matrices_$(problem)_$(trial).jld2")
 
         Hu = diagnostic_mats[in_diag]
         Hg = diagnostic_mats[out_diag]

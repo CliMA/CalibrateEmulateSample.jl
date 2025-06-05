@@ -9,7 +9,7 @@ using Manopt, Manifolds
 
 include("./settings.jl")
 
-if !isfile("data/ekp_$(problem)_1.jld2")
+if !isfile("datafiles/ekp_$(problem)_1.jld2")
     include("step1_generate_inverse_problem_data.jl")
 end
 
@@ -48,7 +48,7 @@ sim_Hgy_ekp_final = []
 
 for trial in 1:num_trials
     # Load the EKP iterations
-    loaded = load("data/ekp_$(problem)_$(trial).jld2")
+    loaded = load("datafiles/ekp_$(problem)_$(trial).jld2")
     ekp = loaded["ekp"]
     prior = loaded["prior"]
     obs_noise_cov = loaded["obs_noise_cov"]
@@ -229,7 +229,7 @@ for trial in 1:num_trials
     end
 
     save(
-        "data/diagnostic_matrices_$(problem)_$(trial).jld2",
+        "datafiles/diagnostic_matrices_$(problem)_$(trial).jld2",
         "Hu", Hu,
         "Hg", Hg,
         "Hu_mean", Hu_mean,
@@ -254,7 +254,7 @@ normal_Hg_mean_evals = [ev ./ ev[1] for ev in Hg_mean_evals]
 normal_Hg_ekp_prior_evals = [ev ./ ev[1] for ev in Hg_ekp_prior_evals]
 normal_Hg_ekp_final_evals = [ev ./ ev[1] for ev in Hg_ekp_final_evals]
 
-loaded1 = load("data/ekp_$(problem)_1.jld2")
+loaded1 = load("datafiles/ekp_$(problem)_1.jld2")
 ekp_tmp = loaded1["ekp"]
 input_dim = size(get_u(ekp_tmp, 1), 1)
 output_dim = size(get_g(ekp_tmp, 1), 1)

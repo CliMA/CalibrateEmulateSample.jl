@@ -39,7 +39,7 @@ for trial in 1:num_trials
     @info "Iteration of posterior convergence: $n_iters"
     @info "Loss over iterations: $(get_error(ekp))"
     save(
-        "data/ekp_$(problem)_$(trial).jld2",
+        "datafiles/ekp_$(problem)_$(trial).jld2",
         "ekp", ekp,
         "prior", prior,
         "y", y,
@@ -48,4 +48,3 @@ for trial in 1:num_trials
         "true_parameter", true_parameter,
     )
 end
-
