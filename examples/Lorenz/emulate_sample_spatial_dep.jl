@@ -107,8 +107,7 @@ function main()
                 "n_features_opt" => 40,
             )
             n_features = 200
-            kernel_structure =
-                case == SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
+            kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -117,7 +116,7 @@ function main()
                 optimizer_options = overrides,
             )
         else
-            throw(ArgumentError("case $(case) not recognised, please choose from the list $(cases)"
+            throw(ArgumentError("case $(case) not recognised, please choose from the list $(cases)"))
         end
 
         # Standardize the output data
@@ -240,7 +239,6 @@ function main()
         end
         figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
         savefig(figpath * ".png")
-        figpath = joinpath(figure_save_directory, "posterior_hist_" * case)
         savefig(figpath * ".pdf")
 
         # Save data
