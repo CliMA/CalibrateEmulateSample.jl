@@ -74,9 +74,9 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                 else
                     throw("Unknown step3_mcmc_sampler=$step3_mcmc_sampler")
                 end
-                chainfull = sample(densitymodelfull, sampler, MCMCThreads(), step3_mcmc_samples_per_chain, 8; chain_type=Chains, initial_params = [zeros(input_dim) for _ in 1:8])
-                sampfull = vcat([vec(MCMCChains.get(chainfull, Symbol("param_$i"))[1])' for i in 1:input_dim]...)
-                mean_full += mean(sampfull[:,end÷2:end]; dims = 2) / num_iters
+                chainfull = sample(densitymodelfull, sampler, MCMCThreads(), step3_mcmc_samples_per_chain, 8; chain_type=Chains, initial_params=[zeros(input_dim) for _ in 1:8])
+                sampfull = vcat([vec(MCMCChains.get(chainfull, Symbol("param_$i"))[1]'[:, end÷2:end])' for i in 1:input_dim]...)
+                mean_full += mean(sampfull; dims = 2) / num_iters
             end
             mean_full_red = U_r' * (prior_invrt * mean_full)
 
@@ -99,9 +99,9 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     else
                         throw("Unknown step3_mcmc_sampler=$step3_mcmc_sampler")
                     end
-                    chainred = sample(densitymodelred, sampler, MCMCThreads(), step3_mcmc_samples_per_chain, 8; chain_type=Chains, initial_params = [zeros(input_dim) for _ in 1:8])
-                    sampred = vcat([vec(MCMCChains.get(chainred, Symbol("param_$i"))[1])' for i in 1:input_dim]...)
-                    mean_red_full += mean(sampred[:,end÷2:end]; dims = 2) / num_iters
+                    chainred = sample(densitymodelred, sampler, MCMCThreads(), step3_mcmc_samples_per_chain, 8; chain_type=Chains, initial_params=[zeros(input_dim) for _ in 1:8])
+                    sampred = vcat([vec(MCMCChains.get(chainred, Symbol("param_$i"))[1]'[:, end÷2:end])' for i in 1:input_dim]...)
+                    mean_red_full += mean(sampred; dims = 2) / num_iters
                 end
                 mean_red = U_r' * (prior_invrt * mean_red_full)
             else
@@ -123,9 +123,9 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     else
                         throw("Unknown step3_mcmc_sampler=$step3_mcmc_sampler")
                     end
-                    chainred = sample(densitymodelred, sampler, MCMCThreads(), num_samples, 8; chain_type=Chains, initial_params = [zeros(in_r) for _ in 1:8])
-                    sampred = vcat([vec(MCMCChains.get(chainred, Symbol("param_$i"))[1])' for i in 1:in_r]...)
-                    mean_red += mean(sampred[:,end÷2:end]; dims = 2) / num_iters
+                    chainred = sample(densitymodelred, sampler, MCMCThreads(), num_samples, 8; chain_type=Chains, initial_params=[zeros(in_r) for _ in 1:8])
+                    sampred = vcat([vec(MCMCChains.get(chainred, Symbol("param_$i"))[1]'[:, end÷2:end])' for i in 1:in_r]...)
+                    mean_red += mean(sampred; dims = 2) / num_iters
                 end
                 mean_red_full = prior_rt * U_r * mean_red
             end

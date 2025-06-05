@@ -43,13 +43,18 @@ sim_Hu_ekp_prior = []
 sim_Hg_ekp_prior = []
 sim_Hu_ekp_final = []
 sim_Hg_ekp_final = []
+sim_Hu_mcmc_final = []
+sim_Hg_mcmc_final = []
 sim_Huy_ekp_final = []
 sim_Hgy_ekp_final = []
+sim_Huy_mcmc_final = []
+sim_Hgy_mcmc_final = []
 
 for trial in 1:num_trials
     # Load the EKP iterations
     loaded = load("datafiles/ekp_$(problem)_$(trial).jld2")
     ekp = loaded["ekp"]
+    mcmc_samples = loaded["mcmc_samples"]
     prior = loaded["prior"]
     obs_noise_cov = loaded["obs_noise_cov"]
     y = loaded["y"]
@@ -109,7 +114,7 @@ for trial in 1:num_trials
     Hg_ekp_prior = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
 
     # [2b] One-point approximation at mean value with SL grad
-    @info "Construct with mean value final (1 sample), SL grad"
+    @info "Construct with mean value EKP final (1 sample), SL grad"
     final_it = length(get_g(ekp))
     g = get_g(ekp, final_it)
     u = get_u(ekp, final_it)
@@ -126,6 +131,7 @@ for trial in 1:num_trials
     Hu_ekp_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
 
+    @info "Construct y-informed at EKP final (SL grad)"
     myCug = Cug'
     Huy_ekp_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum( # TODO: Check if whitening is correct
        (y - gg) * (y - gg)' for gg in eachcol(g)
@@ -153,7 +159,7 @@ for trial in 1:num_trials
         v00 = eigvecs(Hg_ekp_final)[:,k:k]
         v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
         v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5.0, 5.0))
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(20.0, 20.0))
         # Orthogonalize
         proj = bestvec - Vgy_ekp_final * (Vgy_ekp_final' * bestvec)
         bestvec = proj / norm(proj)
@@ -162,6 +168,58 @@ for trial in 1:num_trials
     end
     Vgy_ekp_final = hcat(Vgy_ekp_final, randn(dim_g, dim_g - num_vecs))
     Hgy_ekp_final = Vgy_ekp_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_ekp_final'
+
+
+    @info "Construct with mean value MCMC final (1 sample), SL grad"
+    u = mcmc_samples
+    g = hcat([forward_map(uu, model) for uu in eachcol(u)]...)
+    C_at_final = cov([u; g], dims = 2) # basic cross-cov
+    Cuu = C_at_final[1:input_dim, 1:input_dim]
+    svdCuu = svd(Cuu)
+    nz = min(N_ens - 1, input_dim) # nonzero sv's
+    pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
+    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
+    Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
+    Hu_mcmc_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
+    Hg_mcmc_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    @info "Construct y-informed at MCMC final (SL grad)"
+    myCug = Cug'
+    Huy_mcmc_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum( # TODO: Check if whitening is correct
+       (y - gg) * (y - gg)' for gg in eachcol(g)
+    )*obs_inv*myCug' * Cuu_invrt
+
+    dim_g = size(g, 1)
+    Vgy_mcmc_final = zeros(dim_g, 0)
+    num_vecs = 10
+    @assert num_vecs ≤ dim_g
+    for k in 1:num_vecs
+        println("vector $k")
+        counter = 0
+        M = Grassmann(dim_g, 1)
+        f = (_, v) -> begin
+            counter += 1
+            Vs = hcat(Vgy_mcmc_final, vec(v))
+            Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
+            res = sum( # TODO: Check if whitening is correct
+                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
+                for gg in eachcol(g)
+            )
+            mod(counter, 100) == 1 && println("   iter $counter: $res")
+            res
+        end
+        v00 = eigvecs(Hg_mcmc_final)[:,k:k]
+        v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
+        v0 = [v0i / norm(v0i) for v0i in v0]
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(20.0, 20.0))
+        # Orthogonalize
+        proj = bestvec - Vgy_mcmc_final * (Vgy_mcmc_final' * bestvec)
+        bestvec = proj / norm(proj)
+
+        Vgy_mcmc_final = hcat(Vgy_mcmc_final, bestvec)
+    end
+    Vgy_mcmc_final = hcat(Vgy_mcmc_final, randn(dim_g, dim_g - num_vecs))
+    Hgy_mcmc_final = Vgy_mcmc_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_mcmc_final'
 
 
     # cosine similarity of evector directions
@@ -173,8 +231,12 @@ for trial in 1:num_trials
     svdHg_ekp_prior = svd(Hg_ekp_prior)
     svdHu_ekp_final = svd(Hu_ekp_final)
     svdHg_ekp_final = svd(Hg_ekp_final)
+    svdHu_mcmc_final = svd(Hu_mcmc_final)
+    svdHg_mcmc_final = svd(Hg_mcmc_final)
     svdHuy_ekp_final = svd(Huy_ekp_final)
     svdHgy_ekp_final = svd(Hgy_ekp_final)
+    svdHuy_mcmc_final = svd(Huy_mcmc_final)
+    svdHgy_mcmc_final = svd(Hgy_mcmc_final)
     if has_jac(model)
         @info """
 
@@ -214,8 +276,12 @@ for trial in 1:num_trials
         push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
         push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
         push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
+        push!(sim_Hu_mcmc_final, cossim_cols(svdHu.V, svdHu_mcmc_final.V))
+        push!(sim_Hg_mcmc_final, cossim_cols(svdHg.V, svdHg_mcmc_final.V))
         push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
         push!(sim_Hgy_ekp_final, cossim_cols(svdHg.V, svdHgy_ekp_final.V))
+        push!(sim_Huy_mcmc_final, cossim_cols(svdHu.V, svdHuy_mcmc_final.V))
+        push!(sim_Hgy_mcmc_final, cossim_cols(svdHg.V, svdHgy_mcmc_final.V))
     end
 
     # cosine similarity to output svd from samples
@@ -228,6 +294,7 @@ for trial in 1:num_trials
         push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
     end
 
+    #! format: off
     save(
         "datafiles/diagnostic_matrices_$(problem)_$(trial).jld2",
         "Hu", Hu,
@@ -238,11 +305,16 @@ for trial in 1:num_trials
         "Hg_ekp_prior", Hg_ekp_prior,
         "Hu_ekp_final", Hu_ekp_final,
         "Hg_ekp_final", Hg_ekp_final,
+        "Hu_mcmc_final", Hu_mcmc_final,
+        "Hg_mcmc_final", Hg_mcmc_final,
         "Huy_ekp_final", Huy_ekp_final,
         "Hgy_ekp_final", Hgy_ekp_final,
+        "Huy_mcmc_final", Huy_mcmc_final,
+        "Hgy_mcmc_final", Hgy_mcmc_final,
         "svdU", svdU,
         "svdG", svdG,
     )
+    #! format: on
 end
 
 using Plots.Measures

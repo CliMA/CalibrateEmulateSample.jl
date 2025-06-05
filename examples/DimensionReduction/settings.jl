@@ -12,16 +12,19 @@ num_trials = 2
 # Specific to step 1
 step1_eki_ensemble_size = 800
 step1_eki_max_iters = 20
+step1_mcmc_sampler = :rw # :rw or :mala
+step1_mcmc_samples_per_chain = 50_000
+step1_mcmc_subsample_rate = 100
 
 # Specific to step 2
 step2_num_prior_samples = 2000 # paper uses 5e5
 
 # Specific to step 3
 step3_diagnostics_to_use = [
-    ("Hu", 50, "Hg", 50),
+    ("Hu", 5, "Hg", 5),
 ]
 step3_run_reduced_in_full_space = true
-step3_posterior_sampler = :eks # :eks or :mcmc
+step3_posterior_sampler = :mcmc # :eks or :mcmc
 step3_eks_ensemble_size = 800 # only used if `step3_posterior_sampler == :eks`
 step3_eks_max_iters = 200 # only used if `step3_posterior_sampler == :eks`
 step3_mcmc_sampler = :rw # :rw or :mala; only used if `step3_posterior_sampler == :mcmc`
