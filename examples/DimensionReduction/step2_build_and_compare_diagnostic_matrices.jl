@@ -149,7 +149,7 @@ for trial in 1:num_trials
             counter += 1
             Vs = hcat(Vgy_ekp_final, vec(v))
             Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
-            res = sum( # TODO: Check if whitening is correct
+            res = N_ens \ sum( # TODO: Check if whitening is correct
                 norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
                 for gg in eachcol(g)
             )
@@ -159,7 +159,7 @@ for trial in 1:num_trials
         v00 = eigvecs(Hg_ekp_final)[:,k:k]
         v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
         v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(20.0, 20.0))
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5000.0, 5000.0)) # TODO: Set very high to effectively turn off this diagnostic for speed
         # Orthogonalize
         proj = bestvec - Vgy_ekp_final * (Vgy_ekp_final' * bestvec)
         bestvec = proj / norm(proj)
@@ -173,6 +173,7 @@ for trial in 1:num_trials
     @info "Construct with mean value MCMC final (1 sample), SL grad"
     u = mcmc_samples
     g = hcat([forward_map(uu, model) for uu in eachcol(u)]...)
+    N_ens = size(u, 2)
     C_at_final = cov([u; g], dims = 2) # basic cross-cov
     Cuu = C_at_final[1:input_dim, 1:input_dim]
     svdCuu = svd(Cuu)
@@ -201,7 +202,7 @@ for trial in 1:num_trials
             counter += 1
             Vs = hcat(Vgy_mcmc_final, vec(v))
             Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
-            res = sum( # TODO: Check if whitening is correct
+            res = N_ens \ sum( # TODO: Check if whitening is correct
                 norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
                 for gg in eachcol(g)
             )
@@ -211,7 +212,7 @@ for trial in 1:num_trials
         v00 = eigvecs(Hg_mcmc_final)[:,k:k]
         v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
         v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(20.0, 20.0))
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5000.0, 5000.0)) # TODO: Set very high to effectively turn off this diagnostic for speed
         # Orthogonalize
         proj = bestvec - Vgy_mcmc_final * (Vgy_mcmc_final' * bestvec)
         bestvec = proj / norm(proj)

@@ -12,6 +12,7 @@ num_trials = 2
 # Specific to step 1
 step1_eki_ensemble_size = 800
 step1_eki_max_iters = 20
+step1_mcmc_temperature = 2.0 # 1.0 is the "true" posterior; higher oversamples the tails
 step1_mcmc_sampler = :rw # :rw or :mala
 step1_mcmc_samples_per_chain = 50_000
 step1_mcmc_subsample_rate = 100
@@ -21,7 +22,7 @@ step2_num_prior_samples = 2000 # paper uses 5e5
 
 # Specific to step 3
 step3_diagnostics_to_use = [
-    ("Hu", 5, "Hg", 5),
+    ("Hu", 10, "Hg", 10),
 ]
 step3_run_reduced_in_full_space = true
 step3_posterior_sampler = :mcmc # :eks or :mcmc

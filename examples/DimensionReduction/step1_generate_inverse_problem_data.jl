@@ -47,7 +47,7 @@ for trial in 1:num_trials
     prior_cov, prior_inv, obs_inv = cov(prior), inv(cov(prior)), inv(obs_noise_cov)
     logpost = x -> begin
         g = forward_map(x, model)
-        -2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)
+        (-2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)) / step1_mcmc_temperature
     end
     density_model = DensityModel(logpost)
     num_iters = 1
