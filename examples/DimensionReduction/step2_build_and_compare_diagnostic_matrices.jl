@@ -9,6 +9,9 @@ using Manopt, Manifolds
 
 include("./settings.jl")
 
+include("./problems/problem_linear_exp.jl")
+include("./problems/problem_lorenz.jl")
+
 if !isfile("datafiles/ekp_$(problem)_1.jld2")
     include("step1_generate_inverse_problem_data.jl")
 end
@@ -59,8 +62,6 @@ for trial in 1:num_trials
     obs_noise_cov = loaded["obs_noise_cov"]
     y = loaded["y"]
     model = loaded["model"]
-    input_dim = size(get_u(ekp, 1), 1)
-    output_dim = size(get_g(ekp, 1), 1)
 
     prior_cov = cov(prior)
     prior_invrt = sqrt(inv(prior_cov))
@@ -71,29 +72,24 @@ for trial in 1:num_trials
     # random samples
     prior_samples = sample(prior, n_samples)
 
-    if has_jac(model)
-        # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
-        @info "Construct good matrix ($(n_samples) samples of prior, perfect grad)"
-        gradG_samples = jac_forward_map(prior_samples, model)
-        Hu = zeros(input_dim, input_dim)
-        Hg = zeros(output_dim, output_dim)
+    # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
+    @info "Construct good matrix ($(n_samples) samples of prior, perfect grad)"
+    gradG_samples = jac_forward_map(prior_samples, model)
+    Hu = zeros(input_dim, input_dim)
+    Hg = zeros(output_dim, output_dim)
 
-        for j in 1:n_samples
-            Hu .+= 1 / n_samples * prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
-            Hg .+= 1 / n_samples * obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
-        end
-
-        # [1b] One-point approximation at mean value, with perfect grad
-        @info "Construct with mean value (1 sample), perfect grad"
-        prior_mean_appr = mean(prior) # approximate mean
-        gradG_at_mean = jac_forward_map(prior_mean_appr, model)[1]
-        # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
-        Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
-        Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
-    else
-        Hu = Hu_mean = NaN * zeros(input_dim)
-        Hg = Hg_mean = NaN * zeros(output_dim)
+    for j in 1:n_samples
+        Hu .+= 1 / n_samples * prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
+        Hg .+= 1 / n_samples * obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
     end
+
+    # [1b] One-point approximation at mean value, with perfect grad
+    @info "Construct with mean value (1 sample), perfect grad"
+    prior_mean_appr = mean(prior) # approximate mean
+    gradG_at_mean = jac_forward_map(reshape(prior_mean_appr, input_dim, 1), model)[1]
+    # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
+    Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
+    Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
 
     # [2a] One-point approximation at mean value with SL grad
     @info "Construct with mean value prior (1 sample), SL grad"
@@ -224,44 +220,43 @@ for trial in 1:num_trials
 
 
     # cosine similarity of evector directions
-    svdHu = svd(Hu)
-    svdHg = svd(Hg)
-    svdHu_mean = svd(Hu_mean)
-    svdHg_mean = svd(Hg_mean)
-    svdHu_ekp_prior = svd(Hu_ekp_prior)
-    svdHg_ekp_prior = svd(Hg_ekp_prior)
-    svdHu_ekp_final = svd(Hu_ekp_final)
-    svdHg_ekp_final = svd(Hg_ekp_final)
-    svdHu_mcmc_final = svd(Hu_mcmc_final)
-    svdHg_mcmc_final = svd(Hg_mcmc_final)
-    svdHuy_ekp_final = svd(Huy_ekp_final)
-    svdHgy_ekp_final = svd(Hgy_ekp_final)
-    svdHuy_mcmc_final = svd(Huy_mcmc_final)
-    svdHgy_mcmc_final = svd(Hgy_mcmc_final)
-    if has_jac(model)
-        @info """
+    alg = LinearAlgebra.QRIteration()
+    svdHu = svd(Hu; alg)
+    svdHg = svd(Hg; alg)
+    svdHu_mean = svd(Hu_mean; alg)
+    svdHg_mean = svd(Hg_mean; alg)
+    svdHu_ekp_prior = svd(Hu_ekp_prior; alg)
+    svdHg_ekp_prior = svd(Hg_ekp_prior; alg)
+    svdHu_ekp_final = svd(Hu_ekp_final; alg)
+    svdHg_ekp_final = svd(Hg_ekp_final; alg)
+    svdHu_mcmc_final = svd(Hu_mcmc_final; alg)
+    svdHg_mcmc_final = svd(Hg_mcmc_final; alg)
+    svdHuy_ekp_final = svd(Huy_ekp_final; alg)
+    svdHgy_ekp_final = svd(Hgy_ekp_final; alg)
+    svdHuy_mcmc_final = svd(Huy_mcmc_final; alg)
+    svdHgy_mcmc_final = svd(Hgy_mcmc_final; alg)
+    @info """
 
-        samples -> mean 
-        $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
-        $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
+    samples -> mean 
+    $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
 
-        samples + deriv -> mean + (no deriv) prior
-        $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
-        $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
+    samples + deriv -> mean + (no deriv) prior
+    $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
 
-        samples + deriv -> mean + (no deriv) final
-        $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
-        $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
+    samples + deriv -> mean + (no deriv) final
+    $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
 
-        mean+(no deriv): prior -> final
-        $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
-        $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
+    mean+(no deriv): prior -> final
+    $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
+    $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
 
-        y-aware -> samples
-        $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
-        $(cossim_cols(svdHg.V, svdHgy_ekp_final.V)[1:3])
-        """
-    end
+    y-aware -> samples
+    $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
+    $(cossim_cols(svdHg.V, svdHgy_ekp_final.V)[1:3])
+    """
     push!(Hu_evals, svdHu.S)
     push!(Hg_evals, svdHg.S)
     push!(Hu_mean_evals, svdHu_mean.S)
@@ -270,30 +265,26 @@ for trial in 1:num_trials
     push!(Hg_ekp_prior_evals, svdHg_ekp_prior.S)
     push!(Hu_ekp_final_evals, svdHu_ekp_final.S)
     push!(Hg_ekp_final_evals, svdHg_ekp_final.S)
-    if has_jac(model)
-        push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
-        push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
-        push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
-        push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
-        push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
-        push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
-        push!(sim_Hu_mcmc_final, cossim_cols(svdHu.V, svdHu_mcmc_final.V))
-        push!(sim_Hg_mcmc_final, cossim_cols(svdHg.V, svdHg_mcmc_final.V))
-        push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
-        push!(sim_Hgy_ekp_final, cossim_cols(svdHg.V, svdHgy_ekp_final.V))
-        push!(sim_Huy_mcmc_final, cossim_cols(svdHu.V, svdHuy_mcmc_final.V))
-        push!(sim_Hgy_mcmc_final, cossim_cols(svdHg.V, svdHgy_mcmc_final.V))
-    end
+    push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
+    push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
+    push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
+    push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
+    push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
+    push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
+    push!(sim_Hu_mcmc_final, cossim_cols(svdHu.V, svdHu_mcmc_final.V))
+    push!(sim_Hg_mcmc_final, cossim_cols(svdHg.V, svdHg_mcmc_final.V))
+    push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
+    push!(sim_Hgy_ekp_final, cossim_cols(svdHg.V, svdHgy_ekp_final.V))
+    push!(sim_Huy_mcmc_final, cossim_cols(svdHu.V, svdHuy_mcmc_final.V))
+    push!(sim_Hgy_mcmc_final, cossim_cols(svdHg.V, svdHgy_mcmc_final.V))
 
     # cosine similarity to output svd from samples
     G_samples = forward_map(prior_samples, model)'
     svdG = svd(G_samples) # nonsquare, so permuted so evectors are V
     svdU = svd(prior_samples')
 
-    if has_jac(model)
-        push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
-        push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
-    end
+    push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
+    push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
 
     #! format: off
     save(

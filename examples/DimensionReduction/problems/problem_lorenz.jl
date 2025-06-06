@@ -156,8 +156,6 @@ struct Lorenz <: ForwardMapType
     nx
 end
 
-has_jac(::Lorenz) = false
-
 # columns of X are samples
 function forward_map(X::AbstractVector, model::Lorenz)
     lorenz_forward(
@@ -170,6 +168,25 @@ end
 
 function forward_map(X::AbstractMatrix, model::Lorenz)
     hcat([forward_map(x, model) for x in eachcol(X)]...)
+end
+
+function jac_forward_map(X::AbstractVector, model::Lorenz)
+    # Finite-difference Jacobian
+    nx = model.nx
+    h = 1e-6
+    J = zeros(nx * 2, nx)
+    for i in 1:nx
+        x_plus_h = copy(X)
+        x_plus_h[i] += h
+        x_minus_h = copy(X)
+        x_minus_h[i] -= h
+        J[:, i] = (forward_map(x_plus_h, model) - forward_map(x_minus_h, model)) / (2 * h)
+    end
+    return J
+end
+
+function jac_forward_map(X::AbstractMatrix, model::Lorenz)
+    return [jac_forward_map(x, model) for x in eachcol(X)]
 end
 
 function lorenz(input_dim, output_dim, rng)
