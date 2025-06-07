@@ -50,7 +50,7 @@ for trial in 1:num_trials
     do_mcmc(input_dim, x -> begin
         g = forward_map(x, model)
         (-2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)) / step1_mcmc_temperature
-    end, step1_mcmc_num_chains, step1_mcmc_samples_per_chain, step1_mcmc_sampler, prior_cov, subsample_rate=step1_mcmc_subsample_rate) do samp
+    end, step1_mcmc_num_chains, step1_mcmc_samples_per_chain, step1_mcmc_sampler, prior_cov, subsample_rate=step1_mcmc_subsample_rate) do samp, _
         mcmc_samples = hcat(mcmc_samples, samp)
     end
     @info "MCMC finished"
