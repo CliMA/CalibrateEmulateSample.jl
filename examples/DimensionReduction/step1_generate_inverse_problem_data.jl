@@ -11,6 +11,7 @@ include("./problems/problem_linear_exp.jl")
 include("./problems/problem_lorenz.jl")
 
 include("./settings.jl")
+include("./util.jl")
 rng = Random.MersenneTwister(rng_seed)
 problem_fun = if problem == "lorenz"
     lorenz
@@ -45,23 +46,11 @@ for trial in 1:num_trials
 
     # [2] MCMC run
     prior_cov, prior_inv, obs_inv = cov(prior), inv(cov(prior)), inv(obs_noise_cov)
-    logpost = x -> begin
+    mcmc_samples = zeros(input_dim, 0)
+    do_mcmc(input_dim, x -> begin
         g = forward_map(x, model)
         (-2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)) / step1_mcmc_temperature
-    end
-    density_model = DensityModel(logpost)
-    num_iters = 1
-    mcmc_samples = zeros(input_dim, 0)
-    for _ in 1:num_iters
-        sampler = if step1_mcmc_sampler == :mala
-            MALA(x -> MvNormal(.0001 * prior_cov * x, .0001 * 2 * prior_cov))
-        elseif step1_mcmc_sampler == :rw
-            RWMH(MvNormal(zeros(input_dim), .01prior_cov))
-        else
-            throw("Unknown step1_mcmc_sampler=$step1_mcmc_sampler")
-        end
-        chain = sample(density_model, sampler, MCMCThreads(), step1_mcmc_samples_per_chain, 8; chain_type=Chains, initial_params=[zeros(input_dim) for _ in 1:8])
-        samp = vcat([vec(MCMCChains.get(chain, Symbol("param_$i"))[1]'[:, end÷2:step1_mcmc_subsample_rate:end])' for i in 1:input_dim]...)
+    end, step1_mcmc_num_chains, step1_mcmc_samples_per_chain, step1_mcmc_sampler, prior_cov, subsample_rate=step1_mcmc_subsample_rate) do samp
         mcmc_samples = hcat(mcmc_samples, samp)
     end
     @info "MCMC finished"
