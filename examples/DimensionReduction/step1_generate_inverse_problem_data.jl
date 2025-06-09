@@ -7,16 +7,19 @@ using LinearAlgebra
 using MCMCChains
 using Random
 
+include("./problems/problem_linear.jl")
 include("./problems/problem_linear_exp.jl")
 include("./problems/problem_lorenz.jl")
 
 include("./settings.jl")
 include("./util.jl")
 rng = Random.MersenneTwister(rng_seed)
-problem_fun = if problem == "lorenz"
-    lorenz
+problem_fun = if problem == "linear"
+    linear
 elseif problem == "linear_exp"
     linear_exp
+elseif problem == "lorenz"
+    lorenz
 else
     throw("Unknown problem=$problem")
 end

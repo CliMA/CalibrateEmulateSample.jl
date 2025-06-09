@@ -8,7 +8,7 @@ using JLD2
 using Manopt, Manifolds
 
 include("./settings.jl")
-
+include("./problems/problem_linear.jl")
 include("./problems/problem_linear_exp.jl")
 include("./problems/problem_lorenz.jl")
 
@@ -102,12 +102,14 @@ for trial in 1:num_trials
     nz = min(N_ens - 1, input_dim) # nonzero sv's
     pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
     Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
-    Cug = C_at_prior[(input_dim + 1):end, 1:input_dim]
+    Cug = C_at_prior[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
     #    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
     #    Hu_ekp_prior = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt 
     #    Hg_ekp_prior = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
     Hu_ekp_prior = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_ekp_prior = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    println("Relative gradient error: ", norm(gradG_at_mean - (Cug * pinvCuu)) / norm(gradG_at_mean))
 
     # [2b] One-point approximation at mean value with SL grad
     @info "Construct with mean value EKP final (1 sample), SL grad"
@@ -135,7 +137,7 @@ for trial in 1:num_trials
 
     dim_g = size(g, 1)
     Vgy_ekp_final = zeros(dim_g, 0)
-    num_vecs = 10
+    num_vecs = 1
     @assert num_vecs ≤ dim_g
     for k in 1:num_vecs
         println("vector $k")
@@ -179,6 +181,14 @@ for trial in 1:num_trials
     Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
     Hu_mcmc_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_mcmc_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    @info "Construct y-informed at MCMC final (perfect grad)"
+    gradG_samples = jac_forward_map(u, model)
+    Huy = zeros(input_dim, input_dim)
+
+    for j in 1:N_ens
+        Huy .+= 1 / N_ens * prior_rt * gradG_samples[j]' * obs_inv^2 * (y - g[:, j]) * (y - g[:, j])' * obs_inv^2 * gradG_samples[j] * prior_rt # TODO: Is the obs_inv^2 correct?
+    end
 
     @info "Construct y-informed at MCMC final (SL grad)"
     myCug = Cug'
@@ -291,6 +301,7 @@ for trial in 1:num_trials
         "datafiles/diagnostic_matrices_$(problem)_$(trial).jld2",
         "Hu", Hu,
         "Hg", Hg,
+        "Huy", Huy,
         "Hu_mean", Hu_mean,
         "Hg_mean", Hg_mean,
         "Hu_ekp_prior", Hu_ekp_prior,

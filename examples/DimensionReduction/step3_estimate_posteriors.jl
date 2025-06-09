@@ -90,10 +90,17 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     samp = covsamps .+ Mmean * xred
                     gsamp = map(x -> forward_map(x, model), eachcol(samp))
 
-                    return -2\xfull'*prior_inv*xfull + mean(
+                    return -2\xfull'*prior_inv*xfull + if step3_marginalization == :loglikelihood
+                        mean(
+                            -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                            for (x, g) in zip(eachcol(samp), gsamp)
+                        )
+                    elseif step3_marginalization == :forward_model
+                        g = mean(gsamp)
                         -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
-                        for (x, g) in zip(eachcol(samp), gsamp)
-                    )
+                    else
+                        throw("Unknown step3_marginalization=$step3_marginalization")
+                    end
                 end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov) do samp, num_batches
                     mean_red_full += mean(samp; dims = 2) / num_batches
                 end
@@ -104,10 +111,17 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     samp = covsamps .+ Mmean * xred
                     gsamp = map(x -> forward_map(x, model), eachcol(samp))
 
-                    return -2\xred'*prior_cov_r_inv*xred + mean(
+                    return -2\xred'*prior_cov_r_inv*xred + if step3_marginalization == :loglikelihood
+                        mean(
+                            -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                            for (x, g) in zip(eachcol(samp), gsamp)
+                        )
+                    elseif step3_marginalization == :forward_model
+                        g = mean(gsamp)
                         -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
-                        for (x, g) in zip(eachcol(samp), gsamp)
-                    )
+                    else
+                        throw("Unknown step3_marginalization=$step3_marginalization")
+                    end
                 end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov_r) do samp, num_batches
                     mean_red += mean(samp; dims = 2) / num_batches
                 end
@@ -175,8 +189,8 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         Mean (in full space):      $(mean_full[1:5])
         Red. mean (in full space): $(mean_red_full[1:5])
 
-        Mean (in red. space):      $(mean_full_red[1:16])
-        Red. mean (in red. space): $(mean_red[1:16])
+        Mean (in red. space):      $(mean_full_red)
+        Red. mean (in red. space): $(mean_red)
     
         Relative error on mean in full space:    $(norm(mean_full - mean_red_full) / norm(mean_full))
         Relative error on mean in reduced space: $(norm(mean_full_red - mean_red) / norm(mean_full_red))
