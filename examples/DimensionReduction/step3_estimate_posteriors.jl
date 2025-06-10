@@ -85,7 +85,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
             do_mcmc(input_dim, x -> begin
                 g = forward_map(x, model)
                 -2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)
-            end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov) do samp, num_batches
+            end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov, true_parameter) do samp, num_batches
                 mean_full += mean(samp; dims = 2) / num_batches
             end
             mean_full_red = P * mean_full
@@ -108,7 +108,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
-                end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov) do samp, num_batches
+                end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov, true_parameter) do samp, num_batches
                     mean_red_full += mean(samp; dims = 2) / num_batches
                 end
                 mean_red = P * mean_red_full
@@ -129,7 +129,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
-                end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov_r) do samp, num_batches
+                end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov_r, P*true_parameter) do samp, num_batches
                     mean_red += mean(samp; dims = 2) / num_batches
                 end
                 mean_red_full = Pinv*mean_red # This only works since it's the mean (linear) — if not, we'd have to use the covsamps here (same in a few other places)
