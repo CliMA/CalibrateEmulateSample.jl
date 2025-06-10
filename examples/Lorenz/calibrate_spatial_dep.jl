@@ -164,7 +164,7 @@ dt = 0.01  #time step
 T_long = 1000.0  #total time 
 spinup_config = LorenzConfig(dt, T_long)
 x_initial = randn(rng_i, nx)
-x_spun_up = lorenz_solve(true_parameters, x_initial, spinup_config) 
+x_spun_up = lorenz_solve(true_parameters, x_initial, spinup_config)
 x0 = x_spun_up[:, end]  #last element of the run is the initial condition for creating the data
 
 
@@ -174,7 +174,7 @@ ny = nx * 2   #number of data points
 lorenz_config_settings = LorenzConfig(dt, T)
 
 # construct how we compute Observations
-T_start = 4.0  
+T_start = 4.0
 T_end = T
 observation_config = ObservationConfig(T_start, T_end)
 
@@ -182,17 +182,13 @@ model_out_y = lorenz_forward(true_parameters, x0, lorenz_config_settings, observ
 
 #Observation covariance
 n_samples = 200
-shuffled_ids = shuffle(Int(floor(size(x_spun_up,2)/2)):size(x_spun_up,2))
-x_on_attractor = x_spun_up[:,shuffled_ids[1:n_samples]] # randomly select points from second half of spin up
+shuffled_ids = shuffle(Int(floor(size(x_spun_up, 2) / 2)):size(x_spun_up, 2))
+x_on_attractor = x_spun_up[:, shuffled_ids[1:n_samples]] # randomly select points from second half of spin up
 
 y_ens = hcat(
     [
-        lorenz_forward(
-            true_parameters,
-            x_on_attractor[:,j], 
-            lorenz_config_settings,
-            observation_config,
-        ) for j in 1:n_samples
+        lorenz_forward(true_parameters, x_on_attractor[:, j], lorenz_config_settings, observation_config) for
+        j in 1:n_samples
     ]...,
 )
 
