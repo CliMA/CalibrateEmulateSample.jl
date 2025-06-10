@@ -27,33 +27,14 @@ function cossim_cols(X::AM1, Y::AM2) where {AM1 <: AbstractMatrix, AM2 <: Abstra
     return [cossim_pos(c1, c2) for (c1, c2) in zip(eachcol(X), eachcol(Y))]
 end
 
-n_samples = step2_num_prior_samples
-
-Hu_evals = []
-Hg_evals = []
-Hu_mean_evals = []
-Hg_mean_evals = []
-Hu_ekp_prior_evals = []
-Hg_ekp_prior_evals = []
-Hu_ekp_final_evals = []
-Hg_ekp_final_evals = []
-
-sim_Hu_means = []
-sim_Hg_means = []
-sim_G_samples = []
-sim_U_samples = []
-sim_Hu_ekp_prior = []
-sim_Hg_ekp_prior = []
-sim_Hu_ekp_final = []
-sim_Hg_ekp_final = []
-sim_Hu_mcmc_final = []
-sim_Hg_mcmc_final = []
-sim_Huy_ekp_final = []
-sim_Hgy_ekp_final = []
-sim_Huy_mcmc_final = []
-sim_Hgy_mcmc_final = []
+all_diagnostic_matrices_u = Dict()
+all_diagnostic_matrices_g = Dict()
 
 for trial in 1:num_trials
+    @info "Trial $trial"
+    diagnostic_matrices_u = Dict()
+    diagnostic_matrices_g = Dict()
+
     # Load the EKP iterations
     loaded = load("datafiles/ekp_$(problem)_$(trial).jld2")
     ekp = loaded["ekp"]
@@ -70,18 +51,21 @@ for trial in 1:num_trials
     obs_inv = inv(obs_noise_cov)
 
     # random samples
-    prior_samples = sample(prior, n_samples)
+    prior_samples = sample(prior, step2_num_prior_samples)
 
     # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
-    @info "Construct good matrix ($(n_samples) samples of prior, perfect grad)"
+    @info "Construct good matrix ($(step2_num_prior_samples) samples of prior, perfect grad)"
     gradG_samples = jac_forward_map(prior_samples, model)
     Hu = zeros(input_dim, input_dim)
     Hg = zeros(output_dim, output_dim)
 
-    for j in 1:n_samples
-        Hu .+= 1 / n_samples * prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
-        Hg .+= 1 / n_samples * obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
+    for j in 1:step2_num_prior_samples
+        Hu .+= step2_num_prior_samples \ prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
+        Hg .+= step2_num_prior_samples \ obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
     end
+
+    diagnostic_matrices_u["Hu"] = Hu, :black
+    diagnostic_matrices_g["Hg"] = Hg, :black
 
     # [1b] One-point approximation at mean value, with perfect grad
     @info "Construct with mean value (1 sample), perfect grad"
@@ -90,6 +74,9 @@ for trial in 1:num_trials
     # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
     Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
     Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
+
+    diagnostic_matrices_u["Hu_mean"] = Hu_mean, :blue
+    diagnostic_matrices_g["Hg_mean"] = Hg_mean, :blue
 
     # [2a] One-point approximation at mean value with SL grad
     @info "Construct with mean value prior (1 sample), SL grad"
@@ -108,6 +95,9 @@ for trial in 1:num_trials
     #    Hg_ekp_prior = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
     Hu_ekp_prior = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_ekp_prior = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    diagnostic_matrices_u["Hu_ekp_prior"] = Hu_ekp_prior, :red
+    diagnostic_matrices_g["Hg_ekp_prior"] = Hg_ekp_prior, :red
 
     println("Relative gradient error: ", norm(gradG_at_mean - (Cug * pinvCuu)) / norm(gradG_at_mean))
 
@@ -128,6 +118,9 @@ for trial in 1:num_trials
     #    Hg_ekp_final = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
     Hu_ekp_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    diagnostic_matrices_u["Hu_ekp_final"] = Hu_ekp_final, :gold
+    diagnostic_matrices_g["Hg_ekp_final"] = Hg_ekp_final, :gold
 
     @info "Construct y-informed at EKP final (SL grad)"
     myCug = Cug'
@@ -167,6 +160,9 @@ for trial in 1:num_trials
     Vgy_ekp_final = hcat(Vgy_ekp_final, randn(dim_g, dim_g - num_vecs))
     Hgy_ekp_final = Vgy_ekp_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_ekp_final'
 
+    diagnostic_matrices_u["Huy_ekp_final"] = Huy_ekp_final, :purple
+    diagnostic_matrices_g["Hgy_ekp_final"] = Hgy_ekp_final, :purple
+
 
     @info "Construct with mean value MCMC final (1 sample), SL grad"
     u = mcmc_samples
@@ -181,6 +177,9 @@ for trial in 1:num_trials
     Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
     Hu_mcmc_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
     Hg_mcmc_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+
+    diagnostic_matrices_u["Hu_mcmc_final"] = Hu_mcmc_final, :green
+    diagnostic_matrices_g["Hg_mcmc_final"] = Hg_mcmc_final, :green
 
     @info "Construct y-informed at MCMC final (perfect grad)"
     gradG_samples = jac_forward_map(u, model)
@@ -198,7 +197,7 @@ for trial in 1:num_trials
 
     dim_g = size(g, 1)
     Vgy_mcmc_final = zeros(dim_g, 0)
-    num_vecs = 10
+    num_vecs = 1
     @assert num_vecs ≤ dim_g
     for k in 1:num_vecs
         println("vector $k")
@@ -228,256 +227,52 @@ for trial in 1:num_trials
     Vgy_mcmc_final = hcat(Vgy_mcmc_final, randn(dim_g, dim_g - num_vecs))
     Hgy_mcmc_final = Vgy_mcmc_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_mcmc_final'
 
+    diagnostic_matrices_u["Huy_mcmc_final"] = Huy_mcmc_final, :orange
+    diagnostic_matrices_g["Hgy_mcmc_final"] = Hgy_mcmc_final, :orange
 
-    # cosine similarity of evector directions
-    alg = LinearAlgebra.QRIteration()
-    svdHu = svd(Hu; alg)
-    svdHg = svd(Hg; alg)
-    svdHu_mean = svd(Hu_mean; alg)
-    svdHg_mean = svd(Hg_mean; alg)
-    svdHu_ekp_prior = svd(Hu_ekp_prior; alg)
-    svdHg_ekp_prior = svd(Hg_ekp_prior; alg)
-    svdHu_ekp_final = svd(Hu_ekp_final; alg)
-    svdHg_ekp_final = svd(Hg_ekp_final; alg)
-    svdHu_mcmc_final = svd(Hu_mcmc_final; alg)
-    svdHg_mcmc_final = svd(Hg_mcmc_final; alg)
-    svdHuy_ekp_final = svd(Huy_ekp_final; alg)
-    svdHgy_ekp_final = svd(Hgy_ekp_final; alg)
-    svdHuy_mcmc_final = svd(Huy_mcmc_final; alg)
-    svdHgy_mcmc_final = svd(Hgy_mcmc_final; alg)
-    @info """
+    for (name, (value, color)) in diagnostic_matrices_u
+        if !haskey(all_diagnostic_matrices_u, name)
+            all_diagnostic_matrices_u[name] = ([], color)
+        end
+        push!(all_diagnostic_matrices_u[name][1], value)
+    end
+    for (name, (value, color)) in diagnostic_matrices_g
+        if !haskey(all_diagnostic_matrices_g, name)
+            all_diagnostic_matrices_g[name] = ([], color)
+        end
+        push!(all_diagnostic_matrices_g[name][1], value)
+    end
 
-    samples -> mean 
-    $(cossim_cols(svdHu.V, svdHu_mean.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_mean.V)[1:3])
-
-    samples + deriv -> mean + (no deriv) prior
-    $(cossim_cols(svdHu.V, svdHu_ekp_prior.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_ekp_prior.V)[1:3])
-
-    samples + deriv -> mean + (no deriv) final
-    $(cossim_cols(svdHu.V, svdHu_ekp_final.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHg_ekp_final.V)[1:3])
-
-    mean+(no deriv): prior -> final
-    $(cossim_cols(svdHu_ekp_prior.V, svdHu_ekp_final.V)[1:3])
-    $(cossim_cols(svdHg_ekp_prior.V, svdHg_ekp_final.V)[1:3])
-
-    y-aware -> samples
-    $(cossim_cols(svdHu.V, svdHuy_ekp_final.V)[1:3])
-    $(cossim_cols(svdHg.V, svdHgy_ekp_final.V)[1:3])
-    """
-    push!(Hu_evals, svdHu.S)
-    push!(Hg_evals, svdHg.S)
-    push!(Hu_mean_evals, svdHu_mean.S)
-    push!(Hg_mean_evals, svdHg_mean.S)
-    push!(Hu_ekp_prior_evals, svdHu_ekp_prior.S)
-    push!(Hg_ekp_prior_evals, svdHg_ekp_prior.S)
-    push!(Hu_ekp_final_evals, svdHu_ekp_final.S)
-    push!(Hg_ekp_final_evals, svdHg_ekp_final.S)
-    push!(sim_Hu_means, cossim_cols(svdHu.V, svdHu_mean.V))
-    push!(sim_Hg_means, cossim_cols(svdHg.V, svdHg_mean.V))
-    push!(sim_Hu_ekp_prior, cossim_cols(svdHu.V, svdHu_ekp_prior.V))
-    push!(sim_Hg_ekp_prior, cossim_cols(svdHg.V, svdHg_ekp_prior.V))
-    push!(sim_Hu_ekp_final, cossim_cols(svdHu.V, svdHu_ekp_final.V))
-    push!(sim_Hg_ekp_final, cossim_cols(svdHg.V, svdHg_ekp_final.V))
-    push!(sim_Hu_mcmc_final, cossim_cols(svdHu.V, svdHu_mcmc_final.V))
-    push!(sim_Hg_mcmc_final, cossim_cols(svdHg.V, svdHg_mcmc_final.V))
-    push!(sim_Huy_ekp_final, cossim_cols(svdHu.V, svdHuy_ekp_final.V))
-    push!(sim_Hgy_ekp_final, cossim_cols(svdHg.V, svdHgy_ekp_final.V))
-    push!(sim_Huy_mcmc_final, cossim_cols(svdHu.V, svdHuy_mcmc_final.V))
-    push!(sim_Hgy_mcmc_final, cossim_cols(svdHg.V, svdHgy_mcmc_final.V))
-
-    # cosine similarity to output svd from samples
-    G_samples = forward_map(prior_samples, model)'
-    svdG = svd(G_samples) # nonsquare, so permuted so evectors are V
-    svdU = svd(prior_samples')
-
-    push!(sim_G_samples, cossim_cols(svdHg.V, svdG.V))
-    push!(sim_U_samples, cossim_cols(svdHu.V, svdU.V))
-
-    #! format: off
     save(
         "datafiles/diagnostic_matrices_$(problem)_$(trial).jld2",
-        "Hu", Hu,
-        "Hg", Hg,
-        "Huy", Huy,
-        "Hu_mean", Hu_mean,
-        "Hg_mean", Hg_mean,
-        "Hu_ekp_prior", Hu_ekp_prior,
-        "Hg_ekp_prior", Hg_ekp_prior,
-        "Hu_ekp_final", Hu_ekp_final,
-        "Hg_ekp_final", Hg_ekp_final,
-        "Hu_mcmc_final", Hu_mcmc_final,
-        "Hg_mcmc_final", Hg_mcmc_final,
-        "Huy_ekp_final", Huy_ekp_final,
-        "Hgy_ekp_final", Hgy_ekp_final,
-        "Huy_mcmc_final", Huy_mcmc_final,
-        "Hgy_mcmc_final", Hgy_mcmc_final,
-        "svdU", svdU,
-        "svdG", svdG,
+        vcat([[name, value] for (name, (value, _)) in diagnostic_matrices_u]...)...,
+        vcat([[name, value] for (name, (value, _)) in diagnostic_matrices_g]...)...,
     )
-    #! format: on
 end
 
 using Plots.Measures
-gr(size = (1.6 * 1200, 600), legend = true, bottom_margin = 10mm, left_margin = 10mm)
-default(titlefont = 20, legendfontsize = 12, guidefont = 14, tickfont = 14)
+gr(; size=(1.6 * 1200, 600), legend=true, bottom_margin=10mm, left_margin=10mm)
+default(; titlefont=20, legendfontsize=12, guidefont=14, tickfont=14)
 
-normal_Hg_evals = [ev ./ ev[1] for ev in Hg_evals]
-normal_Hg_mean_evals = [ev ./ ev[1] for ev in Hg_mean_evals]
-normal_Hg_ekp_prior_evals = [ev ./ ev[1] for ev in Hg_ekp_prior_evals]
-normal_Hg_ekp_final_evals = [ev ./ ev[1] for ev in Hg_ekp_final_evals]
-
-loaded1 = load("datafiles/ekp_$(problem)_1.jld2")
-ekp_tmp = loaded1["ekp"]
-input_dim = size(get_u(ekp_tmp, 1), 1)
-output_dim = size(get_g(ekp_tmp, 1), 1)
-
-truncation = 15
-truncation = Int(minimum([truncation, input_dim, output_dim]))
+trunc = 15
+trunc = min(trunc, input_dim, output_dim)
 # color names in https://github.com/JuliaGraphics/Colors.jl/blob/master/src/names_data.jl
 
-pg = plot(
-    1:truncation,
-    mean(sim_Hg_means)[1:truncation],
-    ribbon = (std(sim_Hg_means) / sqrt(num_trials))[1:truncation],
-    color = :blue,
-    label = "sim (samples v mean)",
-    legend = false,
-)
+alg = LinearAlgebra.QRIteration()
+plots = map([:in, :out]) do in_or_out
+    diagnostics = in_or_out == :in ? all_diagnostic_matrices_u : all_diagnostic_matrices_g
+    ref = in_or_out == :in ? "Hu" : "Hg"
 
-plot!(
-    pg,
-    1:truncation,
-    mean(sim_Hg_ekp_prior)[1:truncation],
-    ribbon = (std(sim_Hg_ekp_prior) / sqrt(num_trials))[1:truncation],
-    color = :red,
-    alpha = 0.3,
-    label = "sim (samples v mean-no-der) prior",
-)
-plot!(
-    pg,
-    1:truncation,
-    mean(sim_Hg_ekp_final)[1:truncation],
-    ribbon = (std(sim_Hg_ekp_final) / sqrt(num_trials))[1:truncation],
-    color = :gold,
-    label = "sim (samples v mean-no-der) final",
-)
-plot!(
-    pg,
-    1:truncation,
-    mean(sim_Hgy_ekp_final)[1:truncation],
-    ribbon = (std(sim_Hgy_ekp_final) / sqrt(num_trials))[1:truncation],
-    color = :purple,
-    label = "sim (samples v y-aware) final",
-)
+    p = plot(; title="Similarity of spectrum of $(in_or_out)put diagnostic", xlabel="SV index")
+    for (name, (mats, color)) in diagnostics
+        svds = [svd(mat; alg) for mat in mats]
+        sims = [cossim_cols(s.V, svd(ref_diag; alg).V) for (s, ref_diag) in zip(svds, diagnostics[ref][1])]
+        name == ref || plot!(p, mean(sims)[1:trunc]; ribbon=std(sims)[1:trunc], label="sim ($ref vs. $name)", color)
+        mean_S = mean([s.S[1:trunc] for s in svds])
+        plot!(p, mean_S ./ mean_S[1]; label="SVs ($name)", linestyle=:dash, linewidth=3, color)
+    end
 
-plot!(pg, 1:truncation, mean(normal_Hg_evals)[1:truncation], color = :black, label = "normalized eval (samples)")
-plot!(
-    pg,
-    1:truncation,
-    mean(normal_Hg_mean_evals)[1:truncation],
-    color = :black,
-    alpha = 0.7,
-    label = "normalized eval (mean)",
-)
-
-plot!(
-    pg,
-    1:truncation,
-    mean(normal_Hg_ekp_prior_evals)[1:truncation],
-    color = :black,
-    alpha = 0.3,
-    label = "normalized eval (mean-no-der)",
-)
-
-plot!(pg, 1:truncation, mean(normal_Hg_ekp_final_evals)[1:truncation], color = :black, alpha = 0.3)
-
-
-plot!(
-    pg,
-    1:truncation,
-    mean(sim_G_samples)[1:truncation],
-    ribbon = (std(sim_G_samples) / sqrt(num_trials))[1:truncation],
-    color = :green,
-    label = "similarity (PCA)",
-)
-
-title!(pg, "Similarity of spectrum of output diagnostic")
-
-
-normal_Hu_evals = [ev ./ ev[1] for ev in Hu_evals]
-normal_Hu_mean_evals = [ev ./ ev[1] for ev in Hu_mean_evals]
-normal_Hu_ekp_prior_evals = [ev ./ ev[1] for ev in Hu_ekp_prior_evals]
-normal_Hu_ekp_final_evals = [ev ./ ev[1] for ev in Hu_ekp_final_evals]
-
-
-pu = plot(
-    1:truncation,
-    mean(sim_Hu_means)[1:truncation],
-    ribbon = (std(sim_Hu_means) / sqrt(num_trials))[1:truncation],
-    color = :blue,
-    label = "sim (samples v mean)",
-)
-
-plot!(pu, 1:truncation, mean(normal_Hu_evals)[1:truncation], color = :black, label = "normalized eval (samples)")
-plot!(
-    pu,
-    1:truncation,
-    mean(normal_Hu_mean_evals)[1:truncation],
-    color = :black,
-    alpha = 0.7,
-    label = "normalized eval (mean)",
-)
-plot!(
-    pu,
-    1:truncation,
-    mean(normal_Hu_ekp_prior_evals)[1:truncation],
-    color = :black,
-    alpha = 0.3,
-    label = "normalized eval (mean-no-der)",
-)
-plot!(pu, 1:truncation, mean(normal_Hu_ekp_final_evals)[1:truncation], color = :black, alpha = 0.3)
-
-plot!(
-    pu,
-    1:truncation,
-    mean(sim_U_samples)[1:truncation],
-    ribbon = (std(sim_U_samples) / sqrt(num_trials))[1:truncation],
-    color = :green,
-    label = "similarity (PCA)",
-)
-
-plot!(
-    pu,
-    1:truncation,
-    mean(sim_Hu_ekp_prior)[1:truncation],
-    ribbon = (std(sim_Hu_ekp_prior) / sqrt(num_trials))[1:truncation],
-    color = :red,
-    alpha = 0.3,
-    label = "sim (samples v mean-no-der) prior",
-)
-plot!(
-    pu,
-    1:truncation,
-    mean(sim_Hu_ekp_final)[1:truncation],
-    ribbon = (std(sim_Hu_ekp_final) / sqrt(num_trials))[1:truncation],
-    color = :gold,
-    label = "sim (samples v mean-no-der) final",
-)
-plot!(
-    pu,
-    1:truncation,
-    mean(sim_Huy_ekp_final)[1:truncation],
-    ribbon = (std(sim_Huy_ekp_final) / sqrt(num_trials))[1:truncation],
-    color = :purple,
-    label = "sim (samples v y-aware) final",
-)
-
-title!(pu, "Similarity of spectrum of input diagnostic")
-
-layout = @layout [a b]
-p = plot(pu, pg, layout = layout)
-
-savefig(p, "figures/spectrum_comparison_$problem.png")
+    p
+end
+plot(plots...; layout=@layout([a b]))
+savefig("figures/spectrum_comparison_$problem.png")
