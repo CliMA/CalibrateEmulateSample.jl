@@ -181,29 +181,24 @@ observation_config = ObservationConfig(T_start, T_end)
 model_out_y = lorenz_forward(true_parameters, x0, lorenz_config_settings, observation_config)
 
 #Observation covariance
-# [Don't need to do this bit really] - initial condition perturbations
-covT = 1000.0 
-cov_solve = lorenz_solve(true_parameters, x0, LorenzConfig(dt, covT))
-ic_cov = 0.1 * cov(cov_solve, dims = 2)
-ic_cov_sqrt = sqrt(ic_cov)
-
 n_samples = 200
+shuffled_ids = shuffle(Int(floor(size(x_spun_up,2)/2)):size(x_spun_up,2))
+x_on_attractor = x_spun_up[:,shuffled_ids[1:n_samples]] # randomly select points from second half of spin up
+
 y_ens = hcat(
     [
         lorenz_forward(
             true_parameters,
-            (x0 .+ ic_cov_sqrt * randn(rng_i, nx)),
+            x_on_attractor[:,j], 
             lorenz_config_settings,
             observation_config,
         ) for j in 1:n_samples
     ]...,
 )
 
-# estimate noise from IC-effect + R
+# estimate noise as the variability of these pushed-forward samples on the attractor
 obs_noise_cov = cov(y_ens, dims = 2)
 y = y_ens[:, 1]
-
-
 
 pl = 2.0
 psig = 3.0
