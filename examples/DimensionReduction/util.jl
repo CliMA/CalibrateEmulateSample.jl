@@ -21,3 +21,15 @@ function do_mcmc(callback, dim, logpost, num_chains, num_samples_per_chain, mcmc
         callback(samp, num_batches)
     end
 end
+
+function do_eks(dim, G, y, obs_noise_cov, prior, rng, num_ensemble, num_iters_max)
+    initial_ensemble = construct_initial_ensemble(rng, prior, num_ensemble)
+    ekp = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, Sampler(prior); rng, scheduler=EKSStableScheduler(2.0, 0.01))
+
+    for i in 1:num_iters_max
+        g = hcat([G(params) for params in eachcol(get_ϕ_final(prior, ekp))]...)
+        isnothing(update_ensemble!(ekp, g)) || break
+    end
+
+    return get_u_final(ekp), get_g_final(ekp)
+end

@@ -56,10 +56,17 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         Q = V_r' * obs_invrt
 
         obs_noise_cov_r = V_r' * V_r # Vr' * invrt(noise) * noise * invrt(noise) * Vr
-        obs_noise_cov_r_inv = inv(obs_noise_cov_r)
+        @assert obs_noise_cov_r ≈ I
         prior_cov_r = U_r' * U_r
         prior_cov_r_inv = inv(prior_cov_r)
         y_r = Q * y
+        prior_r = ParameterDistribution(
+            Dict(
+                "distribution" => Parameterized(MvNormal(zeros(in_r), prior_cov_r)),
+                "constraint" => repeat([no_constraint()], in_r),
+                "name" => "param_$(in_r)",
+            ),
+        )
 
         # TODO: Fix assert below for the actual type of `prior`
         # @assert prior isa MvNormal && mean(prior) == zeros(input_dim)
@@ -92,12 +99,12 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
 
                     return -2\xfull'*prior_inv*xfull + if step3_marginalization == :loglikelihood
                         mean(
-                            -2\(Q*(y - g))'*obs_noise_cov_r_inv*(Q*(y - g))
+                            -2\(y_r - Q*g)'*(y_r - Q*g)
                             for (x, g) in zip(eachcol(samp), gsamp)
                         )
                     elseif step3_marginalization == :forward_model
                         g = mean(gsamp)
-                        -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
+                        -2\(y_r - Q*g)'*(y_r - Q*g)
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
@@ -113,12 +120,12 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
 
                     return -2\xred'*prior_cov_r_inv*xred + if step3_marginalization == :loglikelihood
                         mean(
-                            -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
+                            -2\(y_r - Q*g)'*(y_r - Q*g)
                             for (x, g) in zip(eachcol(samp), gsamp)
                         )
                     elseif step3_marginalization == :forward_model
                         g = mean(gsamp)
-                        -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
+                        -2\(y_r - Q*g)'*(y_r - Q*g)
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
@@ -128,58 +135,30 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                 mean_red_full = Pinv*mean_red # This only works since it's the mean (linear) — if not, we'd have to use the covsamps here (same in a few other places)
             end
         elseif step3_posterior_sampler == :eks
-            throw("""
-                EKS sampling from the reduced posterior is currently not supported:
-                 The reduced posterior density is not straightforwardly defined in terms of a forward model.
-                 We need to look into this.
-            """)
-            # n_ensemble = step3_eks_ensemble_size
-            # n_iters_max = step3_eks_max_iters
+            step3_marginalization == :forward_model || throw("EKS sampling from the reduced posterior is only supported when marginalizing over the forward model.")
 
-            # initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
-            # ekp = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, Sampler(prior); rng = rng, scheduler = EKSStableScheduler(2.0, 0.01))
-            # for i in 1:n_iters_max
-            #     G_ens = hcat([forward_map(params, model) for params in eachcol(get_ϕ_final(prior, ekp))]...)
-            #     isnothing(update_ensemble!(ekp, G_ens)) || break
-            # end
-            # ekp_u, ekp_g = reduce(hcat, get_u(ekp)), reduce(hcat, get_g(ekp))
-            # mean_full = get_u_mean_final(ekp)
-            # mean_full_red = U_r' * prior_invrt * mean_full
+            u, _ = do_eks(input_dim, x -> forward_map(x, model), y, obs_noise_cov, prior, rng, step3_eks_ensemble_size, step3_eks_max_iters)
+            mean_full = mean(u; dims = 2)
+            mean_full_red = P * mean_full
 
-            # if step3_run_reduced_in_full_space
-            #     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
-            #     ekp_r = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, Sampler(prior); rng, scheduler = EKSStableScheduler(2.0, 0.01))
-        
-            #     for i in 1:n_iters_max
-            #         G_ens = hcat([N*forward_map(M*params, model) for params in eachcol(get_ϕ_final(prior, ekp_r))]...)
-            #         isnothing(update_ensemble!(ekp_r, G_ens)) || break
-            #     end
-            #     ekp_r_u, ekp_r_g = reduce(hcat, get_u(ekp_r)), reduce(hcat, get_g(ekp_r))
-            #     mean_red_full = get_u_mean_final(ekp_r)
-            #     mean_red = U_r' * prior_invrt * mean_red_full
-            # else
-            #     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
-            #     initial_r = U_r' * prior_invrt * initial_ensemble
-            #     prior_r = ParameterDistribution(
-            #         Samples(U_r' * prior_invrt * sample(rng, prior, 1000)),
-            #         repeat([no_constraint()], in_r),
-            #         "prior_r",
-            #     )
-
-            #     ekp_r = EnsembleKalmanProcess(initial_r, y_r, obs_noise_cov_r, Sampler(mean(prior_r)[:], cov(prior_r)); rng)
-        
-            #     for i in 1:n_iters_max
-            #         # evaluate true G
-            #         G_ens_full = reduce(hcat, [forward_map(prior_rt * U_r * params, model) for params in eachcol(get_ϕ_final(prior_r, ekp_r))])
-            #         # project data back
-            #         G_ens = V_r' * obs_invrt * G_ens_full
-        
-            #         isnothing(update_ensemble!(ekp_r, G_ens)) || break
-            #     end
-            #     ekp_r_u, ekp_r_g = reduce(hcat, get_u(ekp_r)), reduce(hcat, get_g(ekp_r))
-            #     mean_red = get_u_mean_final(ekp_r)
-            #     mean_red_full = prior_rt * U_r * mean_red
-            # end
+            if step3_run_reduced_in_full_space
+                u, _ = do_eks(input_dim, xfull -> begin
+                    xred = P*xfull
+                    samp = covsamps .+ Mmean * xred
+                    gsamp = map(x -> forward_map(x, model), eachcol(samp))
+                    return Q*mean(gsamp)
+                end, y_r, 1.0*I(out_r), prior, rng, step3_eks_ensemble_size, step3_eks_max_iters)
+                mean_red_full = mean(u; dims = 2)
+                mean_red = P * mean_red_full
+            else
+                u, _ = do_eks(in_r, xred -> begin
+                    samp = covsamps .+ Mmean * xred
+                    gsamp = map(x -> forward_map(x, model), eachcol(samp))
+                    return Q*mean(gsamp)
+                end, y_r, 1.0*I(out_r), prior_r, rng, step3_eks_ensemble_size, step3_eks_max_iters)
+                mean_red = mean(u; dims = 2)
+                mean_red_full = Pinv*mean_red
+            end
         else
             throw("Unknown step3_posterior_sampler=$step3_posterior_sampler")
         end
