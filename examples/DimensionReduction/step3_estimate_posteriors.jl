@@ -59,7 +59,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         obs_noise_cov_r_inv = inv(obs_noise_cov_r)
         prior_cov_r = U_r' * U_r
         prior_cov_r_inv = inv(prior_cov_r)
-        y_r = V_r' * obs_invrt * y
+        y_r = Q * y
 
         # TODO: Fix assert below for the actual type of `prior`
         # @assert prior isa MvNormal && mean(prior) == zeros(input_dim)
@@ -71,7 +71,7 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         @assert Pinv ≈ Mmean
         Mcov = C - Mmean*P*C + 1e-13 * I
         Mcov = (Mcov + Mcov') / 2 # Otherwise, it's not numerically Hermitian
-        covsamps = rand(MvNormal(zeros(input_dim), Mcov), 8)
+        covsamps = rand(MvNormal(zeros(input_dim), Mcov), step3_num_marginalization_samples)
 
         if step3_posterior_sampler == :mcmc
             mean_full = zeros(input_dim)
@@ -92,12 +92,12 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
 
                     return -2\xfull'*prior_inv*xfull + if step3_marginalization == :loglikelihood
                         mean(
-                            -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                            -2\(Q*(y - g))'*obs_noise_cov_r_inv*(Q*(y - g))
                             for (x, g) in zip(eachcol(samp), gsamp)
                         )
                     elseif step3_marginalization == :forward_model
                         g = mean(gsamp)
-                        -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                        -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
@@ -113,19 +113,19 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
 
                     return -2\xred'*prior_cov_r_inv*xred + if step3_marginalization == :loglikelihood
                         mean(
-                            -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                            -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
                             for (x, g) in zip(eachcol(samp), gsamp)
                         )
                     elseif step3_marginalization == :forward_model
                         g = mean(gsamp)
-                        -2\(Q*(y - g))'*inv(Q*obs_noise_cov*Q')*(Q*(y - g))
+                        -2\(y_r - Q*g)'*obs_noise_cov_r_inv*(y_r - Q*g)
                     else
                         throw("Unknown step3_marginalization=$step3_marginalization")
                     end
                 end, step3_mcmc_num_chains, step3_mcmc_samples_per_chain, step3_mcmc_sampler, prior_cov_r) do samp, num_batches
                     mean_red += mean(samp; dims = 2) / num_batches
                 end
-                mean_red_full = Pinv*mean_red # This only works since it's the mean (linear) — if not, we'd have to use the covsamps here
+                mean_red_full = Pinv*mean_red # This only works since it's the mean (linear) — if not, we'd have to use the covsamps here (same in a few other places)
             end
         elseif step3_posterior_sampler == :eks
             throw("""

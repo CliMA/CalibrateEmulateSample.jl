@@ -29,6 +29,7 @@ step3_diagnostics_to_use = [
 ]
 step3_run_reduced_in_full_space = false
 step3_marginalization = :forward_model # :loglikelihood or :forward_model
+step3_num_marginalization_samples = 8
 step3_posterior_sampler = :mcmc # :eks or :mcmc
 step3_eks_ensemble_size = 800 # only used if `step3_posterior_sampler == :eks`
 step3_eks_max_iters = 200 # only used if `step3_posterior_sampler == :eks`
