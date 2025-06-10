@@ -238,7 +238,7 @@ method = Inversion()
 ekpobj = EKP.EnsembleKalmanProcess(initial_params, y, obs_noise_cov, method; rng = copy(rng), verbose = true)
 
 count = 0
-n_iter = [0]
+n_iter = 0
 for i in 1:N_iter
     params_i = get_ϕ_final(prior, ekpobj)
 
@@ -256,7 +256,7 @@ for i in 1:N_iter
     # Update 
     terminate = EKP.update_ensemble!(ekpobj, G_ens)
     if !isnothing(terminate)
-        n_iter[1] = i - 1
+        n_iter = i - 1
         break
     end
 end
