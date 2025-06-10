@@ -20,11 +20,11 @@ const EKP = EnsembleKalmanProcesses
 # y = G(θ) + η
 
 # This will change for different Lorenz simulators
-struct LorenzConfig{FT1 <: Real, FT2 <: Real}
+struct LorenzConfig{FT <: Real}
     "Length of a fixed integration timestep"
-    dt::FT1
+    dt::FT
     "Total duration of integration (T = N*dt)"
-    T::FT2
+    T::FT
 end
 
 # This will change for each ensemble member
@@ -48,13 +48,15 @@ end
 # Inputs: 
 # - params: structure with F (state-dependent-forcing vector)
 # - x0: initial condition vector
-# - config: structure including dt (timestep Float64(1)) and T (total time Float64(1))
+# - config: config of forward run
+# - observation_config: config for observations
+
 function lorenz_forward(
     params::EnsembleMemberConfig,
-    x0::VorM,
+    x0::VV,
     config::LorenzConfig,
     observation_config::ObservationConfig,
-) where {VorM <: AbstractVecOrMat}
+) where {VV <: AbstractVector}
     # run the Lorenz simulation
     xn = lorenz_solve(params, x0, config)
     # Get statistics
@@ -62,9 +64,11 @@ function lorenz_forward(
     return gt
 end
 
-#Calculates statistics for forward model output
+# Calculates statistics for forward model output
 # Inputs: 
 # - xn: timeseries of states for length of simulation through Lorenz96
+# - config: config of forward run
+# - observation_config: config for observations
 function stats(xn::VorM, config::LorenzConfig, observation_config::ObservationConfig) where {VorM <: AbstractVecOrMat}
     T_start = observation_config.T_start
     T_end = observation_config.T_end
@@ -87,15 +91,15 @@ end
 function lorenz_solve(params::EnsembleMemberConfig, x0::VorM, config::LorenzConfig) where {VorM <: AbstractVecOrMat}
     # Initialize    
     nstep = Int(ceil(config.T / config.dt))
-    state_dim = isa(x0, AbstractVector) ? length(x0) : size(x0, 1)
-    xn = zeros(size(x0, 1), nstep + 1)
+    state_dim = size(x0, 1)
+    xn = zeros(state_dim, nstep + 1)
     xn[:, 1] = x0
 
     # March forward in time
     for j in 1:nstep
         xn[:, j + 1] = RK4(params, xn[:, j], config)
     end
-    # Output
+
     return xn
 end
 
@@ -104,7 +108,7 @@ end
 # Inputs: 
 # - params: structure with F (state-dependent-forcing vector) 
 # - x: current state
-function f(params::EnsembleMemberConfig, x::VorM) where {VorM <: AbstractVecOrMat}
+function f(params::EnsembleMemberConfig, x::VV) where {VV <: AbstractVector}
     F = params.F
     N = length(x)
     f = zeros(N)
@@ -153,29 +157,24 @@ nx = 40  #dimensions of parameter vector
 gamma = 8 .+ 6 * sin.((4 * pi * range(0, stop = nx - 1, step = 1)) / nx)  #forcing (Needs to be of type EnsembleMemberConfig)
 true_parameters = EnsembleMemberConfig(gamma)
 
-t = 0.01  #time step
+dt = 0.01  #time step
+
+
+# Spin up over T_long for an initial condition
 T_long = 1000.0  #total time 
-picking_initial_condition = LorenzConfig(t, T_long)
-
-#beginning state
-x_initial = rand(rng_i, Normal(0.0, 1.0), nx)
-
-#Find the initial condition for my data
-x_spun_up = lorenz_solve(true_parameters, x_initial, picking_initial_condition)  #Need to make LorenzConfig object with t, T_long
-
-#intital condition used for the data
+spinup_config = LorenzConfig(dt, T_long)
+x_initial = randn(rng_i, nx)
+x_spun_up = lorenz_solve(true_parameters, x_initial, spinup_config) 
 x0 = x_spun_up[:, end]  #last element of the run is the initial condition for creating the data
 
 
-
-
-#Creating my sythetic data
+#Creating sythetic data
 T = 14.0
 ny = nx * 2   #number of data points
-lorenz_config_settings = LorenzConfig(t, T)
+lorenz_config_settings = LorenzConfig(dt, T)
 
 # construct how we compute Observations
-T_start = 4.0  #2*max
+T_start = 4.0  
 T_end = T
 observation_config = ObservationConfig(T_start, T_end)
 
@@ -183,8 +182,8 @@ model_out_y = lorenz_forward(true_parameters, x0, lorenz_config_settings, observ
 
 #Observation covariance
 # [Don't need to do this bit really] - initial condition perturbations
-covT = 1000.0  #time to simulate to calculate a covariance matrix of the system
-cov_solve = lorenz_solve(true_parameters, x0, LorenzConfig(t, covT))
+covT = 1000.0 
+cov_solve = lorenz_solve(true_parameters, x0, LorenzConfig(dt, covT))
 ic_cov = 0.1 * cov(cov_solve, dims = 2)
 ic_cov_sqrt = sqrt(ic_cov)
 
@@ -193,7 +192,7 @@ y_ens = hcat(
     [
         lorenz_forward(
             true_parameters,
-            (x0 .+ ic_cov_sqrt * rand(rng_i, Normal(0.0, 1.0), nx, n_samples))[:, j],
+            (x0 .+ ic_cov_sqrt * randn(rng_i, nx)),
             lorenz_config_settings,
             observation_config,
         ) for j in 1:n_samples
@@ -202,7 +201,6 @@ y_ens = hcat(
 
 # estimate noise from IC-effect + R
 obs_noise_cov = cov(y_ens, dims = 2)
-y_mean = mean(y_ens, dims = 2)
 y = y_ens[:, 1]
 
 
@@ -223,7 +221,7 @@ mu = 8.0 * ones(nx)
 
 #Creating prior distribution
 distribution = Parameterized(MvNormal(mu, B))
-constraint = repeat([no_constraint()], 40)
+constraint = repeat([no_constraint()], nx)
 name = "ml96_prior"
 
 prior = ParameterDistribution(distribution, constraint, name)
@@ -235,7 +233,6 @@ prior = ParameterDistribution(distribution, constraint, name)
 # EKP parameters
 N_ens = 50
 N_iter = 20
-tolerance = 1.0
 
 rng_seed = 2498
 
@@ -259,7 +256,7 @@ for i in 1:N_iter
         [
             lorenz_forward(
                 EnsembleMemberConfig(params_i[:, j]),
-                (x0 .+ ic_cov_sqrt * rand(rng, Normal(0.0, 1.0), nx, N_ens))[:, j],
+                (x0 .+ ic_cov_sqrt * randn(rng, nx)),
                 lorenz_config_settings,
                 observation_config,
             ) for j in 1:N_ens
