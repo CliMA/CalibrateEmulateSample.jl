@@ -148,12 +148,12 @@ end
 ########################################################################
 
 struct Lorenz <: ForwardMapType
-    rng
-    config_settings
-    observation_config
-    x0
-    ic_cov_sqrt
-    nx
+    rng::Any
+    config_settings::Any
+    observation_config::Any
+    x0::Any
+    ic_cov_sqrt::Any
+    nx::Any
 end
 
 # columns of X are samples

@@ -132,9 +132,16 @@ for trial in 1:num_trials
 
     @info "Construct y-informed at EKP final (SL grad)"
     myCug = Cug'
-    Huy_ekp_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum(
-       (y - gg) * (y - gg)' for gg in eachcol(g)
-    )*obs_inv^2*myCug' * pinvCuu * prior_rt
+    Huy_ekp_final =
+        N_ens \ prior_rt *
+        pinvCuu *
+        myCug *
+        obs_inv^2 *
+        sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
+        obs_inv^2 *
+        myCug' *
+        pinvCuu *
+        prior_rt
 
     dim_g = size(g, 1)
     vecs = zeros(dim_g, 0)
@@ -147,19 +154,20 @@ for trial in 1:num_trials
         vecs_compl = qr(vecs).Q[:, k:end]
         M = Grassmann(dim_g + 1 - k, 1)
 
-        f = (_, v) -> begin
-            Vs = hcat(vecs, vecs_compl * vec(v))
-            Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
-            res = N_ens \ sum( # TODO: Check if whitening is correct
-                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2
-                for gg in eachcol(g)
-            )
+        f =
+            (_, v) -> begin
+                Vs = hcat(vecs, vecs_compl * vec(v))
+                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                res =
+                    N_ens \ sum( # TODO: Check if whitening is correct
+                        norm((y - gg)' * obs_invrt * (I - Vs * Vs') * myCug' * Cuu_invrt)^2 for gg in eachcol(g)
+                    )
 
-            counter += 1
-            mod(counter, 100) == 1 && println("   iter $counter: $res")
+                counter += 1
+                mod(counter, 100) == 1 && println("   iter $counter: $res")
 
-            res
-        end
+                res
+            end
 
         # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
         # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
@@ -168,7 +176,7 @@ for trial in 1:num_trials
         v00 ./= norm(v00)
         v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
         v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(0.1, 0.1))
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1, 0.1))
 
         vecs = hcat(vecs, vecs_compl * bestvec)
     end
@@ -201,16 +209,31 @@ for trial in 1:num_trials
     Huy = zeros(input_dim, input_dim)
 
     for j in 1:N_ens
-        Huy .+= N_ens \ prior_rt * gradG_samples[j]' * obs_inv^2 * (y - g[:, j]) * (y - g[:, j])' * obs_inv^2 * gradG_samples[j] * prior_rt
+        Huy .+=
+            N_ens \ prior_rt *
+            gradG_samples[j]' *
+            obs_inv^2 *
+            (y - g[:, j]) *
+            (y - g[:, j])' *
+            obs_inv^2 *
+            gradG_samples[j] *
+            prior_rt
     end
 
     diagnostic_matrices_u["Huy"] = Huy, :pink
 
     @info "Construct y-informed at MCMC final (SL grad)"
     myCug = Cug'
-    Huy_mcmc_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum(
-       (y - gg) * (y - gg)' for gg in eachcol(g)
-    )*obs_inv^2*myCug' * pinvCuu * prior_rt
+    Huy_mcmc_final =
+        N_ens \ prior_rt *
+        pinvCuu *
+        myCug *
+        obs_inv^2 *
+        sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
+        obs_inv^2 *
+        myCug' *
+        pinvCuu *
+        prior_rt
 
     dim_g = size(g, 1)
     vecs = zeros(dim_g, 0)
@@ -223,19 +246,20 @@ for trial in 1:num_trials
         vecs_compl = qr(vecs).Q[:, k:end]
         M = Grassmann(dim_g + 1 - k, 1)
 
-        f = (_, v) -> begin
-            Vs = hcat(vecs, vecs_compl * vec(v))
-            Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
-            res = N_ens \ sum( # TODO: Check if whitening is correct
-                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2
-                for gg in eachcol(g)
-            )
+        f =
+            (_, v) -> begin
+                Vs = hcat(vecs, vecs_compl * vec(v))
+                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                res =
+                    N_ens \ sum( # TODO: Check if whitening is correct
+                        norm((y - gg)' * obs_invrt * (I - Vs * Vs') * myCug' * Cuu_invrt)^2 for gg in eachcol(g)
+                    )
 
-            counter += 1
-            mod(counter, 100) == 1 && println("   iter $counter: $res")
+                counter += 1
+                mod(counter, 100) == 1 && println("   iter $counter: $res")
 
-            res
-        end
+                res
+            end
 
         # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
         # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
@@ -244,7 +268,7 @@ for trial in 1:num_trials
         v00 ./= norm(v00)
         v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
         v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(0.1, 0.1))
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1, 0.1))
 
         vecs = hcat(vecs, vecs_compl * bestvec)
     end
@@ -275,8 +299,8 @@ for trial in 1:num_trials
 end
 
 using Plots.Measures
-gr(; size=(1.6 * 1200, 600), legend=true, bottom_margin=10mm, left_margin=10mm)
-default(; titlefont=20, legendfontsize=12, guidefont=14, tickfont=14)
+gr(; size = (1.6 * 1200, 600), legend = true, bottom_margin = 10mm, left_margin = 10mm)
+default(; titlefont = 20, legendfontsize = 12, guidefont = 14, tickfont = 14)
 
 trunc = 15
 trunc = min(trunc, input_dim, output_dim)
@@ -287,16 +311,17 @@ plots = map([:in, :out]) do in_or_out
     diagnostics = in_or_out == :in ? all_diagnostic_matrices_u : all_diagnostic_matrices_g
     ref = in_or_out == :in ? "Hu" : "Hg"
 
-    p = plot(; title="Similarity of spectrum of $(in_or_out)put diagnostic", xlabel="SV index")
+    p = plot(; title = "Similarity of spectrum of $(in_or_out)put diagnostic", xlabel = "SV index")
     for (name, (mats, color)) in diagnostics
         svds = [svd(mat; alg) for mat in mats]
         sims = [cossim_cols(s.V, svd(ref_diag; alg).V) for (s, ref_diag) in zip(svds, diagnostics[ref][1])]
-        name == ref || plot!(p, mean(sims)[1:trunc]; ribbon=std(sims)[1:trunc], label="sim ($ref vs. $name)", color)
+        name == ref ||
+            plot!(p, mean(sims)[1:trunc]; ribbon = std(sims)[1:trunc], label = "sim ($ref vs. $name)", color)
         mean_S = mean([s.S[1:trunc] for s in svds])
-        plot!(p, mean_S ./ mean_S[1]; label="SVs ($name)", linestyle=:dash, linewidth=3, color)
+        plot!(p, mean_S ./ mean_S[1]; label = "SVs ($name)", linestyle = :dash, linewidth = 3, color)
     end
 
     p
 end
-plot(plots...; layout=@layout([a b]))
+plot(plots...; layout = @layout([a b]))
 savefig("figures/spectrum_comparison_$problem.png")

@@ -29,7 +29,7 @@ function linear(input_dim, output_dim, rng)
     model = Linear(input_dim, output_dim, A)
 
     # generate data sample
-    obs_noise_cov = Diagonal([Float64(j)^(-1/2) for j in 1:output_dim])
+    obs_noise_cov = Diagonal([Float64(j)^(-1 / 2) for j in 1:output_dim])
     noise = rand(rng, MvNormal(zeros(output_dim), obs_noise_cov))
     # true_parameter = reshape(ones(input_dim), :, 1)
     true_parameter = rand(prior_dist)

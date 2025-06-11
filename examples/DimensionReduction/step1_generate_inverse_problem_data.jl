@@ -36,7 +36,14 @@ for trial in 1:num_trials
     n_iters_max = step1_eki_max_iters
 
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ensemble)
-    ekp = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, TransformInversion(); rng, scheduler = EKSStableScheduler(2.0, 0.01))
+    ekp = EnsembleKalmanProcess(
+        initial_ensemble,
+        y,
+        obs_noise_cov,
+        TransformInversion();
+        rng,
+        scheduler = EKSStableScheduler(2.0, 0.01),
+    )
 
     n_iters = n_iters_max
     for i in 1:n_iters_max
@@ -53,10 +60,19 @@ for trial in 1:num_trials
     # [2] MCMC run
     prior_cov, prior_inv, obs_inv = cov(prior), inv(cov(prior)), inv(obs_noise_cov)
     mcmc_samples = zeros(input_dim, 0)
-    do_mcmc(input_dim, x -> begin
-        g = forward_map(x, model)
-        (-2\x'*prior_inv*x - 2\(y - g)'*obs_inv*(y - g)) / step1_mcmc_temperature
-    end, step1_mcmc_num_chains, step1_mcmc_samples_per_chain, step1_mcmc_sampler, prior_cov, true_parameter; subsample_rate=step1_mcmc_subsample_rate) do samp, _
+    do_mcmc(
+        input_dim,
+        x -> begin
+            g = forward_map(x, model)
+            (-2 \ x' * prior_inv * x - 2 \ (y - g)' * obs_inv * (y - g)) / step1_mcmc_temperature
+        end,
+        step1_mcmc_num_chains,
+        step1_mcmc_samples_per_chain,
+        step1_mcmc_sampler,
+        prior_cov,
+        true_parameter;
+        subsample_rate = step1_mcmc_subsample_rate,
+    ) do samp, _
         mcmc_samples = hcat(mcmc_samples, samp)
     end
     @info "MCMC finished"

@@ -7,7 +7,7 @@ output_dim = 50
 
 ## -- Configure parameters of the experiment itself --
 rng_seed = 41
-num_trials = 5
+num_trials = 1
 
 # Specific to step 1
 step1_eki_ensemble_size = 800
@@ -20,14 +20,11 @@ step1_mcmc_subsample_rate = 1000
 
 # Specific to step 2
 step2_num_prior_samples = 5_000 # paper uses 5e5
+step2_manopt_num_dims = 16
 
 # Specific to step 3
-step3_diagnostics_to_use = [
-    (diag, num, "Hg", 16)
-    for diag in (
-        "Hu", "Huy", "Huy_ekp_final", "Huy_mcmc_final", "pca_u", "Hu_ekp_prior", "Hu_ekp_final",
-    ) for num in (4, 6, 8, 10, 12, 14, 16)
-]
+step3_diagnostics_to_use =
+    [("Hu", 50, diag, num) for diag in ("Hg", "Hgy_ekp_final", "Hgy_mcmc_final") for num in (4, 8, 16)]
 step3_run_reduced_in_full_space = false
 step3_marginalization = :forward_model # :loglikelihood or :forward_model
 step3_num_marginalization_samples = 8
