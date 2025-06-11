@@ -53,6 +53,13 @@ for trial in 1:num_trials
     # random samples
     prior_samples = sample(prior, step2_num_prior_samples)
 
+    @info "Construct PCA matrices"
+    pca_u = prior_samples'
+    pca_g = forward_map(prior_samples, model)'
+
+    diagnostic_matrices_u["pca_u"] = pca_u, :gray
+    diagnostic_matrices_g["pca_g"] = pca_g, :gray
+
     # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
     @info "Construct good matrix ($(step2_num_prior_samples) samples of prior, perfect grad)"
     gradG_samples = jac_forward_map(prior_samples, model)
@@ -186,14 +193,16 @@ for trial in 1:num_trials
     Huy = zeros(input_dim, input_dim)
 
     for j in 1:N_ens
-        Huy .+= 1 / N_ens * prior_rt * gradG_samples[j]' * obs_inv^2 * (y - g[:, j]) * (y - g[:, j])' * obs_inv^2 * gradG_samples[j] * prior_rt # TODO: Is the obs_inv^2 correct?
+        Huy .+= N_ens \ prior_rt * gradG_samples[j]' * obs_inv^2 * (y - g[:, j]) * (y - g[:, j])' * obs_inv^2 * gradG_samples[j] * prior_rt
     end
+
+    diagnostic_matrices_u["Huy"] = Huy, :pink
 
     @info "Construct y-informed at MCMC final (SL grad)"
     myCug = Cug'
-    Huy_mcmc_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum( # TODO: Check if whitening is correct
+    Huy_mcmc_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum( # TODO: Check if whitening is correct
        (y - gg) * (y - gg)' for gg in eachcol(g)
-    )*obs_inv*myCug' * Cuu_invrt
+    )*obs_inv^2*myCug' * pinvCuu * prior_rt
 
     dim_g = size(g, 1)
     Vgy_mcmc_final = zeros(dim_g, 0)

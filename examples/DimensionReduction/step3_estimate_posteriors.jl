@@ -21,7 +21,9 @@ end
 
 for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
     @info "Diagnostic matrices = ($in_diag [1-$in_r], $out_diag [1-$out_r])"
-    average_error = 0
+
+    rel_error_full_rmse = 0
+    rel_error_red_rmse = 0
 
     for trial in 1:num_trials
         # Load the EKP iterations
@@ -163,20 +165,34 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
             throw("Unknown step3_posterior_sampler=$step3_posterior_sampler")
         end
 
+        rel_error_full = norm(mean_full - mean_red_full) / norm(mean_full)
+        rel_error_red = norm(mean_full_red - mean_red) / norm(mean_full_red)
+
         @info """
         True: $(true_parameter[1:5])
         Mean (in full space):      $(mean_full[1:5])
         Red. mean (in full space): $(mean_red_full[1:5])
 
-        Mean (in red. space):      $(mean_full_red)
-        Red. mean (in red. space): $(mean_red)
-    
-        Relative error on mean in full space:    $(norm(mean_full - mean_red_full) / norm(mean_full))
-        Relative error on mean in reduced space: $(norm(mean_full_red - mean_red) / norm(mean_full_red))
+        Mean (in red. space):      $mean_full_red
+        Red. mean (in red. space): $mean_red
+
+        Relative error on mean in full space:    $rel_error_full
+        Relative error on mean in reduced space: $rel_error_red
         """
-        # [A] The relative error seems larger in the reduced space
-        #     The reason is likely the whitening that happens. Small absolute errors in the full space
-        #     can be amplified in the reduced space due to the different scales in the prior. I think
-        #     the full space is probably the one we should be concerned about.
+
+        rel_error_full_rmse += rel_error_full^2
+        rel_error_red_rmse += rel_error_red^2
     end
+
+    rel_error_full_rmse = sqrt(rel_error_full_rmse / num_trials)
+    rel_error_red_rmse = sqrt(rel_error_red_rmse / num_trials)
+
+    open("datafiles/output_error_$(problem).log", "a") do f
+        println(f, "$in_diag, $in_r, $out_diag, $out_r, $rel_error_full_rmse, $rel_error_red_rmse")
+    end
+
+    # [A] The relative error seems larger in the reduced space
+    #     The reason is likely the whitening that happens. Small absolute errors in the full space
+    #     can be amplified in the reduced space due to the different scales in the prior. I think
+    #     the full space is probably the one we should be concerned about.
 end

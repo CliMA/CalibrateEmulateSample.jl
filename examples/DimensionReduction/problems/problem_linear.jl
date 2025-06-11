@@ -50,4 +50,3 @@ end
 function jac_forward_map(X::AbstractMatrix, model::Linear)
     return [model.G for _ in eachcol(X)]
 end
-
