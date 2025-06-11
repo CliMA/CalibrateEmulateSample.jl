@@ -132,41 +132,48 @@ for trial in 1:num_trials
 
     @info "Construct y-informed at EKP final (SL grad)"
     myCug = Cug'
-    Huy_ekp_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum( # TODO: Check if whitening is correct
+    Huy_ekp_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum(
        (y - gg) * (y - gg)' for gg in eachcol(g)
     )*obs_inv^2*myCug' * pinvCuu * prior_rt
 
     dim_g = size(g, 1)
-    Vgy_ekp_final = zeros(dim_g, 0)
-    num_vecs = 1
+    vecs = zeros(dim_g, 0)
+    num_vecs = step2_manopt_num_dims
     @assert num_vecs ≤ dim_g
     for k in 1:num_vecs
         println("vector $k")
         counter = 0
-        M = Grassmann(dim_g, 1)
+
+        vecs_compl = qr(vecs).Q[:, k:end]
+        M = Grassmann(dim_g + 1 - k, 1)
+
         f = (_, v) -> begin
-            counter += 1
-            Vs = hcat(Vgy_ekp_final, vec(v))
+            Vs = hcat(vecs, vecs_compl * vec(v))
             Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
             res = N_ens \ sum( # TODO: Check if whitening is correct
-                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
+                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2
                 for gg in eachcol(g)
             )
+
+            counter += 1
             mod(counter, 100) == 1 && println("   iter $counter: $res")
+
             res
         end
-        v00 = eigvecs(Hg_ekp_final)[:,k:k]
-        v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
-        v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5000.0, 5000.0)) # TODO: Set very high to effectively turn off this diagnostic for speed
-        # Orthogonalize
-        proj = bestvec - Vgy_ekp_final * (Vgy_ekp_final' * bestvec)
-        bestvec = proj / norm(proj)
 
-        Vgy_ekp_final = hcat(Vgy_ekp_final, bestvec)
+        # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
+        # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
+        # ^ This should be a good initial guess, but it seems like a local minimum that the optimizer can't get out of
+        v00 = ones(dim_g + 1 - k, 1)
+        v00 ./= norm(v00)
+        v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
+        v0 = [v0i / norm(v0i) for v0i in v0]
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(0.1, 0.1))
+
+        vecs = hcat(vecs, vecs_compl * bestvec)
     end
-    Vgy_ekp_final = hcat(Vgy_ekp_final, randn(dim_g, dim_g - num_vecs))
-    Hgy_ekp_final = Vgy_ekp_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_ekp_final'
+    vecs = hcat(vecs, randn(dim_g, dim_g - num_vecs))
+    Hgy_ekp_final = vecs * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * vecs'
 
     diagnostic_matrices_u["Huy_ekp_final"] = Huy_ekp_final, :purple
     diagnostic_matrices_g["Hgy_ekp_final"] = Hgy_ekp_final, :purple
@@ -201,41 +208,48 @@ for trial in 1:num_trials
 
     @info "Construct y-informed at MCMC final (SL grad)"
     myCug = Cug'
-    Huy_mcmc_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum( # TODO: Check if whitening is correct
+    Huy_mcmc_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum(
        (y - gg) * (y - gg)' for gg in eachcol(g)
     )*obs_inv^2*myCug' * pinvCuu * prior_rt
 
     dim_g = size(g, 1)
-    Vgy_mcmc_final = zeros(dim_g, 0)
-    num_vecs = 1
+    vecs = zeros(dim_g, 0)
+    num_vecs = step2_manopt_num_dims
     @assert num_vecs ≤ dim_g
     for k in 1:num_vecs
         println("vector $k")
         counter = 0
-        M = Grassmann(dim_g, 1)
+
+        vecs_compl = qr(vecs).Q[:, k:end]
+        M = Grassmann(dim_g + 1 - k, 1)
+
         f = (_, v) -> begin
-            counter += 1
-            Vs = hcat(Vgy_mcmc_final, vec(v))
+            Vs = hcat(vecs, vecs_compl * vec(v))
             Γtildeinv = obs_inv - Vs*inv(Vs'*obs_noise_cov*Vs)*Vs'
             res = N_ens \ sum( # TODO: Check if whitening is correct
-                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2# * det(Vs'*obs_noise_cov*Vs)^(-1/2) * exp(0.5(y-gg)'*Γtildeinv*(y-gg))
+                norm((y-gg)' * obs_invrt * (I - Vs*Vs') * myCug' * Cuu_invrt)^2
                 for gg in eachcol(g)
             )
+
+            counter += 1
             mod(counter, 100) == 1 && println("   iter $counter: $res")
+
             res
         end
-        v00 = eigvecs(Hg_mcmc_final)[:,k:k]
-        v0 = [v00 + randn(dim_g, 1) / 10 for _ in 1:dim_g]
-        v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(5000.0, 5000.0)) # TODO: Set very high to effectively turn off this diagnostic for speed
-        # Orthogonalize
-        proj = bestvec - Vgy_mcmc_final * (Vgy_mcmc_final' * bestvec)
-        bestvec = proj / norm(proj)
 
-        Vgy_mcmc_final = hcat(Vgy_mcmc_final, bestvec)
+        # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
+        # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
+        # ^ This should be a good initial guess, but it seems like a local minimum that the optimizer can't get out of
+        v00 = ones(dim_g + 1 - k, 1)
+        v00 ./= norm(v00)
+        v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
+        v0 = [v0i / norm(v0i) for v0i in v0]
+        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion=StopWhenPopulationConcentrated(0.1, 0.1))
+
+        vecs = hcat(vecs, vecs_compl * bestvec)
     end
-    Vgy_mcmc_final = hcat(Vgy_mcmc_final, randn(dim_g, dim_g - num_vecs))
-    Hgy_mcmc_final = Vgy_mcmc_final * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * Vgy_mcmc_final'
+    vecs = hcat(vecs, randn(dim_g, dim_g - num_vecs))
+    Hgy_mcmc_final = vecs * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * vecs'
 
     diagnostic_matrices_u["Huy_mcmc_final"] = Huy_mcmc_final, :orange
     diagnostic_matrices_g["Hgy_mcmc_final"] = Hgy_mcmc_final, :orange
