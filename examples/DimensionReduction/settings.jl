@@ -1,7 +1,7 @@
 # CONFIGURE THE THREE STEPS
 
 ## -- Configure the inverse problem --
-problem = "linear" # "lorenz" or "linear" or "linear_exp"
+problem = "linlinexp" # "lorenz" or "linear" or "linear_exp" or "linlinexp"
 input_dim = 200
 output_dim = 50
 
@@ -25,7 +25,7 @@ step2_num_prior_samples = 5_000 # paper uses 5e5
 step3_diagnostics_to_use = [
     (diag, num, "Hg", 16)
     for diag in (
-        "Hu", "Huy", "Huy_mcmc_final", "pca_u", "Hu_ekp_prior", "Hu_ekp_final",
+        "Hu", "Huy", "Huy_ekp_final", "Huy_mcmc_final", "pca_u", "Hu_ekp_prior", "Hu_ekp_final",
     ) for num in (4, 6, 8, 10, 12, 14, 16)
 ]
 step3_run_reduced_in_full_space = false

@@ -11,6 +11,7 @@ include("./settings.jl")
 include("./problems/problem_linear.jl")
 include("./problems/problem_linear_exp.jl")
 include("./problems/problem_lorenz.jl")
+include("./problems/problem_linlinexp.jl")
 
 if !isfile("datafiles/ekp_$(problem)_1.jld2")
     include("step1_generate_inverse_problem_data.jl")
@@ -131,9 +132,9 @@ for trial in 1:num_trials
 
     @info "Construct y-informed at EKP final (SL grad)"
     myCug = Cug'
-    Huy_ekp_final = N_ens \ Cuu_invrt * myCug*obs_inv'*sum( # TODO: Check if whitening is correct
+    Huy_ekp_final = N_ens \ prior_rt * pinvCuu * myCug*obs_inv^2*sum( # TODO: Check if whitening is correct
        (y - gg) * (y - gg)' for gg in eachcol(g)
-    )*obs_inv*myCug' * Cuu_invrt
+    )*obs_inv^2*myCug' * pinvCuu * prior_rt
 
     dim_g = size(g, 1)
     Vgy_ekp_final = zeros(dim_g, 0)

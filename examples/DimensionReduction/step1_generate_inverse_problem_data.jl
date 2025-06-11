@@ -10,6 +10,7 @@ using Random
 include("./problems/problem_linear.jl")
 include("./problems/problem_linear_exp.jl")
 include("./problems/problem_lorenz.jl")
+include("./problems/problem_linlinexp.jl")
 
 include("./settings.jl")
 include("./util.jl")
@@ -20,6 +21,8 @@ elseif problem == "linear_exp"
     linear_exp
 elseif problem == "lorenz"
     lorenz
+elseif problem == "linlinexp"
+    linlinexp
 else
     throw("Unknown problem=$problem")
 end
