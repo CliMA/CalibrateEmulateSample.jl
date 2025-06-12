@@ -86,6 +86,15 @@ for trial in 1:num_trials
     diagnostic_matrices_u["Hu_mean"] = Hu_mean, :blue
     diagnostic_matrices_g["Hg_mean"] = Hg_mean, :blue
 
+    @info "Construct with prior (1 sample), linear-regression grad"
+    u = get_u(ekp, 1)
+    g = get_g(ekp, 1)
+    grad_linear_regression = (g / vcat(u, ones(1, size(u, 2))))[:, 1:end-1]
+    Hu_linear_regression = prior_rt * grad_linear_regression' * obs_inv * grad_linear_regression * prior_rt
+    Hg_linear_regression = obs_invrt * grad_linear_regression * prior_cov * grad_linear_regression' * obs_invrt
+    diagnostic_matrices_u["Hu_linear_regression"] = Hu_linear_regression, :teal
+    diagnostic_matrices_g["Hg_linear_regression"] = Hg_linear_regression, :teal
+
     # [2a] One-point approximation at mean value with SL grad
     @info "Construct with mean value prior (1 sample), SL grad"
     g = get_g(ekp, 1)
