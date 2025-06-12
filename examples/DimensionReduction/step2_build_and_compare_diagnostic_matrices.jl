@@ -136,9 +136,9 @@ for trial in 1:num_trials
         N_ens \ prior_rt *
         pinvCuu *
         myCug *
-        obs_inv^2 *
+        obs_inv *
         sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
-        obs_inv^2 *
+        obs_inv *
         myCug' *
         pinvCuu *
         prior_rt
@@ -228,9 +228,9 @@ for trial in 1:num_trials
         N_ens \ prior_rt *
         pinvCuu *
         myCug *
-        obs_inv^2 *
+        obs_inv *
         sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
-        obs_inv^2 *
+        obs_inv *
         myCug' *
         pinvCuu *
         prior_rt
