@@ -157,22 +157,24 @@ struct Lorenz <: ForwardMapType
 end
 
 # columns of X are samples
-function forward_map(X::AbstractVector, model::Lorenz)
+function forward_map(X::AbstractVector, model::Lorenz; noise = nothing)
+    noise = isnothing(noise) ? model.ic_cov_sqrt * randn(model.rng, model.nx) : noise
     lorenz_forward(
         EnsembleMemberConfig(X),
-        (model.x0 .+ model.ic_cov_sqrt * randn(model.rng, model.nx)),
+        (model.x0 .+ noise),
         model.config_settings,
         model.observation_config,
     )
 end
 
-function forward_map(X::AbstractMatrix, model::Lorenz)
-    hcat([forward_map(x, model) for x in eachcol(X)]...)
+function forward_map(X::AbstractMatrix, model::Lorenz; noise = nothing)
+    hcat([forward_map(x, model; noise) for x in eachcol(X)]...)
 end
 
 function jac_forward_map(X::AbstractVector, model::Lorenz)
     # Finite-difference Jacobian
     nx = model.nx
+    noise = model.ic_cov_sqrt * randn(model.rng, model.nx)
     h = 1e-6
     J = zeros(nx * 2, nx)
     for i in 1:nx
@@ -180,7 +182,7 @@ function jac_forward_map(X::AbstractVector, model::Lorenz)
         x_plus_h[i] += h
         x_minus_h = copy(X)
         x_minus_h[i] -= h
-        J[:, i] = (forward_map(x_plus_h, model) - forward_map(x_minus_h, model)) / (2 * h)
+        J[:, i] = (forward_map(x_plus_h, model; noise) - forward_map(x_minus_h, model; noise)) / (2 * h)
     end
     return J
 end
