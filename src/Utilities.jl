@@ -90,4 +90,376 @@ function zscore2orig(Z::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::Abstr
     return X
 end
 
+# Data processing tooling:
+# 1) Define a struct subset to the abstract types
+# 2) Define a constructor and getters
+# 3) Define methods:
+#    - initialize()
+#    - process_data()
+#    - reverse_process_data()
+
+abstract type PairedDataContainerProcessor end # tools that operate on inputs and outputs 
+abstract type DataContainerProcessor end # tools that operate on only inputs or outputs
+
+abstract type UnivariateAffineScaling end
+abstract type QuartileScaling <: UnivariateAffineScaling end
+abstract type MinMaxScaling <: UnivariateAffineScaling end
+abstract type ZScoreScaling <: UnivariateAffineScaling end
+
+# DCProcessors
+"""
+$(TYPEDEF)
+
+The AffineScaler{T} will create an encoding of the data_container via affine transformations:
+- quartile_scale() : creates `QuartileScaling`, encoding with the transform (x - Q2(x))/(Q3(x) - Q1(x))
+- minmax_scale() : creates `MinMaxScaling`, encoding with the transform (x - min(x))/(max(x) - min(x))
+- zscore_scale() : creates `ZScoreScaling`, encoding with the (univariate) transform (x-μ)/σ
+"""
+struct AffineScaler{T, VV <: AbstractVector} <: DataContainerProcessor
+    "storage for the shift applied to data"
+    shift::VV
+    "storage for the scaling"
+    scale::VV
+end
+
+quartile_scale() = AffineScaler(QuartileScaling)
+quartile_scale(T::Type) = AffineScaler(QuartileScaling, T)
+minmax_scale() = AffineScaler(MinMaxScaling)
+minmax_scale(T::Type) = AffineScaler(MinMaxScaling, T)
+zscore_scale() = AffineScaler(ZScoreScaling)
+zscore_scale(T::Type) = AffineScaler(ZScoreScaling, T)
+
+AffineScaler(::Type{UAS}) where {UAS <: UnivariateAffineScaling} =
+    AffineScaler{UAS, Vector{Float64}}(Float64[], Float64[])
+AffineScaler(::Type{UAS}, T::Type) where {UAS <: UnivariateAffineScaling} = AffineScaler{UAS, Vector{T}}(T[], T[])
+
+get_type(as::AffineScaler{T, VV}) where {T, VV} = T
+get_shift(as::AffineScaler) = as.shift
+get_scale(as::AffineScaler) = as.scale
+
+function Base.show(io::IO, as::AffineScaler)
+    out = "AffineScaler: $(get_type(as))"
+    print(io, out)
+end
+
+
+
+function initialize_processor!(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+    if length(get_shift(as)) == 0
+        T = get_type(as)
+        initialize_processor!(as, data, T)
+    end
+end
+
+function initialize_processor!(
+    as::AffineScaler,
+    data::MM,
+    T::Type{QS},
+) where {MM <: AbstractMatrix, QS <: QuartileScaling}
+    quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(data)]
+    quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
+    append!(get_shift(as), quartiles_mat[2, :])
+    append!(get_scale(as), (quartiles_mat[3, :] - quartiles_mat[1, :]))
+end
+
+function initialize_processor!(
+    as::AffineScaler,
+    data::MM,
+    T::Type{MMS},
+) where {MM <: AbstractMatrix, MMS <: MinMaxScaling}
+    minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(data)]
+    minmax_mat = reduce(hcat, minmax_vec) # 3 rows: Q1, Q2, and Q3
+    append!(get_shift(as), minmax_mat[1, :])
+    append!(get_scale(as), (minmax_mat[2, :] - minmax_mat[1, :]))
+end
+
+function initialize_processor!(
+    as::AffineScaler,
+    data::MM,
+    T::Type{ZSS},
+) where {MM <: AbstractMatrix, ZSS <: ZScoreScaling}
+    stat_vec = [[mean(dd), std(dd)] for dd in eachrow(data)]
+    stat_mat = reduce(hcat, stat_vec) # 3 rows: Q1, Q2, and Q3
+    append!(get_shift(as), stat_mat[1, :])
+    append!(get_scale(as), stat_mat[2, :])
+end
+
+
+function encode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+    out = deepcopy(data)
+    for i in 1:size(out, 1)
+        out[i, :] .-= get_shift(as)[i]
+        out[i, :] /= get_scale(as)[i]
+    end
+    return out
+end
+
+function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+    out = deepcopy(data)
+    for i in 1:size(out, 1)
+        out[i, :] *= get_scale(as)[i]
+        out[i, :] .+= get_shift(as)[i]
+    end
+    return out
+end
+
+"""
+$(TYPEDEF)
+
+Standardizes the data to a multivariate N(0,I) distribution via `(xcov)^{-1/2}*(x-x_mean)`, along with rank reduction if data is low rank, or if the user provides a rank
+"""
+struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector} <: DataContainerProcessor
+    "user-provided rank for additional truncation of the space. used if rank < rank(data_cov)"
+    rank::Int
+    "storage for the data mean"
+    data_mean::VV1
+    "storage for wide-matrix representing `data_cov^{-1/2}`"
+    data_reduction_mat::VV2
+    "storage for tall-matrix representing `data_cov^{1/2}`"
+    data_inflation_mat::VV3
+end
+
+standardize() = Standardizer(typemax(Int), Float64[], Any[], Any[])
+standardize(T::Type) = Standardizer(typemax(Int), T[], Any[], Any[])
+standardize(T1::Type, T2::Type, T3::Type) = Standardizer(typemax(Int), T1[], T2[], T3[])
+standardize(rk::Int) = Standardizer(rk, Float64[], Any[], Any[])
+standardize(rk::Int, T::Type) = Standardizer(rk, T[], Any[], Any[])
+standardize(rk::Int, T1::Type, T2::Type, T3::Type) = Standardizer(rk, T1[], T2[], T3[])
+
+get_data_mean(ss::Standardizer) = ss.data_mean
+get_data_reduction_mat(ss::Standardizer) = ss.data_reduction_mat
+get_data_inflation_mat(ss::Standardizer) = ss.data_inflation_mat
+get_rank(ss::Standardizer) = ss.rank
+
+function Base.show(io::IO, ss::Standardizer)
+    if get_rank(ss) < typemax(Int)
+        out = "Standardizer, user-rank=$(get_rank(ss))"
+    else
+        out = "Standardizer"
+    end
+    print(io, out)
+end
+
+function initialize_processor!(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
+    if length(get_data_mean(ss)) == 0
+        append!(get_data_mean(ss), mean(data, dims = 2))
+    end
+    if length(get_data_reduction_mat(ss)) == 0
+        # can use tsvd here so we only compute up to rk
+        data_cov = cov(data, dims = 2)
+        svdc = svd(data_cov)
+        rk = min(rank(data_cov), max(get_rank(ss), 1))
+        # Want to use the nonsquare singular vector
+        if size(svdc.U, 1) == size(svdc.U, 2)
+            mat = svdc.Vt
+        else
+            mat = svdc.U'
+        end
+
+        reduction_mat = Diagonal(1 ./ sqrt.(svdc.S[1:rk])) * mat[1:rk, :]
+        inflation_mat = mat[1:rk, :]' * Diagonal(sqrt.(svdc.S[1:rk]))
+        push!(get_data_reduction_mat(ss), reduction_mat)
+        push!(get_data_inflation_mat(ss), inflation_mat)
+    end
+end
+
+function encode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(ss)
+    reduction_mat = get_data_reduction_mat(ss)[1]
+    return reduction_mat * (data .- data_mean)
+end
+
+function decode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(ss)
+    data_mean = get_data_mean(ss)
+    inflation_mat = get_data_inflation_mat(ss)[1]
+    return inflation_mat * data .+ data_mean
+end
+
+"""
+$(TYPEDEF)
+
+Decorrelate the data via an SVD decomposition, with optional truncation to space of singular vectors corresponding to largest singular values.
+
+# Fields
+$(TYPEDFIELDS)
+"""
+struct Decorrelater{MM1, MM2, FT} <: DataContainerProcessor
+    "the decorrelation matrix - provided by the user"
+    decorrelation_matrix::MM1
+    "the inverse of the decorrelation matrix"
+    inv_decorrelation_matrix::MM2
+    "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
+    retained_variance::FT
+end
+
+# ...struct VariationalAutoEncoder  <: DataContainerProcessor end
+
+# PDCProcessors
+struct DataInformedReducer <: PairedDataContainerProcessor end
+
+struct LikelihoodInformedReducer <: PairedDataContainerProcessor end
+
+struct CanonicalCorrelationReducer <: PairedDataContainerProcessor end
+
+
+####
+
+
+# generic function to build and encode data
+function initialize_and_encode_data!(dcp::DCP, data::MM) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix}
+    initialize_processor!(dcp, data)
+    return encode_data(dcp, data)
+end
+
+function decode_data(dcp::DCP, data::MM) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix}
+    return decode_data(dcp, data)
+end
+
+initialize_and_encode_data!(
+    dcp::DCP,
+    data::MM,
+    apply_to::AS,
+) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} =
+    initialize_and_encode_data!(dcp, data)
+
+decode_data(
+    dcp::DCP,
+    data::MM,
+    apply_to::AS,
+) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} = decode_data(dcp, data)
+
+function initialize_and_encode_data!(
+    dcp::PDCP,
+    data,
+    apply_to::AS,
+) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
+    input_data, output_data = data
+    initialize_processor!(dcp, input_data, output_data, apply_to)
+    return encode_data(dcp, input_data, output_data, apply_to)
+end
+
+function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
+    input_data, output_data = data
+    return decode_data(dcp, input_data, output_data, apply_to)
+end
+
+"""
+$TYPEDSIGNATURES
+
+Create a flatter encoder schedule for the 
+from the user's proposed schedule of the form:
+```julia
+enc_schedule = [
+    (DataProcessor1(...), "in"), 
+    (DataProcessor2(...), "out"), 
+    (PairedDataProcessor3(...), "in"), 
+    (DataProcessor4(...), "in_and_out"), 
+]
+```
+This function creates the encoder scheduler that is also machine readable
+```julia
+enc_schedule = [
+    (DataProcessor1(...), x -> get_inputs(x), "in"), 
+    (DataProcessor2(...), x -> get_outputs(x), "out"), 
+    (DataProcessor2(...), x -> get_outputs(x), "out"),
+    (PairedDataProcessor3(...), x -> (get_outputs(x), get_outputs(x)), "in"), 
+    (DataProcessor4(...), x -> get_inputs(x), "in"),
+    (DataProcessor4(...), x -> get_outputs(x), "out"), 
+]
+```
+and the decoder schedule is a copy of the encoder schedule reversed (and processors copied)
+"""
+function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
+
+    encoder_schedule = []
+    for (processor, apply_to) in schedule_in
+        # converts the string into the extraction of data
+        if isa(processor, DataContainerProcessor)
+            if apply_to == "in"
+                func = x -> get_inputs(x)
+                push!(encoder_schedule, (processor, func, apply_to))
+
+            elseif apply_to == "out"
+                func = x -> get_outputs(x)
+                push!(encoder_schedule, (processor, func, apply_to))
+
+            elseif apply_to == "in_and_out"
+                func1 = x -> get_inputs(x)
+                func2 = x -> get_outputs(x)
+                push!(encoder_schedule, (processor, func1, "in"))
+                push!(encoder_schedule, (deepcopy(processor), func2, "out"))
+            else
+                @warn(
+                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(str), ignoring processor $(processor)..."
+                )
+            end
+
+            # extract all the data (needed for the paired processor, but still pass through what you apply to)
+        elseif isa(processor, PairedDataContainerProcessor)
+            if apply_to ∈ ["in", "out"]
+                func = x -> (get_inputs(x), get_outputs(x))
+                push!(encoder_schedule, (processor, func, apply_to))
+            elseif apply_to == "in_and_out"
+                func = x -> (get_inputs(x), get_outputs(x))
+                push!(encoder_schedule, (processor, func, "in"))
+                push!(encoder_schedule, (deepcopy(processor), func, "out"))
+            else
+                @warn(
+                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(str), ignoring processor $(processor)..."
+                )
+            end
+        end
+    end
+
+    return encoder_schedule
+end
+
+function encode_with_schedule(
+    encoder_schedule::VV,
+    io_pairs::PDC,
+) where {VV <: AbstractVector, PDC <: PairedDataContainer}
+
+    processed_io_pairs = deepcopy(io_pairs)
+
+    # apply_to is the string "in", "out" etc.
+    for (processor, extract_data, apply_to) in encoder_schedule
+        @info "Encoding data: $(apply_to) with $(processor)"
+        processed = initialize_and_encode_data!(processor, extract_data(processed_io_pairs), apply_to)
+
+        if apply_to == "in"
+            processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
+        elseif apply_to == "out"
+            processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
+        end
+    end
+
+    return processed_io_pairs
+end
+
+function decode_with_schedule(
+    encoder_schedule::VV,
+    io_pairs::PDC,
+) where {VV <: AbstractVector, PDC <: PairedDataContainer}
+
+    processed_io_pairs = deepcopy(io_pairs)
+
+    # apply_to is the string "in", "out" etc.
+    for idx in reverse(eachindex(encoder_schedule))
+        (processor, extract_data, apply_to) = encoder_schedule[idx]
+        @info "Decoding data: $(apply_to) with $(processor)"
+        processed = decode_data(processor, extract_data(processed_io_pairs), apply_to)
+
+        if apply_to == "in"
+            processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
+        elseif apply_to == "out"
+            processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
+        end
+    end
+
+    return processed_io_pairs
+end
+
+
+
 end # module

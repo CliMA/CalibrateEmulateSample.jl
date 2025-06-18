@@ -69,3 +69,38 @@ using CalibrateEmulateSample.DataContainers
     @test minimum(eigvals(pdmat2)) >= (1 - 1e-4) * tol
 
 end
+
+
+@testset "Data Preprocessing" begin
+
+    # get some data as IO pairs
+    in_dim = 10
+    out_dim = 50
+    samples = 100
+
+    in_data = 20 * randn(in_dim, samples)
+    out_data = 3 * randn(in_dim, samples) .- 10
+
+    io_pairs = PairedDataContainer(in_data, out_data)
+
+    # Create a lossless encoding schedule
+    schedule_builder = [
+        (zscore_scale(), "in_and_out"), # 
+        (quartile_scale(), "in"),
+        (standardize(), "out"),
+        (minmax_scale(), "in_and_out"),
+    ]
+
+    # make schedule more parsable
+    encoder_schedule = create_encoder_schedule(schedule_builder)
+
+    # encode the data using the schedule
+    encoded_io_pairs = encode_with_schedule(encoder_schedule, io_pairs)
+
+    # decode the data using the schedule
+    decoded_io_pairs = decode_with_schedule(encoder_schedule, encoded_io_pairs)
+
+    tol = 1e-12
+    @test all(isapprox.(get_inputs(io_pairs), get_inputs(decoded_io_pairs), atol = tol))
+    @test all(isapprox.(get_outputs(io_pairs), get_outputs(decoded_io_pairs), atol = tol))
+end
