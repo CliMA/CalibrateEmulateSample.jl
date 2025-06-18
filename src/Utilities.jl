@@ -15,13 +15,14 @@ export get_training_points
 export orig2zscore
 export zscore2orig
 
-export PairedDataContainerProcessor,DataContainerProcessor
-export UnivariateAffineScaling, QuartileScaling, MinMaxScaling,  ZScoreScaling, Standardizer
+export PairedDataContainerProcessor, DataContainerProcessor
+export UnivariateAffineScaling, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer
 
 export quartile_scale, minmax_scale, zscore_scale, standardize
 export get_type, get_shift, get_scale, get_data_mean, get_data_reduction_mat, get_data_inflation_mat, get_rank
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
-export initialize_processor!, initialize_and_encode_data!, encode_data, decode_data
+export initialize_processor!,
+    initialize_and_encode_data!, encode_data, decode_data, encode_obs_noise_cov, decode_obs_noise_cov
 
 
 
@@ -104,12 +105,6 @@ function zscore2orig(Z::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::Abstr
 end
 
 # Data processing tooling:
-# 1) Define a struct subset to the abstract types
-# 2) Define a constructor and getters
-# 3) Define methods:
-#    - initialize()
-#    - process_data()
-#    - reverse_process_data()
 
 abstract type PairedDataContainerProcessor end # tools that operate on inputs and outputs 
 abstract type DataContainerProcessor end # tools that operate on only inputs or outputs
@@ -119,7 +114,7 @@ abstract type QuartileScaling <: UnivariateAffineScaling end
 abstract type MinMaxScaling <: UnivariateAffineScaling end
 abstract type ZScoreScaling <: UnivariateAffineScaling end
 
-# DCProcessors
+# Processors
 """
 $(TYPEDEF)
 
@@ -155,15 +150,6 @@ function Base.show(io::IO, as::AffineScaler)
     print(io, out)
 end
 
-
-
-function initialize_processor!(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
-    if length(get_shift(as)) == 0
-        T = get_type(as)
-        initialize_processor!(as, data, T)
-    end
-end
-
 function initialize_processor!(
     as::AffineScaler,
     data::MM,
@@ -197,6 +183,12 @@ function initialize_processor!(
     append!(get_scale(as), stat_mat[2, :])
 end
 
+function initialize_processor!(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+    if length(get_shift(as)) == 0
+        T = get_type(as)
+        initialize_processor!(as, data, T)
+    end
+end
 
 function encode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
@@ -216,13 +208,17 @@ function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     return out
 end
 
-function encode_matrix(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
-    out = deepcopy(data)
-    for i in 1:size(out, 1)
-        out[i, :] .-= get_shift(as)[i]
-        out[i, :] /= get_scale(as)[i]
-    end
-    return out
+initialize_processor!(as::AffineScaler, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} =
+    initialize_processor!(as, data)
+encode_data(as::AffineScaler, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} = encode_data(as, data)
+decode_data(as::AffineScaler, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} = decode_data(as, data)
+
+function encode_obs_noise_cov(as::AffineScaler, obs_noise_cov::MM) where {MM <: AbstractMatrix}
+    return Diagonal(1 ./ get_scale(as) .^ 2) * obs_noise_cov
+end
+
+function decode_obs_noise_cov(as::AffineScaler, enc_obs_noise_cov::MM) where {MM <: AbstractMatrix}
+    return Diagonal(get_scale(as) .^ 2) * enc_obs_noise_cov
 end
 
 
@@ -295,15 +291,30 @@ end
 
 function decode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(ss)
-    data_mean = get_data_mean(ss)
     inflation_mat = get_data_inflation_mat(ss)[1]
     return inflation_mat * data .+ data_mean
 end
 
+initialize_processor!(ss::Standardizer, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} =
+    initialize_processor!(ss, data)
+encode_data(ss::Standardizer, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} = encode_data(ss, data)
+decode_data(ss::Standardizer, data::MM, obs_noise_cov) where {MM <: AbstractMatrix} = decode_data(ss, data)
+
+function encode_obs_noise_cov(ss::Standardizer, obs_noise_cov::MM) where {MM <: AbstractMatrix}
+    reduction_mat = get_data_reduction_mat(ss)[1]
+    return reduction_mat * obs_noise_cov * reduction_mat'
+end
+
+function decode_obs_noise_cov(ss::Standardizer, enc_obs_noise_cov::MM) where {MM <: AbstractMatrix}
+    inflation_mat = get_data_inflation_mat(ss)[1]
+    return inflation_mat * enc_obs_noise_cov * inflation_mat'
+end
+
+
 """
 $(TYPEDEF)
 
-Decorrelate the data via an SVD decomposition, with optional truncation to space of singular vectors corresponding to largest singular values.
+Decorrelate the data via an SVD decomposition using the observational noise `obs_noise_cov`, with optional truncation of singular vectors corresponding to largest singular values.
 
 # Fields
 $(TYPEDFIELDS)
@@ -316,6 +327,8 @@ struct Decorrelater{MM1, MM2, FT} <: DataContainerProcessor
     "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
     retained_variance::FT
 end
+
+
 
 # ...struct VariationalAutoEncoder  <: DataContainerProcessor end
 
@@ -331,41 +344,58 @@ struct CanonicalCorrelationReducer <: PairedDataContainerProcessor end
 
 
 # generic function to build and encode data
-function initialize_and_encode_data!(dcp::DCP, data::MM) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix}
-    initialize_processor!(dcp, data)
-    return encode_data(dcp, data)
-end
-
-function decode_data(dcp::DCP, data::MM) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix}
-    return decode_data(dcp, data)
+function initialize_and_encode_data!(
+    dcp::DCP,
+    data::MM,
+    obs_noise_cov::USorM,
+) where {DCP <: DataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, MM <: AbstractMatrix}
+    initialize_processor!(dcp, data, obs_noise_cov)
+    return encode_data(dcp, data, obs_noise_cov)
 end
 
 initialize_and_encode_data!(
     dcp::DCP,
     data::MM,
+    obs_noise_cov::USorM,
     apply_to::AS,
-) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} =
-    initialize_and_encode_data!(dcp, data)
+) where {
+    DCP <: DataContainerProcessor,
+    MM <: AbstractMatrix,
+    USorM <: Union{UniformScaling, AbstractMatrix},
+    AS <: AbstractString,
+} = initialize_and_encode_data!(dcp, data, obs_noise_cov)
 
 decode_data(
     dcp::DCP,
     data::MM,
+    obs_noise_cov::USorM,
     apply_to::AS,
-) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} = decode_data(dcp, data)
+) where {
+    DCP <: DataContainerProcessor,
+    MM <: AbstractMatrix,
+    USorM <: Union{UniformScaling, AbstractMatrix},
+    AS <: AbstractString,
+} = decode_data(dcp, data, obs_noise_cov)
 
 function initialize_and_encode_data!(
     dcp::PDCP,
     data,
+    obs_noise_cov::USorM,
     apply_to::AS,
-) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
+) where {PDCP <: PairedDataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
     input_data, output_data = data
-    initialize_processor!(dcp, input_data, output_data, apply_to)
-    return encode_data(dcp, input_data, output_data, apply_to)
+    initialize_processor!(dcp, input_data, output_data, obs_noise_cov, apply_to)
+    return encode_data(dcp, input_data, output_data, obs_noise_cov, apply_to)
 end
 
-function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
+function decode_data(
+    dcp::PDCP,
+    data,
+    obs_noise_cov::USorM,
+    apply_to::AS,
+) where {PDCP <: PairedDataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
     input_data, output_data = data
-    return decode_data(dcp, input_data, output_data, apply_to)
+    return decode_data(dcp, input_data, output_data, obs_noise_cov, apply_to)
 end
 
 """
@@ -442,46 +472,52 @@ end
 function encode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
-) where {VV <: AbstractVector, PDC <: PairedDataContainer}
+    obs_noise_cov_in::USorM,
+) where {VV <: AbstractVector, PDC <: PairedDataContainer, USorM <: Union{UniformScaling, AbstractMatrix}}
 
     processed_io_pairs = deepcopy(io_pairs)
+    processed_obs_noise_cov = deepcopy(obs_noise_cov_in)
 
     # apply_to is the string "in", "out" etc.
     for (processor, extract_data, apply_to) in encoder_schedule
         @info "Encoding data: $(apply_to) with $(processor)"
-        processed = initialize_and_encode_data!(processor, extract_data(processed_io_pairs), apply_to)
-
+        processed =
+            initialize_and_encode_data!(processor, extract_data(processed_io_pairs), processed_obs_noise_cov, apply_to)
         if apply_to == "in"
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
+            processed_obs_noise_cov = encode_obs_noise_cov(processor, processed_obs_noise_cov)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs
+    return processed_io_pairs, processed_obs_noise_cov
 end
 
 function decode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
-) where {VV <: AbstractVector, PDC <: PairedDataContainer}
+    obs_noise_cov_in::USorM,
+) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, PDC <: PairedDataContainer}
 
     processed_io_pairs = deepcopy(io_pairs)
+    processed_obs_noise_cov = deepcopy(obs_noise_cov_in)
 
     # apply_to is the string "in", "out" etc.
     for idx in reverse(eachindex(encoder_schedule))
         (processor, extract_data, apply_to) = encoder_schedule[idx]
         @info "Decoding data: $(apply_to) with $(processor)"
-        processed = decode_data(processor, extract_data(processed_io_pairs), apply_to)
+        processed = decode_data(processor, extract_data(processed_io_pairs), processed_obs_noise_cov, apply_to)
 
         if apply_to == "in"
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
+            processed_obs_noise_cov = decode_obs_noise_cov(processor, processed_obs_noise_cov)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs
+    return processed_io_pairs, processed_obs_noise_cov
 end
 
 

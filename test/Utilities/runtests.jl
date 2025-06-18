@@ -1,6 +1,7 @@
 using Test
 using Random
 using Statistics
+using Distributions
 using LinearAlgebra
 
 using CalibrateEmulateSample.Utilities
@@ -79,7 +80,8 @@ end
     samples = 100
 
     in_data = 20 * randn(in_dim, samples)
-    out_data = 3 * randn(in_dim, samples) .- 10
+    obs_noise_cov = [max(5.0 - abs(i - j), 0.0) for i in 1:out_dim, j in 1:out_dim] # [5 4 3 2 1 0 0 ...] off diagonal
+    out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples) .- 10
 
     io_pairs = PairedDataContainer(in_data, out_data)
 
@@ -95,12 +97,15 @@ end
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
-    encoded_io_pairs = encode_with_schedule(encoder_schedule, io_pairs)
+    encoded_io_pairs, encoded_obs_noise_cov = encode_with_schedule(encoder_schedule, io_pairs, obs_noise_cov)
 
     # decode the data using the schedule
-    decoded_io_pairs = decode_with_schedule(encoder_schedule, encoded_io_pairs)
+    decoded_io_pairs, decoded_obs_noise_cov =
+        decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_obs_noise_cov)
 
     tol = 1e-12
     @test all(isapprox.(get_inputs(io_pairs), get_inputs(decoded_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(io_pairs), get_outputs(decoded_io_pairs), atol = tol))
+    @test all(isapprox.(obs_noise_cov, decoded_obs_noise_cov, atol = tol))
+
 end
