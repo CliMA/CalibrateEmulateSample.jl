@@ -1,5 +1,7 @@
 module Utilities
 
+
+
 using DocStringExtensions
 using LinearAlgebra
 using Statistics
@@ -12,6 +14,17 @@ using ..DataContainers
 export get_training_points
 export orig2zscore
 export zscore2orig
+
+export PairedDataContainerProcessor,DataContainerProcessor
+export UnivariateAffineScaling, QuartileScaling, MinMaxScaling,  ZScoreScaling, Standardizer
+
+export quartile_scale, minmax_scale, zscore_scale, standardize
+export get_type, get_shift, get_scale, get_data_mean, get_data_reduction_mat, get_data_inflation_mat, get_rank
+export create_encoder_schedule, encode_with_schedule, decode_with_schedule
+export initialize_processor!, initialize_and_encode_data!, encode_data, decode_data
+
+
+
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
@@ -202,6 +215,17 @@ function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     end
     return out
 end
+
+function encode_matrix(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+    out = deepcopy(data)
+    for i in 1:size(out, 1)
+        out[i, :] .-= get_shift(as)[i]
+        out[i, :] /= get_scale(as)[i]
+    end
+    return out
+end
+
+
 
 """
 $(TYPEDEF)
