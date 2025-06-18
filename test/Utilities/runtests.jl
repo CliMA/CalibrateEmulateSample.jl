@@ -79,9 +79,11 @@ end
     out_dim = 50
     samples = 100
 
-    in_data = 20 * randn(in_dim, samples)
+    x = randn(in_dim, in_dim)
+    prior_cov = x * x'
+    in_data = rand(MvNormal(zeros(in_dim), prior_cov), samples)
     obs_noise_cov = [max(5.0 - abs(i - j), 0.0) for i in 1:out_dim, j in 1:out_dim] # [5 4 3 2 1 0 0 ...] off diagonal
-    out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples) .- 10
+    out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
 
@@ -89,23 +91,25 @@ end
     schedule_builder = [
         (zscore_scale(), "in_and_out"), # 
         (quartile_scale(), "in"),
-        (standardize(), "out"),
-        (minmax_scale(), "in_and_out"),
+        (standardize(), "in_and_out"),
+        (minmax_scale(), "out"),
     ]
 
     # make schedule more parsable
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
-    encoded_io_pairs, encoded_obs_noise_cov = encode_with_schedule(encoder_schedule, io_pairs, obs_noise_cov)
+    (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
+        encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
     # decode the data using the schedule
-    decoded_io_pairs, decoded_obs_noise_cov =
-        decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_obs_noise_cov)
+    (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
+        decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
 
     tol = 1e-12
     @test all(isapprox.(get_inputs(io_pairs), get_inputs(decoded_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(io_pairs), get_outputs(decoded_io_pairs), atol = tol))
+    @test all(isapprox.(prior_cov, decoded_prior_cov, atol = tol))
     @test all(isapprox.(obs_noise_cov, decoded_obs_noise_cov, atol = tol))
 
 end
