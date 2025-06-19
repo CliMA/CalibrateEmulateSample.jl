@@ -16,10 +16,18 @@ export orig2zscore
 export zscore2orig
 
 export PairedDataContainerProcessor, DataContainerProcessor
-export UnivariateAffineScaling, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer
+export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer, Decorrelater
 
 export quartile_scale, minmax_scale, zscore_scale, standardize, decorrelate
-export get_type, get_shift, get_scale, get_data_mean, get_data_encoder_mat, get_data_decoder_mat, get_rank, get_retain_var, get_add_estimated_cov
+export get_type,
+    get_shift,
+    get_scale,
+    get_data_mean,
+    get_encoder_mat,
+    get_decoder_mat,
+    get_rank,
+    get_retain_var,
+    get_add_estimated_cov
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_obs_noise_cov, decode_obs_noise_cov
@@ -131,15 +139,11 @@ struct AffineScaler{T, VV <: AbstractVector} <: DataContainerProcessor
 end
 
 quartile_scale() = AffineScaler(QuartileScaling)
-quartile_scale(T::Type) = AffineScaler(QuartileScaling, T)
 minmax_scale() = AffineScaler(MinMaxScaling)
-minmax_scale(T::Type) = AffineScaler(MinMaxScaling, T)
 zscore_scale() = AffineScaler(ZScoreScaling)
-zscore_scale(T::Type) = AffineScaler(ZScoreScaling, T)
 
 AffineScaler(::Type{UAS}) where {UAS <: UnivariateAffineScaling} =
     AffineScaler{UAS, Vector{Float64}}(Float64[], Float64[])
-AffineScaler(::Type{UAS}, T::Type) where {UAS <: UnivariateAffineScaling} = AffineScaler{UAS, Vector{T}}(T[], T[])
 
 get_type(as::AffineScaler{T, VV}) where {T, VV} = T
 get_shift(as::AffineScaler) = as.shift
@@ -242,11 +246,7 @@ struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: Abstrac
 end
 
 standardize() = Standardizer(typemax(Int), Float64[], Any[], Any[])
-standardize(T::Type) = Standardizer(typemax(Int), T[], Any[], Any[])
-standardize(T1::Type, T2::Type, T3::Type) = Standardizer(typemax(Int), T1[], T2[], T3[])
 standardize(rk::Int) = Standardizer(rk, Float64[], Any[], Any[])
-standardize(rk::Int, T::Type) = Standardizer(rk, T[], Any[], Any[])
-standardize(rk::Int, T1::Type, T2::Type, T3::Type) = Standardizer(rk, T1[], T2[], T3[])
 
 get_data_mean(ss::Standardizer) = ss.data_mean
 get_encoder_mat(ss::Standardizer) = ss.encoder_mat

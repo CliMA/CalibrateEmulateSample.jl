@@ -74,11 +74,42 @@ end
 
 @testset "Data Preprocessing" begin
 
-    using LinearAlgebra, Distributions, Statistics
-    using CalibrateEmulateSample.DataContainers
-    using CalibrateEmulateSample.Utilities
+    # quick build tests and test getters
+    zs = zscore_scale()
+    mm = minmax_scale()
+    qq = quartile_scale()
+    QQ = AffineScaler{QuartileScaling, Vector{Int}}([1], [2])
+    @test isa(zs, AffineScaler)
+    @test get_type(zs) == ZScoreScaling
+    @test isa(mm, AffineScaler)
+    @test get_type(mm) == MinMaxScaling
+    @test isa(qq, AffineScaler)
+    @test get_type(qq) == QuartileScaling
+    @test get_shift(QQ) == [1]
+    @test get_scale(QQ) == [2]
 
-    # get some data as IO pairs
+    ss = standardize()
+    @test isa(ss, Standardizer)
+    @test get_rank(ss) == typemax(Int)
+    ss2 = standardize(10)
+    @test get_rank(ss2) == 10
+    SS = Standardizer(1, [1], [2], [3])
+    @test get_data_mean(SS) == [1]
+    @test get_encoder_mat(SS) == [2]
+    @test get_decoder_mat(SS) == [3]
+
+    dd = decorrelate()
+    @test get_retain_var(dd) == 1.0
+    @test get_add_estimated_cov(dd) == false
+    dd2 = decorrelate(retain_var = 0.7, add_estimated_cov = true)
+    @test get_retain_var(dd2) == 0.7
+    @test get_add_estimated_cov(dd2) == true
+    DD = Decorrelater([1], [2], [3], 1.0, false)
+    @test get_data_mean(DD) == [1]
+    @test get_encoder_mat(DD) == [2]
+    @test get_decoder_mat(DD) == [3]
+
+    # get some data as IO pairs for functional tests
     in_dim = 10
     out_dim = 50
     samples = 100
@@ -101,6 +132,8 @@ end
         "decorrelate-retain-0.95-var",
     ]
 
+
+
     # Test encodings-decodings individually
     univariate_tests = [
         [(zscore_scale(), "in_and_out")],
@@ -114,6 +147,7 @@ end
     ]
     lossless = [fill(true, 6); fill(false, 2)] # are these lossy approximations
 
+    # functional test pipeline
     tol = 1e-12
 
     for (name, sch, ll_flag) in zip(test_names, univariate_tests, lossless)
