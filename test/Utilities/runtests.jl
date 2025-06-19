@@ -90,15 +90,33 @@ end
     out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
-    test_names = ["zscore", "quartile", "minmax"]
+    test_names = [
+        "zscore",
+        "quartile",
+        "minmax",
+        "standardize",
+        "decorrelate",
+        "decorrelate-estimate-cov",
+        "standardize-truncate-to-5",
+        "decorrelate-retain-0.95-var",
+    ]
 
-    # Test the encodings
-    univariate_tests =
-        [[(zscore_scale(), "in_and_out")], [(quartile_scale(), "in_and_out")], [(minmax_scale(), "in_and_out")]]
+    # Test encodings-decodings individually
+    univariate_tests = [
+        [(zscore_scale(), "in_and_out")],
+        [(quartile_scale(), "in_and_out")],
+        [(minmax_scale(), "in_and_out")],
+        [(standardize(), "in_and_out")],
+        [(decorrelate(), "in_and_out")],
+        [(decorrelate(add_estimated_cov = true), "in_and_out")],
+        [(standardize(5), "in_and_out")],
+        [(decorrelate(retain_var = 0.95), "in_and_out")],
+    ]
+    lossless = [fill(true, 6); fill(false, 2)] # are these lossy approximations
 
     tol = 1e-12
 
-    for (name, sch) in zip(test_names, univariate_tests)
+    for (name, sch, ll_flag) in zip(test_names, univariate_tests, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
             encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
@@ -114,7 +132,7 @@ end
             (prior_cov, obs_noise_cov),
             (in_dim, out_dim),
         )
-
+            # univariate "rescaling" tests
             if name == "zscore"
                 stat_vec = [[mean(dd), std(dd)] for dd in eachrow(enc_dat)]
                 stat_mat = reduce(hcat, stat_vec)
@@ -150,8 +168,47 @@ end
                 )
             end
 
-            @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
-            @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+            # Multivariate lossless tests
+            pop_mean = mean(enc_dat, dims = 2)
+            pop_cov = cov(enc_dat, dims = 2)
+            dimm = size(pop_cov, 1)
+            if name == "standardize"
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+
+            elseif name == "decorrelate"
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
+            elseif name == "decorrelate-estimate-cov"
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+            end
+
+            # Multivariate lossy dim-reduction tests
+            if name == "standardize-truncate-to-5"
+                @test dimm == 5
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+
+            elseif name == "decorrelate-retain-0.95-var"
+                svdc = svd(test_covv)
+                var_cumsum = cumsum(svdc.S .^ 2) ./ sum(svdc.S .^ 2)
+                @test var_cumsum[dimm] > 0.95
+                @test var_cumsum[dimm - 1] < 0.95
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
+            end
+
+            # test decode approximation of lossless options
+            if ll_flag
+                @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
+                @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+            end
 
         end
 
@@ -160,7 +217,7 @@ end
 
     # multivariate lossless encodings
     test_names = ["standardize", "decorrelate"]
-    multivariate_lossless_tests = [[(standardize(), "in_and_out")], [(decorrelate(), "in_and_out")]]
+    multivariate_lossless_tests = []
 
     for (name, sch) in zip(test_names, multivariate_lossless_tests)
         encoder_schedule = create_encoder_schedule(sch)
@@ -202,11 +259,36 @@ end
         end
     end
 
+    test_names = ["standardize-truncate-to-5", "decorrelate-retain-partial-var", "decorrelate-estimate-cov"]
+
     multivariate_lossy_tests = [
         [(standardize(5), "in_and_out")],
         [(decorrelate(retain_var = 0.95), "in_and_out")],
         [(decorrelate(add_estimated_cov = true), "in_and_out")],
     ]
+
+    for (name, sch) in zip(test_names, multivariate_lossless_tests)
+        encoder_schedule = create_encoder_schedule(sch)
+        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
+            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+
+        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
+            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
+        for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
+            (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
+            (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
+            (get_inputs(io_pairs), get_outputs(io_pairs)),
+            (encoded_prior_cov, encoded_obs_noise_cov),
+            (decoded_prior_cov, decoded_obs_noise_cov),
+            (prior_cov, obs_noise_cov),
+            (in_dim, out_dim),
+        )
+
+
+        end
+    end
+
+
 
     # LOSSY TESTS HERE
 
