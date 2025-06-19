@@ -18,7 +18,7 @@ export zscore2orig
 export PairedDataContainerProcessor, DataContainerProcessor
 export UnivariateAffineScaling, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer
 
-export quartile_scale, minmax_scale, zscore_scale, standardize
+export quartile_scale, minmax_scale, zscore_scale, standardize, decorrelate
 export get_type, get_shift, get_scale, get_data_mean, get_data_reduction_mat, get_data_inflation_mat, get_rank
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
@@ -167,7 +167,7 @@ function initialize_processor!(
     T::Type{MMS},
 ) where {MM <: AbstractMatrix, MMS <: MinMaxScaling}
     minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(data)]
-    minmax_mat = reduce(hcat, minmax_vec) # 3 rows: Q1, Q2, and Q3
+    minmax_mat = reduce(hcat, minmax_vec) # 2 rows: min max
     append!(get_shift(as), minmax_mat[1, :])
     append!(get_scale(as), (minmax_mat[2, :] - minmax_mat[1, :]))
 end
@@ -178,7 +178,7 @@ function initialize_processor!(
     T::Type{ZSS},
 ) where {MM <: AbstractMatrix, ZSS <: ZScoreScaling}
     stat_vec = [[mean(dd), std(dd)] for dd in eachrow(data)]
-    stat_mat = reduce(hcat, stat_vec) # 3 rows: Q1, Q2, and Q3
+    stat_mat = reduce(hcat, stat_vec) # 2 rows: mean, std
     append!(get_shift(as), stat_mat[1, :])
     append!(get_scale(as), stat_mat[2, :])
 end
@@ -226,7 +226,9 @@ end
 """
 $(TYPEDEF)
 
-Standardizes the data to a multivariate N(0,I) distribution via `(xcov)^{-1/2}*(x-x_mean)`, along with rank reduction if data is low rank, or if the user provides a rank
+Standardizes the data to a multivariate N(0,I) distribution via `(xcov)^{-1/2}*(x-x_mean)`, along with rank reduction if data is low rank, or if the user provides a rank. This guarantees that the data samples will have sample mean `0` and covariance `I` after processing.
+
+Similar to the `Decorrelater`, but there the structure matrices will directly be used to perform decorrelation, and will become `I` after processing. In that case, the data samples may not have covariance `I` after processing.
 """
 struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector} <: DataContainerProcessor
     "user-provided rank for additional truncation of the space. used if rank < rank(data_cov)"
@@ -234,9 +236,9 @@ struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: Abstrac
     "storage for the data mean"
     data_mean::VV1
     "storage for wide-matrix representing `data_cov^{-1/2}`"
-    data_reduction_mat::VV2
+    encoder_mat::VV2
     "storage for tall-matrix representing `data_cov^{1/2}`"
-    data_inflation_mat::VV3
+    decoder_mat::VV3
 end
 
 standardize() = Standardizer(typemax(Int), Float64[], Any[], Any[])
@@ -247,13 +249,13 @@ standardize(rk::Int, T::Type) = Standardizer(rk, T[], Any[], Any[])
 standardize(rk::Int, T1::Type, T2::Type, T3::Type) = Standardizer(rk, T1[], T2[], T3[])
 
 get_data_mean(ss::Standardizer) = ss.data_mean
-get_data_reduction_mat(ss::Standardizer) = ss.data_reduction_mat
-get_data_inflation_mat(ss::Standardizer) = ss.data_inflation_mat
+get_encoder_mat(ss::Standardizer) = ss.encoder_mat
+get_decoder_mat(ss::Standardizer) = ss.decoder_mat
 get_rank(ss::Standardizer) = ss.rank
 
 function Base.show(io::IO, ss::Standardizer)
     if get_rank(ss) < typemax(Int)
-        out = "Standardizer, user-rank=$(get_rank(ss))"
+        out = "Standardizer: user-rank=$(get_rank(ss))"
     else
         out = "Standardizer"
     end
@@ -264,7 +266,7 @@ function initialize_processor!(ss::Standardizer, data::MM) where {MM <: Abstract
     if length(get_data_mean(ss)) == 0
         append!(get_data_mean(ss), mean(data, dims = 2))
     end
-    if length(get_data_reduction_mat(ss)) == 0
+    if length(get_encoder_mat(ss)) == 0
         # can use tsvd here so we only compute up to rk
         data_cov = cov(data, dims = 2)
         svdc = svd(data_cov)
@@ -276,23 +278,23 @@ function initialize_processor!(ss::Standardizer, data::MM) where {MM <: Abstract
             mat = svdc.U'
         end
 
-        reduction_mat = Diagonal(1 ./ sqrt.(svdc.S[1:rk])) * mat[1:rk, :]
-        inflation_mat = mat[1:rk, :]' * Diagonal(sqrt.(svdc.S[1:rk]))
-        push!(get_data_reduction_mat(ss), reduction_mat)
-        push!(get_data_inflation_mat(ss), inflation_mat)
+        encoder_mat = Diagonal(1 ./ sqrt.(svdc.S[1:rk])) * mat[1:rk, :]
+        decoder_mat = mat[1:rk, :]' * Diagonal(sqrt.(svdc.S[1:rk]))
+        push!(get_encoder_mat(ss), encoder_mat)
+        push!(get_decoder_mat(ss), decoder_mat)
     end
 end
 
 function encode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(ss)
-    reduction_mat = get_data_reduction_mat(ss)[1]
-    return reduction_mat * (data .- data_mean)
+    encoder_mat = get_encoder_mat(ss)[1]
+    return encoder_mat * (data .- data_mean)
 end
 
 function decode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(ss)
-    inflation_mat = get_data_inflation_mat(ss)[1]
-    return inflation_mat * data .+ data_mean
+    decoder_mat = get_decoder_mat(ss)[1]
+    return decoder_mat * data .+ data_mean
 end
 
 initialize_processor!(ss::Standardizer, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
@@ -301,34 +303,126 @@ encode_data(ss::Standardizer, data::MM, structure_matrix) where {MM <: AbstractM
 decode_data(ss::Standardizer, data::MM, structure_matrix) where {MM <: AbstractMatrix} = decode_data(ss, data)
 
 function encode_structure_matrix(ss::Standardizer, structure_matrix::MM) where {MM <: AbstractMatrix}
-    reduction_mat = get_data_reduction_mat(ss)[1]
-    return reduction_mat * structure_matrix * reduction_mat'
+    encoder_mat = get_encoder_mat(ss)[1]
+    return encoder_mat * structure_matrix * encoder_mat'
 end
 
 function decode_structure_matrix(ss::Standardizer, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
-    inflation_mat = get_data_inflation_mat(ss)[1]
-    return inflation_mat * enc_structure_matrix * inflation_mat'
+    decoder_mat = get_decoder_mat(ss)[1]
+    return decoder_mat * enc_structure_matrix * decoder_mat'
 end
 
 
 """
 $(TYPEDEF)
 
-Decorrelate the data via an SVD decomposition using a structure_matrix (`prior_cov` for inputs, `obs_noise_cov` for outputs), with optional truncation of singular vectors corresponding to largest singular values.
+Decorrelate the data via an SVD decomposition using a structure_matrix (`prior_cov` for inputs, `obs_noise_cov` for outputs), with optional truncation of singular vectors corresponding to largest singular values. The structure matrix will also become exactly `I` after processing.
+
+Similar to the `Standardizer`, except that the `Standardizer` uses the estimated covariance of the data to decorrelate in-place of the structure matrix. There, the data samples will have sample mean `0` and covariance `I` after processing.
+
+In the `Decorrelater` the user can do a combined approach where one uses cov(data) + structure matrix for decorrelation with the `add_estimated_data_cov=true` 
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct Decorrelater{MM1, MM2, FT} <: DataContainerProcessor
-    "the structure matrix - provided by the user"
-    structure_matrix::MM1
-    "the inverse of the structure matrix"
-    inv_structure_matrix::MM2
+struct Decorrelater{VV1, VV2, VV3, FT} <: DataContainerProcessor
+    "storage for the data mean"
+    data_mean::VV1
+    "the (possibly-encoded) structure matrix - provided by the user"
+    encoder_mat::VV2
+    "the inverse of the (possibly-encoded) structure matrix"
+    decoder_mat::VV3
     "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
-    retained_variance::FT
+    retain_var::FT
+    "If true, add the estimated cov(data) to the structure matrix for to modify the decorrelation"
+    add_estimated_cov::Bool
 end
 
+decorrelate(; retain_var::FT = Float64(1.0), add_estimated_cov = false) where {FT} =
+    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), add_estimated_cov)
 
+get_data_mean(dd::Decorrelater) = dd.data_mean
+get_encoder_mat(dd::Decorrelater) = dd.encoder_mat
+get_decoder_mat(dd::Decorrelater) = dd.decoder_mat
+get_retain_var(dd::Decorrelater) = dd.retain_var
+get_add_estimated_cov(dd::Decorrelater) = dd.add_estimated_cov
+
+function Base.show(io::IO, dd::Decorrelater)
+    out = "Decorrelater"
+    if get_retain_var(dd) < 1.0
+        out *= ": retain_var=$(get_retain_var(dd)) "
+    end
+    if get_add_estimated_cov(dd)
+        out *= ": add_estimated_cov=$(get_add_estimated_cov(dd)) "
+    end
+    print(io, out)
+end
+
+function initialize_processor!(
+    dd::Decorrelater,
+    data::MM,
+    structure_matrix::USorM,
+) where {MM <: AbstractMatrix, USorM <: Union{UniformScaling, AbstractMatrix}}
+    if length(get_data_mean(dd)) == 0
+        append!(get_data_mean(dd), mean(data, dims = 2))
+    end
+
+    if length(get_encoder_mat(dd)) == 0
+
+        # Can do tsvd here for large matrices
+        if get_add_estimated_cov(dd)
+            svdA = svd(structure_matrix + cov(data .- mean(data, dims = 2), dims = 2)) # with data covariance?
+        else
+            svdA = svd(structure_matrix)
+        end
+        ret_var = get_retain_var(dd)
+        if ret_var < 1.0
+            sv_cumsum = cumsum(svdA.S .^ 2) / sum(svdA.S .^ 2) # variance contributions are (sing_val)^2
+            trunc = minimum(findall(x -> (x > ret_var), sv_cumsum))
+            @info "    truncating at $(trunc)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc])% of the variance of the structure matrix"
+        else
+            trunc = rank(structure_matrix)
+        end
+        sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc]))
+        sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc]))
+
+        if size(svdA.U, 1) == size(svdA.U, 2)
+            mat = svdA.Vt
+        else
+            mat = svdA.U
+        end
+
+        encoder_mat = sqrt_inv_sv * mat[1:trunc, :]
+        decoder_mat = mat[1:trunc, :]' * sqrt_sv
+
+        push!(get_encoder_mat(dd), encoder_mat)
+        push!(get_decoder_mat(dd), decoder_mat)
+    end
+end
+
+function encode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(dd)
+    encoder_mat = get_encoder_mat(dd)[1]
+    return encoder_mat * (data .- data_mean)
+end
+
+function decode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(dd)
+    decoder_mat = get_decoder_mat(dd)[1]
+    return decoder_mat * data .+ data_mean
+end
+encode_data(dd::Decorrelater, data::MM, structure_matrix) where {MM <: AbstractMatrix} = encode_data(dd, data)
+decode_data(dd::Decorrelater, data::MM, structure_matrix) where {MM <: AbstractMatrix} = decode_data(dd, data)
+
+function encode_structure_matrix(dd::Decorrelater, structure_matrix::MM) where {MM <: AbstractMatrix}
+    encoder_mat = get_encoder_mat(dd)[1]
+    return encoder_mat * structure_matrix * encoder_mat'
+end
+
+function decode_structure_matrix(dd::Decorrelater, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+    decoder_mat = get_decoder_mat(dd)[1]
+    return decoder_mat * enc_structure_matrix * decoder_mat'
+end
 
 # ...struct VariationalAutoEncoder  <: DataContainerProcessor end
 
@@ -487,7 +581,7 @@ function encode_with_schedule(
 
     # apply_to is the string "in", "out" etc.
     for (processor, extract_data, apply_to) in encoder_schedule
-        @info "Encoding data: $(apply_to) with $(processor)"
+        @info "Encoding data: \"$(apply_to)\" with $(processor)"
         if apply_to == "in"
             structure_matrix = processed_prior_cov
         elseif apply_to == "out"
@@ -531,7 +625,7 @@ function decode_with_schedule(
             structure_matrix = processed_obs_noise_cov
         end
 
-        @info "Decoding data: $(apply_to) with $(processor)"
+        @info "Decoding data: \"$(apply_to)\" with $(processor)"
         processed = decode_data(processor, extract_data(processed_io_pairs), structure_matrix, apply_to)
 
         if apply_to == "in"

@@ -74,6 +74,10 @@ end
 
 @testset "Data Preprocessing" begin
 
+    using LinearAlgebra, Distributions, Statistics
+    using CalibrateEmulateSample.DataContainers
+    using CalibrateEmulateSample.Utilities
+
     # get some data as IO pairs
     in_dim = 10
     out_dim = 50
@@ -86,13 +90,134 @@ end
     out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
+    test_names = ["zscore", "quartile", "minmax"]
 
-    # Create a lossless encoding schedule
+    # Test the encodings
+    univariate_tests =
+        [[(zscore_scale(), "in_and_out")], [(quartile_scale(), "in_and_out")], [(minmax_scale(), "in_and_out")]]
+
+    tol = 1e-12
+
+    for (name, sch) in zip(test_names, univariate_tests)
+        encoder_schedule = create_encoder_schedule(sch)
+        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
+            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+
+        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
+            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
+        for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
+            (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
+            (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
+            (get_inputs(io_pairs), get_outputs(io_pairs)),
+            (encoded_prior_cov, encoded_obs_noise_cov),
+            (decoded_prior_cov, decoded_obs_noise_cov),
+            (prior_cov, obs_noise_cov),
+            (in_dim, out_dim),
+        )
+
+            if name == "zscore"
+                stat_vec = [[mean(dd), std(dd)] for dd in eachrow(enc_dat)]
+                stat_mat = reduce(hcat, stat_vec)
+                @test all(isapprox.(stat_mat[1, :], zeros(dim), atol = tol))
+                @test all(isapprox.(stat_mat[2, :], ones(dim), atol = tol))
+
+                test_vec = [[mean(dd), std(dd)] for dd in eachrow(test_dat)]
+                test_mat = reduce(hcat, test_vec)
+                @test isapprox(norm(enc_covv - Diagonal(1 ./ test_mat[2, :] .^ 2) * test_covv), 0.0, atol = tol * dim^2)
+            elseif name == "quartile"
+                quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(enc_dat)]
+                quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
+                @test all(isapprox.(quartiles_mat[2, :], zeros(dim), atol = tol))
+                @test all(isapprox.(quartiles_mat[3, :] - quartiles_mat[1, :], ones(dim), atol = tol))
+                test_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(test_dat)]
+                test_mat = reduce(hcat, test_vec)
+                @test isapprox(
+                    norm(enc_covv - Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :]) .^ 2) * test_covv),
+                    0.0,
+                    atol = tol * dim^2,
+                )
+            elseif name == "minmax"
+                minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(enc_dat)]
+                minmax_mat = reduce(hcat, minmax_vec) # 2 rows: min, max
+                @test all(isapprox.(minmax_mat[1, :], zeros(dim), atol = tol))
+                @test all(isapprox.(minmax_mat[2, :], ones(dim), atol = tol))
+                test_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(test_dat)]
+                test_mat = reduce(hcat, test_vec)
+                @test isapprox(
+                    norm(enc_covv - Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :]) .^ 2) * test_covv),
+                    0.0,
+                    atol = tol * dim^2,
+                )
+            end
+
+            @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
+            @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+
+        end
+
+    end
+
+
+    # multivariate lossless encodings
+    test_names = ["standardize", "decorrelate"]
+    multivariate_lossless_tests = [[(standardize(), "in_and_out")], [(decorrelate(), "in_and_out")]]
+
+    for (name, sch) in zip(test_names, multivariate_lossless_tests)
+        encoder_schedule = create_encoder_schedule(sch)
+        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
+            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+
+        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
+            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
+        for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
+            (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
+            (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
+            (get_inputs(io_pairs), get_outputs(io_pairs)),
+            (encoded_prior_cov, encoded_obs_noise_cov),
+            (decoded_prior_cov, decoded_obs_noise_cov),
+            (prior_cov, obs_noise_cov),
+            (in_dim, out_dim),
+        )
+
+            if name == "standardize"
+                pop_mean = mean(enc_dat, dims = 2)
+                pop_cov = cov(enc_dat, dims = 2)
+                dimm = size(pop_cov, 1)
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+
+            elseif name == "decorrelate"
+                pop_mean = mean(enc_dat, dims = 2)
+                pop_cov = cov(enc_dat, dims = 2)
+                dimm = size(pop_cov, 1)
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
+            end
+
+            @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
+            @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+
+        end
+    end
+
+    multivariate_lossy_tests = [
+        [(standardize(5), "in_and_out")],
+        [(decorrelate(retain_var = 0.95), "in_and_out")],
+        [(decorrelate(add_estimated_cov = true), "in_and_out")],
+    ]
+
+    # LOSSY TESTS HERE
+
+
+    # combine a few lossless encoding schedules
     schedule_builder = [
         (zscore_scale(), "in_and_out"), # 
         (quartile_scale(), "in"),
         (standardize(), "in_and_out"),
         (minmax_scale(), "out"),
+        (decorrelate(), "in_and_out"),
     ]
 
     # make schedule more parsable
