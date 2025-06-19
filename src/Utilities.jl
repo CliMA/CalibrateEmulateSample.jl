@@ -19,7 +19,7 @@ export PairedDataContainerProcessor, DataContainerProcessor
 export UnivariateAffineScaling, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer
 
 export quartile_scale, minmax_scale, zscore_scale, standardize, decorrelate
-export get_type, get_shift, get_scale, get_data_mean, get_data_reduction_mat, get_data_inflation_mat, get_rank
+export get_type, get_shift, get_scale, get_data_mean, get_data_encoder_mat, get_data_decoder_mat, get_rank, get_retain_var, get_add_estimated_cov
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_obs_noise_cov, decode_obs_noise_cov
@@ -371,7 +371,7 @@ function initialize_processor!(
 
         # Can do tsvd here for large matrices
         if get_add_estimated_cov(dd)
-            svdA = svd(structure_matrix + cov(data .- mean(data, dims = 2), dims = 2)) # with data covariance?
+            svdA = svd(structure_matrix + cov(data, dims = 2)) # with data covariance?
         else
             svdA = svd(structure_matrix)
         end
