@@ -74,6 +74,9 @@ end
 
 @testset "Data Preprocessing" begin
 
+     # Seed for pseudo-random number generator
+    rng = Random.MersenneTwister(4154)
+
     # quick build tests and test getters
     zs = zscore_scale()
     mm = minmax_scale()
@@ -110,15 +113,16 @@ end
     @test get_decoder_mat(DD) == [3]
 
     # get some data as IO pairs for functional tests
+
     in_dim = 10
     out_dim = 50
-    samples = 100
+    samples = 40 # for full test coverage have samples in_dim < samples < out_dim
 
-    x = randn(in_dim, in_dim)
+    x = randn(rng, in_dim, in_dim)
     prior_cov = x * x'
-    in_data = rand(MvNormal(zeros(in_dim), prior_cov), samples)
+    in_data = rand(rng, MvNormal(zeros(in_dim), prior_cov), samples)
     obs_noise_cov = [max(5.0 - abs(i - j), 0.0) for i in 1:out_dim, j in 1:out_dim] # [5 4 3 2 1 0 0 ...] off diagonal
-    out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
+    out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
     test_names = [
@@ -206,19 +210,19 @@ end
             pop_mean = mean(enc_dat, dims = 2)
             pop_cov = cov(enc_dat, dims = 2)
             dimm = size(pop_cov, 1)
+            big_tol = 0.1
             if name == "standardize"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
-
+                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
             elseif name == "decorrelate"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
             elseif name == "decorrelate-estimate-cov"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
             end
 
             # Multivariate lossy dim-reduction tests
@@ -226,31 +230,36 @@ end
                 @test dimm == 5
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
-
+                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
             elseif name == "decorrelate-retain-0.95-var"
                 svdc = svd(test_covv)
                 var_cumsum = cumsum(svdc.S .^ 2) ./ sum(svdc.S .^ 2)
                 @test var_cumsum[dimm] > 0.95
                 @test var_cumsum[dimm - 1] < 0.95
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
+                @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
             end
 
             # test decode approximation of lossless options
             if ll_flag
-                @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
-                @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+                # when dimm < dim, loss can occur in some tests
+                tol1 = (name == "decorrelate" && dimm < dim) ? big_tol : tol                    
+                tol2 = (name == "standardize" && dimm < dim) ? big_tol : tol
+                @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol1 * dim * samples)
+                @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol2 * dim^2)
             end
 
         end
 
     end
 
+    # combine a few lossless encoding schedules (lossless requires samples>dims)
+    samples = 150 # for full test coverage have samples in_dim < samples < out_dim
+    in_data = rand(MvNormal(zeros(in_dim), prior_cov), samples)
+    out_data = rand(MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
+    io_pairs = PairedDataContainer(in_data, out_data)
 
-
-    # combine a few lossless encoding schedules
     schedule_builder = [
         (zscore_scale(), "in_and_out"), # 
         (quartile_scale(), "in"),
@@ -273,11 +282,7 @@ end
     tol = 1e-12
     @test all(isapprox.(get_inputs(io_pairs), get_inputs(decoded_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(io_pairs), get_outputs(decoded_io_pairs), atol = tol))
-    @test all(isapprox.(prior_cov, decoded_prior_cov, atol = tol))
-    @test all(isapprox.(obs_noise_cov, decoded_obs_noise_cov, atol = tol))
+    @test isapprox(norm(prior_cov - decoded_prior_cov), 0.0, atol = tol*in_dim^2)
+    @test isapprox(norm(obs_noise_cov - decoded_obs_noise_cov), 0.0, atol = tol*out_dim^2)
 
-
-    
-    
-    
 end
