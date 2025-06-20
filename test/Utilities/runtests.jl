@@ -249,83 +249,6 @@ end
     end
 
 
-    # multivariate lossless encodings
-    test_names = ["standardize", "decorrelate"]
-    multivariate_lossless_tests = []
-
-    for (name, sch) in zip(test_names, multivariate_lossless_tests)
-        encoder_schedule = create_encoder_schedule(sch)
-        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-
-        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
-            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
-        for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
-            (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
-            (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
-            (get_inputs(io_pairs), get_outputs(io_pairs)),
-            (encoded_prior_cov, encoded_obs_noise_cov),
-            (decoded_prior_cov, decoded_obs_noise_cov),
-            (prior_cov, obs_noise_cov),
-            (in_dim, out_dim),
-        )
-
-            if name == "standardize"
-                pop_mean = mean(enc_dat, dims = 2)
-                pop_cov = cov(enc_dat, dims = 2)
-                dimm = size(pop_cov, 1)
-                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
-
-            elseif name == "decorrelate"
-                pop_mean = mean(enc_dat, dims = 2)
-                pop_cov = cov(enc_dat, dims = 2)
-                dimm = size(pop_cov, 1)
-                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = 0.2 * dimm^2) # expect poorly accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
-            end
-
-            @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim)
-            @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
-
-        end
-    end
-
-    test_names = ["standardize-truncate-to-5", "decorrelate-retain-partial-var", "decorrelate-estimate-cov"]
-
-    multivariate_lossy_tests = [
-        [(standardize(5), "in_and_out")],
-        [(decorrelate(retain_var = 0.95), "in_and_out")],
-        [(decorrelate(add_estimated_cov = true), "in_and_out")],
-    ]
-
-    for (name, sch) in zip(test_names, multivariate_lossless_tests)
-        encoder_schedule = create_encoder_schedule(sch)
-        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-
-        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
-            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
-        for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
-            (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
-            (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
-            (get_inputs(io_pairs), get_outputs(io_pairs)),
-            (encoded_prior_cov, encoded_obs_noise_cov),
-            (decoded_prior_cov, decoded_obs_noise_cov),
-            (prior_cov, obs_noise_cov),
-            (in_dim, out_dim),
-        )
-
-
-        end
-    end
-
-
-
-    # LOSSY TESTS HERE
-
 
     # combine a few lossless encoding schedules
     schedule_builder = [
@@ -353,4 +276,8 @@ end
     @test all(isapprox.(prior_cov, decoded_prior_cov, atol = tol))
     @test all(isapprox.(obs_noise_cov, decoded_obs_noise_cov, atol = tol))
 
+
+    
+    
+    
 end
