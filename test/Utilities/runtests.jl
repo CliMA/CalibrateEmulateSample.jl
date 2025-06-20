@@ -74,7 +74,7 @@ end
 
 @testset "Data Preprocessing" begin
 
-     # Seed for pseudo-random number generator
+    # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(4154)
 
     # quick build tests and test getters
@@ -244,7 +244,7 @@ end
             # test decode approximation of lossless options
             if ll_flag
                 # when dimm < dim, loss can occur in some tests
-                tol1 = (name == "decorrelate" && dimm < dim) ? big_tol : tol                    
+                tol1 = (name == "decorrelate" && dimm < dim) ? big_tol : tol
                 tol2 = (name == "standardize" && dimm < dim) ? big_tol : tol
                 @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol1 * dim * samples)
                 @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol2 * dim^2)
@@ -282,7 +282,37 @@ end
     tol = 1e-12
     @test all(isapprox.(get_inputs(io_pairs), get_inputs(decoded_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(io_pairs), get_outputs(decoded_io_pairs), atol = tol))
-    @test isapprox(norm(prior_cov - decoded_prior_cov), 0.0, atol = tol*in_dim^2)
-    @test isapprox(norm(obs_noise_cov - decoded_obs_noise_cov), 0.0, atol = tol*out_dim^2)
+    @test isapprox(norm(prior_cov - decoded_prior_cov), 0.0, atol = tol * in_dim^2)
+    @test isapprox(norm(obs_noise_cov - decoded_obs_noise_cov), 0.0, atol = tol * out_dim^2)
+
+    # enc/dec just data
+    samples = 1 # try one sample
+    new_in_data = rand(rng, MvNormal(zeros(in_dim), prior_cov), samples)
+    new_out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
+    id = DataContainer(new_in_data)
+    od = DataContainer(new_out_data)
+
+    encoded_id = encode_with_schedule(encoder_schedule, id, "in")
+    encoded_od = encode_with_schedule(encoder_schedule, od, "out")
+    decoded_id = decode_with_schedule(encoder_schedule, encoded_id, "in")
+    decoded_od = decode_with_schedule(encoder_schedule, encoded_od, "out")
+    # tests in latent space?
+    @test isapprox(norm(get_data(decoded_id) - get_data(id)), 0.0, atol = tol * in_dim * samples)
+    @test isapprox(norm(get_data(decoded_od) - get_data(od)), 0.0, atol = tol * out_dim * samples)
+    @test_throws ArgumentError encode_with_schedule(encoder_schedule, id, "bad")
+    @test_throws ArgumentError decode_with_schedule(encoder_schedule, id, "bad")
+
+    # enc/dec just mats
+    encoded_pc = encode_with_schedule(encoder_schedule, prior_cov, "in")
+    encoded_oc = encode_with_schedule(encoder_schedule, obs_noise_cov, "out")
+    decoded_pc = decode_with_schedule(encoder_schedule, encoded_pc, "in")
+    decoded_oc = decode_with_schedule(encoder_schedule, encoded_oc, "out")
+    @test isapprox(norm(encoded_pc - encoded_prior_cov), 0.0, atol = tol * in_dim^2)
+    @test isapprox(norm(encoded_oc - encoded_obs_noise_cov), 0.0, atol = tol * out_dim^2)
+    @test isapprox(norm(decoded_pc - decoded_prior_cov), 0.0, atol = tol * in_dim^2)
+    @test isapprox(norm(decoded_oc - decoded_obs_noise_cov), 0.0, atol = tol * out_dim^2)
+    @test_throws ArgumentError encode_with_schedule(encoder_schedule, prior_cov, "bad")
+    @test_throws ArgumentError decode_with_schedule(encoder_schedule, encoded_pc, "bad")
+
 
 end

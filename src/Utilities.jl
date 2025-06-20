@@ -30,7 +30,7 @@ export get_type,
     get_add_estimated_cov
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
-    initialize_and_encode_data!, encode_data, decode_data, encode_obs_noise_cov, decode_obs_noise_cov
+    initialize_and_encode_data!, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 
 
 
@@ -435,50 +435,42 @@ struct CanonicalCorrelationReducer <: PairedDataContainerProcessor end
 function initialize_and_encode_data!(
     dcp::DCP,
     data::MM,
-    obs_noise_cov::USorM,
+    structure_mat::USorM,
 ) where {DCP <: DataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, MM <: AbstractMatrix}
-    initialize_processor!(dcp, data, obs_noise_cov)
+    initialize_processor!(dcp, data, structure_mat)
     return encode_data(dcp, data)
 end
 
 initialize_and_encode_data!(
     dcp::DCP,
     data::MM,
-    obs_noise_cov::USorM,
+    structure_mat::USorM,
     apply_to::AS,
 ) where {
     DCP <: DataContainerProcessor,
     MM <: AbstractMatrix,
     USorM <: Union{UniformScaling, AbstractMatrix},
     AS <: AbstractString,
-} = initialize_and_encode_data!(dcp, data, obs_noise_cov)
+} = initialize_and_encode_data!(dcp, data, structure_mat)
 
 decode_data(
     dcp::DCP,
     data::MM,
     apply_to::AS,
-) where {
-    DCP <: DataContainerProcessor,
-    MM <: AbstractMatrix,
-    AS <: AbstractString,
-} = decode_data(dcp, data)
+) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} = decode_data(dcp, data)
 
 function initialize_and_encode_data!(
     dcp::PDCP,
     data,
-    obs_noise_cov::USorM,
+    structure_mat::USorM,
     apply_to::AS,
 ) where {PDCP <: PairedDataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
     input_data, output_data = data
-    initialize_processor!(dcp, input_data, output_data, obs_noise_cov, apply_to)
+    initialize_processor!(dcp, input_data, output_data, structure_mat, apply_to)
     return encode_data(dcp, input_data, output_data, apply_to)
 end
 
-function decode_data(
-    dcp::PDCP,
-    data,
-    apply_to::AS,
-) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
+function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
     input_data, output_data = data
     return decode_data(dcp, input_data, output_data, apply_to)
 end
@@ -599,24 +591,23 @@ function encode_with_schedule(
     encoder_schedule::VV,
     data_container::DC,
     in_or_out::AS,
-) where {
-    VV <: AbstractVector,
-    DC <: DataContainer,
-    AS <: AbstractString,
-}
+) where {VV <: AbstractVector, DC <: DataContainer, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in","out"])
-        throw(ArgumentError("`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)"))
+    if !(in_or_out ∈ ["in", "out"])
+        throw(
+            ArgumentError(
+                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
+            ),
+        )
     end
     processed_container = deepcopy(data_container)
 
     # apply_to is the string "in", "out" etc.
     for (processor, extract_data, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            @info "Encoding data: \"$(apply_to)\" with $(processor)"
-            processed = encode_data(processor, extract_data(processed_io_pairs), apply_to)
+            processed = encode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
-          
+
         end
     end
 
@@ -627,21 +618,21 @@ function encode_with_schedule(
     encoder_schedule::VV,
     structure_matrix::USorM,
     in_or_out::AS,
-) where {
-    VV <: AbstractVector,
-    USorM <: Union{UniformScaling, AbstractMatrix},
-    AS <: AbstractString,
-}
+) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in","out"])
-        throw(ArgumentError("`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)"))
+    if !(in_or_out ∈ ["in", "out"])
+        throw(
+            ArgumentError(
+                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
+            ),
+        )
     end
     processed_structure_matrix = deepcopy(structure_matrix)
 
     # apply_to is the string "in", "out" etc.
     for (processor, extract_data, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            processed_structure_matrix = encode_structure_matrix(processor, processed_structure_matrix)   
+            processed_structure_matrix = encode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
@@ -685,14 +676,14 @@ function decode_with_schedule(
     encoder_schedule::VV,
     data_container::DC,
     in_or_out::AS,
-) where {
-    VV <: AbstractVector,
-    DC <: DataContainer,
-    AS <: AbstractString,
-}
+) where {VV <: AbstractVector, DC <: DataContainer, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in","out"])
-        throw(ArgumentError("`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)"))
+    if !(in_or_out ∈ ["in", "out"])
+        throw(
+            ArgumentError(
+                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
+            ),
+        )
     end
     processed_container = deepcopy(data_container)
 
@@ -700,9 +691,9 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, extract_data, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed = decode_data(processor, extract_data(processed_io_pairs), apply_to)
+            processed = decode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
-          
+
         end
     end
 
@@ -713,14 +704,14 @@ function decode_with_schedule(
     encoder_schedule::VV,
     structure_matrix::USorM,
     in_or_out::AS,
-) where {
-    VV <: AbstractVector,
-    USorM <: Union{UniformScaling, AbstractMatrix},
-    AS <: AbstractString,
-}
+) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in","out"])
-        throw(ArgumentError("`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)"))
+    if !(in_or_out ∈ ["in", "out"])
+        throw(
+            ArgumentError(
+                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
+            ),
+        )
     end
     processed_structure_matrix = deepcopy(structure_matrix)
 
@@ -728,7 +719,7 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, extract_data, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed_structure_matrix = decode_structure_matrix(processor, processed_structure_matrix)   
+            processed_structure_matrix = decode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
