@@ -17,7 +17,6 @@ export zscore2orig
 
 export PairedDataContainerProcessor, DataContainerProcessor
 export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer, Decorrelater
-
 export quartile_scale, minmax_scale, zscore_scale, standardize, decorrelate
 export get_type,
     get_shift,
@@ -31,6 +30,10 @@ export get_type,
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
+
+export CanonicalCorrelation
+export canonical_correlation
+export get_apply_to
 
 
 
@@ -266,18 +269,13 @@ function initialize_processor!(ss::Standardizer, data::MM) where {MM <: Abstract
     end
     if length(get_encoder_mat(ss)) == 0
         # can use tsvd here so we only compute up to rk
-        data_cov = cov(data, dims = 2)
-        svdc = svd(data_cov)
-        rk = min(rank(data_cov), max(get_rank(ss), 1))
-        # Want to use the nonsquare singular vector
-        if size(svdc.U, 1) == size(svdc.U, 2)
-            mat = svdc.Vt
-        else
-            mat = svdc.U'
-        end
+        cov_data = cov(data, dims = 2)
+        svdc = svd(cov_data)
+        rk = min(rank(cov_data), max(get_rank(ss), 1))
 
-        encoder_mat = Diagonal(1 ./ sqrt.(svdc.S[1:rk])) * mat[1:rk, :]
-        decoder_mat = mat[1:rk, :]' * Diagonal(sqrt.(svdc.S[1:rk]))
+        # rescale with sqrt(size(data,2)) to normalize
+        encoder_mat = Diagonal(1 ./ sqrt.(svdc.S[1:rk])) * svdc.Vt[1:rk, :]
+        decoder_mat = svdc.Vt[1:rk, :]' * Diagonal(sqrt.(svdc.S[1:rk]))
         push!(get_encoder_mat(ss), encoder_mat)
         push!(get_decoder_mat(ss), decoder_mat)
     end
@@ -382,14 +380,9 @@ function initialize_processor!(
         sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc]))
         sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc]))
 
-        if size(svdA.U, 1) == size(svdA.U, 2)
-            mat = svdA.Vt
-        else
-            mat = svdA.U
-        end
-
-        encoder_mat = sqrt_inv_sv * mat[1:trunc, :]
-        decoder_mat = mat[1:trunc, :]' * sqrt_sv
+        # as we have svd of cov-matrix we can use U or Vt
+        encoder_mat = sqrt_inv_sv * svdA.Vt[1:trunc, :]
+        decoder_mat = svdA.Vt[1:trunc, :]' * sqrt_sv
 
         push!(get_encoder_mat(dd), encoder_mat)
         push!(get_decoder_mat(dd), decoder_mat)
@@ -421,17 +414,166 @@ end
 # ...struct VariationalAutoEncoder  <: DataContainerProcessor end
 
 # PDCProcessors
-struct DataInformedReducer <: PairedDataContainerProcessor end
+# struct InverseProblemInformed <: PairedDataContainerProcessor end
+# struct LikelihoodInformed <: PairedDataContainerProcessor end
 
-struct LikelihoodInformedReducer <: PairedDataContainerProcessor end
 
-struct CanonicalCorrelationReducer <: PairedDataContainerProcessor end
+"""
+$(TYPEDEF)
+
+Uses both input and output data to learn a subspace of maximal correlation between inputs and outputs. The subspace for a pair (X,Y) will be of size minimum(rank(X),rank(Y)), computed using SVD-based method
+e.g. See e.g., https://numerical.recipes/whp/notes/CanonCorrBySVD.pdf
+
+# Fields
+$(TYPEDFIELDS)
+"""
+struct CanonicalCorrelation{VV1, VV2, VV3, FT, VV4} <: PairedDataContainerProcessor
+    "storage for the input or output data mean"
+    data_mean::VV1
+    "the encoding matrix of input or output canonical correlations"
+    encoder_mat::VV2
+    "the decoding matrix of input or output canonical correlations"
+    decoder_mat::VV3
+    "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
+    retain_var::FT
+    "Stores whether this is an input or output encoder (vector with string \"in\" or \"out\")"
+    apply_to::VV4
+end
+
+canonical_correlation(; retain_var = Float64(1.0)) =
+    CanonicalCorrelation(Any[], Any[], Any[], retain_var, AbstractString[])
+
+get_data_mean(cc::CanonicalCorrelation) = cc.data_mean
+get_encoder_mat(cc::CanonicalCorrelation) = cc.encoder_mat
+get_decoder_mat(cc::CanonicalCorrelation) = cc.decoder_mat
+get_retain_var(cc::CanonicalCorrelation) = cc.retain_var
+get_apply_to(cc::CanonicalCorrelation) = cc.apply_to
+
+function Base.show(io::IO, cc::CanonicalCorrelation)
+    if get_retain_var(cc) < 1.0
+        out = "CanonicalCorrelation: retain_var=$(get_retain_var(cc))"
+    else
+        out = "CanonicalCorrelation"
+    end
+    print(io, out)
+end
+
+function initialize_processor!(
+    cc::CanonicalCorrelation,
+    in_data::MM,
+    out_data::MM,
+    apply_to::AS,
+) where {MM <: AbstractMatrix, AS <: AbstractString}
+
+    if length(get_apply_to(cc)) == 0
+        push!(get_apply_to(cc), apply_to)
+    end
+
+    if length(get_data_mean(cc)) == 0
+        if apply_to == "in"
+            append!(get_data_mean(cc), mean(in_data, dims = 2))
+        elseif apply_to == "out"
+            append!(get_data_mean(cc), mean(out_data, dims = 2))
+        end
+    end
+
+    if length(get_encoder_mat(cc)) == 0
+
+        if size(in_data, 2) < size(in_data, 1) || size(out_data, 2) < size(out_data, 1)
+            throw(
+                ArgumentError(
+                    "CanonicalCorrelation implementation not defined for # data samples < dimensions, please obtain more samples, or perform prior dimension reduction approaches until this is satisfied",
+                ),
+            )
+        end
+
+        # Individually decompose in and out
+        # Want to use the nonsquare singular vector
+        svdi = svd(in_data .- mean(in_data, dims = 2))
+        svdo = svd(out_data .- mean(out_data, dims = 2))
+        # determine regime
+
+        # ensure we non-square sv (in_mat = (in_dim x n_samples), out_mat = (out_dim x n_samples))
+        in_mat_sq, in_mat_nonsq = (size(svdi.U, 1) == size(svdi.U, 2)) ? (svdi.U, svdi.Vt) : (svdi.Vt, svdi.U)
+        out_mat_sq, out_mat_nonsq = (size(svdo.U, 1) == size(svdo.U, 2)) ? (svdo.U, svdo.Vt) : (svdo.Vt, svdo.U)
+
+        svdio = svd(out_mat_nonsq * in_mat_nonsq')
+
+        # retain variance
+        ret_var = get_retain_var(cc)
+        if ret_var < 1.0
+            sv_cumsum = cumsum(svdio.S .^ 2) / sum(svdio.S .^ 2) # variance contributions are (sing_val)^2
+            trunc = minimum(findall(x -> (x > ret_var), sv_cumsum))
+            @info "    truncating at $(trunc)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc])% of the variance in the joint space"
+        else
+            trunc = min(rank(in_data), rank(out_data))
+        end
+
+        if apply_to == "in"
+            in_dim = size(in_data, 1)
+            svdio_mat = (size(svdio.U, 1) == in_dim) ? svdio.U : svdio.V
+            # mat' * Sx⁻¹ * Uxt
+            encoder_mat = svdio_mat[:, 1:trunc]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
+            decoder_mat = in_mat_sq * Diagonal(svdi.S) * svdio_mat[:, 1:trunc]
+        else
+            apply_to == "out"
+            out_dim = size(out_data, 1)
+            svdio_mat = (size(svdio.U, 1) == out_dim) ? svdio.U : svdio.V
+            # Vt * Sy⁻¹ * Uyt
+            encoder_mat = svdio_mat[:, 1:trunc]' * Diagonal(1 ./ svdo.S) * out_mat_sq'
+            decoder_mat = out_mat_sq * Diagonal(svdo.S) * svdio_mat[:, 1:trunc]
+        end
+
+        push!(get_encoder_mat(cc), encoder_mat)
+        push!(get_decoder_mat(cc), decoder_mat)
+
+        # Note: To check CCA: 
+        # u = in_encoder * (in - mean(in))
+        # v = out_encoder * (out - mean(out))
+        # u * u' = v * v' = I, 
+        # v * u' = u * v' = Diagonal(svdio.S[1:trunc])
+    end
+end
+
+initialize_processor!(
+    cc::CanonicalCorrelation,
+    in_data::MM,
+    out_data::MM,
+    structure_matrix,
+    apply_to::AS,
+) where {MM <: AbstractMatrix, AS <: AbstractString} = initialize_processor!(cc, in_data, out_data, apply_to)
+
+
+function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(cc)
+    encoder_mat = get_encoder_mat(cc)[1]
+    return encoder_mat * (data .- data_mean)
+end
+
+function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
+    data_mean = get_data_mean(cc)
+    decoder_mat = get_decoder_mat(cc)[1]
+    return decoder_mat * data .+ data_mean
+end
+
+function encode_structure_matrix(cc::CanonicalCorrelation, structure_matrix::MM) where {MM <: AbstractMatrix}
+    encoder_mat = get_encoder_mat(cc)[1]
+    return encoder_mat * structure_matrix * encoder_mat'
+end
+
+function decode_structure_matrix(cc::CanonicalCorrelation, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+    decoder_mat = get_decoder_mat(cc)[1]
+    return decoder_mat * enc_structure_matrix * decoder_mat'
+end
+
+
+
 
 
 ####
 
 
-# generic function to build and encode data
+# generic functions to initialize, encode, and decode data. With Data processors or PairedData processors
 function initialize_and_encode_data!(
     dcp::DCP,
     data::MM,
@@ -467,12 +609,20 @@ function initialize_and_encode_data!(
 ) where {PDCP <: PairedDataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
     input_data, output_data = data
     initialize_processor!(dcp, input_data, output_data, structure_mat, apply_to)
-    return encode_data(dcp, input_data, output_data, apply_to)
+    if apply_to == "in"
+        return encode_data(dcp, input_data)
+    elseif apply_to == "out"
+        return encode_data(dcp, output_data)
+    end
 end
 
 function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
     input_data, output_data = data
-    return decode_data(dcp, input_data, output_data, apply_to)
+    if apply_to == "in"
+        return decode_data(dcp, input_data)
+    elseif apply_to == "out"
+        return decode_data(dcp, output_data)
+    end
 end
 
 """
@@ -559,7 +709,6 @@ function encode_with_schedule(
     USorM1 <: Union{UniformScaling, AbstractMatrix},
     USorM2 <: Union{UniformScaling, AbstractMatrix},
 }
-
     processed_io_pairs = deepcopy(io_pairs)
     processed_prior_cov = deepcopy(prior_cov_in)
     processed_obs_noise_cov = deepcopy(obs_noise_cov_in)

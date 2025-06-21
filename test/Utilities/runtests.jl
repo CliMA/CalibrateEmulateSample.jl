@@ -116,7 +116,7 @@ end
 
     in_dim = 10
     out_dim = 50
-    samples = 40 # for full test coverage have samples in_dim < samples < out_dim
+    samples = 120 # for full test coverage have samples in_dim < samples < out_dim
 
     x = randn(rng, in_dim, in_dim)
     prior_cov = x * x'
@@ -125,36 +125,36 @@ end
     out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
-    test_names = [
+    test_names = [ # order as in tests
         "zscore",
         "quartile",
         "minmax",
         "standardize",
         "decorrelate",
         "decorrelate-estimate-cov",
+        "canonical-correlation",
         "standardize-truncate-to-5",
         "decorrelate-retain-0.95-var",
     ]
 
-
-
     # Test encodings-decodings individually
-    univariate_tests = [
+    schedules = [
         [(zscore_scale(), "in_and_out")],
         [(quartile_scale(), "in_and_out")],
         [(minmax_scale(), "in_and_out")],
         [(standardize(), "in_and_out")],
         [(decorrelate(), "in_and_out")],
         [(decorrelate(add_estimated_cov = true), "in_and_out")],
+        [(canonical_correlation(), "in_and_out")],
         [(standardize(5), "in_and_out")],
         [(decorrelate(retain_var = 0.95), "in_and_out")],
     ]
-    lossless = [fill(true, 6); fill(false, 2)] # are these lossy approximations
+    lossless = [fill(true, 6); fill(false, 3)] # are these lossy approximations? 
 
     # functional test pipeline
     tol = 1e-12
 
-    for (name, sch, ll_flag) in zip(test_names, univariate_tests, lossless)
+    for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
             encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
@@ -214,7 +214,7 @@ end
             if name == "standardize"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate, particularly if dimm < dim
             elseif name == "decorrelate"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
@@ -241,6 +241,26 @@ end
                 @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
             end
 
+            # Paired data processor reduction:
+            if name == "canonical-correlation"
+                @test dimm == min(rank(get_inputs(io_pairs)), rank(get_outputs(io_pairs)))
+                @test isapprox(norm(enc_dat * enc_dat' - I), 0.0, atol = tol * dimm^2) # test in or out orthogonality
+
+                # check cross-orthogonality is diagonal (nb this test will be duplicate)
+                enc_in = get_inputs(encoded_io_pairs)
+                enc_out = get_outputs(encoded_io_pairs)
+                @test isapprox(norm(enc_in * enc_out' - Diagonal(diag(enc_in * enc_out'))), 0.0, atol = tol * dimm^2) # test cross - orthogonality
+
+                @test isapprox(norm(enc_out * enc_in' - Diagonal(diag(enc_out * enc_in'))), 0.0, atol = tol * dimm^2) # test cross - orthogonality
+
+                # decoder test is lossless only for smaller dimension
+                if dim == min(in_dim, out_dim)
+                    @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol * dim * samples)
+                    @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol * dim^2)
+                end
+
+            end
+
             # test decode approximation of lossless options
             if ll_flag
                 # when dimm < dim, loss can occur in some tests
@@ -248,6 +268,7 @@ end
                 tol2 = (name == "standardize" && dimm < dim) ? big_tol : tol
                 @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol1 * dim * samples)
                 @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol2 * dim^2)
+
             end
 
         end
@@ -313,6 +334,8 @@ end
     @test isapprox(norm(decoded_oc - decoded_obs_noise_cov), 0.0, atol = tol * out_dim^2)
     @test_throws ArgumentError encode_with_schedule(encoder_schedule, prior_cov, "bad")
     @test_throws ArgumentError decode_with_schedule(encoder_schedule, encoded_pc, "bad")
+
+
 
 
 end
