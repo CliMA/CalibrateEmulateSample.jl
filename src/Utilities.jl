@@ -335,11 +335,11 @@ end
 $(TYPEDSIGNATURES)
 
 Constructs the `Decorrelater` struct. Users can add optional keyword arguments:
-- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
-- `decorrelate_with` [="structure_matrix"]: from which matrix do we provide subspace directions, options are
-  - "structure_mat", see [`decorrelate_structure_mat`]
-  - "sample_cov", see [`decorrelate_sample_cov`]
-  - "combined", sums the "sample_cov" and "structure_mat" matrices
+- `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
+- `decorrelate_with` [=`"structure_matrix"`]: from which matrix do we provide subspace directions, options are
+  - `"structure_mat"`, see [`decorrelate_structure_mat`](@ref)
+  - `"sample_cov"`, see [`decorrelate_sample_cov`](@ref)
+  - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 """
 decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with="combined") where {FT} =
     Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), decorrelate_with) 
@@ -348,7 +348,7 @@ decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with="combined") where 
 $(TYPEDSIGNATURES)
 
 Constructs the `Decorrelater` struct, setting decorrelate_with = "sample_cov". Encoding data with this will ensure that the distribution of data samples after encoding will be `Normal(0,I)`. One can additionally add keywords:
-- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
+- `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
 decorrelate_sample_cov(; retain_var::FT = Float64(1.0)) where {FT} =
     Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "sample_cov")
@@ -357,7 +357,7 @@ decorrelate_sample_cov(; retain_var::FT = Float64(1.0)) where {FT} =
 $(TYPEDSIGNATURES)
 
 Constructs the `Decorrelater` struct, setting decorrelate_with = "structure_mat". This encoding will transform a provided structure matrix into `I`. One can additionally add keywords:
-- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
+- `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
 decorrelate_structure_mat(; retain_var::FT = Float64(1.0)) where {FT} =
     Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "structure_mat")
