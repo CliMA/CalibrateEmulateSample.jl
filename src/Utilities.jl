@@ -16,17 +16,17 @@ export orig2zscore
 export zscore2orig
 
 export PairedDataContainerProcessor, DataContainerProcessor
-export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZScoreScaling, Standardizer, Decorrelater
-export quartile_scale, minmax_scale, zscore_scale, standardize, decorrelate
+export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZScoreScaling
+export quartile_scale, minmax_scale, zscore_scale
+export Decorrelater, decorrelate_sample_cov, decorrelate_structure_mat, decorrelate
 export get_type,
     get_shift,
     get_scale,
     get_data_mean,
     get_encoder_mat,
     get_decoder_mat,
-    get_rank,
     get_retain_var,
-    get_add_estimated_cov
+    get_decorrelate_with
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
@@ -296,7 +296,7 @@ function decode_structure_matrix(as::AffineScaler, enc_structure_matrix::MM) whe
 end
 
 
-
+#=
 """
 $(TYPEDEF)
 
@@ -439,33 +439,41 @@ function decode_structure_matrix(ss::Standardizer, enc_structure_matrix::MM) whe
     decoder_mat = get_decoder_mat(ss)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end
-
+=#
 
 """
 $(TYPEDEF)
 
-Decorrelate the data via an SVD decomposition using a structure_matrix (`prior_cov` for inputs, `obs_noise_cov` for outputs), with optional truncation of singular vectors corresponding to largest singular values. The structure matrix will also become exactly `I` after processing.
+Decorrelate the data via tkaing an SVD decomposition and projecting onto the singular-vectors. 
 
-Similar to the [`Standardizer`](@ref), except that the `Standardizer` uses the estimated covariance of the data to decorrelate in-place of the structure matrix. There, the data samples will have sample mean `0` and covariance `I` after processing.
+Preferred construction is with the methods
+- [`decorrelate_structure_mat`](@ref)
+- [`decorrelate_sample_cov`](@ref)
+- [`decorrelate`](@ref) 
 
-In the `Decorrelater` the user can do a combined approach where one uses cov(data) + structure matrix for decorrelation with the `add_estimated_data_cov=true` 
+For `decorrelate_structure_mat`:
+The SVD is taken over a structure matrix (e.g., `prior_cov` for inputs, `obs_noise_cov` for outputs). The structure matrix will become exactly `I` after processing.
 
-Preferred construction is with the [`decorrelate`](@ref) method
+For `decorrelate_sample_cov`:
+The SVD is taken over the estimated covariance of the data. The data samples will have a `Normal(0,I)` distribution after processing.
+
+For `decorrelate(;decorrelate_with="combined")` (default):
+The SVD is taken to be the sum of structure matrix and estimated covariance. This may be more robust to ill-specification of structure matrix, or poor estimation of the sample covariance.
 
 # Fields
 $(TYPEDFIELDS)
 """
-struct Decorrelater{VV1, VV2, VV3, FT} <: DataContainerProcessor
+struct Decorrelater{VV1, VV2, VV3, FT, AS <: AbstractString} <: DataContainerProcessor
     "storage for the data mean"
     data_mean::VV1
-    "the (possibly-encoded) structure matrix - provided by the user"
+    "the matrix used to perform encoding"
     encoder_mat::VV2
-    "the inverse of the (possibly-encoded) structure matrix"
+    "the inverse of the the matrix used to perform encoding"
     decoder_mat::VV3
     "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
     retain_var::FT
-    "If true, add the estimated cov(data) to the structure matrix for to modify the decorrelation"
-    add_estimated_cov::Bool
+    "Switch to choose what form of matrix to use to decorrelate the data"
+    decorrelate_with::AS
 end
 
 """
@@ -473,10 +481,31 @@ $(TYPEDSIGNATURES)
 
 Constructs the `Decorrelater` struct. Users can add optional keyword arguments:
 - `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
-- `add_estimated_cov`[=false]: to add the estimated covariance to the structure matrix, and use this summation to create the new subspace. (false uses just the structure matrix)
+- `decorrelate_with` [="structure_matrix"]: from which matrix do we provide subspace directions, options are
+  - "structure_mat", see [`decorrelate_structure_mat`]
+  - "sample_cov", see [`decorrelate_sample_cov`]
+  - "combined", sums the "sample_cov" and "structure_mat" matrices
 """
-decorrelate(; retain_var::FT = Float64(1.0), add_estimated_cov = false) where {FT} =
-    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), add_estimated_cov)
+decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with="combined") where {FT} =
+    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), decorrelate_with) 
+
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `Decorrelater` struct, setting decorrelate_with = "sample_cov". Encoding data with this will ensure that the distribution of data samples after encoding will be `Normal(0,I)`. One can additionally add keywords:
+- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
+"""
+decorrelate_sample_cov(; retain_var::FT = Float64(1.0)) where {FT} =
+    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "sample_cov")
+
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `Decorrelater` struct, setting decorrelate_with = "structure_mat". This encoding will transform a provided structure matrix into `I`. One can additionally add keywords:
+- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
+"""
+decorrelate_structure_mat(; retain_var::FT = Float64(1.0)) where {FT} =
+    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "structure_mat")
 
 """
 $(TYPEDSIGNATURES)
@@ -509,18 +538,16 @@ get_retain_var(dd::Decorrelater) = dd.retain_var
 """
 $(TYPEDSIGNATURES)
 
-returns the `add_estimated_cov` field of the `Decorrelater`.
+returns the `decorrelate_with` field of the `Decorrelater`.
 """
-get_add_estimated_cov(dd::Decorrelater) = dd.add_estimated_cov
+get_decorrelate_with(dd::Decorrelater) = dd.decorrelate_with
 
 function Base.show(io::IO, dd::Decorrelater)
     out = "Decorrelater"
     if get_retain_var(dd) < 1.0
         out *= ": retain_var=$(get_retain_var(dd)) "
     end
-    if get_add_estimated_cov(dd)
-        out *= ": add_estimated_cov=$(get_add_estimated_cov(dd)) "
-    end
+    out *= ": decorrelate_with=$(get_decorrelate_with(dd)) "
     print(io, out)
 end
 
@@ -541,10 +568,15 @@ function initialize_processor!(
     if length(get_encoder_mat(dd)) == 0
 
         # Can do tsvd here for large matrices
-        if get_add_estimated_cov(dd)
-            svdA = svd(structure_matrix + cov(data, dims = 2)) # with data covariance?
+        decorrelate_with = get_decorrelate_with(dd)
+        if decorrelate_with == "structure_mat"
+            svdA = svd(structure_matrix)            
+        elseif decorrelate_with == "sample_cov"
+            svdA = svd(cov(data, dims = 2))            
+        elseif decorrelate_with == "combined"
+            svdA = svd(structure_matrix + cov(data, dims = 2))
         else
-            svdA = svd(structure_matrix)
+            throw(ArgumentError("Keyword `decorrelate_with` must be taken from [\"sample_cov\", \"structure_mat\", \"combined\"]. Received $(decorrelate_with)"))
         end
         ret_var = get_retain_var(dd)
         if ret_var < 1.0

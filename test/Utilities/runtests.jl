@@ -91,27 +91,19 @@ end
     @test get_shift(QQ) == [1]
     @test get_scale(QQ) == [2]
 
-    ss = standardize()
-    @test isa(ss, Standardizer)
-    @test get_rank(ss) == typemax(Int)
-    ss2 = standardize(10)
-    @test get_rank(ss2) == 10
-    SS = Standardizer(1, [1], [2], [3])
-    @test get_data_mean(SS) == [1]
-    @test get_encoder_mat(SS) == [2]
-    @test get_decoder_mat(SS) == [3]
-
     dd = decorrelate()
     @test get_retain_var(dd) == 1.0
-    @test get_add_estimated_cov(dd) == false
-    dd2 = decorrelate(retain_var = 0.7, add_estimated_cov = true)
+    @test get_decorrelate_with(dd) == "combined"
+    dd2 = decorrelate_sample_cov(retain_var = 0.7)
     @test get_retain_var(dd2) == 0.7
-    @test get_add_estimated_cov(dd2) == true
-    DD = Decorrelater([1], [2], [3], 1.0, false)
+    @test get_decorrelate_with(dd2) == "sample_cov"
+    dd3 = decorrelate_structure_mat(retain_var = 0.7)
+    @test get_retain_var(dd3) == 0.7
+    @test get_decorrelate_with(dd3) == "structure_mat"
+    DD = Decorrelater([1], [2], [3], 1.0, "test")
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
-
     # get some data as IO pairs for functional tests
 
     in_dim = 10
@@ -129,12 +121,11 @@ end
         "zscore",
         "quartile",
         "minmax",
-        "standardize",
-        "decorrelate",
-        "decorrelate-estimate-cov",
+        "decorrelate-sample-cov",
+        "decorrelate-structure-mat",
+        "decorrelate-combined",
         "canonical-correlation",
-        "standardize-truncate-to-5",
-        "decorrelate-retain-0.95-var",
+        "decorrelate-structure-mat-retain-0.95-var",
         "canonical-correlation-0.95-var",
     ]
 
@@ -143,12 +134,11 @@ end
         (zscore_scale(), "in_and_out"),
         (quartile_scale(), "in_and_out"),
         (minmax_scale(), "in_and_out"),
-        (standardize(), "in_and_out"),
-        (decorrelate(), "in_and_out"),
-        (decorrelate(add_estimated_cov = true), "in_and_out"),
+        (decorrelate_sample_cov(), "in_and_out"),
+        (decorrelate_structure_mat(), "in_and_out"),
+        (decorrelate(), "in_and_out"), # combined
         (canonical_correlation(), "in_and_out"),
-        (standardize(5), "in_and_out"),
-        (decorrelate(retain_var = 0.95), "in_and_out"),
+        (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
     ]
     lossless = [fill(true, 6); fill(false, 4)] # are these lossy approximations? 
@@ -213,27 +203,24 @@ end
             pop_cov = cov(enc_dat, dims = 2)
             dimm = size(pop_cov, 1)
             big_tol = 0.1
-            if name == "standardize"
-                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate, particularly if dimm < dim
-            elseif name == "decorrelate"
+            if name == "decorrelate-structure-mat"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
-            elseif name == "decorrelate-estimate-cov"
+
+                elseif name == "decorrelate-sample-cov"
+                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
+                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate, particularly if dimm < dim
+
+    elseif name == "decorrelate-combined"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
             end
 
             # Multivariate lossy dim-reduction tests
-            if name == "standardize-truncate-to-5"
-                @test dimm == 5
-                @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
-                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
-                @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
-            elseif name == "decorrelate-retain-0.95-var"
+            if name == "decorrelate-structure-mat-retain-0.95-var"
                 svdc = svd(test_covv)
                 var_cumsum = cumsum(svdc.S .^ 2) ./ sum(svdc.S .^ 2)
                 @test var_cumsum[dimm] > 0.95
@@ -266,8 +253,8 @@ end
             # test decode approximation of lossless options
             if ll_flag
                 # when dimm < dim, loss can occur in some tests
-                tol1 = (name == "decorrelate" && dimm < dim) ? big_tol : tol
-                tol2 = (name == "standardize" && dimm < dim) ? big_tol : tol
+                tol1 = (name == "decorrelate-structure-mat" && dimm < dim) ? big_tol : tol
+                tol2 = (name == "decorrelate-sample-cov" && dimm < dim) ? big_tol : tol
                 @test isapprox(norm(dec_dat - test_dat), 0.0, atol = tol1 * dim * samples)
                 @test isapprox(norm(dec_covv - test_covv), 0.0, atol = tol2 * dim^2)
 
@@ -286,9 +273,9 @@ end
     schedule_builder = [
         (zscore_scale(), "in_and_out"), # 
         (quartile_scale(), "in"),
-        (standardize(), "in_and_out"),
+        (decorrelate_sample_cov(), "in_and_out"),
         (minmax_scale(), "out"),
-        (decorrelate(), "in_and_out"),
+        (decorrelate_structure_mat(), "in_and_out"),
         (canonical_correlation(), "in"),
     ]
 
