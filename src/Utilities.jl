@@ -129,10 +129,14 @@ abstract type ZScoreScaling <: UnivariateAffineScaling end
 """
 $(TYPEDEF)
 
-The AffineScaler{T} will create an encoding of the data_container via affine transformations:
-- quartile_scale() : creates `QuartileScaling`, encoding with the transform (x - Q2(x))/(Q3(x) - Q1(x))
-- minmax_scale() : creates `MinMaxScaling`, encoding with the transform (x - min(x))/(max(x) - min(x))
-- zscore_scale() : creates `ZScoreScaling`, encoding with the (univariate) transform (x-μ)/σ
+The AffineScaler{T} will create an encoding of the data_container via affine transformations.
+
+Different methods `T` will build different transformations:
+- [`quartile_scale`](@ref) : creates `QuartileScaling`,
+- [`minmax_scale`](@ref) : creates `MinMaxScaling`
+- [`zscore_scale`](@ref) : creates `ZScoreScaling`
+
+and are accessed with [`get_type`](@ref)
 """
 struct AffineScaler{T, VV <: AbstractVector} <: DataContainerProcessor
     "storage for the shift applied to data"
@@ -141,15 +145,54 @@ struct AffineScaler{T, VV <: AbstractVector} <: DataContainerProcessor
     scale::VV
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Constructs `AffineScaler{QuartileScaling}` processor.
+As part of an encoder schedule, it will apply the transform ``\\frac{x - Q2(x)}{Q3(x) - Q1(x)}`` to each data dimension.
+Also known as "robust scaling"
+"""
 quartile_scale() = AffineScaler(QuartileScaling)
+
+"""
+$(TYPEDSIGNATURES)
+
+Constructs `AffineScaler{MinMaxScaling}` processor.
+As part of an encoder schedule, this will apply the transform ``\\frac{x - \\min(x)}{\\max(x) - \\min(x)}`` to each data dimension.
+"""
 minmax_scale() = AffineScaler(MinMaxScaling)
+
+"""
+$(TYPEDSIGNATURES)
+
+Constructs `AffineScaler{ZScoreScaling}` processor.
+As part of an encoder schedule, this will apply the transform ``\\frac{x-\\mu}{\\sigma}``, (where ``x\\sim N(\\mu,\\sigma)``), to each data dimension.
+For multivariate standardization, see `Standardizer`
+"""
 zscore_scale() = AffineScaler(ZScoreScaling)
 
 AffineScaler(::Type{UAS}) where {UAS <: UnivariateAffineScaling} =
     AffineScaler{UAS, Vector{Float64}}(Float64[], Float64[])
 
+"""
+$(TYPEDSIGNATURES)
+
+Gets the UnivariateAffineScaling type `T`
+"""
 get_type(as::AffineScaler{T, VV}) where {T, VV} = T
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `shift` field of the `AffineScaler`
+"""
 get_shift(as::AffineScaler) = as.shift
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `scale` field of the `AffineScaler`
+"""
 get_scale(as::AffineScaler) = as.scale
 
 function Base.show(io::IO, as::AffineScaler)
@@ -197,6 +240,11 @@ function initialize_processor!(as::AffineScaler, data::MM) where {MM <: Abstract
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `AffineScaler` encoder, on a columns-are-data matrix
+"""
 function encode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
     for i in 1:size(out, 1)
@@ -206,6 +254,11 @@ function encode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     return out
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `AffineScaler` decoder, on a columns-are-data matrix
+"""
 function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
     for i in 1:size(out, 1)
@@ -215,13 +268,29 @@ function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
     return out
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Computes and populates the `shift` and `scale` fields for the `AffineScaler`
+"""
 initialize_processor!(as::AffineScaler, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
     initialize_processor!(as, data)
 
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `AffineScaler` encoder to a provided structure matrix
+"""
 function encode_structure_matrix(as::AffineScaler, structure_matrix::MM) where {MM <: AbstractMatrix}
     return Diagonal(1 ./ get_scale(as) .^ 2) * structure_matrix
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `AffineScaler` decoder to a provided structure matrix
+"""
 function decode_structure_matrix(as::AffineScaler, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
     return Diagonal(get_scale(as) .^ 2) * enc_structure_matrix
 end
@@ -233,7 +302,12 @@ $(TYPEDEF)
 
 Standardizes the data to a multivariate N(0,I) distribution via `(xcov)^{-1/2}*(x-x_mean)`, along with rank reduction if data is low rank, or if the user provides a rank. This guarantees that the data samples will have sample mean `0` and covariance `I` after processing.
 
-Similar to the `Decorrelater`, but there the structure matrices will directly be used to perform decorrelation, and will become `I` after processing. In that case, the data samples may not have covariance `I` after processing.
+Similar to the [`Decorrelater`](@ref), but there the structure matrices will directly be used to perform decorrelation, and will become `I` after processing. In that case, the data samples may not have covariance `I` after processing.
+
+Preferred construction is using the [`standardize`](@ref) method.
+
+# Fields
+$(TYPEDFIELDS)
 """
 struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector} <: DataContainerProcessor
     "user-provided rank for additional truncation of the space. used if rank < rank(data_cov)"
@@ -246,12 +320,46 @@ struct Standardizer{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: Abstrac
     decoder_mat::VV3
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the [`Standardizer`](@ref) struct with no truncation of rank
+"""
 standardize() = Standardizer(typemax(Int), Float64[], Any[], Any[])
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `Standardizer` struct with a provided truncation to rank `rk`.
+"""
 standardize(rk::Int) = Standardizer(rk, Float64[], Any[], Any[])
 
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `data_mean` field of the `Standardizer`.
+"""
 get_data_mean(ss::Standardizer) = ss.data_mean
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `encoder_mat` field of the `Standardizer`.
+"""
 get_encoder_mat(ss::Standardizer) = ss.encoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `decoder_mat` field of the `Standardizer`.
+"""
 get_decoder_mat(ss::Standardizer) = ss.decoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `rank` field of the `Standardizer`.
+"""
 get_rank(ss::Standardizer) = ss.rank
 
 function Base.show(io::IO, ss::Standardizer)
@@ -281,26 +389,52 @@ function initialize_processor!(ss::Standardizer, data::MM) where {MM <: Abstract
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Standardizer` encoder, on a columns-are-data matrix
+"""
 function encode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(ss)
     encoder_mat = get_encoder_mat(ss)[1]
     return encoder_mat * (data .- data_mean)
 end
 
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Standardizer` decoder, on a columns-are-data matrix
+"""
 function decode_data(ss::Standardizer, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(ss)
     decoder_mat = get_decoder_mat(ss)[1]
     return decoder_mat * data .+ data_mean
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Computes and populates the `data_mean` and `encoder_mat` and `decoder_mat` fields for the `Standardizer`
+"""
 initialize_processor!(ss::Standardizer, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
     initialize_processor!(ss, data)
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Standardizer` encoder to a provided structure matrix
+"""
 function encode_structure_matrix(ss::Standardizer, structure_matrix::MM) where {MM <: AbstractMatrix}
     encoder_mat = get_encoder_mat(ss)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Standardizer` decoder to a provided structure matrix
+"""
 function decode_structure_matrix(ss::Standardizer, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
     decoder_mat = get_decoder_mat(ss)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
@@ -312,9 +446,11 @@ $(TYPEDEF)
 
 Decorrelate the data via an SVD decomposition using a structure_matrix (`prior_cov` for inputs, `obs_noise_cov` for outputs), with optional truncation of singular vectors corresponding to largest singular values. The structure matrix will also become exactly `I` after processing.
 
-Similar to the `Standardizer`, except that the `Standardizer` uses the estimated covariance of the data to decorrelate in-place of the structure matrix. There, the data samples will have sample mean `0` and covariance `I` after processing.
+Similar to the [`Standardizer`](@ref), except that the `Standardizer` uses the estimated covariance of the data to decorrelate in-place of the structure matrix. There, the data samples will have sample mean `0` and covariance `I` after processing.
 
 In the `Decorrelater` the user can do a combined approach where one uses cov(data) + structure matrix for decorrelation with the `add_estimated_data_cov=true` 
+
+Preferred construction is with the [`decorrelate`](@ref) method
 
 # Fields
 $(TYPEDFIELDS)
@@ -332,13 +468,49 @@ struct Decorrelater{VV1, VV2, VV3, FT} <: DataContainerProcessor
     add_estimated_cov::Bool
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `Decorrelater` struct. Users can add optional keyword arguments:
+- `retain_var`[=1.0]: to project onto the leading singular vectors such that `retain_var` variance is retained
+- `add_estimated_cov`[=false]: to add the estimated covariance to the structure matrix, and use this summation to create the new subspace. (false uses just the structure matrix)
+"""
 decorrelate(; retain_var::FT = Float64(1.0), add_estimated_cov = false) where {FT} =
     Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), add_estimated_cov)
 
+"""
+$(TYPEDSIGNATURES)
+
+returns the `data_mean` field of the `Decorrelater`.
+"""
 get_data_mean(dd::Decorrelater) = dd.data_mean
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `encoder_mat` field of the `Decorrelater`.
+"""
 get_encoder_mat(dd::Decorrelater) = dd.encoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `decoder_mat` field of the `Decorrelater`.
+"""
 get_decoder_mat(dd::Decorrelater) = dd.decoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `retain_var` field of the `Decorrelater`.
+"""
 get_retain_var(dd::Decorrelater) = dd.retain_var
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `add_estimated_cov` field of the `Decorrelater`.
+"""
 get_add_estimated_cov(dd::Decorrelater) = dd.add_estimated_cov
 
 function Base.show(io::IO, dd::Decorrelater)
@@ -352,6 +524,11 @@ function Base.show(io::IO, dd::Decorrelater)
     print(io, out)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Computes and populates the `data_mean` and `encoder_mat` and `decoder_mat` fields for the `Decorrelater`
+"""
 function initialize_processor!(
     dd::Decorrelater,
     data::MM,
@@ -389,23 +566,44 @@ function initialize_processor!(
     end
 end
 
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Decorrelater` encoder, on a columns-are-data matrix
+"""
 function encode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * (data .- data_mean)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Decorrelater` decoder, on a columns-are-data matrix
+"""
 function decode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * data .+ data_mean
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Decorrelater` encoder to a provided structure matrix
+"""
 function encode_structure_matrix(dd::Decorrelater, structure_matrix::MM) where {MM <: AbstractMatrix}
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `Decorrelater` decoder to a provided structure matrix
+"""
 function decode_structure_matrix(dd::Decorrelater, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
@@ -424,6 +622,8 @@ $(TYPEDEF)
 Uses both input and output data to learn a subspace of maximal correlation between inputs and outputs. The subspace for a pair (X,Y) will be of size minimum(rank(X),rank(Y)), computed using SVD-based method
 e.g. See e.g., https://numerical.recipes/whp/notes/CanonCorrBySVD.pdf
 
+Preferred construction is with the [`canonical_correlation`](@ref) method
+
 # Fields
 $(TYPEDFIELDS)
 """
@@ -440,13 +640,48 @@ struct CanonicalCorrelation{VV1, VV2, VV3, FT, VV4} <: PairedDataContainerProces
     apply_to::VV4
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `CanonicalCorrelation` struct. Can optionally provide the keyword
+- `retain_var`[=1.0]: to project onto the leading singular vectors (of the input-output product) such that `retain_var` variance is retained. 
+"""
 canonical_correlation(; retain_var = Float64(1.0)) =
     CanonicalCorrelation(Any[], Any[], Any[], retain_var, AbstractString[])
 
+"""
+$(TYPEDSIGNATURES)
+
+returns the `data_mean` field of the `CanonicalCorrelation`.
+"""
 get_data_mean(cc::CanonicalCorrelation) = cc.data_mean
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `encoder_mat` field of the `CanonicalCorrelation`.
+"""
 get_encoder_mat(cc::CanonicalCorrelation) = cc.encoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `decoder_mat` field of the `CanonicalCorrelation`.
+"""
 get_decoder_mat(cc::CanonicalCorrelation) = cc.decoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `retain_var` field of the `CanonicalCorrelation`.
+"""
 get_retain_var(cc::CanonicalCorrelation) = cc.retain_var
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `apply_to` field of the `CanonicalCorrelation`.
+"""
 get_apply_to(cc::CanonicalCorrelation) = cc.apply_to
 
 function Base.show(io::IO, cc::CanonicalCorrelation)
@@ -457,6 +692,7 @@ function Base.show(io::IO, cc::CanonicalCorrelation)
     end
     print(io, out)
 end
+
 
 function initialize_processor!(
     cc::CanonicalCorrelation,
@@ -535,6 +771,11 @@ function initialize_processor!(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Computes and populates the `data_mean`, `encoder_mat`, `decoder_mat` and `apply_to` fields for the `CanonicalCorrelation`
+"""
 initialize_processor!(
     cc::CanonicalCorrelation,
     in_data::MM,
@@ -544,23 +785,43 @@ initialize_processor!(
 ) where {MM <: AbstractMatrix, AS <: AbstractString} = initialize_processor!(cc, in_data, out_data, apply_to)
 
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `CanonicalCorrelation` encoder, on a columns-are-data matrix
+"""
 function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(cc)
     encoder_mat = get_encoder_mat(cc)[1]
     return encoder_mat * (data .- data_mean)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `CanonicalCorrelation` decoder, on a columns-are-data matrix
+"""
 function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(cc)
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * data .+ data_mean
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `CanonicalCorrelation` encoder to a provided structure matrix
+"""
 function encode_structure_matrix(cc::CanonicalCorrelation, structure_matrix::MM) where {MM <: AbstractMatrix}
     encoder_mat = get_encoder_mat(cc)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `CanonicalCorrelation` decoder to a provided structure matrix
+"""
 function decode_structure_matrix(cc::CanonicalCorrelation, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
@@ -583,6 +844,11 @@ function initialize_and_encode_data!(
     return encode_data(dcp, data)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Initializes the `DataContainerProcessor` encoder (often requires data, and structure matrices), then encodes the provided columns-are-data matrix
+"""
 initialize_and_encode_data!(
     dcp::DCP,
     data::MM,
@@ -595,12 +861,23 @@ initialize_and_encode_data!(
     AS <: AbstractString,
 } = initialize_and_encode_data!(dcp, data, structure_mat)
 
+
+"""
+$(TYPEDSIGNATURES)
+
+decodes the columns-are-data matrix with the processor.
+"""
 decode_data(
     dcp::DCP,
     data::MM,
     apply_to::AS,
 ) where {DCP <: DataContainerProcessor, MM <: AbstractMatrix, AS <: AbstractString} = decode_data(dcp, data)
 
+"""
+$(TYPEDSIGNATURES)
+
+Initializes the `PairedDataContainerProcesser` encoder (often requires input & output data, and structure matrices), then encodes either the input or output data (pair of columns-are-data matrices)  based on `apply_to`.
+"""
 function initialize_and_encode_data!(
     dcp::PDCP,
     data,
@@ -616,6 +893,11 @@ function initialize_and_encode_data!(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+decodes the input or output dat (pair of columns-are-data matrices) a with the processor, based on `apply_to`.
+"""
 function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataContainerProcessor, AS <: AbstractString}
     input_data, output_data = data
     if apply_to == "in"
@@ -696,11 +978,18 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
     return encoder_schedule
 end
 
+"""
+Create size-1 encoder schedule with a tuple of `(DataProcessor1(...), apply_to)` with `apply_to = "in"`, `"out"` or `"in_and_out"`.
+"""
 create_encoder_schedule(schedule_in::TT) where {TT <: Tuple} = create_encoder_schedule([schedule_in])
 
 
 # Functions to encode/decode with uninitialized schedule (require structure matrices as input)
+"""
+$TYPEDSIGNATURES
 
+Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), and initializes it, and encodes the paired data container, and structure matrices with it.
+"""
 function encode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
@@ -738,7 +1027,11 @@ function encode_with_schedule(
 end
 
 # Functions to encode/decode with initialized schedule
+"""
+$TYPEDSIGNATURES
 
+Takes in an already initialized encoder schedule, and encodes a `DataContainer`, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus encoded differently)
+"""
 function encode_with_schedule(
     encoder_schedule::VV,
     data_container::DC,
@@ -766,6 +1059,11 @@ function encode_with_schedule(
     return processed_container
 end
 
+"""
+$TYPEDSIGNATURES
+
+Takes in an already initialized encoder schedule, and encodes a structure matrix, the `in_or_out` string indicates if the structure matrix is for input `"in"` or output `"out"` space (and thus encoded differently)
+"""
 function encode_with_schedule(
     encoder_schedule::VV,
     structure_matrix::USorM,
@@ -791,6 +1089,11 @@ function encode_with_schedule(
     return processed_structure_matrix
 end
 
+"""
+$TYPEDSIGNATURES
+
+Takes in an already initialized encoder schedule, and decodes a `DataContainer`, and structure matrices with it, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus decoded differently)
+"""
 function decode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
@@ -824,6 +1127,11 @@ function decode_with_schedule(
     return processed_io_pairs, processed_prior_cov, processed_obs_noise_cov
 end
 
+"""
+$TYPEDSIGNATURES
+
+Takes in an already initialized encoder schedule, and decodes a `DataContainer`, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus decoded differently)
+"""
 function decode_with_schedule(
     encoder_schedule::VV,
     data_container::DC,
@@ -852,6 +1160,11 @@ function decode_with_schedule(
     return processed_container
 end
 
+"""
+$TYPEDSIGNATURES
+
+Takes in an already initialized encoder schedule, and decodes a structure matrix, the `in_or_out` string indicates if the structure matrix is for input `"in"` or output `"out"` space (and thus decoded differently)
+"""
 function decode_with_schedule(
     encoder_schedule::VV,
     structure_matrix::USorM,
