@@ -135,21 +135,23 @@ end
         "canonical-correlation",
         "standardize-truncate-to-5",
         "decorrelate-retain-0.95-var",
+        "canonical-correlation-0.95-var",
     ]
 
     # Test encodings-decodings individually
     schedules = [
-        [(zscore_scale(), "in_and_out")],
-        [(quartile_scale(), "in_and_out")],
-        [(minmax_scale(), "in_and_out")],
-        [(standardize(), "in_and_out")],
-        [(decorrelate(), "in_and_out")],
-        [(decorrelate(add_estimated_cov = true), "in_and_out")],
-        [(canonical_correlation(), "in_and_out")],
-        [(standardize(5), "in_and_out")],
-        [(decorrelate(retain_var = 0.95), "in_and_out")],
+        (zscore_scale(), "in_and_out"),
+        (quartile_scale(), "in_and_out"),
+        (minmax_scale(), "in_and_out"),
+        (standardize(), "in_and_out"),
+        (decorrelate(), "in_and_out"),
+        (decorrelate(add_estimated_cov = true), "in_and_out"),
+        (canonical_correlation(), "in_and_out"),
+        (standardize(5), "in_and_out"),
+        (decorrelate(retain_var = 0.95), "in_and_out"),
+        (canonical_correlation(retain_var = 0.95), "in_and_out"),
     ]
-    lossless = [fill(true, 6); fill(false, 3)] # are these lossy approximations? 
+    lossless = [fill(true, 6); fill(false, 4)] # are these lossy approximations? 
 
     # functional test pipeline
     tol = 1e-12
@@ -287,9 +289,13 @@ end
         (standardize(), "in_and_out"),
         (minmax_scale(), "out"),
         (decorrelate(), "in_and_out"),
+        (canonical_correlation(), "in"),
     ]
 
     # make schedule more parsable
+
+    @test_logs (:warn,) create_encoder_schedule((canonical_correlation(), "bad"))
+    @test_logs (:warn,) create_encoder_schedule((zscore_scale(), "bad"))
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule

@@ -672,7 +672,7 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
                 push!(encoder_schedule, (deepcopy(processor), func2, "out"))
             else
                 @warn(
-                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(str), ignoring processor $(processor)..."
+                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(apply_to), ignoring processor $(processor)..."
                 )
             end
 
@@ -687,7 +687,7 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
                 push!(encoder_schedule, (deepcopy(processor), func, "out"))
             else
                 @warn(
-                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(str), ignoring processor $(processor)..."
+                    "Expected schedule keywords ∈ {\"in\",\"out\",\"in_and_out\"}. Received $(apply_to), ignoring processor $(processor)..."
                 )
             end
         end
@@ -695,6 +695,9 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
 
     return encoder_schedule
 end
+
+create_encoder_schedule(schedule_in::TT) where {TT <: Tuple} = create_encoder_schedule([schedule_in])
+
 
 # Functions to encode/decode with uninitialized schedule (require structure matrices as input)
 
