@@ -20,13 +20,7 @@ export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZS
 export quartile_scale, minmax_scale, zscore_scale
 export Decorrelater, decorrelate_sample_cov, decorrelate_structure_mat, decorrelate
 export get_type,
-    get_shift,
-    get_scale,
-    get_data_mean,
-    get_encoder_mat,
-    get_decoder_mat,
-    get_retain_var,
-    get_decorrelate_with
+    get_shift, get_scale, get_data_mean, get_encoder_mat, get_decoder_mat, get_retain_var, get_decorrelate_with
 export create_encoder_schedule, encode_with_schedule, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
@@ -341,8 +335,8 @@ Constructs the `Decorrelater` struct. Users can add optional keyword arguments:
   - `"sample_cov"`, see [`decorrelate_sample_cov`](@ref)
   - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 """
-decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with="combined") where {FT} =
-    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), decorrelate_with) 
+decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with = "combined") where {FT} =
+    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), decorrelate_with)
 
 """
 $(TYPEDSIGNATURES)
@@ -425,13 +419,17 @@ function initialize_processor!(
         # Can do tsvd here for large matrices
         decorrelate_with = get_decorrelate_with(dd)
         if decorrelate_with == "structure_mat"
-            svdA = svd(structure_matrix)            
+            svdA = svd(structure_matrix)
         elseif decorrelate_with == "sample_cov"
-            svdA = svd(cov(data, dims = 2))            
+            svdA = svd(cov(data, dims = 2))
         elseif decorrelate_with == "combined"
             svdA = svd(structure_matrix + cov(data, dims = 2))
         else
-            throw(ArgumentError("Keyword `decorrelate_with` must be taken from [\"sample_cov\", \"structure_mat\", \"combined\"]. Received $(decorrelate_with)"))
+            throw(
+                ArgumentError(
+                    "Keyword `decorrelate_with` must be taken from [\"sample_cov\", \"structure_mat\", \"combined\"]. Received $(decorrelate_with)",
+                ),
+            )
         end
         ret_var = get_retain_var(dd)
         if ret_var < 1.0

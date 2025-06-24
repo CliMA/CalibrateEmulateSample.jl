@@ -208,12 +208,12 @@ end
                 @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = tol * dimm^2) # expect very accurate
 
-                elseif name == "decorrelate-sample-cov"
+            elseif name == "decorrelate-sample-cov"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # expect very accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate, particularly if dimm < dim
 
-    elseif name == "decorrelate-combined"
+            elseif name == "decorrelate-combined"
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
                 @test isapprox(norm(pop_cov - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
                 @test isapprox(norm(enc_covv - I), 0.0, atol = big_tol * dimm^2) # expect poorly accurate
