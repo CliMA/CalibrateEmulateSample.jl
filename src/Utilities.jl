@@ -880,8 +880,8 @@ Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), a
 function encode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
-    prior_cov_in::USorM1,
-    obs_noise_cov_in::USorM2,
+    input_structure_mat::USorM1,
+    output_structure_mat::USorM2,
 ) where {
     VV <: AbstractVector,
     PDC <: PairedDataContainer,
@@ -889,28 +889,28 @@ function encode_with_schedule(
     USorM2 <: Union{UniformScaling, AbstractMatrix},
 }
     processed_io_pairs = deepcopy(io_pairs)
-    processed_prior_cov = deepcopy(prior_cov_in)
-    processed_obs_noise_cov = deepcopy(obs_noise_cov_in)
+    processed_input_structure_mat = deepcopy(input_structure_mat)
+    processed_output_structure_mat = deepcopy(output_structure_mat)
 
     # apply_to is the string "in", "out" etc.
     for (processor, extract_data, apply_to) in encoder_schedule
         @info "Initialize encoding of data: \"$(apply_to)\" with $(processor)"
         if apply_to == "in"
-            structure_matrix = processed_prior_cov
+            structure_matrix = processed_input_structure_mat
         elseif apply_to == "out"
-            structure_matrix = processed_obs_noise_cov
+            structure_matrix = processed_output_structure_mat
         end
         processed = initialize_and_encode_data!(processor, extract_data(processed_io_pairs), structure_matrix, apply_to)
         if apply_to == "in"
-            processed_prior_cov = encode_structure_matrix(processor, structure_matrix)
+            processed_input_structure_mat = encode_structure_matrix(processor, structure_matrix)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_obs_noise_cov = encode_structure_matrix(processor, structure_matrix)
+            processed_output_structure_mat = encode_structure_matrix(processor, structure_matrix)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs, processed_prior_cov, processed_obs_noise_cov
+    return processed_io_pairs, processed_input_structure_mat, processed_output_structure_mat
 end
 
 # Functions to encode/decode with initialized schedule
@@ -984,8 +984,8 @@ Takes in an already initialized encoder schedule, and decodes a `DataContainer`,
 function decode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
-    prior_cov_in::USorM1,
-    obs_noise_cov_in::USorM2,
+    input_structure_mat::USorM1,
+    output_structure_mat::USorM2,
 ) where {
     VV <: AbstractVector,
     USorM1 <: Union{UniformScaling, AbstractMatrix},
@@ -994,8 +994,8 @@ function decode_with_schedule(
 }
 
     processed_io_pairs = deepcopy(io_pairs)
-    processed_prior_cov = deepcopy(prior_cov_in)
-    processed_obs_noise_cov = deepcopy(obs_noise_cov_in)
+    processed_input_structure_mat = deepcopy(input_structure_mat)
+    processed_output_structure_mat = deepcopy(output_structure_mat)
 
     # apply_to is the string "in", "out" etc.
     for idx in reverse(eachindex(encoder_schedule))
@@ -1003,15 +1003,15 @@ function decode_with_schedule(
         processed = decode_data(processor, extract_data(processed_io_pairs), apply_to)
 
         if apply_to == "in"
-            processed_prior_cov = decode_structure_matrix(processor, processed_prior_cov)
+            processed_input_structure_mat = decode_structure_matrix(processor, processed_input_structure_mat)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_obs_noise_cov = decode_structure_matrix(processor, processed_obs_noise_cov)
+            processed_output_structure_mat = decode_structure_matrix(processor, processed_output_structure_mat)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs, processed_prior_cov, processed_obs_noise_cov
+    return processed_io_pairs, processed_input_structure_mat, processed_output_structure_mat
 end
 
 """
