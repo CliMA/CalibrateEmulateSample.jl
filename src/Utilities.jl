@@ -16,7 +16,7 @@ export orig2zscore
 export zscore2orig
 
 export PairedDataContainerProcessor, DataContainerProcessor
-export UnivariateAffineScaling, AffineScaler, QuartileScaling, MinMaxScaling, ZScoreScaling
+export UnivariateAffineScaling, ElementwiseScaler, QuartileScaling, MinMaxScaling, ZScoreScaling
 export quartile_scale, minmax_scale, zscore_scale
 export Decorrelater, decorrelate_sample_cov, decorrelate_structure_mat, decorrelate
 export get_type,
@@ -123,7 +123,7 @@ abstract type ZScoreScaling <: UnivariateAffineScaling end
 """
 $(TYPEDEF)
 
-The AffineScaler{T} will create an encoding of the data_container via affine transformations.
+The ElementwiseScaler{T} will create an encoding of the data_container via elementwise affine transformations.
 
 Different methods `T` will build different transformations:
 - [`quartile_scale`](@ref) : creates `QuartileScaling`,
@@ -132,7 +132,7 @@ Different methods `T` will build different transformations:
 
 and are accessed with [`get_type`](@ref)
 """
-struct AffineScaler{T, VV <: AbstractVector} <: DataContainerProcessor
+struct ElementwiseScaler{T, VV <: AbstractVector} <: DataContainerProcessor
     "storage for the shift applied to data"
     shift::VV
     "storage for the scaling"
@@ -142,108 +142,108 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Constructs `AffineScaler{QuartileScaling}` processor.
+Constructs `ElementwiseScaler{QuartileScaling}` processor.
 As part of an encoder schedule, it will apply the transform ``\\frac{x - Q2(x)}{Q3(x) - Q1(x)}`` to each data dimension.
 Also known as "robust scaling"
 """
-quartile_scale() = AffineScaler(QuartileScaling)
+quartile_scale() = ElementwiseScaler(QuartileScaling)
 
 """
 $(TYPEDSIGNATURES)
 
-Constructs `AffineScaler{MinMaxScaling}` processor.
+Constructs `ElementwiseScaler{MinMaxScaling}` processor.
 As part of an encoder schedule, this will apply the transform ``\\frac{x - \\min(x)}{\\max(x) - \\min(x)}`` to each data dimension.
 """
-minmax_scale() = AffineScaler(MinMaxScaling)
+minmax_scale() = ElementwiseScaler(MinMaxScaling)
 
 """
 $(TYPEDSIGNATURES)
 
-Constructs `AffineScaler{ZScoreScaling}` processor.
+Constructs `ElementwiseScaler{ZScoreScaling}` processor.
 As part of an encoder schedule, this will apply the transform ``\\frac{x-\\mu}{\\sigma}``, (where ``x\\sim N(\\mu,\\sigma)``), to each data dimension.
 For multivariate standardization, see [`Decorrelater`](@ref) 
 """
-zscore_scale() = AffineScaler(ZScoreScaling)
+zscore_scale() = ElementwiseScaler(ZScoreScaling)
 
-AffineScaler(::Type{UAS}) where {UAS <: UnivariateAffineScaling} =
-    AffineScaler{UAS, Vector{Float64}}(Float64[], Float64[])
+ElementwiseScaler(::Type{UAS}) where {UAS <: UnivariateAffineScaling} =
+    ElementwiseScaler{UAS, Vector{Float64}}(Float64[], Float64[])
 
 """
 $(TYPEDSIGNATURES)
 
 Gets the UnivariateAffineScaling type `T`
 """
-get_type(as::AffineScaler{T}) where {T} = T
+get_type(es::ElementwiseScaler{T}) where {T} = T
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `shift` field of the `AffineScaler`
+Gets the `shift` field of the `ElementwiseScaler`
 """
-get_shift(as::AffineScaler) = as.shift
+get_shift(es::ElementwiseScaler) = es.shift
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `scale` field of the `AffineScaler`
+Gets the `scale` field of the `ElementwiseScaler`
 """
-get_scale(as::AffineScaler) = as.scale
+get_scale(es::ElementwiseScaler) = es.scale
 
-function Base.show(io::IO, as::AffineScaler)
-    out = "AffineScaler: $(get_type(as))"
+function Base.show(io::IO, es::ElementwiseScaler)
+    out = "ElementwiseScaler: $(get_type(es))"
     print(io, out)
 end
 
 function initialize_processor!(
-    as::AffineScaler,
+    es::ElementwiseScaler,
     data::MM,
     T::Type{QS},
 ) where {MM <: AbstractMatrix, QS <: QuartileScaling}
     quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(data)]
     quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
-    append!(get_shift(as), quartiles_mat[2, :])
-    append!(get_scale(as), (quartiles_mat[3, :] - quartiles_mat[1, :]))
+    append!(get_shift(es), quartiles_mat[2, :])
+    append!(get_scale(es), (quartiles_mat[3, :] - quartiles_mat[1, :]))
 end
 
 function initialize_processor!(
-    as::AffineScaler,
+    es::ElementwiseScaler,
     data::MM,
     T::Type{MMS},
 ) where {MM <: AbstractMatrix, MMS <: MinMaxScaling}
     minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(data)]
     minmax_mat = reduce(hcat, minmax_vec) # 2 rows: min max
-    append!(get_shift(as), minmax_mat[1, :])
-    append!(get_scale(as), (minmax_mat[2, :] - minmax_mat[1, :]))
+    append!(get_shift(es), minmax_mat[1, :])
+    append!(get_scale(es), (minmax_mat[2, :] - minmax_mat[1, :]))
 end
 
 function initialize_processor!(
-    as::AffineScaler,
+    es::ElementwiseScaler,
     data::MM,
     T::Type{ZSS},
 ) where {MM <: AbstractMatrix, ZSS <: ZScoreScaling}
     stat_vec = [[mean(dd), std(dd)] for dd in eachrow(data)]
     stat_mat = reduce(hcat, stat_vec) # 2 rows: mean, std
-    append!(get_shift(as), stat_mat[1, :])
-    append!(get_scale(as), stat_mat[2, :])
+    append!(get_shift(es), stat_mat[1, :])
+    append!(get_scale(es), stat_mat[2, :])
 end
 
-function initialize_processor!(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
-    if length(get_shift(as)) == 0
-        T = get_type(as)
-        initialize_processor!(as, data, T)
+function initialize_processor!(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+    if length(get_shift(es)) == 0
+        T = get_type(es)
+        initialize_processor!(es, data, T)
     end
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Apply the `AffineScaler` encoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
 """
-function encode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
     for i in 1:size(out, 1)
-        out[i, :] .-= get_shift(as)[i]
-        out[i, :] /= get_scale(as)[i]
+        out[i, :] .-= get_shift(es)[i]
+        out[i, :] /= get_scale(es)[i]
     end
     return out
 end
@@ -251,13 +251,13 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `AffineScaler` decoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
 """
-function decode_data(as::AffineScaler, data::MM) where {MM <: AbstractMatrix}
+function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
     for i in 1:size(out, 1)
-        out[i, :] *= get_scale(as)[i]
-        out[i, :] .+= get_shift(as)[i]
+        out[i, :] *= get_scale(es)[i]
+        out[i, :] .+= get_shift(es)[i]
     end
     return out
 end
@@ -265,28 +265,28 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Computes and populates the `shift` and `scale` fields for the `AffineScaler`
+Computes and populates the `shift` and `scale` fields for the `ElementwiseScaler`
 """
-initialize_processor!(as::AffineScaler, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
-    initialize_processor!(as, data)
+initialize_processor!(es::ElementwiseScaler, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
+    initialize_processor!(es, data)
 
 
 """
 $(TYPEDSIGNATURES)
 
-Apply the `AffineScaler` encoder to a provided structure matrix
+Apply the `ElementwiseScaler` encoder to a provided structure matrix
 """
-function encode_structure_matrix(as::AffineScaler, structure_matrix::MM) where {MM <: AbstractMatrix}
-    return Diagonal(1 ./ get_scale(as)) * structure_matrix * Diagonal(1 ./ get_scale(as))
+function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::MM) where {MM <: AbstractMatrix}
+    return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Apply the `AffineScaler` decoder to a provided structure matrix
+Apply the `ElementwiseScaler` decoder to a provided structure matrix
 """
-function decode_structure_matrix(as::AffineScaler, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
-    return Diagonal(get_scale(as)) * enc_structure_matrix * Diagonal(get_scale(as))
+function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+    return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end
 
 

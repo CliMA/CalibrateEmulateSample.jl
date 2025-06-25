@@ -81,12 +81,12 @@ end
     zs = zscore_scale()
     mm = minmax_scale()
     qq = quartile_scale()
-    QQ = AffineScaler{QuartileScaling, Vector{Int}}([1], [2])
-    @test isa(zs, AffineScaler)
+    QQ = ElementwiseScaler{QuartileScaling, Vector{Int}}([1], [2])
+    @test isa(zs, ElementwiseScaler)
     @test get_type(zs) == ZScoreScaling
-    @test isa(mm, AffineScaler)
+    @test isa(mm, ElementwiseScaler)
     @test get_type(mm) == MinMaxScaling
-    @test isa(qq, AffineScaler)
+    @test isa(qq, ElementwiseScaler)
     @test get_type(qq) == QuartileScaling
     @test get_shift(QQ) == [1]
     @test get_scale(QQ) == [2]
