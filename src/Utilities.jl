@@ -304,7 +304,7 @@ For `decorrelate_structure_mat`:
 The SVD is taken over a structure matrix (e.g., `prior_cov` for inputs, `obs_noise_cov` for outputs). The structure matrix will become exactly `I` after processing.
 
 For `decorrelate_sample_cov`:
-The SVD is taken over the estimated covariance of the data. The data samples will have a `Normal(0,I)` distribution after processing.
+The SVD is taken over the estimated covariance of the data. The data samples will have a `Normal(0,I)` distribution after processing,
 
 For `decorrelate(;decorrelate_with="combined")` (default):
 The SVD is taken to be the sum of structure matrix and estimated covariance. This may be more robust to ill-specification of structure matrix, or poor estimation of the sample covariance.
@@ -420,10 +420,15 @@ function initialize_processor!(
         decorrelate_with = get_decorrelate_with(dd)
         if decorrelate_with == "structure_mat"
             svdA = svd(structure_matrix)
+            rk = rank(structure_matrix)
         elseif decorrelate_with == "sample_cov"
-            svdA = svd(cov(data, dims = 2))
+            cd = cov(data, dims = 2)
+            svdA = svd(cd)
+            rk = rank(cd)
         elseif decorrelate_with == "combined"
-            svdA = svd(structure_matrix + cov(data, dims = 2))
+            spluscd = structure_matrix + cov(data, dims = 2)
+            svdA = svd(spluscd)
+            rk = rank(spluscd)
         else
             throw(
                 ArgumentError(
@@ -437,7 +442,7 @@ function initialize_processor!(
             trunc = minimum(findall(x -> (x > ret_var), sv_cumsum))
             @info "    truncating at $(trunc)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc])% of the variance of the structure matrix"
         else
-            trunc = rank(structure_matrix)
+            trunc = rk
         end
         sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc]))
         sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc]))
