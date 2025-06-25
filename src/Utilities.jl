@@ -411,7 +411,7 @@ function initialize_processor!(
     structure_matrix::USorM,
 ) where {MM <: AbstractMatrix, USorM <: Union{UniformScaling, AbstractMatrix}}
     if length(get_data_mean(dd)) == 0
-        append!(get_data_mean(dd), mean(data, dims = 2))
+        push!(get_data_mean(dd), vec(mean(data, dims = 2)))
     end
 
     if length(get_encoder_mat(dd)) == 0
@@ -463,7 +463,7 @@ $(TYPEDSIGNATURES)
 Apply the `Decorrelater` encoder, on a columns-are-data matrix
 """
 function encode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
-    data_mean = get_data_mean(dd)
+    data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * (data .- data_mean)
 end
@@ -474,7 +474,7 @@ $(TYPEDSIGNATURES)
 Apply the `Decorrelater` decoder, on a columns-are-data matrix
 """
 function decode_data(dd::Decorrelater, data::MM) where {MM <: AbstractMatrix}
-    data_mean = get_data_mean(dd)
+    data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * data .+ data_mean
 end
@@ -537,7 +537,7 @@ Constructs the `CanonicalCorrelation` struct. Can optionally provide the keyword
 - `retain_var`[=1.0]: to project onto the leading singular vectors (of the input-output product) such that `retain_var` variance is retained. 
 """
 canonical_correlation(; retain_var::FT = Float64(1.0)) where {FT} =
-    CanonicalCorrelation(Any[], Any[], Any[], clamp(retain_var, FT(0), FT(1)) , AbstractString[])
+    CanonicalCorrelation(Any[], Any[], Any[], clamp(retain_var, FT(0), FT(1)), AbstractString[])
 
 """
 $(TYPEDSIGNATURES)
@@ -577,8 +577,8 @@ get_apply_to(cc::CanonicalCorrelation) = cc.apply_to
 function Base.show(io::IO, cc::CanonicalCorrelation)
 
     out = "CanonicalCorrelation:"
-    if length(get_apply_to(cc))>0
-        out *=" apply_to=$(get_apply_to(cc)[1])"
+    if length(get_apply_to(cc)) > 0
+        out *= " apply_to=$(get_apply_to(cc)[1])"
     end
     if get_retain_var(cc) < 1.0
         out *= " retain_var=$(get_retain_var(cc))"
@@ -594,15 +594,19 @@ function initialize_processor!(
     apply_to::AS,
 ) where {MM <: AbstractMatrix, AS <: AbstractString}
 
+    if apply_to ∉ ["in", "out"]
+        bad_apply_to(apply_to)
+    end
+
     if length(get_apply_to(cc)) == 0
         push!(get_apply_to(cc), apply_to)
     end
 
     if length(get_data_mean(cc)) == 0
         if apply_to == "in"
-            append!(get_data_mean(cc), mean(in_data, dims = 2))
+            push!(get_data_mean(cc), vec(mean(in_data, dims = 2)))
         elseif apply_to == "out"
-            append!(get_data_mean(cc), mean(out_data, dims = 2))
+            push!(get_data_mean(cc), vec(mean(out_data, dims = 2)))
         end
     end
 
@@ -642,8 +646,7 @@ function initialize_processor!(
             # mat' * Sx⁻¹ * Uxt
             encoder_mat = svdio_mat[:, 1:trunc]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
             decoder_mat = in_mat_sq * Diagonal(svdi.S) * svdio_mat[:, 1:trunc]
-        else
-            apply_to == "out"
+        elseif apply_to == "out"
             out_dim = size(out_data, 1)
             svdio_mat = (size(svdio.U, 1) == out_dim) ? svdio.U : svdio.V
             # Vt * Sy⁻¹ * Uyt
@@ -682,7 +685,7 @@ $(TYPEDSIGNATURES)
 Apply the `CanonicalCorrelation` encoder, on a columns-are-data matrix
 """
 function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
-    data_mean = get_data_mean(cc)
+    data_mean = get_data_mean(cc)[1]
     encoder_mat = get_encoder_mat(cc)[1]
     return encoder_mat * (data .- data_mean)
 end
@@ -693,7 +696,7 @@ $(TYPEDSIGNATURES)
 Apply the `CanonicalCorrelation` decoder, on a columns-are-data matrix
 """
 function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
-    data_mean = get_data_mean(cc)
+    data_mean = get_data_mean(cc)[1]
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * data .+ data_mean
 end
@@ -777,10 +780,13 @@ function initialize_and_encode_data!(
 ) where {PDCP <: PairedDataContainerProcessor, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
     input_data, output_data = data
     initialize_processor!(dcp, input_data, output_data, structure_mat, apply_to)
+
     if apply_to == "in"
         return encode_data(dcp, input_data)
     elseif apply_to == "out"
         return encode_data(dcp, output_data)
+    else
+        bad_apply_to(apply_to)
     end
 end
 
@@ -795,6 +801,8 @@ function decode_data(dcp::PDCP, data, apply_to::AS) where {PDCP <: PairedDataCon
         return decode_data(dcp, input_data)
     elseif apply_to == "out"
         return decode_data(dcp, output_data)
+    else
+        bad_apply_to(apply_to)
     end
 end
 
@@ -875,6 +883,14 @@ Create size-1 encoder schedule with a tuple of `(DataProcessor1(...), apply_to)`
 create_encoder_schedule(schedule_in::TT) where {TT <: Tuple} = create_encoder_schedule([schedule_in])
 
 
+function bad_apply_to(apply_to::AS) where {AS <: AbstractString}
+    throw(
+        ArgumentError(
+            "processer can only be applied to inputs (\"in\") or outputs (\"out\"). received $(apply_to). \n Please use `create_encoder_schedule` prior to encoding/decoding to ensure correct schedule format",
+        ),
+    )
+end
+
 # Functions to encode/decode with uninitialized schedule (require structure matrices as input)
 """
 $TYPEDSIGNATURES
@@ -903,6 +919,8 @@ function encode_with_schedule(
             structure_matrix = processed_input_structure_mat
         elseif apply_to == "out"
             structure_matrix = processed_output_structure_mat
+        else
+            bad_apply_to(apply_to)
         end
         processed = initialize_and_encode_data!(processor, extract_data(processed_io_pairs), structure_matrix, apply_to)
         if apply_to == "in"
@@ -930,11 +948,7 @@ function encode_with_schedule(
 ) where {VV <: AbstractVector, DC <: DataContainer, AS <: AbstractString}
 
     if in_or_out ∉ ["in", "out"]
-        throw(
-            ArgumentError(
-                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
-            ),
-        )
+        bad_in_or_out(in_or_out)
     end
     processed_container = deepcopy(data_container)
 
@@ -950,6 +964,15 @@ function encode_with_schedule(
     return processed_container
 end
 
+function bad_in_or_out(in_or_out::AS) where {AS <: AbstractString}
+    throw(
+        ArgumentError(
+            "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
+        ),
+    )
+end
+
+
 """
 $TYPEDSIGNATURES
 
@@ -962,11 +985,7 @@ function encode_with_schedule(
 ) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
 
     if !(in_or_out ∈ ["in", "out"])
-        throw(
-            ArgumentError(
-                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
-            ),
-        )
+        bad_in_or_out(in_or_out)
     end
     processed_structure_matrix = deepcopy(structure_matrix)
 
@@ -1012,6 +1031,8 @@ function decode_with_schedule(
         elseif apply_to == "out"
             processed_output_structure_mat = decode_structure_matrix(processor, processed_output_structure_mat)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
+        else
+            bad_apply_to(apply_to)
         end
     end
 
@@ -1029,12 +1050,8 @@ function decode_with_schedule(
     in_or_out::AS,
 ) where {VV <: AbstractVector, DC <: DataContainer, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in", "out"])
-        throw(
-            ArgumentError(
-                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
-            ),
-        )
+    if in_or_out ∉ ["in", "out"]
+        bad_in_or_out(in_or_out)
     end
     processed_container = deepcopy(data_container)
 
@@ -1062,12 +1079,8 @@ function decode_with_schedule(
     in_or_out::AS,
 ) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in", "out"])
-        throw(
-            ArgumentError(
-                "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
-            ),
-        )
+    if in_or_out ∉ ["in", "out"]
+        bad_in_or_out(in_or_out)
     end
     processed_structure_matrix = deepcopy(structure_matrix)
 

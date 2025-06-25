@@ -141,6 +141,7 @@ end
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
     ]
+
     lossless = [fill(true, 6); fill(false, 4)] # are these lossy approximations? 
 
     # functional test pipeline
@@ -171,7 +172,11 @@ end
 
                 test_vec = [[mean(dd), std(dd)] for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
-                @test isapprox(norm(enc_covv - Diagonal(1 ./ test_mat[2, :]) * test_covv *  Diagonal(1 ./ test_mat[2, :] )), 0.0, atol = tol * dim^2)
+                @test isapprox(
+                    norm(enc_covv - Diagonal(1 ./ test_mat[2, :]) * test_covv * Diagonal(1 ./ test_mat[2, :])),
+                    0.0,
+                    atol = tol * dim^2,
+                )
             elseif name == "quartile"
                 quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(enc_dat)]
                 quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
@@ -180,7 +185,12 @@ end
                 test_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
                 @test isapprox(
-                    norm(enc_covv - Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :])) * test_covv * Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :]))),
+                    norm(
+                        enc_covv -
+                        Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :])) *
+                        test_covv *
+                        Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :])),
+                    ),
                     0.0,
                     atol = tol * dim^2,
                 )
@@ -192,7 +202,12 @@ end
                 test_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
                 @test isapprox(
-                    norm(enc_covv - Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :])) * test_covv *  Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :]))),
+                    norm(
+                        enc_covv -
+                        Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :])) *
+                        test_covv *
+                        Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :])),
+                    ),
                     0.0,
                     atol = tol * dim^2,
                 )
@@ -264,6 +279,8 @@ end
 
     end
 
+
+
     # combine a few lossless encoding schedules (lossless requires samples>dims)
     samples = 150 # for full test coverage have samples in_dim < samples < out_dim
     in_data = rand(MvNormal(zeros(in_dim), prior_cov), samples)
@@ -271,7 +288,7 @@ end
     io_pairs = PairedDataContainer(in_data, out_data)
 
     schedule_builder = [
-        (zscore_scale(), "in_and_out"),  
+        (zscore_scale(), "in_and_out"),
         (quartile_scale(), "in"),
         (decorrelate_sample_cov(), "in_and_out"),
         (minmax_scale(), "out"),
@@ -283,6 +300,14 @@ end
 
     @test_logs (:warn,) create_encoder_schedule((canonical_correlation(), "bad"))
     @test_logs (:warn,) create_encoder_schedule((zscore_scale(), "bad"))
+    func = x -> (get_inputs(x), get_outputs(x))
+    bad_encoder_schedule = [(canonical_correlation(), func, "bad")]
+    @test_throws ArgumentError encode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    @test_throws ArgumentError initialize_and_encode_data!(canonical_correlation(), func(io_pairs), prior_cov, "bad")
+    @test_throws ArgumentError decode_data(canonical_correlation(), func(io_pairs), "bad")
+
+
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
