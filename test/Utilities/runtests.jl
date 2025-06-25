@@ -171,7 +171,7 @@ end
 
                 test_vec = [[mean(dd), std(dd)] for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
-                @test isapprox(norm(enc_covv - Diagonal(1 ./ test_mat[2, :] .^ 2) * test_covv), 0.0, atol = tol * dim^2)
+                @test isapprox(norm(enc_covv - Diagonal(1 ./ test_mat[2, :]) * test_covv *  Diagonal(1 ./ test_mat[2, :] )), 0.0, atol = tol * dim^2)
             elseif name == "quartile"
                 quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(enc_dat)]
                 quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
@@ -180,7 +180,7 @@ end
                 test_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
                 @test isapprox(
-                    norm(enc_covv - Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :]) .^ 2) * test_covv),
+                    norm(enc_covv - Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :])) * test_covv * Diagonal(1 ./ (test_mat[3, :] - test_mat[1, :]))),
                     0.0,
                     atol = tol * dim^2,
                 )
@@ -192,7 +192,7 @@ end
                 test_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(test_dat)]
                 test_mat = reduce(hcat, test_vec)
                 @test isapprox(
-                    norm(enc_covv - Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :]) .^ 2) * test_covv),
+                    norm(enc_covv - Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :])) * test_covv *  Diagonal(1 ./ (test_mat[2, :] - test_mat[1, :]))),
                     0.0,
                     atol = tol * dim^2,
                 )

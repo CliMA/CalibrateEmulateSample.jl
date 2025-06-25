@@ -173,7 +173,7 @@ $(TYPEDSIGNATURES)
 
 Gets the UnivariateAffineScaling type `T`
 """
-get_type(as::AffineScaler{T, VV}) where {T, VV} = T
+get_type(as::AffineScaler{T}) where {T} = T
 
 """
 $(TYPEDSIGNATURES)
@@ -277,7 +277,7 @@ $(TYPEDSIGNATURES)
 Apply the `AffineScaler` encoder to a provided structure matrix
 """
 function encode_structure_matrix(as::AffineScaler, structure_matrix::MM) where {MM <: AbstractMatrix}
-    return Diagonal(1 ./ get_scale(as) .^ 2) * structure_matrix
+    return Diagonal(1 ./ get_scale(as)) * structure_matrix * Diagonal(1 ./ get_scale(as))
 end
 
 """
@@ -286,14 +286,14 @@ $(TYPEDSIGNATURES)
 Apply the `AffineScaler` decoder to a provided structure matrix
 """
 function decode_structure_matrix(as::AffineScaler, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
-    return Diagonal(get_scale(as) .^ 2) * enc_structure_matrix
+    return Diagonal(get_scale(as)) * enc_structure_matrix * Diagonal(get_scale(as))
 end
 
 
 """
 $(TYPEDEF)
 
-Decorrelate the data via tkaing an SVD decomposition and projecting onto the singular-vectors. 
+Decorrelate the data via taking an SVD decomposition and projecting onto the singular-vectors. 
 
 Preferred construction is with the methods
 - [`decorrelate_structure_mat`](@ref)
