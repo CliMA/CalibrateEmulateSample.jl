@@ -45,8 +45,6 @@ function predict(mlt, new_inputs; mlt_kwargs...)
     throw_define_mlt()
 end
 
-
-
 # We will define the different emulator types after the general statements
 
 """
@@ -57,28 +55,21 @@ Structure used to represent a general emulator, independently of the algorithm u
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct Emulator{FT <: AbstractFloat}
+struct Emulator{FT <: AbstractFloat, VV <: AbstractVector}
     "Machine learning tool, defined as a struct of type MachineLearningTool."
     machine_learning_tool::MachineLearningTool
-    "Normalized, standardized, transformed pairs given the Booleans normalize\\_inputs, standardize\\_outputs, retained\\_svd\\_frac."
-    training_pairs::PairedDataContainer{FT}
-    "Mean of input; length *input\\_dim*."
-    input_mean::AbstractVector{FT}
-    "If normalizing: whether to fit models on normalized inputs (`(inputs - input_mean) * sqrt_inv_input_cov`)."
-    normalize_inputs::Bool
-    "(Linear) normalization transformation; size *input\\_dim* × *input\\_dim*."
-    normalization::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing}
-    "Whether to fit models on normalized outputs: `outputs / standardize_outputs_factor`."
-    standardize_outputs::Bool
-    "If standardizing: Standardization factors (characteristic values of the problem)."
-    standardize_outputs_factors::Union{AbstractVector{FT}, Nothing}
-    "The singular value decomposition of *obs\\_noise\\_cov*, such that *obs\\_noise\\_cov* = decomposition.U * Diagonal(decomposition.S) * decomposition.Vt. NB: the SVD may be reduced in dimensions."
-    decomposition::Union{SVD, Nothing}
-    "Fraction of singular values kept in decomposition. A value of 1 implies full SVD spectrum information."
-    retained_svd_frac::FT
+    "original training data"
+    io_pairs::PairedDataContainer{FT}
+    "encoded training data"
+    encoded_io_pairs::PairedDataContainer{FT}
+    "Store of the pipeline to encode (/decode) the data"
+    encoder_schedule::VV
 end
 
 get_machine_learning_tool(emulator::Emulator) = emulator.machine_learning_tool
+get_io_pairs(emulator::Emulator) = emulator.io_pairs
+get_encoded_io_pairs(emulator::Emulator) = emulator.encoded_io_pairs
+get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
 # Constructor for the Emulator Object
 """
@@ -88,90 +79,61 @@ Positional Arguments
  - `machine_learning_tool` ::MachineLearningTool,
  - `input_output_pairs` ::PairedDataContainer
 Keyword Arguments 
- - `obs_noise_cov`: A matrix/uniform scaling to provide the observational noise covariance of the data - used for data processing (default `nothing`),
- - `normalize_inputs`: Normalize the inputs to be unit Gaussian, in the smallest full-rank space of the data (default `true`),
- - `standardize_outputs`: Standardize outputs with by dividing by a vector of provided factors (default `false`),
- - `standardize_outputs_factors`: If standardizing, the provided dim_output-length vector of factors,
- - `decorrelate`: Apply (truncated) SVD to the outputs. Predictions are returned in the decorrelated space, (default `true`)
- - `retained_svd_frac`: The cumulative sum of singular values retained after output SVD truncation (default 1.0 - no truncation)
+ 
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
     input_output_pairs::PairedDataContainer{FT};
-    obs_noise_cov::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
-    normalize_inputs::Bool = true,
-    standardize_outputs::Bool = false,
-    standardize_outputs_factors::Union{AbstractVector{FT}, Nothing} = nothing,
-    decorrelate::Bool = true,
-    retained_svd_frac::FT = 1.0,
+    user_encoder_schedule = nothing,
+    input_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
+    output_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
 
     # For Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
-    if isa(obs_noise_cov, UniformScaling)
-        # Cast UniformScaling to Diagonal, since UniformScaling incompatible with 
-        # SVD and standardize()
-        obs_noise_cov = Diagonal(obs_noise_cov, output_dim)
-    end
-    if obs_noise_cov !== nothing
-        err2 = "obs_noise_cov must be of size ($output_dim, $output_dim), got $(size(obs_noise_cov))"
-        size(obs_noise_cov) == (output_dim, output_dim) || throw(ArgumentError(err2))
+
+    input_structure_mat = if isnothing(input_structure_matrix)
+        Diagonal(FT.(ones(input_dim)))
+    elseif isa(input_structure_matrix, UniformScaling)
+        Diagonal(input_structure_matrix(input_dim))
     else
-        @warn "The covariance of the observational noise (a.k.a obs_noise_cov) is useful for data processing. Large approximation errors can occur without it. If possible, please provide it using the keyword obs_noise_cov."
+        input_structure_matrix
     end
-
-
-    # [1.] Normalize the inputs? 
-    input_mean = vec(mean(get_inputs(input_output_pairs), dims = 2)) #column vector
-    normalization = nothing
-    if normalize_inputs
-        normalization = calculate_normalization(get_inputs(input_output_pairs))
-        training_inputs = normalize(get_inputs(input_output_pairs), input_mean, normalization)
-        # new input_dim < input_dim when inputs lie in a proper linear subspace.
+    
+    output_structure_mat = if isnothing(output_structure_matrix)
+        Diagonal(FT.(ones(output_dim)))
+    elseif isa(output_structure_matrix, UniformScaling)
+        Diagonal(output_structure_matrix(output_dim))
     else
-        training_inputs = get_inputs(input_output_pairs)
+        output_structure_matrix
     end
 
-    # [2.] Standardize the outputs?
-    if standardize_outputs
-        training_outputs, obs_noise_cov =
-            standardize(get_outputs(input_output_pairs), obs_noise_cov, standardize_outputs_factors)
+    # [1.] Initializes and performs data encoding schedule
+    if !isnothing(encoder_schedule)
+        
+        encoder_schedule = create_encoder_schedule(user_encoder_schedule)
+        (encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) =
+            encode_with_schedule(
+                encoder_schedule,
+                input_output_pairs,
+                input_structure_matrix,
+                output_structure_matrix,
+            )
     else
-        training_outputs = get_outputs(input_output_pairs)
+        encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) = (input_output_pairs, input_structure_matrix,  output_structure_matrix)
     end
 
-    # [3.] Decorrelating the outputs, not performed for vector RF
-    if decorrelate
-        #Transform data if obs_noise_cov available 
-        # (if obs_noise_cov==nothing, transformed_data is equal to data)
-        decorrelated_training_outputs, decomposition =
-            svd_transform(training_outputs, obs_noise_cov, retained_svd_frac = retained_svd_frac)
+    # build_models!(machine_learning_tool, encoded_io_pairs; mlt_kwargs...)
+    # build_models!(machine_learning_tool, training_pairs; regularization_matrix = obs_noise_cov, mlt_kwargs...)
 
-        training_pairs = PairedDataContainer(training_inputs, decorrelated_training_outputs)
-        # [4.] build an emulator
-
-        build_models!(machine_learning_tool, training_pairs; mlt_kwargs...)
-    else
-        if decorrelate || !isa(machine_learning_tool, VectorRandomFeatureInterface)
-            throw(ArgumentError("$machine_learning_tool is incompatible with option Emulator(...,decorrelate = false)"))
-        end
-        decomposition = nothing
-        training_pairs = PairedDataContainer(training_inputs, training_outputs)
-        # [4.] build an emulator - providing the noise covariance as a Tikhonov regularizer
-        build_models!(machine_learning_tool, training_pairs; regularization_matrix = obs_noise_cov, mlt_kwargs...)
-    end
-
+    # build the machine learning tool in the encoded space
+    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix; mlt_kwargs...)
     return Emulator{FT}(
-        machine_learning_tool,
-        training_pairs,
-        input_mean,
-        normalize_inputs,
-        normalization,
-        standardize_outputs,
-        standardize_outputs_factors,
-        decomposition,
-        retained_svd_frac,
+    machine_learning_tool,
+        input_output_pairs,
+        encoded_io_pairs,
+        encoder_schedule,
     )
 end
 
@@ -195,23 +157,18 @@ function predict(
     emulator::Emulator{FT},
     new_inputs::AM;
     transform_to_real = false,
-    vector_rf_unstandardize = true,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat, AM <: AbstractMatrix}
     # Check if the size of new_inputs is consistent with the GP model's input
-    # dimension. 
-    input_dim, output_dim = size(emulator.training_pairs, 1)
-
+    # dimension.
+    # un-encoded data to get dimensions
+    input_dim, output_dim = size(get_io_pairs(emulator), 1)
+    encoded_input_dim, encoded_output_dim = size(get_io_pairs(emulator), 1)
+    
     N_samples = size(new_inputs, 2)
-
+    
     # check sizing against normalization
-    if emulator.normalize_inputs
-        size(new_inputs, 1) == size(emulator.normalization, 2) || throw(
-            ArgumentError(
-                "Emulator object and input observations do not have consistent dimensions, expected $(size(emulator.normalization,2)), received $(size(new_inputs,1))",
-            ),
-        )
-    else
+    if
         size(new_inputs, 1) == input_dim || throw(
             ArgumentError(
                 "Emulator object and input observations do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
@@ -219,82 +176,39 @@ function predict(
         )
     end
 
-    # [1.] normalize
-    normalized_new_inputs = normalize(emulator, new_inputs)
-    # [2.]  predict. Note: ds = decorrelated, standard
-    ds_outputs, ds_output_var = predict(emulator.machine_learning_tool, normalized_new_inputs, mlt_kwargs...)
+    # encode the new input data
+    encoder_schedule = get_encoder_schedule(emulator)
+    encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_in_data), "in")
 
-    # [3.] transform back to real coordinates or remain in decorrelated coordinates
-    if !isa(get_machine_learning_tool(emulator), VectorRandomFeatureInterface)
-        if transform_to_real && emulator.decomposition === nothing
-            throw(ArgumentError("""Need SVD decomposition to transform back to original space, 
-                     but GaussianProcess.decomposition == nothing. 
-                     Try setting transform_to_real=false"""))
-        elseif transform_to_real && emulator.decomposition !== nothing
+    # predict in encoding space
+    # returns outputs: [enc_out_dim x n_samples]
+    # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
+    # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), get_data(encoded_inputs), mlt_kwargs...)
 
-            #transform back to real coords - cov becomes dense
-            s_outputs, s_output_cov = svd_reverse_transform_mean_cov(ds_outputs, ds_output_var, emulator.decomposition)
-            if output_dim == 1
-                s_output_cov = reshape([s_output_cov[i][1] for i in 1:N_samples], 1, :)
-            end
+    var_or_cov = (ndims(encoded_uncertainties[1]) == 2) ? "var" : "cov"
 
-            # [4.] unstandardize
-            return reverse_standardize(emulator, s_outputs, s_output_cov)
-        else
-            # remain in decorrelated, standardized coordinates (cov remains diagonal)
-            # Convert to vector of  matrices to match the format  
-            # when transform_to_real=true
-            ds_output_diagvar = vec([Diagonal(ds_output_var[:, j]) for j in 1:N_samples])
-            if output_dim == 1
-                ds_output_diagvar = reshape([ds_output_diagvar[i][1] for i in 1:N_samples], 1, :)
-            end
-            return ds_outputs, ds_output_diagvar
-        end
+    # return decoded or encoded?
+    if transform_to_real
+        decoded_outputs = decode_with_schedule(encoder_schedule, DataContainer(encoded_outputs), "out")
+        
+        decoded_covariances = (var_or_cov == "var") ?
+            [decode_with_schedule(encoder_schedule, Diagonal(col), "out") for col in eachcol(encoded_uncertainties) ] :
+            [decode_with_schedule(encoder_schedule, mat, "out") for mat in eachslice(encoded_uncertainties, dims=3) ] 
+        return decoded_outputs, decoded_covariances
     else
-        # create a vector of covariance matrices
-        ds_output_covvec = vec([ds_output_var[:, :, j] for j in 1:N_samples])
-
-        if emulator.decomposition === nothing # without applying SVD    
-            if vector_rf_unstandardize
-                # [4.] unstandardize
-                return reverse_standardize(emulator, ds_outputs, ds_output_covvec)
-            else
-                return ds_outputs, ds_output_covvec
-            end
-
-        else #if we applied SVD               
-            if transform_to_real # ...and want to return coordinates
-                s_outputs, s_output_cov =
-                    svd_reverse_transform_mean_cov(ds_outputs, ds_output_covvec, emulator.decomposition)
-                if output_dim == 1
-                    s_output_cov = reshape([s_output_cov[i][1] for i in 1:N_samples], 1, :)
-                end
-                # [4.] unstandardize
-                return reverse_standardize(emulator, s_outputs, s_output_cov)
-            else #... and want to stay in decorrelated standardized coordinates
-
-                # special cases where you only return variances and not covariances, could be better acheived with dispatch...
-                kernel_structure = get_kernel_structure(get_machine_learning_tool(emulator))
-                if nameof(typeof(kernel_structure)) == :SeparableKernel
-                    output_cov_structure = get_output_cov_structure(kernel_structure)
-                    if nameof(typeof(output_cov_structure)) == :DiagonalFactor
-                        ds_output_diagvar = vec([Diagonal(ds_output_covvec[j]) for j in 1:N_samples]) # extracts diagonal
-                        return ds_outputs, ds_output_diagvar
-                    elseif nameof(typeof(output_cov_structure)) == :OneDimFactor
-                        ds_output_diagvar = ([ds_output_covvec[i][1, 1] for i in 1:N_samples], 1, :) # extracts value
-                        return ds_outputs, ds_output_diagvar
-                    else
-                        return ds_outputs, ds_output_covvec
-                    end
-                else
-                    return ds_outputs, ds_output_covvec
-                end
-            end
+        
+        if encoded_output_dim > 1
+            encoded_covariances = [Diagonal(col) for col in eachcol(encoded_uncertainties)]
+        else
+            encoded_covariances = encoded_uncertainties
         end
-
+        return encoded_outputs, encoded_covariances
     end
-
+    
 end
+
+#=
 
 # Normalization, Standardization, and Decorrelation
 """
@@ -540,7 +454,7 @@ function svd_reverse_transform_mean_cov(
 
     return svd_reverse_transform_mean_cov(μ, σ2_as_cov, decomposition)
 end
-
+=#
 
 
 
