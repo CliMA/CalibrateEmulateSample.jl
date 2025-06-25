@@ -108,7 +108,7 @@ end
 
     in_dim = 10
     out_dim = 50
-    samples = 120 # for full test coverage have samples in_dim < samples < out_dim
+    samples = 120
 
     x = randn(rng, in_dim, in_dim)
     prior_cov = x * x'
@@ -117,7 +117,7 @@ end
     out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
 
     io_pairs = PairedDataContainer(in_data, out_data)
-    test_names = [ # order as in tests
+    test_names = [ # order as in schedules below
         "zscore",
         "quartile",
         "minmax",
@@ -271,7 +271,7 @@ end
     io_pairs = PairedDataContainer(in_data, out_data)
 
     schedule_builder = [
-        (zscore_scale(), "in_and_out"), # 
+        (zscore_scale(), "in_and_out"),  
         (quartile_scale(), "in"),
         (decorrelate_sample_cov(), "in_and_out"),
         (minmax_scale(), "out"),

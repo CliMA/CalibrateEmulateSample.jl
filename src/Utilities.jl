@@ -330,13 +330,13 @@ $(TYPEDSIGNATURES)
 
 Constructs the `Decorrelater` struct. Users can add optional keyword arguments:
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
-- `decorrelate_with` [=`"structure_matrix"`]: from which matrix do we provide subspace directions, options are
+- `decorrelate_with` [=`"combined"`]: from which matrix do we provide subspace directions, options are
   - `"structure_mat"`, see [`decorrelate_structure_mat`](@ref)
   - `"sample_cov"`, see [`decorrelate_sample_cov`](@ref)
   - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 """
 decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with = "combined") where {FT} =
-    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), decorrelate_with)
+    Decorrelater([], [], [], clamp(retain_var, FT(0), FT(1)), decorrelate_with)
 
 """
 $(TYPEDSIGNATURES)
@@ -345,7 +345,7 @@ Constructs the `Decorrelater` struct, setting decorrelate_with = "sample_cov". E
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
 decorrelate_sample_cov(; retain_var::FT = Float64(1.0)) where {FT} =
-    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "sample_cov")
+    Decorrelater([], [], [], clamp(retain_var, FT(0), FT(1)), "sample_cov")
 
 """
 $(TYPEDSIGNATURES)
@@ -354,7 +354,7 @@ Constructs the `Decorrelater` struct, setting decorrelate_with = "structure_mat"
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
 decorrelate_structure_mat(; retain_var::FT = Float64(1.0)) where {FT} =
-    Decorrelater([], [], [], min(max(retain_var, FT(0)), FT(1)), "structure_mat")
+    Decorrelater([], [], [], clamp(retain_var, FT(0), FT(1)), "structure_mat")
 
 """
 $(TYPEDSIGNATURES)
@@ -393,10 +393,10 @@ get_decorrelate_with(dd::Decorrelater) = dd.decorrelate_with
 
 function Base.show(io::IO, dd::Decorrelater)
     out = "Decorrelater"
+    out *= ": decorrelate_with=$(get_decorrelate_with(dd))"
     if get_retain_var(dd) < 1.0
-        out *= ": retain_var=$(get_retain_var(dd)) "
+        out *= ", retain_var=$(get_retain_var(dd))"
     end
-    out *= ": decorrelate_with=$(get_decorrelate_with(dd)) "
     print(io, out)
 end
 
@@ -536,8 +536,8 @@ $(TYPEDSIGNATURES)
 Constructs the `CanonicalCorrelation` struct. Can optionally provide the keyword
 - `retain_var`[=1.0]: to project onto the leading singular vectors (of the input-output product) such that `retain_var` variance is retained. 
 """
-canonical_correlation(; retain_var = Float64(1.0)) =
-    CanonicalCorrelation(Any[], Any[], Any[], retain_var, AbstractString[])
+canonical_correlation(; retain_var::FT = Float64(1.0)) where {FT} =
+    CanonicalCorrelation(Any[], Any[], Any[], clamp(retain_var, FT(0), FT(1)) , AbstractString[])
 
 """
 $(TYPEDSIGNATURES)
@@ -575,10 +575,13 @@ returns the `apply_to` field of the `CanonicalCorrelation`.
 get_apply_to(cc::CanonicalCorrelation) = cc.apply_to
 
 function Base.show(io::IO, cc::CanonicalCorrelation)
+
+    out = "CanonicalCorrelation:"
+    if length(get_apply_to(cc))>0
+        out *=" apply_to=$(get_apply_to(cc)[1])"
+    end
     if get_retain_var(cc) < 1.0
-        out = "CanonicalCorrelation: retain_var=$(get_retain_var(cc))"
-    else
-        out = "CanonicalCorrelation"
+        out *= " retain_var=$(get_retain_var(cc))"
     end
     print(io, out)
 end
@@ -614,12 +617,10 @@ function initialize_processor!(
         end
 
         # Individually decompose in and out
-        # Want to use the nonsquare singular vector
         svdi = svd(in_data .- mean(in_data, dims = 2))
         svdo = svd(out_data .- mean(out_data, dims = 2))
-        # determine regime
 
-        # ensure we non-square sv (in_mat = (in_dim x n_samples), out_mat = (out_dim x n_samples))
+        # ensure correct shaping (in_mat = (in_dim x n_samples), out_mat = (out_dim x n_samples))
         in_mat_sq, in_mat_nonsq = (size(svdi.U, 1) == size(svdi.U, 2)) ? (svdi.U, svdi.Vt) : (svdi.Vt, svdi.U)
         out_mat_sq, out_mat_nonsq = (size(svdo.U, 1) == size(svdo.U, 2)) ? (svdo.U, svdo.Vt) : (svdo.Vt, svdo.U)
 
@@ -928,7 +929,7 @@ function encode_with_schedule(
     in_or_out::AS,
 ) where {VV <: AbstractVector, DC <: DataContainer, AS <: AbstractString}
 
-    if !(in_or_out ∈ ["in", "out"])
+    if in_or_out ∉ ["in", "out"]
         throw(
             ArgumentError(
                 "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
