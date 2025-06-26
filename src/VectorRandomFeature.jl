@@ -352,10 +352,11 @@ Build Vector Random Feature model for the input-output pairs subject to regulari
 """
 function build_models!(
     vrfi::VectorRandomFeatureInterface,
-    input_output_pairs::PairedDataContainer{FT};
-    regularization_matrix::Union{M, Nothing} = nothing,
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
-) where {FT <: AbstractFloat, M <: AbstractMatrix}
+) where {FT <: AbstractFloat}
 
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
@@ -443,22 +444,14 @@ function build_models!(
         "hyperparameter learning using $n_train training points, $n_test validation points and $n_features_opt features"
     )
 
-    # regularization_matrix = nothing when we use scaled SVD to decorrelate the space,
-    # in this setting, noise = I
-    if regularization_matrix === nothing
-        regularization = I
-
+    # think of the output_structure_matrix as the observational noise covariance, or a related quantity
+    if !isposdef(output_structure_matrix)
+        regularization = posdef_correct(output_structure_matrix)
+        println("RF output structure matrix is not positive definite, correcting for use as a regularizer")
     else
-        # think of the regularization_matrix as the observational noise covariance, or a related quantity
-        if !isposdef(regularization_matrix)
-            regularization = posdef_correct(regularization_matrix)
-            println("RF regularization matrix is not positive definite, correcting")
-
-        else
-            regularization = regularization_matrix
-        end
-
+        regularization = output_structure_matrix
     end
+    
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
