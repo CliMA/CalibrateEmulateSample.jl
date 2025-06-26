@@ -110,27 +110,25 @@ function Emulator(
     end
 
     # [1.] Initializes and performs data encoding schedule
-    if !isnothing(encoder_schedule)
+    if !isnothing(user_encoder_schedule)
         
         encoder_schedule = create_encoder_schedule(user_encoder_schedule)
-        (encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) =
+        (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
             encode_with_schedule(
                 encoder_schedule,
                 input_output_pairs,
-                input_structure_matrix,
-                output_structure_matrix,
+                input_structure_mat,
+                output_structure_mat,
             )
     else
-        encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) = (input_output_pairs, input_structure_matrix,  output_structure_matrix)
+        (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) = (input_output_pairs, input_structure_mat,  output_structure_mat)
+        encoder_schedule = user_encoder_schedule
     end
 
-    # build_models!(machine_learning_tool, encoded_io_pairs; mlt_kwargs...)
-    # build_models!(machine_learning_tool, training_pairs; regularization_matrix = obs_noise_cov, mlt_kwargs...)
-
     # build the machine learning tool in the encoded space
-    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix; mlt_kwargs...)
-    return Emulator{FT}(
-    machine_learning_tool,
+    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat; mlt_kwargs...)
+    return Emulator{FT, typeof(encoder_schedule)}(
+        machine_learning_tool,
         input_output_pairs,
         encoded_io_pairs,
         encoder_schedule,
@@ -167,9 +165,8 @@ function predict(
     
     N_samples = size(new_inputs, 2)
     
-    # check sizing against normalization
-    if
-        size(new_inputs, 1) == input_dim || throw(
+    if !(size(new_inputs, 1) == input_dim)
+        throw(
             ArgumentError(
                 "Emulator object and input observations do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
             ),
@@ -178,7 +175,7 @@ function predict(
 
     # encode the new input data
     encoder_schedule = get_encoder_schedule(emulator)
-    encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_in_data), "in")
+    encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_inputs), "in")
 
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
@@ -186,8 +183,8 @@ function predict(
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), get_data(encoded_inputs), mlt_kwargs...)
 
-    var_or_cov = (ndims(encoded_uncertainties[1]) == 2) ? "var" : "cov"
-
+    var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
+    
     # return decoded or encoded?
     if transform_to_real
         decoded_outputs = decode_with_schedule(encoder_schedule, DataContainer(encoded_outputs), "out")
@@ -195,7 +192,7 @@ function predict(
         decoded_covariances = (var_or_cov == "var") ?
             [decode_with_schedule(encoder_schedule, Diagonal(col), "out") for col in eachcol(encoded_uncertainties) ] :
             [decode_with_schedule(encoder_schedule, mat, "out") for mat in eachslice(encoded_uncertainties, dims=3) ] 
-        return decoded_outputs, decoded_covariances
+        return get_data(decoded_outputs), decoded_covariances
     else
         
         if encoded_output_dim > 1
