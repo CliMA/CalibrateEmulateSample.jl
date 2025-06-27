@@ -54,17 +54,23 @@ function main()
         "struct-mat-proc",
         "combined-proc",
         "cca-proc",
+        "whiten-then-cca",
     ]
     encoders = [
         [],
         (decorrelate_sample_cov(), "in_and_out"),
         (decorrelate_structure_mat(), "in_and_out"),
         (decorrelate(), "in_and_out"),
-        (canonical_correlation(), "in_and_out")           
+        (canonical_correlation(), "in_and_out"),
+        [
+            (decorrelate_sample_cov(), "in"),
+            (decorrelate_structure_mat(), "out"),
+            (canonical_correlation(), "in_and_out"),
+        ],
     ]
 
     # USER CHOICES 
-    encoder_mask = [1:5...]
+    encoder_mask = [1:6...]
     case_mask = [1] # (KEEP set to 1:length(cases) when pushing for buildkite)
     
     
@@ -87,7 +93,7 @@ function main()
 
     # Add noise η
     μ = zeros(d)
-    Σ = [[0.4, -0.3] [-0.3, 0.5]] # d x d
+    Σ = 0.1*[[0.4, -0.3] [-0.3, 0.5]] # d x d
     noise_samples = rand(MvNormal(μ, Σ), n)
     # y = G(x) + η
     Y = gx .+ noise_samples
