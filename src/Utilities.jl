@@ -439,17 +439,17 @@ function initialize_processor!(
         ret_var = get_retain_var(dd)
         if ret_var < 1.0
             sv_cumsum = cumsum(svdA.S .^ 2) / sum(svdA.S .^ 2) # variance contributions are (sing_val)^2
-            trunc = minimum(findall(x -> (x > ret_var), sv_cumsum))
-            @info "    truncating at $(trunc)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc])% of the variance of the structure matrix"
+            trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
+            @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
         else
-            trunc = rk
+            trunc_val = rk
         end
-        sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc]))
-        sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc]))
+        sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc_val]))
+        sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc_val]))
 
         # as we have svd of cov-matrix we can use U or Vt
-        encoder_mat = sqrt_inv_sv * svdA.Vt[1:trunc, :]
-        decoder_mat = svdA.Vt[1:trunc, :]' * sqrt_sv
+        encoder_mat = sqrt_inv_sv * svdA.Vt[1:trunc_val, :]
+        decoder_mat = svdA.Vt[1:trunc_val, :]' * sqrt_sv
 
         push!(get_encoder_mat(dd), encoder_mat)
         push!(get_decoder_mat(dd), decoder_mat)
@@ -628,40 +628,39 @@ function initialize_processor!(
         in_mat_sq, in_mat_nonsq = (size(svdi.U, 1) == size(svdi.U, 2)) ? (svdi.U, svdi.Vt) : (svdi.Vt, svdi.U)
         out_mat_sq, out_mat_nonsq = (size(svdo.U, 1) == size(svdo.U, 2)) ? (svdo.U, svdo.Vt) : (svdo.Vt, svdo.U)
 
-        svdio = svd(out_mat_nonsq * in_mat_nonsq')
-
+        svdio = svd(in_mat_nonsq * out_mat_nonsq')
+        
         # retain variance
         ret_var = get_retain_var(cc)
         if ret_var < 1.0
             sv_cumsum = cumsum(svdio.S .^ 2) / sum(svdio.S .^ 2) # variance contributions are (sing_val)^2
-            trunc = minimum(findall(x -> (x > ret_var), sv_cumsum))
-            @info "    truncating at $(trunc)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc])% of the variance in the joint space"
+            trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
+            @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance in the joint space"
         else
-            trunc = min(rank(in_data), rank(out_data))
+            trunc_val = min(rank(in_data), rank(out_data))
         end
-
+        in_dim = size(in_data, 1)
+        in_svdio_mat, out_svdio_mat = (size(svdio.U, 1) == in_dim) ? (svdio.U, svdio.V) : (svdio.V, svdio.U')
         if apply_to == "in"
-            in_dim = size(in_data, 1)
-            svdio_mat = (size(svdio.U, 1) == in_dim) ? svdio.U : svdio.V
             # mat' * Sx⁻¹ * Uxt
-            encoder_mat = svdio_mat[:, 1:trunc]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
-            decoder_mat = in_mat_sq * Diagonal(svdi.S) * svdio_mat[:, 1:trunc]
+            encoder_mat = in_svdio_mat[:, 1:trunc_val]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
+            decoder_mat = in_mat_sq * Diagonal(svdi.S) * in_svdio_mat[:, 1:trunc_val]
+            
         elseif apply_to == "out"
             out_dim = size(out_data, 1)
-            svdio_mat = (size(svdio.U, 1) == out_dim) ? svdio.U : svdio.V
             # Vt * Sy⁻¹ * Uyt
-            encoder_mat = svdio_mat[:, 1:trunc]' * Diagonal(1 ./ svdo.S) * out_mat_sq'
-            decoder_mat = out_mat_sq * Diagonal(svdo.S) * svdio_mat[:, 1:trunc]
+            encoder_mat = out_svdio_mat[:, 1:trunc_val]' * Diagonal(1 ./ svdo.S) * out_mat_sq'
+            decoder_mat = out_mat_sq * Diagonal(svdo.S) * out_svdio_mat[:, 1:trunc_val]
         end
 
         push!(get_encoder_mat(cc), encoder_mat)
         push!(get_decoder_mat(cc), decoder_mat)
 
         # Note: To check CCA: 
-        # u = in_encoder * (in - mean(in))
-        # v = out_encoder * (out - mean(out))
+        # u = in_encoder * (in_data .- mean(in_data, dims=2))
+        # v = out_encoder * (out_data .- mean(out_data, dims=2))
         # u * u' = v * v' = I, 
-        # v * u' = u * v' = Diagonal(svdio.S[1:trunc])
+        # v * u' = u * v' = Diagonal(svdio.S[1:trunc_val])
     end
 end
 
@@ -881,7 +880,6 @@ end
 Create size-1 encoder schedule with a tuple of `(DataProcessor1(...), apply_to)` with `apply_to = "in"`, `"out"` or `"in_and_out"`.
 """
 create_encoder_schedule(schedule_in::TT) where {TT <: Tuple} = create_encoder_schedule([schedule_in])
-
 
 function bad_apply_to(apply_to::AS) where {AS <: AbstractString}
     throw(

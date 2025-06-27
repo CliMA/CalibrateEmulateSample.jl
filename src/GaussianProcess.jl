@@ -138,7 +138,9 @@ Method to build Gaussian process models based on the package.
 """
 function build_models!(
     gp::GaussianProcess{GPJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
@@ -258,7 +260,9 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: 
 #now we build the SKLJL implementation
 function build_models!(
     gp::GaussianProcess{SKLJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
@@ -336,7 +340,9 @@ end
 #We build the AGPJL implementation
 function build_models!(
     gp::GaussianProcess{AGPJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kernel_params = nothing,
     kwargs...,
 ) where {FT <: AbstractFloat}
