@@ -47,7 +47,7 @@ function main()
         "rf-sep-sep",
         "rf-nonsep",
     ]
-    case_mask = [3]#, 3:length(cases)...] # (KEEP set to 1:length(cases) when pushing for buildkite)
+    case_mask = [1]#, 3:length(cases)...] # (KEEP set to 1:length(cases) when pushing for buildkite)
 
     #choose your encoders: 
     encoder_schedule = [
@@ -149,8 +149,8 @@ function main()
         # common random feature setup
         n_features = 300
         optimizer_options =
-            Dict("n_iteration" => 10, "n_features_opt" => 150, "n_ensemble" => 80, "cov_sample_multiplier" => 5.0)
-        nugget = 1e-4
+            Dict("n_iteration" => 10, "n_features_opt" => 60, "n_ensemble" => 30, "cov_sample_multiplier" => 5.0, "scheduler" => DataMisfitController(terminate_at=10))
+        nugget = 1.0
 
         # data processing schedule
    
