@@ -111,7 +111,6 @@ function Emulator(
 
     # [1.] Initializes and performs data encoding schedule
     if !isnothing(user_encoder_schedule)
-        
         encoder_schedule = create_encoder_schedule(user_encoder_schedule)
         (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
             encode_with_schedule(
@@ -120,9 +119,9 @@ function Emulator(
                 input_structure_mat,
                 output_structure_mat,
             )
-    else
+    else 
         (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) = (input_output_pairs, input_structure_mat,  output_structure_mat)
-        encoder_schedule = user_encoder_schedule
+        encoder_schedule = []
     end
 
     # build the machine learning tool in the encoded space
@@ -176,19 +175,16 @@ function predict(
     # encode the new input data
     encoder_schedule = get_encoder_schedule(emulator)
     encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_inputs), "in")
-
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), get_data(encoded_inputs), mlt_kwargs...)
-
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
-
     # return decoded or encoded?
     if transform_to_real
         decoded_outputs = decode_with_schedule(encoder_schedule, DataContainer(encoded_outputs), "out")
-   
+        
         decoded_covariances = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
