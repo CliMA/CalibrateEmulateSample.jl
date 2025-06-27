@@ -47,16 +47,25 @@ function main()
         "rf-sep-sep",
         "rf-nonsep",
     ]
-    case_mask = [1]#, 3:length(cases)...] # (KEEP set to 1:length(cases) when pushing for buildkite)
 
-    #choose your encoders: 
-    encoder_schedule = [
-        #            (decorrelate_sample_cov(), "in_and_out"),
-        #            (decorrelate_structure_mat(), "in_and_out"),
-        #            (decorrelate(), "in_and_out"),
-        #            (canonical_correlation(), "in_and_out")           
-        ]
-    
+    encoder_names = [
+        "no-proc",
+        "sample-proc",
+        "struct-mat-proc",
+        "combined-proc",
+        "cca-proc",
+    ]
+    encoders = [
+        [],
+        (decorrelate_sample_cov(), "in_and_out"),
+        (decorrelate_structure_mat(), "in_and_out"),
+        (decorrelate(), "in_and_out"),
+        (canonical_correlation(), "in_and_out")           
+    ]
+
+    # USER CHOICES 
+    encoder_mask = [1:5...]
+    case_mask = [1] # (KEEP set to 1:length(cases) when pushing for buildkite)
     
     
     #problem
@@ -138,10 +147,16 @@ function main()
 
     end
 
-    for case in cases[case_mask]
+    for case in cases[case_mask] 
+        for (enc_name, enc) in zip(encoder_names[encoder_mask], encoders[encoder_mask])
 
         println(" ")
-        @info "running case $case"
+        @info """
+
+        -------------
+        running case $case with encoder $enc_name
+        -------------
+        """
 
         # common Gaussian feature setup
         pred_type = YType()
@@ -149,8 +164,8 @@ function main()
         # common random feature setup
         n_features = 300
         optimizer_options =
-            Dict("n_iteration" => 10, "n_features_opt" => 60, "n_ensemble" => 30, "cov_sample_multiplier" => 5.0, "scheduler" => DataMisfitController(terminate_at=10))
-        nugget = 1.0
+            Dict("n_iteration" => 10, "n_features_opt" => 60, "n_ensemble" => 30, "cov_sample_multiplier" => 5.0, "verbose" => true)
+        nugget = 1e-7
 
         # data processing schedule
    
@@ -167,7 +182,7 @@ function main()
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 p,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
+                kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor()),
                 optimizer_options = optimizer_options,
             )
         elseif case == "rf-sep-diag"
@@ -200,7 +215,7 @@ function main()
         emulator = Emulator(
             mlt,
             iopairs,
-            user_encoder_schedule = encoder_schedule,
+            user_encoder_schedule = enc,
             input_structure_matrix = prior_cov,
             output_structure_matrix = Σ,
         )
@@ -253,7 +268,7 @@ function main()
 
                 plot(p5, p6, layout = (1, 2), legend = false)
 
-                savefig(joinpath(output_directory, case * "_y" * string(y_i) * "_predictions.png"))
+                savefig(joinpath(output_directory, case *"_"* enc_name * "_y" * string(y_i) * "_predictions.png"))
             end
         end
 
@@ -293,8 +308,9 @@ function main()
                     title = "weighted difference $y_i"
                 )
 
-                savefig(joinpath(output_directory, case * "_y" * string(y_i) * "_difference_truth_prediction.png"))
+                savefig(joinpath(output_directory, case*"_"* enc_name * "_y" * string(y_i) * "_difference_truth_prediction.png"))
             end
+        end
         end
     end
 end

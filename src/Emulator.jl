@@ -122,17 +122,7 @@ function Emulator(
     else 
         (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) = (input_output_pairs, input_structure_mat,  output_structure_mat)
         encoder_schedule = []
-    end
-
-    @info input_structure_mat
-    @info output_structure_mat
-    @info encoded_input_structure_mat
-    @info encoded_output_structure_mat
-    @info cov(get_inputs(encoded_io_pairs), dims=2)
-    @info cov(get_outputs(encoded_io_pairs), dims=2)
-    @info get_inputs(encoded_io_pairs) * get_outputs(encoded_io_pairs)'
-    @info get_outputs(encoded_io_pairs)* get_inputs(encoded_io_pairs)'
-    
+    end    
     # build the machine learning tool in the encoded space
     build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat; mlt_kwargs...)
     return Emulator{FT, typeof(encoder_schedule)}(
@@ -184,13 +174,11 @@ function predict(
     # encode the new input data
     encoder_schedule = get_encoder_schedule(emulator)
     encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_inputs), "in")
-    @info cov(get_data(encoded_inputs),dims=2)
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), get_data(encoded_inputs), mlt_kwargs...)
-    @info cov(encoded_outputs,dims=2)
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
     # return decoded or encoded?
     if transform_to_real
