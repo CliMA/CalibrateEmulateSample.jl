@@ -69,7 +69,7 @@ function main()
     
     
     #problem
-    n = 100  # number of training points
+    n = 200  # number of training points
     p = 2   # input dim 
     d = 2   # output dim
     prior_cov = (pi^2)*I(p)
