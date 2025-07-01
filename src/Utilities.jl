@@ -443,10 +443,13 @@ function initialize_processor!(
             @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
         else
             trunc_val = rk
+            if rk < size(data,1)
+                @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
+            end
         end
+        
         sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc_val]))
         sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc_val]))
-
         # as we have svd of cov-matrix we can use U or Vt
         encoder_mat = sqrt_inv_sv * svdA.Vt[1:trunc_val, :]
         decoder_mat = svdA.Vt[1:trunc_val, :]' * sqrt_sv
