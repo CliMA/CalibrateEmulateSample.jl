@@ -84,7 +84,7 @@ Keyword Arguments
 function Emulator(
     machine_learning_tool::MachineLearningTool,
     input_output_pairs::PairedDataContainer{FT};
-    user_encoder_schedule = nothing,
+    encoder_schedule = nothing,
     input_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     output_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     mlt_kwargs...,
@@ -110,26 +110,26 @@ function Emulator(
     end
 
     # [1.] Initializes and performs data encoding schedule
-    if !isnothing(user_encoder_schedule)
-        encoder_schedule = create_encoder_schedule(user_encoder_schedule)
+    if !isnothing(encoder_schedule)
+        enc_schedule = create_encoder_schedule(encoder_schedule)
         (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
             encode_with_schedule(
-                encoder_schedule,
+                enc_schedule,
                 input_output_pairs,
                 input_structure_mat,
                 output_structure_mat,
             )
     else 
         (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) = (input_output_pairs, input_structure_mat,  output_structure_mat)
-        encoder_schedule = []
+        enc_schedule = []
     end    
     # build the machine learning tool in the encoded space
     build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat; mlt_kwargs...)
-    return Emulator{FT, typeof(encoder_schedule)}(
+    return Emulator{FT, typeof(enc_schedule)}(
         machine_learning_tool,
         input_output_pairs,
         encoded_io_pairs,
-        encoder_schedule,
+        enc_schedule,
     )
 end
 
