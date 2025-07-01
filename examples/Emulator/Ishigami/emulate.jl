@@ -124,7 +124,7 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = copy(encoder_schedule))
+        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # get EKP errors - just stored in "optimizer" box for now
