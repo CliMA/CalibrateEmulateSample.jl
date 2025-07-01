@@ -24,6 +24,8 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     input_dim::Int
     "choice of random number generator"
     rng::RNG
+    "regularization"
+    regularization::Vector{Union{Matrix, UniformScaling, Diagonal}}
     "Kernel structure type (e.g. Separable or Nonseparable)"
     kernel_structure::KST
     "Random Feature decomposition, choose from \"svd\" or \"cholesky\" (default)"
@@ -75,6 +77,14 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 gets the rng field
 """
 EKP.get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Gets the regularization field
+"""
+get_regularization(srfi::ScalarRandomFeatureInterface) = srfi.regularization
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -144,6 +154,7 @@ function ScalarRandomFeatureInterface(
     # Initialize vector for GP models
     rfms = Vector{RF.Methods.RandomFeatureMethod}(undef, 0)
     fitted_features = Vector{RF.Methods.Fit}(undef, 0)
+    regularization = Vector{Union{Matrix, UniformScaling, Nothing}}(undef, 0)
 
     if isnothing(kernel_structure)
         kernel_structure = SeparableKernel(cov_structure_from_string("lowrank", input_dim), OneDimFactor())
@@ -191,6 +202,7 @@ function ScalarRandomFeatureInterface(
         n_features,
         input_dim,
         rng,
+        regularization,
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
@@ -294,7 +306,7 @@ RFM_from_hyperparameters(
 ) where {
     RNG <: AbstractRNG,
     ForVM <: Union{Real, AbstractVecOrMat},
-    MorUS <: Union{Matrix, UniformScaling},
+    MorUS <: Union{AbstractMatrix, UniformScaling},
     S <: AbstractString,
     MT <: MultithreadType,
 } = RFM_from_hyperparameters(srfi, rng, l, regularization, n_features, batch_sizes, input_dim, multithread_type)
@@ -315,7 +327,6 @@ function build_models!(
     input_values = get_inputs(input_output_pairs)
     output_values = get_outputs(input_output_pairs)
     n_rfms, n_data = size(output_values)
-    noise_sd = 1.0
 
     input_dim = size(input_values, 1)
 
@@ -352,7 +363,7 @@ function build_models!(
         n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
         n_train = n_data
         n_test = n_data
-    else
+   else
         train_fraction = optimizer_options["train_fraction"]
         n_train = Int(floor(train_fraction * n_data))
         n_test = n_data - n_train
@@ -375,15 +386,15 @@ function build_models!(
 
 
 
-    #regularization = I = 1.0 in scalar case
-    regularization = I
-
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
     )
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
+
+        #regularization = I #
+        regularization = output_structure_matrix[i,i]*I
 
         io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
 
@@ -548,6 +559,7 @@ function build_models!(
 
         push!(rfms, rfm_i)
         push!(fitted_features, fitted_features_i)
+        push!(get_regularization(srfi), regularization)
 
     end
     push!(optimizer, diagnostics)
@@ -592,9 +604,13 @@ function predict(
             tullio_threading = tullio_threading,
         )
     end
-
+    
     # add the noise contribution from the regularization
-    σ2[:, :] = σ2[:, :] .+ 1.0
-
+    reg = get_regularization(srfi)[1]
+    reg_diag  = isa(reg, UniformScaling) ? reg.λ*ones(M) : diag(reg)
+    for i = 1:M
+        σ2[i, :] .+= reg_diag[i]
+    end
+    
     return μ, σ2
 end
