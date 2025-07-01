@@ -12,6 +12,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
+using CalibrateEmulateSample.Utilities
 
 using CairoMakie, ColorSchemes #for plots
 seed = 2589436
@@ -39,8 +40,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 20# repeat exp with same data.
-    n_dimensions = 20
+    n_repeats = 10# repeat exp with same data.
+    n_dimensions = 6
     # To create the sampling
     n_data_gen = 800
 
@@ -90,21 +91,18 @@ function main()
     prod_tmp2 = [prod(1 .+ 1 ./ (3 .* (1 .+ a[1:end .!== j]) .^ 2)) for j in 1:n_dimensions]
     TV = [(1 / (3 * (1 + ai)^2)) * prod_tmp2[i] / prod_tmp for (i, ai) in enumerate(a)]
 
-
-
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[3]
-    decorrelate = true
+    encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
     nugget = Float64(1e-12)
 
     overrides = Dict(
         "verbose" => true,
         "scheduler" => DataMisfitController(terminate_at = 1e2),
-        "n_features_opt" => 150,
+        "n_features_opt" => 120,
         "n_iteration" => 10,
         "cov_sample_multiplier" => 3.0,
         #"localization" => SEC(0.1),#,Doesnt help much tbh
-        #"accelerator" => NesterovAccelerator(),
         "n_ensemble" => 100, #40*n_dimensions,
         "n_cross_val_sets" => 4,
     )
@@ -144,7 +142,7 @@ function main()
 
         # Emulate
         times[rep_idx] = @elapsed begin
-            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
             optimize_hyperparameters!(emulator)
         end
 

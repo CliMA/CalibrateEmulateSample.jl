@@ -82,7 +82,8 @@ function main()
         output[i] = y[ind[i]] + noise[i]
     end
     iopairs = PairedDataContainer(input, output)
-
+    
+    
     # analytic sobol indices taken from
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8989694/pdf/main.pdf
     a = [(i - 1.0) / 2.0 for i in 1:n_dimensions]  # a_i < a_j => a_i more sensitive
@@ -95,7 +96,7 @@ function main()
 
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[2]
-    decorrelate = true
+    encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
     nugget = Float64(1e-12)
 
     n_features_vec = [25, 50, 100, 200, 400, 800] # < data points ideally as output dim = 1
@@ -116,7 +117,6 @@ function main()
             "n_iteration" => 20,
             "cov_sample_multiplier" => 1.0,
             #        "localization" => SEC(0.1),#,Doesnt help much tbh
-            #        "accelerator" => NesterovAccelerator(),
             "n_ensemble" => 100,
             "n_cross_val_sets" => n_cross_val_sets,
         )
@@ -152,7 +152,7 @@ function main()
 
             # Emulate
             ttt[f_idx, rep_idx] = @elapsed begin
-                emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+                emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
                 optimize_hyperparameters!(emulator)
             end
 
