@@ -11,6 +11,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
+using CalibrateEmulateSample.Utilities
 
 using JLD2
 
@@ -80,18 +81,18 @@ function main()
         output[i] = y[ind[i]] + noise[i]
     end
     iopairs = PairedDataContainer(input, output)
-
+    encoder_schedule = (decorrelate_structure_mat(), "in_and_out") # a copy taken for each repeat
+    
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[3]
-    decorrelate = true
-    nugget = Float64(1e-12)
+    case = cases[2]
+    nugget = Float64(1e-4)
     overrides = Dict(
         "scheduler" => DataMisfitController(terminate_at = 1e4),
         "n_features_opt" => 150,
-        "n_ensemble" => 30,
+        "n_ensemble" => 50,
         "n_iteration" => 20,
-        "accelerator" => NesterovAccelerator(),
     )
+    
     if case == "Prior"
         # don't do anything
         overrides["n_iteration"] = 0
@@ -102,7 +103,7 @@ function main()
     result_preds = []
     opt_diagnostics = []
     for rep_idx in 1:n_repeats
-
+        
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.SKLJL()
@@ -123,7 +124,7 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, decorrelate = decorrelate)
+        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, copy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # get EKP errors - just stored in "optimizer" box for now
