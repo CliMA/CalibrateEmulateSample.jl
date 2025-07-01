@@ -12,6 +12,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
+using CalibrateEmuatleSample.Utilities
 
 using CairoMakie, ColorSchemes #for plots
 seed = 2589436
