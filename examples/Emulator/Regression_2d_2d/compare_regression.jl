@@ -43,7 +43,6 @@ function main()
         "gp-skljl",
         "gp-gpjl", # Very slow prediction...
         "rf-sep-scalar",
-        "rf-sep-diag",
         "rf-sep-sep",
         "rf-nonsep",
     ]
@@ -54,7 +53,7 @@ function main()
         "struct-mat-proc",
         "combined-proc",
         "cca-proc",
-        "whiten-then-cca",
+        "sample-struct-proc",
     ]
     encoders = [
         [],
@@ -65,13 +64,12 @@ function main()
         [
             (decorrelate_sample_cov(), "in"),
             (decorrelate_structure_mat(), "out"),
-            (canonical_correlation(), "in_and_out"),
         ],
     ]
 
     # USER CHOICES 
-    encoder_mask = [1:6...]
-    case_mask = [1] # (KEEP set to 1:length(cases) when pushing for buildkite)
+    encoder_mask = [3,4,6] # best performing
+    case_mask = [1,3,4,5] # (KEEP set to 1:length(cases) when pushing for buildkite)
     
     
     #problem
@@ -168,10 +166,10 @@ function main()
         pred_type = YType()
 
         # common random feature setup
-        n_features = 300
+        n_features = 200
         optimizer_options =
-            Dict("n_iteration" => 10, "n_features_opt" => 60, "n_ensemble" => 30, "cov_sample_multiplier" => 5.0, "verbose" => true)
-        nugget = 1e-7
+            Dict("n_iteration" => 5, "n_features_opt" => 200, "n_ensemble" => 80, "cov_sample_multiplier" => 5.0)
+        nugget = 1e-8
 
         # data processing schedule
    
@@ -188,16 +186,8 @@ function main()
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 p,
-                kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor()),
+                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
                 optimizer_options = optimizer_options,
-            )
-        elseif case == "rf-sep-diag"
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor()),
-                optimizer_options = deepcopy(optimizer_options),
             )
          elseif case == "rf-sep-sep"
             mlt = VectorRandomFeatureInterface(
@@ -221,7 +211,7 @@ function main()
         emulator = Emulator(
             mlt,
             iopairs,
-            user_encoder_schedule = enc,
+            encoder_schedule = enc,
             input_structure_matrix = prior_cov,
             output_structure_matrix = Σ,
         )
@@ -288,7 +278,7 @@ function main()
         g_true_grids = [g1_true_grid, g2_true_grid]
         MSE = 1 / size(em_mean, 2) * sqrt(sum((em_mean[1, :] - g1_true) .^ 2 + (em_mean[2, :] - g2_true) .^ 2))
         println("L^2 error of mean and latent truth:", MSE)
-
+            #=
         # Plot the difference between the truth and the mean of the predictions
         for y_i in 1:d
 
@@ -317,6 +307,7 @@ function main()
                 savefig(joinpath(output_directory, case*"_"* enc_name * "_y" * string(y_i) * "_difference_truth_prediction.png"))
             end
         end
+            =#
         end
     end
 end
