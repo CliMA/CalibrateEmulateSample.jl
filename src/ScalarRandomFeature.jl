@@ -384,6 +384,8 @@ function build_models!(
         end
     end
 
+    #regularization = I #
+    regularization = Diagonal(output_structure_matrix) # creates diag matrix of diagonal
 
 
     @info (
@@ -392,10 +394,8 @@ function build_models!(
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
-
-        #regularization = I #
-        regularization = output_structure_matrix[i,i]*I
-
+        regularization_i = regularization[i,i]*I
+        
         io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
 
         multithread = optimizer_options["multithread"]
@@ -435,7 +435,7 @@ function build_models!(
                 srfi,
                 rng,
                 μ_hp,
-                regularization,
+                regularization_i,
                 n_features_opt,
                 train_idx[cv_idx],
                 test_idx[cv_idx],
@@ -447,7 +447,7 @@ function build_models!(
                 cov_correction = cov_correction,
             )
             Γ = internal_Γ
-            Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
+            Γ[1:n_test, 1:n_test] += regularization_i  # + approx_σ2 
             Γ[(n_test + 1):end, (n_test + 1):end] += I
             if !isposdef(Γ)
                 Γ = posdef_correct(Γ)
@@ -493,7 +493,7 @@ function build_models!(
                     srfi,
                     rng,
                     lvec,
-                    regularization,
+                    regularization_i,
                     n_features_opt,
                     train_idx[cv_idx],
                     test_idx[cv_idx],
@@ -549,7 +549,7 @@ function build_models!(
             srfi,
             rng,
             hp_optimal,
-            regularization,
+            regularization_i,
             n_features,
             batch_sizes,
             input_dim,
@@ -559,9 +559,9 @@ function build_models!(
 
         push!(rfms, rfm_i)
         push!(fitted_features, fitted_features_i)
-        push!(get_regularization(srfi), regularization)
 
     end
+    push!(get_regularization(srfi), regularization)
     push!(optimizer, diagnostics)
 
 end
@@ -578,7 +578,7 @@ end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
+Prediction of emulator mean at new inputs (passed in as columns in a matrix), and a prediction of the total covariance at new inputs equal to (emulator covariance + noise covariance). 
 """
 function predict(
     srfi::ScalarRandomFeatureInterface,
@@ -605,9 +605,10 @@ function predict(
         )
     end
     
-    # add the noise contribution from the regularization
+    # add the noise contribution stored within the regularization
     reg = get_regularization(srfi)[1]
     reg_diag  = isa(reg, UniformScaling) ? reg.λ*ones(M) : diag(reg)
+    
     for i = 1:M
         σ2[i, :] .+= reg_diag[i]
     end
