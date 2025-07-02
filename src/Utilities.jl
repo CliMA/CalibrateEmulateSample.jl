@@ -438,7 +438,7 @@ function initialize_processor!(
         end
         ret_var = get_retain_var(dd)
         if ret_var < 1.0
-            sv_cumsum = cumsum(svdA.S .^ 2) / sum(svdA.S .^ 2) # variance contributions are (sing_val)^2
+            sv_cumsum = cumsum(svdA.S) / sum(svdA.S) # variance contributions are (sing_val) for these matrices
             trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
             @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
         else
@@ -636,7 +636,7 @@ function initialize_processor!(
         # retain variance
         ret_var = get_retain_var(cc)
         if ret_var < 1.0
-            sv_cumsum = cumsum(svdio.S .^ 2) / sum(svdio.S .^ 2) # variance contributions are (sing_val)^2
+            sv_cumsum = cumsum(svdio.S .^ 2) / sum(svdio.S .^ 2) # variance contributions are (sing_val)^2for these matrices
             trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
             @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance in the joint space"
         else
