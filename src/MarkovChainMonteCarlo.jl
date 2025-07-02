@@ -36,52 +36,6 @@ export EmulatorPosteriorModel,
     sample,
     esjd
 
-# ------------------------------------------------------------------------------------------
-# Output space transformations between original and SVD-decorrelated coordinates.
-# Redundant with what's in Emulators.jl, but need to reimplement since we don't have
-# access to obs_noise_cov
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Transform samples from the original (correlated) coordinate system to the SVD-decorrelated
-coordinate system used by [`Emulator`](@ref). Used in the constructor for [`MCMCWrapper`](@ref).
-
-The keyword `single_vec` wraps the output in a vector if `true` (default).
-"""
-function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}; single_vec = true) where {FT <: AbstractFloat}
-    # method for a single sample
-    if em.standardize_outputs && em.standardize_outputs_factors !== nothing
-        # standardize() data by scale factors, if they were given
-        data = data ./ em.standardize_outputs_factors
-    end
-    decomp = em.decomposition
-    if decomp !== nothing
-        # Use SVD decomposition of obs noise cov, if given, to transform data to 
-        # decorrelated coordinates.
-        inv_sqrt_singvals = Diagonal(1.0 ./ sqrt.(decomp.S))
-        return single_vec ? [vec(inv_sqrt_singvals * decomp.Vt * data)] : inv_sqrt_singvals * decomp.Vt * data
-    else
-        return single_vec ? [vec(data)] : data
-    end
-end
-
-function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
-    # method for Matrix with columns that are samples
-    return [vec(to_decorrelated(cd, em, single_vec = false)) for cd in eachcol(data)]
-
-end
-
-
-function to_decorrelated(data::AVV, em::Emulator{FT}) where {AVV <: AbstractVector, FT <: AbstractFloat}
-    # method for vector of samples
-    if isa(data[1], AbstractVector)
-        return [vec(to_decorrelated(d, em, single_vec = false)) for d in data]
-    else # turns out it is just one vector of a non-float type
-        return to_decorrelated(convert.(FT, data), em)
-    end
-end
-
 
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -296,9 +250,8 @@ function emulator_log_density_model(
     # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
     # have to reshape()/re-cast input/output; simpler to do here than add a 
     # predict() method.
-    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
-    #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
-
+    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
+    
     if isa(g_cov[1], Real)
 
         return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -594,10 +547,9 @@ function MCMCWrapper(
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
-    # decorrelate observations into a vector
-    decorrelated_obs = to_decorrelated(observation, em)
-
-    log_posterior_map = EmulatorPosteriorModel(prior, em, decorrelated_obs)
+    # encoding works on columns but mcmc wants vec-of-vec
+    encoded_obs = [vec(encode_with_schedule(em, reshape(obs, :, 1), "out")) for obs in eachcol(observation)]    
+    log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
@@ -617,7 +569,7 @@ function MCMCWrapper(
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, observation, decorrelated_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(prior, observation, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
 end
 
 """

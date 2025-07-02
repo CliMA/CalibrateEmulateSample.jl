@@ -1,7 +1,9 @@
 module Emulators
 
 using ..DataContainers
-
+import ..Utilities.encode_with_schedule
+import ..Utilities.decode_with_schedule
+ 
 using DocStringExtensions
 using Statistics
 using Distributions
@@ -14,7 +16,7 @@ export Emulator
 export calculate_normalization
 export build_models!
 export optimize_hyperparameters!
-export predict
+export predict, encode_with_schedule, decode_with_schedule
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -161,6 +163,22 @@ function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) w
     optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
+function encode_with_schedule(emulator::Emulator, data::AM, in_or_out::AS) where {AS <: AbstractString, AM <: AbstractMatrix}
+    return get_data(encode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+end
+    
+function encode_with_schedule(emulator::Emulator, data::DC, in_or_out::AS) where {AS <: AbstractString, DC <: DataContainer}
+    return encode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+end
+
+function decode_with_schedule(emulator::Emulator, data::AM, in_or_out::AS) where {AS <: AbstractString, AM <: AbstractMatrix}
+    return get_data(decode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+end
+    
+function decode_with_schedule(emulator::Emulator, data::DC, in_or_out::AS) where {AS <: AbstractString, DC <: DataContainer}
+    return decode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+end
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -219,8 +237,14 @@ function predict(
         
         if encoded_output_dim > 1
             encoded_covariances_mat = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
-            for (i,col) in enumerate(eachcol(encoded_uncertainties))
-                encoded_covariances_mat[:,:,i] = Diagonal(col)
+            if var_or_cov == "var"            
+                for (i,col) in enumerate(eachcol(encoded_uncertainties))
+                    encoded_covariances_mat[:,:,i] = Diagonal(col)
+                end
+            else # =="cov"
+                for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
+                    encoded_covariances_mat[:,:,i] = Diagonal(mat)
+                end
             end
             encoded_covariances = eachslice(encoded_covariances_mat,dims=3)
         else
