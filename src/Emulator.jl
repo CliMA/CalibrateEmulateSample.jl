@@ -16,8 +16,8 @@ export Emulator
 export calculate_normalization
 export build_models!
 export optimize_hyperparameters!
-export predict, encode_with_schedule, decode_with_schedule
-
+export predict, encode_data, decode_data, encode_structure_mat, decode_structure_mat
+export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -163,22 +163,31 @@ function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) w
     optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
-function encode_with_schedule(emulator::Emulator, data::AM, in_or_out::AS) where {AS <: AbstractString, AM <: AbstractMatrix}
-    return get_data(encode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
-end
     
-function encode_with_schedule(emulator::Emulator, data::DC, in_or_out::AS) where {AS <: AbstractString, DC <: DataContainer}
-    return encode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+function encode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix,DataContainer}}
+    if isa(data, AbstractMatrix) 
+        return get_data(encode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+    else
+        return encode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+    end
 end
 
-function decode_with_schedule(emulator::Emulator, data::AM, in_or_out::AS) where {AS <: AbstractString, AM <: AbstractMatrix}
-    return get_data(decode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
-end
-    
-function decode_with_schedule(emulator::Emulator, data::DC, in_or_out::AS) where {AS <: AbstractString, DC <: DataContainer}
-    return decode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+function encode_structure_mat(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+    return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
+    
+function decode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix,DataContainer}}
+    if isa(data, AbstractMatrix) 
+        return get_data(decode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+    else
+        return decode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+    end
+end
+
+function decode_structure_mat(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+    return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
+end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -196,7 +205,7 @@ function predict(
     # dimension.
     # un-encoded data to get dimensions
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
-    encoded_input_dim, encoded_output_dim = size(get_io_pairs(emulator), 1)
+    encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
     
     N_samples = size(new_inputs, 2)
     
@@ -209,41 +218,40 @@ function predict(
     end
 
     # encode the new input data
-    encoder_schedule = get_encoder_schedule(emulator)
-    encoded_inputs = encode_with_schedule(encoder_schedule, DataContainer(new_inputs), "in")
+    encoded_inputs = encode_data(emulator, new_inputs, "in")
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), get_data(encoded_inputs), mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
     # return decoded or encoded?
     if transform_to_real
-        decoded_outputs = decode_with_schedule(encoder_schedule, DataContainer(encoded_outputs), "out")
+        decoded_outputs = decode_data(emulator, encoded_outputs, "out")
         
         decoded_covariances = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
-               decoded_covariances[:,:,i] .= decode_with_schedule(encoder_schedule, Diagonal(col), "out")
+               decoded_covariances[:,:,i] .= decode_structure_mat(emulator, Diagonal(col), "out")
             end
         else # == "cov"
             for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-               decoded_covariances[:,:,i] .= decode_with_schedule(encoder_schedule, mat, "out")
+               decoded_covariances[:,:,i] .= decode_structure_mat(emulator, mat, "out")
             end
         end
             
-        return get_data(decoded_outputs), eachslice(decoded_covariances,dims=3)
+        return decoded_outputs, eachslice(decoded_covariances,dims=3)
     else
         
         if encoded_output_dim > 1
-            encoded_covariances_mat = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
+            encoded_covariances_mat = zeros(encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
             if var_or_cov == "var"            
                 for (i,col) in enumerate(eachcol(encoded_uncertainties))
                     encoded_covariances_mat[:,:,i] = Diagonal(col)
                 end
             else # =="cov"
                 for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-                    encoded_covariances_mat[:,:,i] = Diagonal(mat)
+                    encoded_covariances_mat[:,:,i] = mat
                 end
             end
             encoded_covariances = eachslice(encoded_covariances_mat,dims=3)
