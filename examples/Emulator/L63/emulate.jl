@@ -8,7 +8,7 @@ using JLD2
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
-using EnsembleKalmanProcesses.Localizers
+using CalibrateEmulateSample.Utilities
 
 function lorenz(du, u, p, t)
     du[1] = 10.0 * (u[2] - u[1])
@@ -26,7 +26,7 @@ function main()
     # rng
     rng = MersenneTwister(1232435)
 
-    n_repeats = 20 # repeat exp with same data.
+    n_repeats = 1 # repeat exp with same data.
     println("run experiment $n_repeats times")
 
     #for later plots
@@ -107,8 +107,8 @@ function main()
         "RF-svd-sep",
     ]
 
-    case = cases[7]
-
+    case = cases[3] # 7
+    
     nugget = Float64(1e-8)
     u_test = []
     u_hist = []
@@ -121,8 +121,6 @@ function main()
             "cov_sample_multiplier" => 1.0, #5.0,
             "n_features_opt" => 150,
             "n_iteration" => 10,
-            #"accelerator" => DefaultAccelerator(),
-            #"localization" => EnsembleKalmanProcesses.Localizers.SECNice(0.01,1.0), # localization / s
             "n_ensemble" => 200,
             "verbose" => true,
             "n_cross_val_sets" => 2,
@@ -213,11 +211,11 @@ function main()
 
         # Emulate
         if case ∈ ["RF-nosvd-nonsep", "RF-nosvd-sep"]
-            decorrelate = false
+            encoder_schedule = [] # no encoding
         else
-            decorrelate = true
+            encoder_schedule = (decorrelate_structure_mat(), "out")
         end
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γy, decorrelate = decorrelate)
+        emulator = Emulator(mlt, iopairs; output_structure_matrix = Γy, encoder_schedule=deepcopy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # diagnostics
