@@ -49,22 +49,19 @@ function main()
 
     encoder_names = [
         "no-proc",
+        "sample-struct-proc",
         "sample-proc",
         "struct-mat-proc",
         "combined-proc",
         "cca-proc",
-        "sample-struct-proc",
     ]
     encoders = [
-        [],
+        [], # no proc
+        nothing, # default proc
         (decorrelate_sample_cov(), "in_and_out"),
         (decorrelate_structure_mat(), "in_and_out"),
         (decorrelate(), "in_and_out"),
         (canonical_correlation(), "in_and_out"),
-        [
-            (decorrelate_sample_cov(), "in"),
-            (decorrelate_structure_mat(), "out"),
-        ],
     ]
 
     # USER CHOICES 

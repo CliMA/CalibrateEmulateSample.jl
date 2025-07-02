@@ -87,11 +87,19 @@ function Emulator(
     encoder_schedule = nothing,
     input_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     output_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
+    obs_noise_cov= nothing, # temporary 
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
 
     # For Consistency checks
     input_dim, output_dim = size(input_output_pairs, 1)
+
+    if !isnothing(obs_noise_cov) && isnothing(output_structure_matrix)
+        @warn("Keyword `obs_noise_cov=` is now deprecated, and replaced with `output_structure_matrix`. \n Continuing by setting `output_structure_matrix=obs_noise_cov`.")
+        output_structure_matrix = obs_noise_cov
+    elseif !isnothing(obs_noise_cov) && !isnothing(output_structure_matrix)
+        @warn("Keyword `obs_noise_cov=` is now deprecated and will be ignored. \n Continuing with value of `output_structure_matrix=`")
+    end
 
     input_structure_mat = if isnothing(input_structure_matrix)
         Diagonal(FT.(ones(input_dim)))
@@ -110,19 +118,30 @@ function Emulator(
     end
 
     # [1.] Initializes and performs data encoding schedule
-    if !isnothing(encoder_schedule)
-        enc_schedule = create_encoder_schedule(encoder_schedule)
-        (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
-            encode_with_schedule(
-                enc_schedule,
-                input_output_pairs,
-                input_structure_mat,
-                output_structure_mat,
-            )
-    else 
-        (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) = (input_output_pairs, input_structure_mat,  output_structure_mat)
-        enc_schedule = []
-    end    
+    # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
+    if isnothing(encoder_schedule)
+        encoder_schedule = []
+        if isnothing(input_structure_matrix)
+            push!(encoder_schedule, (decorrelate_sample_cov(), "in"))
+        else
+            push!(encoder_schedule, (decorrelate_structure_mat(), "in"))
+        end
+        if isnothing(output_structure_matrix)
+            push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
+        else
+            push!(encoder_schedule, (decorrelate_structure_mat(), "out"))
+        end
+    end        
+        
+    enc_schedule = create_encoder_schedule(encoder_schedule)
+    (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
+        encode_with_schedule(
+            enc_schedule,
+            input_output_pairs,
+            input_structure_mat,
+            output_structure_mat,
+        )
+    
     # build the machine learning tool in the encoded space
     build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat; mlt_kwargs...)
     return Emulator{FT, typeof(enc_schedule)}(
