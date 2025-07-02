@@ -40,8 +40,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 10# repeat exp with same data.
-    n_dimensions = 6
+    n_repeats = 5# repeat exp with same data.
+    n_dimensions = 10
     # To create the sampling
     n_data_gen = 800
 
@@ -81,6 +81,7 @@ function main()
         input[:, i] = samples[ind[i], :]
         output[i] = y[ind[i]] + noise[i]
     end
+    encoder_schedule = (decorrelate_structure_mat(), "out")
     iopairs = PairedDataContainer(input, output)
 
     # analytic sobol indices taken from
@@ -93,7 +94,6 @@ function main()
 
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[3]
-    encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
     nugget = Float64(1e-12)
 
     overrides = Dict(
@@ -142,7 +142,7 @@ function main()
 
         # Emulate
         times[rep_idx] = @elapsed begin
-            emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
+            emulator = Emulator(mlt, iopairs; output_structure_matrix = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
             optimize_hyperparameters!(emulator)
         end
 
@@ -305,7 +305,7 @@ function main()
         else
             for idx in 1:size(err_cols, 1)
                 err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
-                series!(ax_conv, err_normalized', color = :blue)
+                series!(ax_conv, err_normalized', solid_color = :blue)
             end
         end
 

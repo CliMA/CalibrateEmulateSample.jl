@@ -81,10 +81,9 @@ function main()
         output[i] = y[ind[i]] + noise[i]
     end
     iopairs = PairedDataContainer(input, output)
-    encoder_schedule = (decorrelate_structure_mat(), "in_and_out") # a copy taken for each repeat
-    
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[2]
+    encoder_schedule = (decorrelate_structure_mat(), "out")
     nugget = Float64(1e-4)
     overrides = Dict(
         "scheduler" => DataMisfitController(terminate_at = 1e4),
@@ -124,7 +123,7 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; obs_noise_cov = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
+        emulator = Emulator(mlt, iopairs; output_structure_matrix = Γ*I, encoder_schedule = deepcopy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # get EKP errors - just stored in "optimizer" box for now
