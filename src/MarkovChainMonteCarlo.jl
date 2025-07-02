@@ -548,7 +548,8 @@ function MCMCWrapper(
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
     # encoding works on columns but mcmc wants vec-of-vec
-    encoded_obs = [vec(encode_with_schedule(em, reshape(obs, :, 1), "out")) for obs in eachcol(observation)]    
+    encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in eachcol(observation)]
+
     log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
@@ -729,6 +730,7 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
 
+    
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
     p_constraints = [
