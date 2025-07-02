@@ -5,7 +5,6 @@ include(joinpath(@__DIR__, "..", "ci", "linkfig.jl"))
 using Distributions  # probability distributions and associated functions
 using LinearAlgebra
 ENV["GKSwstype"] = "100"
-using StatsPlots
 using Plots
 using Random
 using JLD2
@@ -18,36 +17,17 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
-function get_standardizing_factors(data::Array{FT, 2}) where {FT}
-    # Input: data size: N_data x N_ensembles
-    # Ensemble median of the data
-    norm_factor = median(data, dims = 2)
-    return norm_factor
-end
-
-function get_standardizing_factors(data::Array{FT, 1}) where {FT}
-    # Input: data size: N_data*N_ensembles (splatted)
-    # Ensemble median of the data
-    norm_factor = median(data)
-    return norm_factor
-end
-
-
 function main()
 
     cases = [
-        "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-scalar-diagin", # diagonalize, train scalar RF, assume diag inputs (most comparable to GP)
-        "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-        "RF-vector-svd-diag",
-        "RF-vector-svd-nondiag",
-        "RF-vector-nosvd-diag",
-        "RF-vector-nosvd-nondiag",
-        "RF-vector-svd-nonsep",
+        "gp-gpjl", # diagonalize, train scalar GP, assume diag inputs
+        "rf-lr-scalar",
+        "rf-lr-lr",
+        "rf-nonsep",
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = 1:8 # 1:8 # e.g. 1:8 or [7]
+    mask = 1:4 # 
     for (case) in cases[mask]
 
 
@@ -55,7 +35,6 @@ function main()
         min_iter = 1
         max_iter = 5 # number of EKP iterations to use data from is at most this
         overrides = Dict(
-            "verbose" => true,
             "scheduler" => DataMisfitController(terminate_at = 100.0),
             "cov_sample_multiplier" => 1.0,
             "n_iteration" => 20,
@@ -106,7 +85,7 @@ function main()
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
         nugget = 0.001
-        if case == "GP"
+        if case == "gp-gpjl"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
             mlt = GaussianProcess(
@@ -115,11 +94,9 @@ function main()
                 prediction_type = pred_type,
                 noise_learn = false,
             )
-        elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
+        elseif case == "rf-lr-scalar"
             n_features = 100
-            kernel_structure =
-                case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
-                SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
+            kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -127,12 +104,9 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
-        elseif case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag", "RF-vector-svd-nondiag", "RF-vector-nosvd-nondiag"]
+        elseif case == "rf-lr-lr"
             # do we want to assume that the outputs are decorrelated in the machine-learning problem?
-            kernel_structure =
-                case ∈ ["RF-vector-svd-diag", "RF-vector-nosvd-diag"] ?
-                SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor(nugget)) :
-                SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(3, nugget))
+            kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget))
             n_features = 500
 
             mlt = VectorRandomFeatureInterface(
@@ -143,7 +117,7 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
-        elseif case ∈ ["RF-vector-svd-nonsep"]
+        elseif case == "rf-nonsep"
             kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
             n_features = 500
 
@@ -158,11 +132,6 @@ function main()
         end
 
         # Standardize the output data
-        # Use median over all data since all data are the same type
-        truth_sample_norm = vcat(truth_sample...)
-        norm_factor = get_standardizing_factors(truth_sample_norm)
-        #norm_factor = vcat(norm_factor...)
-        norm_factor = fill(norm_factor, size(truth_sample))
 
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekiobj)) - 1) # number of paired iterations taken from EKP
@@ -196,22 +165,19 @@ function main()
             savefig(p, joinpath(figure_save_directory, "training_points.png"))
         end
 
-        standardize = false
-        retained_svd_frac = 1.0
-        normalized = true
-        # do we want to use SVD to decorrelate outputs
-        decorrelate = case ∈ ["RF-vector-nosvd-diag", "RF-vector-nosvd-nondiag"] ? false : true
-
-
+        # Process data
+        retain_var = 0.95
+        encoder_schedule = [
+            (quartile_scale(), "in"),
+            (decorrelate_structure_mat(retain_var = retain_var), "out"),
+        ]
+        
         emulator = Emulator(
             mlt,
             input_output_pairs;
+            output_structure_matrix = Γy,
+            encoder_schedule = encoder_schedule,
             obs_noise_cov = Γy,
-            normalize_inputs = normalized,
-            standardize_outputs = standardize,
-            standardize_outputs_factors = norm_factor,
-            retained_svd_frac = retained_svd_frac,
-            decorrelate = decorrelate,
         )
         optimize_hyperparameters!(emulator)
 
@@ -266,13 +232,19 @@ function main()
         posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
         constrained_posterior_samples =
             mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
+        xlims = extrema(constrained_posterior_samples[1,:])
+        ylims = extrema(constrained_posterior_samples[2,:])
+        
+        # plot with PairPlots
+
 
         gr(dpi = 300, size = (300, 300))
-        p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true)
+        p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true, xlims = xlims, ylims=ylims)
         plot!(p.subplots[1], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
         plot!(p.subplots[3], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
         plot!(p.subplots[2], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
         plot!(p.subplots[2], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
+        
         figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".pdf")
         savefig(figpath)
         figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".png")

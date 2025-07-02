@@ -4,9 +4,6 @@
 cases = [
     "GP", # SLOW
     "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-    "RF-vector-svd-diag", # inaccurate
-    "RF-vector-svd-nondiag",
-    "RF-vector-svd-nonsep",
 ]
 case = cases[2]
 
@@ -35,10 +32,13 @@ truth_params = load(data_file)["truth_params_constrained"]
 final_params = load(data_file)["final_params_constrained"]
 posterior = load(data_file)["posterior"]
 
+
 ekp_file = joinpath(data_save_directory, "ekp_spatial_dep.jld2")
 ekpobj = load(ekp_file)["ekpobj"]
 N_ens = get_N_ens(ekpobj)
-
+nx = length(truth_params)
+y = get_obs(ekpobj)
+ny = length(y)
 # get samples and quantiles from posterior
 param_names = get_name(posterior)
 posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
@@ -63,7 +63,7 @@ p1 = plot(
 )
 
 p2 = plot(
-    1:length(y),
+    1:ny,
     y,
     ribbon = sqrt.(diag(get_obs_noise_cov(ekpobj))),
     label = "data",

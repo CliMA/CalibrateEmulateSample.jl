@@ -19,38 +19,22 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
-function get_standardizing_factors(data::Array{FT, 2}) where {FT}
-    # Input: data size: N_data x N_ensembles
-    # Ensemble median of the data
-    norm_factor = median(data, dims = 2)
-    return norm_factor
-end
-
-function get_standardizing_factors(data::Array{FT, 1}) where {FT}
-    # Input: data size: N_data*N_ensembles (splatted)
-    # Ensemble median of the data
-    norm_factor = median(data)
-    return norm_factor
-end
-
 
 function main()
 
     cases = [
-        "GP", # SLOW
+        "GP", 
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = [2]# 1:1 # e.g. 1:2 or [2]
+    mask = [1]# 1:1 # e.g. 1:2 or [2]
     for (case) in cases[mask]
 
 
         println("case: ", case)
         min_iter = 1
-        max_iter = 6 # number of EKP iterations to use data from is at most this
-
-        # we do not want termination, as our priors have relatively little interpretation
+        max_iter = 7 # number of EKP iterations to use data from is at most this
 
         ####
 
@@ -79,7 +63,6 @@ function main()
         truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
         Γy = get_obs_noise_cov(ekpobj)
 
-
         n_params = length(truth_params) # "input dim"
         output_dim = size(Γy, 1)
         ###
@@ -88,7 +71,7 @@ function main()
 
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
-        nugget = 0.001
+        nugget = 1e-3
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
@@ -100,14 +83,14 @@ function main()
             )
         elseif case == "RF-scalar"
             overrides = Dict(
-                "verbose" => true,
-                "scheduler" => DataMisfitController(terminate_at = 100.0),
+         #       "verbose" => true,
+                "scheduler" => DataMisfitController(terminate_at = 1000.0),
                 "cov_sample_multiplier" => 1.0,
                 "n_iteration" => 8,
-                "n_features_opt" => 40,
+                "n_features_opt" => 40,                
             )
-            n_features = 200
-            kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
+            n_features = 80
+            kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -119,12 +102,6 @@ function main()
             throw(ArgumentError("case $(case) not recognised, please choose from the list $(cases)"))
         end
 
-        # Standardize the output data
-        # Use median over all data since all data are the same type
-        truth_sample_norm = vcat(truth_sample...)
-        norm_factor = get_standardizing_factors(truth_sample_norm)
-        #norm_factor = vcat(norm_factor...)
-        norm_factor = fill(norm_factor, size(truth_sample))
 
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekpobj)) - 1) # number of paired iterations taken from EKP
@@ -136,50 +113,47 @@ function main()
 
         # plot training points in constrained space
         if case == cases[mask[1]]
+            i1=1
+            i2=10
             gr(dpi = 300, size = (400, 400))
             inputs_unconstrained = get_inputs(input_output_pairs)
             inputs_constrained = transform_unconstrained_to_constrained(priors, inputs_unconstrained)
             p = plot(
                 title = "training points",
-                xlims = extrema(inputs_constrained[1, :]),
-                xaxis = "F",
-                yaxis = "A",
-                ylims = extrema(inputs_constrained[2, :]),
+                xlims = extrema(inputs_constrained[i1, :]),
+                xaxis = "x$(i1)",
+                yaxis = "x$(i2)",
+                ylims = extrema(inputs_constrained[i2, :]),
             )
-            scatter!(p, inputs_constrained[1, :], inputs_constrained[2, :], color = :magenta, label = false)
+            scatter!(p, inputs_constrained[i1, :], inputs_constrained[i2, :], color = :magenta, label = "train")
             inputs_test_unconstrained = get_inputs(input_output_pairs_test)
             inputs_test_constrained = transform_unconstrained_to_constrained(priors, inputs_test_unconstrained)
 
-            scatter!(p, inputs_test_constrained[1, :], inputs_test_constrained[2, :], color = :black, label = false)
+            scatter!(p, inputs_test_constrained[i1, :], inputs_test_constrained[i2, :], color = :black, label = "test")
 
-            vline!(p, [truth_params_constrained[1]], linestyle = :dash, linecolor = :red, label = false)
-            hline!(p, [truth_params_constrained[2]], linestyle = :dash, linecolor = :red, label = false)
+            vline!(p, [truth_params_constrained[i1]], linestyle = :dash, linecolor = :red, label = false)
+            hline!(p, [truth_params_constrained[i2]], linestyle = :dash, linecolor = :red, label = false)
             savefig(p, joinpath(figure_save_directory, "training_points.pdf"))
             savefig(p, joinpath(figure_save_directory, "training_points.png"))
         end
 
-        standardize = false
-        retained_svd_frac = 0.99 # keep 99% of the singular values
-        normalized = true
-        # do we want to use SVD to decorrelate outputs
-        decorrelate = true
-
+        # data processing configuration
+        retain_var = 0.95
+        encoder_schedule = [
+            (decorrelate_structure_mat(retain_var = retain_var), "in_and_out"),
+        ]
 
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            obs_noise_cov = Γy,
-            normalize_inputs = normalized,
-            standardize_outputs = standardize,
-            standardize_outputs_factors = norm_factor,
-            retained_svd_frac = retained_svd_frac,
-            decorrelate = decorrelate,
+            input_structure_matrix = cov(priors),
+            output_structure_matrix = Γy,
+            encoder_schedule = encoder_schedule,
         )
         optimize_hyperparameters!(emulator)
 
         # Check how well the Gaussian Process regression predicts on the
         # true parameters
-        #if retained_svd_frac==1.0
         y_mean, y_var = Emulators.predict(emulator, reshape(truth_params, :, 1), transform_to_real = true)
         y_mean_test, y_var_test =
             Emulators.predict(emulator, get_inputs(input_output_pairs_test), transform_to_real = true)
@@ -206,7 +180,7 @@ function main()
         # First let's run a short chain to determine a good step size
         mcmc = MCMCWrapper(RWMHSampling(), truth_sample, priors, emulator; init_params = u0)
         new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
-
+        
         # Now begin the actual MCMC
         println("Begin MCMC - with step size ", new_step)
         chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
@@ -256,6 +230,8 @@ function main()
             input_output_pairs,
             "truth_params",
             truth_params,
+            "encoder_schedule",
+            get_encoder_schedule(emulator),
         )
     end
 end
