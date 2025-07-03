@@ -119,6 +119,10 @@ abstract type QuartileScaling <: UnivariateAffineScaling end
 abstract type MinMaxScaling <: UnivariateAffineScaling end
 abstract type ZScoreScaling <: UnivariateAffineScaling end
 
+# define how to have equality
+Base.:(==)(a::DCP, b::DCP) where {DCP <: DataContainerProcessor} = all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP))
+Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} = all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP))
+
 # Processors
 """
 $(TYPEDEF)

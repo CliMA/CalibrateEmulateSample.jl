@@ -3,7 +3,11 @@ module Emulators
 using ..DataContainers
 import ..Utilities.encode_with_schedule
 import ..Utilities.decode_with_schedule
- 
+import ..Utilities.encode_data
+import ..Utilities.decode_data
+import ..Utilities.encode_structure_matrix
+import ..Utilities.decode_structure_matrix
+
 using DocStringExtensions
 using Statistics
 using Distributions
@@ -16,7 +20,7 @@ export Emulator
 export calculate_normalization
 export build_models!
 export optimize_hyperparameters!
-export predict, encode_data, decode_data, encode_structure_mat, decode_structure_mat
+export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
 """
 $(DocStringExtensions.TYPEDEF)
@@ -172,7 +176,7 @@ function encode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <
     end
 end
 
-function encode_structure_mat(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function encode_structure_matrix(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -185,7 +189,7 @@ function decode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <
     end
 end
 
-function decode_structure_mat(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function decode_structure_matrix(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -232,11 +236,11 @@ function predict(
         decoded_covariances = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
-               decoded_covariances[:,:,i] .= decode_structure_mat(emulator, Diagonal(col), "out")
+               decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
             end
         else # == "cov"
             for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-               decoded_covariances[:,:,i] .= decode_structure_mat(emulator, mat, "out")
+               decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, mat, "out")
             end
         end
             
