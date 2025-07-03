@@ -52,6 +52,10 @@ function main()
     truth = load(datafile)["truth"] # 96
     obs_noise_cov = load(datafile)["obs_noise_cov"] # 96 x 96
 
+    priorfile = "priors.jld2"
+    prior = load(priorfile)["prior"]
+
+    
     #take only first 400 points
     iter_mask = [1, 2, 4]
     data_mask = 1:96
@@ -73,7 +77,6 @@ function main()
     stacked_inputs = reshape(permutedims(inputs, (1, 3, 2)), (N_ens * N_iter, input_dim))
     stacked_outputs = reshape(permutedims(outputs, (1, 3, 2)), (N_ens * N_iter, output_dim))
     input_output_pairs = PairedDataContainer(stacked_inputs, stacked_outputs, data_are_columns = false) #data are rows
-    normalized = true
 
     # setup random features
     eki_options_override = Dict(
@@ -155,26 +158,29 @@ function main()
     end
 
     if emulator_type == "VectorRFR-nondiag"
-        #standardizing with data median for each data object seems reasonable in this setting.
-        standards = vec(
-            hcat(
-                median(stacked_outputs[:, 1:32], dims = 1),
-                median(stacked_outputs[:, 33:64], dims = 1),
-                median(stacked_outputs[:, 65:96], dims = 1),
-            ),
-        )
-        println(standards)
+        
+        encoder_schedule = [
+            (quartile_scale(), "in"),
+            (decorrelate_structure_mat(), "out"),
+        ]
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            obs_noise_cov = obs_noise_cov,
-            normalize_inputs = normalized,
-            standardize_outputs = true,
-            standardize_outputs_factors = standards,
-            decorrelate = false,
+            output_structure_matrix = obs_noise_cov,
+            encoder_schedule=encoder_schedule,
         )
     else
-        emulator = Emulator(mlt, input_output_pairs; obs_noise_cov = obs_noise_cov, normalize_inputs = normalized)
+        encoder_schedule = [
+            (decorrelate_structure_mat(), "in_and_out"),
+        ]
+
+        emulator = Emulator(
+            mlt,
+            input_output_pairs;
+            input_structure_matrix = cov(prior),
+            output_structure_matrix = obs_noise_cov,
+            encoder_schedule=encoder_schedule,
+        )
 
     end
     optimize_hyperparameters!(emulator)
@@ -267,8 +273,6 @@ function main()
 
     ### MCMC
 
-    priorfile = "priors.jld2"
-    prior = load(priorfile)["prior"]
 
     ##
     ###  Sample: Markov Chain Monte Carlo
