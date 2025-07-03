@@ -198,7 +198,7 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 1000),
                 "cov_sample_multiplier" => 0.2,
                 "n_iteration" => n_iteration,
-                "n_features_opt" => 50, #Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
+                "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
                 "n_ensemble" => 100,
                 "n_cross_val_sets" => n_cross_val_sets,
