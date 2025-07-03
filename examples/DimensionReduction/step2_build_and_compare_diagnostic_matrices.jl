@@ -39,7 +39,8 @@ for trial in 1:num_trials
     # Load the EKP iterations
     loaded = load("datafiles/ekp_$(problem)_$(trial).jld2")
     ekp = loaded["ekp"]
-    mcmc_samples = loaded["mcmc_samples"]
+    ekp_samp = loaded["ekp_samples"]
+    mcmc_samp = loaded["mcmc_samples"]
     prior = loaded["prior"]
     obs_noise_cov = loaded["obs_noise_cov"]
     y = loaded["y"]
@@ -51,241 +52,165 @@ for trial in 1:num_trials
     obs_invrt = sqrt(inv(obs_noise_cov))
     obs_inv = inv(obs_noise_cov)
 
+    ekp_samp_grad = Dict()
+    mcmc_samp_grad = Dict()
+    ekp_samp_Vgrad = Dict()
+    mcmc_samp_Vgrad = Dict()
+    for (dict_samp, dict_samp_grad, dict_samp_Vgrad) in (
+        (ekp_samp, ekp_samp_grad, ekp_samp_Vgrad),
+        (mcmc_samp, mcmc_samp_grad, mcmc_samp_Vgrad),
+    )
+        for (α, (samps, gsamps)) in dict_samp
+            dict_samp_grad[α] = []
+            for grad_type in grad_types
+                @info "Computing gradients: α=$α, grad_type=$grad_type"
+                grads = if grad_type == :perfect
+                    jac_forward_map(samps, model)
+                elseif grad_type == :mean
+                    grad = jac_forward_map(reshape(mean(samps; dims = 2), :, 1), model)[1]
+                    fill(grad, size(samps, 2))
+                elseif grad_type == :linreg
+                    grad = (gsamps .- mean(gsamps; dims = 2)) / (samps .- mean(samps; dims = 2))
+                    fill(grad, size(samps, 2))
+                elseif grad_type == :localsl
+                    map(zip(eachcol(samps), eachcol(gsamps))) do (u, g)
+                        weights = exp.(-1/2 * norm.(eachcol(u .- samps)).^2) # TODO: Matrix weighting
+                        D = Diagonal(sqrt.(weights))
+                        uw = (samps .- mean(samps * Diagonal(weights); dims = 2)) * D
+                        gw = (gsamps .- mean(gsamps * Diagonal(weights); dims = 2)) * D
+                        gw / uw
+                    end
+                else
+                    throw("Unknown grad_type=$grad_type")
+                end
+
+                push!(dict_samp_grad[α], (grad_type, grads))
+            end
+
+            dict_samp_Vgrad[α] = []
+            for Vgrad_type in Vgrad_types
+                @info "Computing Vgradients: α=$α, Vgrad_type=$Vgrad_type"
+                grads = if Vgrad_type == :egi
+                    ∇Vs = map(enumerate(zip(eachcol(samps), eachcol(gsamps)))) do (i, (u, g))
+                        @info "In full EGI procedure; particle $i/$(size(samps, 2))"
+
+                        yys = eachcol(rand(MvNormal((1-α)g + α*y, (1-α)obs_noise_cov), α == 1.0 ? 1 : step2_Vgrad_num_samples)) # If α == 1.0, all samples will be the same anyway
+                        map(yys) do yy
+                            Vs = [1/2 * (yy - g)' * obs_inv * (yy - g) for g in eachcol(gsamps)]
+
+                            X = samps[:, [1:i-1; i+1:end]] .- u
+                            Z = X ./ norm.(eachcol(X))'
+                            A = hcat(X'Z, (X'Z).^2 / 2)
+
+                            ξ, γ = step2_egi_ξ, step2_egi_γ
+                            Γ = γ * (factorial(3) \ Diagonal(norm.(eachcol(X)).^3) + ξ * I) # The paper has γ², but that's wrong
+
+                            Y = Vs[[1:i-1; i+1:end]] .- Vs[i]
+
+                            ū = pinv(Γ \ A) * (Γ \ Y)
+                            Z * ū[1:end÷2]
+                        end
+                    end
+
+                    mean(
+                        mean(
+                            ∇V * ∇V'
+                            for ∇V in ∇Vs_at_x
+                        ) for ∇Vs_at_x in ∇Vs
+                    )
+                else
+                    throw("Unknown Vgrad_type=$Vgrad_type")
+                end
+
+                push!(dict_samp_Vgrad[α], (Vgrad_type, grads))
+            end
+        end
+    end
+
     # random samples
-    prior_samples = sample(prior, step2_num_prior_samples)
+    @assert 0.0 in αs
+    prior_samp, prior_gsamp = ekp_samp[0.0]
+    num_prior_samps = size(prior_samp, 2)
 
     @info "Construct PCA matrices"
-    pca_u = prior_samples'
-    pca_g = forward_map(prior_samples, model)'
+    pca_u = prior_samp'
+    pca_g = prior_gsamp'
 
     diagnostic_matrices_u["pca_u"] = pca_u, :gray
     diagnostic_matrices_g["pca_g"] = pca_g, :gray
 
-    # [1a] Large-sample diagnostic matrices with perfect grad(Baptista et al 2022)
-    @info "Construct good matrix ($(step2_num_prior_samples) samples of prior, perfect grad)"
-    gradG_samples = jac_forward_map(prior_samples, model)
-    Hu = zeros(input_dim, input_dim)
-    Hg = zeros(output_dim, output_dim)
+    for α in αs
+        for (sampler, dict_samp, dict_samp_grad, dict_samp_Vgrad) in (
+            ("ekp", ekp_samp, ekp_samp_grad, ekp_samp_Vgrad),
+            ("mcmc", mcmc_samp, mcmc_samp_grad, mcmc_samp_Vgrad),
+        )
+            samp, gsamp = dict_samp[α]
+            for (Vgrad_type, grads) in dict_samp_Vgrad[α]
+                name_suffix = "$(α)_$(sampler)_$(Vgrad_type)"
+                @info "Construct $name_suffix matrices"
 
-    for j in 1:step2_num_prior_samples
-        Hu .+= step2_num_prior_samples \ prior_rt * gradG_samples[j]' * obs_inv * gradG_samples[j] * prior_rt
-        Hg .+= step2_num_prior_samples \ obs_invrt * gradG_samples[j] * prior_cov * gradG_samples[j]' * obs_invrt
-    end
+                Hu = prior_rt * mean(grads) * prior_rt
+                # TODO: Hg
 
-    diagnostic_matrices_u["Hu"] = Hu, :black
-    diagnostic_matrices_g["Hg"] = Hg, :black
-
-    # [1b] One-point approximation at mean value, with perfect grad
-    @info "Construct with mean value (1 sample), perfect grad"
-    prior_mean_appr = mean(prior) # approximate mean
-    gradG_at_mean = jac_forward_map(reshape(prior_mean_appr, input_dim, 1), model)[1]
-    # NB the logpdf of the prior at the ~mean is 1805 so pdf here is ~Inf
-    Hu_mean = prior_rt * gradG_at_mean' * obs_inv * gradG_at_mean * prior_rt
-    Hg_mean = obs_invrt * gradG_at_mean * prior_cov * gradG_at_mean' * obs_invrt
-
-    diagnostic_matrices_u["Hu_mean"] = Hu_mean, :blue
-    diagnostic_matrices_g["Hg_mean"] = Hg_mean, :blue
-
-    @info "Construct with prior (1 sample), linear-regression grad"
-    u = get_u(ekp, 1)
-    g = get_g(ekp, 1)
-    grad_linear_regression = (g / vcat(u, ones(1, size(u, 2))))[:, 1:end-1]
-    Hu_linear_regression = prior_rt * grad_linear_regression' * obs_inv * grad_linear_regression * prior_rt
-    Hg_linear_regression = obs_invrt * grad_linear_regression * prior_cov * grad_linear_regression' * obs_invrt
-    diagnostic_matrices_u["Hu_linear_regression"] = Hu_linear_regression, :teal
-    diagnostic_matrices_g["Hg_linear_regression"] = Hg_linear_regression, :teal
-
-    # [2a] One-point approximation at mean value with SL grad
-    @info "Construct with mean value prior (1 sample), SL grad"
-    g = get_g(ekp, 1)
-    u = get_u(ekp, 1)
-    N_ens = get_N_ens(ekp)
-    C_at_prior = cov([u; g], dims = 2) # basic cross-cov
-    Cuu = C_at_prior[1:input_dim, 1:input_dim]
-    svdCuu = svd(Cuu)
-    nz = min(N_ens - 1, input_dim) # nonzero sv's
-    pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
-    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
-    Cug = C_at_prior[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
-    #    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
-    #    Hu_ekp_prior = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt 
-    #    Hg_ekp_prior = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
-    Hu_ekp_prior = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
-    Hg_ekp_prior = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
-
-    diagnostic_matrices_u["Hu_ekp_prior"] = Hu_ekp_prior, :red
-    diagnostic_matrices_g["Hg_ekp_prior"] = Hg_ekp_prior, :red
-
-    println("Relative gradient error: ", norm(gradG_at_mean - (Cug * pinvCuu)) / norm(gradG_at_mean))
-
-    # [2b] One-point approximation at mean value with SL grad
-    @info "Construct with mean value EKP final (1 sample), SL grad"
-    final_it = length(get_g(ekp))
-    g = get_g(ekp, final_it)
-    u = get_u(ekp, final_it)
-    C_at_final = cov([u; g], dims = 2) # basic cross-cov
-    Cuu = C_at_final[1:input_dim, 1:input_dim]
-    svdCuu = svd(Cuu)
-    nz = min(N_ens - 1, input_dim) # nonzero sv's
-    pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
-    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
-    Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
-    #    SL_gradG = (pinvCuu * Cug')' # approximates ∇G with ensemble.
-    #    Hu_ekp_final = prior_rt * SL_gradG' * obs_inv * SL_gradG * prior_rt # here still using prior roots not Cuu
-    #    Hg_ekp_final = obs_invrt * SL_gradG * prior_cov * SL_gradG' * obs_invrt 
-    Hu_ekp_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
-    Hg_ekp_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
-
-    diagnostic_matrices_u["Hu_ekp_final"] = Hu_ekp_final, :gold
-    diagnostic_matrices_g["Hg_ekp_final"] = Hg_ekp_final, :gold
-
-    @info "Construct y-informed at EKP final (SL grad)"
-    myCug = Cug'
-    Huy_ekp_final =
-        N_ens \ prior_rt *
-        pinvCuu *
-        myCug *
-        obs_inv *
-        sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
-        obs_inv *
-        myCug' *
-        pinvCuu *
-        prior_rt
-
-    dim_g = size(g, 1)
-    vecs = zeros(dim_g, 0)
-    num_vecs = step2_manopt_num_dims
-    @assert num_vecs ≤ dim_g
-    for k in 1:num_vecs
-        println("vector $k")
-        counter = 0
-
-        vecs_compl = qr(vecs).Q[:, k:end]
-        M = Grassmann(dim_g + 1 - k, 1)
-
-        f =
-            (_, v) -> begin
-                Vs = hcat(vecs, vecs_compl * vec(v))
-                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
-                res =
-                    N_ens \ sum( # TODO: Check if whitening is correct
-                        norm((y - gg)' * obs_invrt * (I - Vs * Vs') * myCug' * Cuu_invrt)^2 for gg in eachcol(g)
-                    )
-
-                counter += 1
-                mod(counter, 100) == 1 && println("   iter $counter: $res")
-
-                res
+                diagnostic_matrices_u["Hu_$name_suffix"] = Hu, :black
             end
 
-        # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
-        # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
-        # ^ This should be a good initial guess, but it seems like a local minimum that the optimizer can't get out of
-        v00 = ones(dim_g + 1 - k, 1)
-        v00 ./= norm(v00)
-        v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
-        v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1, 0.1))
+            for (grad_type, grads) in dict_samp_grad[α]
+                name_suffix = "$(α)_$(sampler)_$(grad_type)"
+                @info "Construct $name_suffix matrices"
 
-        vecs = hcat(vecs, vecs_compl * bestvec)
-    end
-    vecs = hcat(vecs, randn(dim_g, dim_g - num_vecs))
-    Hgy_ekp_final = vecs * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * vecs'
+                Hu = prior_rt * mean(
+                    grad' * obs_inv * (
+                        (1-α)obs_noise_cov + α^2 * (y - g) * (y - g)'
+                    ) * obs_inv * grad
+                    for (g, grad) in zip(eachcol(gsamp), grads)
+                ) * prior_rt
 
-    diagnostic_matrices_u["Huy_ekp_final"] = Huy_ekp_final, :purple
-    diagnostic_matrices_g["Hgy_ekp_final"] = Hgy_ekp_final, :purple
+                Hg = if α == 0
+                    obs_invrt * mean(grad * prior_cov * grad' for grad in grads) * obs_invrt
+                else
+                    vecs = zeros(output_dim, 0)
+                    num_vecs = step2_manopt_num_dims
+                    @assert num_vecs ≤ output_dim
+                    for k in 1:num_vecs
+                        println("vector $k")
+                        counter = 0
 
+                        vecs_compl = qr(vecs).Q[:, k:end]
+                        M = Grassmann(output_dim + 1 - k, 1)
 
-    @info "Construct with mean value MCMC final (1 sample), SL grad"
-    u = mcmc_samples
-    g = hcat([forward_map(uu, model) for uu in eachcol(u)]...)
-    N_ens = size(u, 2)
-    C_at_final = cov([u; g], dims = 2) # basic cross-cov
-    Cuu = C_at_final[1:input_dim, 1:input_dim]
-    svdCuu = svd(Cuu)
-    nz = min(N_ens - 1, input_dim) # nonzero sv's
-    pinvCuu = svdCuu.U[:, 1:nz] * Diagonal(1 ./ svdCuu.S[1:nz]) * svdCuu.Vt[1:nz, :] # can replace with localized covariance
-    Cuu_invrt = svdCuu.U * Diagonal(1 ./ sqrt.(svdCuu.S)) * svdCuu.Vt
-    Cug = C_at_final[(input_dim + 1):end, 1:input_dim] # TODO: Isn't this Cgu?
-    Hu_mcmc_final = Cuu_invrt * Cug' * obs_inv * Cug * Cuu_invrt
-    Hg_mcmc_final = obs_invrt * Cug * pinvCuu * Cug' * obs_invrt
+                        f =
+                            (_, v) -> begin
+                                Vs = hcat(vecs, vecs_compl * vec(v))
+                                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                                res =
+                                    mean( # TODO: This isn't yet the right form for α≠0!
+                                        norm((y - g)' * obs_invrt * (I - Vs * Vs') * grad)^2 for (g, grad) in zip(eachcol(gsamp), grads)
+                                    )
 
-    diagnostic_matrices_u["Hu_mcmc_final"] = Hu_mcmc_final, :green
-    diagnostic_matrices_g["Hg_mcmc_final"] = Hg_mcmc_final, :green
+                                counter += 1
+                                mod(counter, 100) == 1 && println("   iter $counter: $res")
 
-    @info "Construct y-informed at MCMC final (perfect grad)"
-    gradG_samples = jac_forward_map(u, model)
-    Huy = zeros(input_dim, input_dim)
+                                res
+                            end
 
-    for j in 1:N_ens
-        Huy .+=
-            N_ens \ prior_rt *
-            gradG_samples[j]' *
-            obs_inv^2 *
-            (y - g[:, j]) *
-            (y - g[:, j])' *
-            obs_inv^2 *
-            gradG_samples[j] *
-            prior_rt
-    end
+                        v00 = ones(output_dim + 1 - k, 1)
+                        v00 ./= norm(v00)
+                        v0 = [v00 + randn(output_dim + 1 - k, 1) / 2 for _ in 1:output_dim]
+                        v0 = [v0i / norm(v0i) for v0i in v0]
+                        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1*100000, 0.1*100000))
 
-    diagnostic_matrices_u["Huy"] = Huy, :pink
+                        vecs = hcat(vecs, vecs_compl * bestvec)
+                    end
+                    vecs = hcat(vecs, randn(output_dim, output_dim - num_vecs))
+                    vecs * diagm(vcat(num_vecs:-1:1, zeros(output_dim - num_vecs))) * vecs'
+                end
 
-    @info "Construct y-informed at MCMC final (SL grad)"
-    myCug = Cug'
-    Huy_mcmc_final =
-        N_ens \ prior_rt *
-        pinvCuu *
-        myCug *
-        obs_inv *
-        sum((y - gg) * (y - gg)' for gg in eachcol(g)) *
-        obs_inv *
-        myCug' *
-        pinvCuu *
-        prior_rt
-
-    dim_g = size(g, 1)
-    vecs = zeros(dim_g, 0)
-    num_vecs = step2_manopt_num_dims
-    @assert num_vecs ≤ dim_g
-    for k in 1:num_vecs
-        println("vector $k")
-        counter = 0
-
-        vecs_compl = qr(vecs).Q[:, k:end]
-        M = Grassmann(dim_g + 1 - k, 1)
-
-        f =
-            (_, v) -> begin
-                Vs = hcat(vecs, vecs_compl * vec(v))
-                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
-                res =
-                    N_ens \ sum( # TODO: Check if whitening is correct
-                        norm((y - gg)' * obs_invrt * (I - Vs * Vs') * myCug' * Cuu_invrt)^2 for gg in eachcol(g)
-                    )
-
-                counter += 1
-                mod(counter, 100) == 1 && println("   iter $counter: $res")
-
-                res
+                diagnostic_matrices_u["Hu_$name_suffix"] = Hu, :black
+                diagnostic_matrices_g["Hg_$name_suffix"] = Hg, :black
             end
-
-        # svd_Hg_ekp_final = svd(Hg_ekp_final; alg=LinearAlgebra.QRIteration())
-        # v00 = (vecs_compl' * svd_Hg_ekp_final.V * Diagonal(svd_Hg_ekp_final.S))[:, 1:1]
-        # ^ This should be a good initial guess, but it seems like a local minimum that the optimizer can't get out of
-        v00 = ones(dim_g + 1 - k, 1)
-        v00 ./= norm(v00)
-        v0 = [v00 + randn(dim_g + 1 - k, 1) / 2 for _ in 1:dim_g]
-        v0 = [v0i / norm(v0i) for v0i in v0]
-        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1, 0.1))
-
-        vecs = hcat(vecs, vecs_compl * bestvec)
+        end
     end
-    vecs = hcat(vecs, randn(dim_g, dim_g - num_vecs))
-    Hgy_mcmc_final = vecs * diagm(vcat(num_vecs:-1:1, zeros(dim_g - num_vecs))) * vecs'
-
-    diagnostic_matrices_u["Huy_mcmc_final"] = Huy_mcmc_final, :orange
-    diagnostic_matrices_g["Hgy_mcmc_final"] = Hgy_mcmc_final, :orange
 
     for (name, (value, color)) in diagnostic_matrices_u
         if !haskey(all_diagnostic_matrices_u, name)
@@ -318,7 +243,7 @@ trunc = min(trunc, input_dim, output_dim)
 alg = LinearAlgebra.QRIteration()
 plots = map([:in, :out]) do in_or_out
     diagnostics = in_or_out == :in ? all_diagnostic_matrices_u : all_diagnostic_matrices_g
-    ref = in_or_out == :in ? "Hu" : "Hg"
+    ref = in_or_out == :in ? "Hu_0.0_ekp_perfect" : "Hg_0.0_ekp_perfect"
 
     p = plot(; title = "Similarity of spectrum of $(in_or_out)put diagnostic", xlabel = "SV index")
     for (name, (mats, color)) in diagnostics

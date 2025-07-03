@@ -8,26 +8,34 @@ output_dim = 50
 ## -- Configure parameters of the experiment itself --
 rng_seed = 41
 num_trials = 1
+αs = [0.0, 1.0]
+grad_types = (:perfect, :mean, :linreg, :localsl) # Out of :perfect, :mean, :linreg, and :localsl
+Vgrad_types = (:egi,) # Out of :egi
 
 # Specific to step 1
 step1_eki_ensemble_size = 800
-step1_eki_max_iters = 20
-step1_mcmc_temperature = 1.0 # 1.0 is the "true" posterior; higher oversamples the tails
 step1_mcmc_sampler = :rw # :rw or :mala
 step1_mcmc_samples_per_chain = 50_000
 step1_mcmc_num_chains = 8
 step1_mcmc_subsample_rate = 1000
 
 # Specific to step 2
-step2_num_prior_samples = 5_000 # paper uses 5e5
-step2_manopt_num_dims = 16
+step2_manopt_num_dims = 1
+step2_Vgrad_num_samples = 8
+step2_egi_ξ = 0.0
+step2_egi_γ = 1.5
 
 # Specific to step 3
 step3_diagnostics_to_use =
-    [("Hu", 50, diag, num) for diag in ("Hg", "Hgy_ekp_final", "Hgy_mcmc_final") for num in (4, 8, 16)]
+    [
+        (input_diag, i, "Hg_0.0_ekp_perfect", 32) for input_diag in (
+            "Hu_0.0_ekp_egi",
+            "Hu_1.0_ekp_egi",
+        ) for i in 4:2:16
+    ]
 step3_run_reduced_in_full_space = false
 step3_marginalization = :forward_model # :loglikelihood or :forward_model
-step3_num_marginalization_samples = 8
+step3_num_marginalization_samples = 1
 step3_posterior_sampler = :mcmc # :eks or :mcmc
 step3_eks_ensemble_size = 800 # only used if `step3_posterior_sampler == :eks`
 step3_eks_max_iters = 200 # only used if `step3_posterior_sampler == :eks`

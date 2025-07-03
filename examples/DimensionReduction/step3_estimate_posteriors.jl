@@ -19,6 +19,8 @@ if !isfile("datafiles/diagnostic_matrices_$(problem)_1.jld2")
     include("step2_build_and_compare_diagnostic_matrices.jl")
 end
 
+means_full = Dict()
+
 for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
     @info "Diagnostic matrices = ($in_diag [1-$in_r], $out_diag [1-$out_r])"
 
@@ -83,20 +85,26 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
         covsamps = rand(MvNormal(zeros(input_dim), Mcov), step3_num_marginalization_samples)
 
         if step3_posterior_sampler == :mcmc
-            mean_full = zeros(input_dim)
-            do_mcmc(
-                input_dim,
-                x -> begin
-                    g = forward_map(x, model)
-                    -2 \ x' * prior_inv * x - 2 \ (y - g)' * obs_inv * (y - g)
-                end,
-                step3_mcmc_num_chains,
-                step3_mcmc_samples_per_chain,
-                step3_mcmc_sampler,
-                prior_cov,
-                true_parameter,
-            ) do samp, num_batches
-                mean_full += mean(samp; dims = 2) / num_batches
+            mean_full = if trial in keys(means_full)
+                means_full[trial]
+            else
+                mean_full = zeros(input_dim)
+                do_mcmc(
+                    input_dim,
+                    x -> begin
+                        g = forward_map(x, model)
+                        -2 \ x' * prior_inv * x - 2 \ (y - g)' * obs_inv * (y - g)
+                    end,
+                    step3_mcmc_num_chains,
+                    step3_mcmc_samples_per_chain,
+                    step3_mcmc_sampler,
+                    prior_cov,
+                    true_parameter,
+                ) do samp, num_batches
+                    mean_full += mean(samp; dims = 2) / num_batches
+                end
+                means_full[trial] = mean_full
+                mean_full
             end
             mean_full_red = P * mean_full
 
@@ -159,17 +167,23 @@ for (in_diag, in_r, out_diag, out_r) in step3_diagnostics_to_use
                 "EKS sampling from the reduced posterior is only supported when marginalizing over the forward model.",
             )
 
-            u, _ = do_eks(
-                input_dim,
-                x -> forward_map(x, model),
-                y,
-                obs_noise_cov,
-                prior,
-                rng,
-                step3_eks_ensemble_size,
-                step3_eks_max_iters,
-            )
-            mean_full = mean(u; dims = 2)
+            mean_full = if trial in keys(means_full)
+                means_full[trial]
+            else
+                u, _ = do_eks(
+                    input_dim,
+                    x -> forward_map(x, model),
+                    y,
+                    obs_noise_cov,
+                    prior,
+                    rng,
+                    step3_eks_ensemble_size,
+                    step3_eks_max_iters,
+                )
+                mean_full = mean(u; dims = 2)
+                means_full[trial] = mean_full
+                mean_full
+            end
             mean_full_red = P * mean_full
 
             if step3_run_reduced_in_full_space
