@@ -55,7 +55,7 @@ function main()
 
     smoothness = 0.1
     corr_length = 1.0
-    dofs = 5
+    dofs = 8
 
     grf = GRF.GaussianRandomField(
         GRF.CovarianceFunction(dim, GRF.Matern(smoothness, corr_length)),
