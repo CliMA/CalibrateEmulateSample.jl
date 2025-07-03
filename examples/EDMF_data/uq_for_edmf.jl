@@ -224,7 +224,8 @@ function main()
     end
 
     # data processing:
-    encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
+    retain_var = 0.9
+    encoder_schedule = (decorrelate_structure_mat(retain_var=retain_var), "in_and_out")
     
     # Fit an emulator to the data
     emulator = Emulator(
@@ -232,6 +233,7 @@ function main()
         input_output_pairs;
         input_structure_matrix = cov(prior),
         output_structure_matrix = truth_cov,
+        encoder_schedule=encoder_schedule,
     )
 
     # Optimize the GP hyperparameters for better fit

@@ -20,6 +20,8 @@ using CalibrateEmulateSample.Utilities
 rng_seed = 42424242
 Random.seed!(rng_seed)
 
+include("rebuild_priors.jl")
+
 
 function main()
 
@@ -42,7 +44,7 @@ function main()
         1:5, # input rank always 5, output rank 1:5
     ]
 
-    case_id = 4
+    case_id = 3
     case = cases[case_id]
     rank_test = rank_cases[case_id]
     n_repeats = 1
@@ -155,7 +157,6 @@ function main()
         train_pairs = DataContainers.PairedDataContainer(train_inputs, train_outputs)
     end
 
-    include("rebuild_priors.jl")
     prior_config = get_prior_config(exp_name)
     means = prior_config["prior_mean"]
     std = prior_config["unconstrained_σ"]
@@ -197,7 +198,7 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 1000),
                 "cov_sample_multiplier" => 0.2,
                 "n_iteration" => n_iteration,
-                "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
+                "n_features_opt" => 50, #Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
                 "n_ensemble" => 100,
                 "n_cross_val_sets" => n_cross_val_sets,
@@ -248,7 +249,7 @@ function main()
             end
             
             # data processing:
-            retain_var = 0.95
+            retain_var = 0.9
             encoder_schedule = (decorrelate_structure_mat(retain_var=retain_var), "in_and_out")
             
             # Fit an emulator to the data
@@ -258,6 +259,7 @@ function main()
                     train_pairs;
                     input_structure_matrix = cov(prior),
                     output_structure_matrix = truth_cov,
+                    encoder_schedule=encoder_schedule,
                 )
 
                 # Optimize the GP hyperparameters for better fit
