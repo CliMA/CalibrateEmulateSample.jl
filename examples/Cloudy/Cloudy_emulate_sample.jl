@@ -16,9 +16,8 @@ using CairoMakie, PairPlots
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
-using EnsembleKalmanProcesses
-using EnsembleKalmanProcesses.ParameterDistributions
-using EnsembleKalmanProcesses.DataContainers
+using CalibrateEmulateSample.EnsembleKalmanProcesses
+#using EnsembleKalmanProcesses.ParameterDistributions
 
 function get_standardizing_factors(data::Array{FT, 2}) where {FT}
     # Input: data size: N_data x N_ensembles
@@ -100,7 +99,7 @@ function main()
     cases = [
         "rf-scalar",
         "gp-gpjl",  # Veeeery slow predictions
-        "rf-nosvd-nonsep",
+        "rf-nonsep",
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
@@ -116,13 +115,13 @@ function main()
         "verbose" => true,
         "scheduler" => DataMisfitController(terminate_at = 100.0),
         "cov_sample_multiplier" => 1.0,
-        "n_iteration" => 20,
+        "n_iteration" => 10,
     )
 
     # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
     input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 2)
-    norm_factors = get_standardizing_factors(get_outputs(input_output_pairs))
+    test_pairs =  get_training_points(ekiobj, length(get_u(ekiobj)) - 1: length(get_u(ekiobj)) - 1)
     for case in cases[case_mask]
 
         println(" ")
@@ -140,12 +139,9 @@ function main()
             # Define machine learning tool
             mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
 
-            decorrelate = true
-            standardize_outputs = true
-
         elseif case == "rf-scalar"
 
-            kernel_rank = 3
+            kernel_rank = 1
             kernel_structure = SeparableKernel(LowRankFactor(kernel_rank, nugget), OneDimFactor())
 
             # Define machine learning tool
@@ -156,10 +152,7 @@ function main()
                 optimizer_options = optimizer_options,
             )
 
-            decorrelate = true
-            standardize_outputs = true
-
-        elseif case == "rf-nosvd-nonsep"
+        elseif case == "rf-nonsep"
 
             # Define machine learning tool
             kernel_rank = 4
@@ -171,34 +164,34 @@ function main()
                 optimizer_options = optimizer_options,
             )
 
-            # Vector RF does not require decorrelation of outputs
-            decorrelate = false
-            standardize_outputs = false
-
-
         else
             error("Case $case is not implemented yet.")
 
         end
-
-        # The data processing normalizes input data, and decorrelates
+        
+        # Data processing
+        if case == "rf-nonsep"
+            encoder_schedule = []
+        else
+            encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
+        end
+        
         # output data with information from Γy, if required
         # Note: The `standardize_outputs_factors` are only used under the
         # condition that `standardize_outputs` is true.
         emulator = Emulator(
             mlt,
-            input_output_pairs,
-            obs_noise_cov = Γy,
-            decorrelate = decorrelate,
-            standardize_outputs = standardize_outputs,
-            standardize_outputs_factors = vcat(norm_factors...),
+            input_output_pairs;
+            input_structure_matrix = cov(priors),
+            output_structure_matrix = Γy,
+            encoder_schedule = encoder_schedule,
         )
 
         optimize_hyperparameters!(emulator)
 
         # Check how well the emulator predicts on the true parameters
         y_mean, y_var = Emulators.predict(emulator, reshape(θ_true, :, 1); transform_to_real = true)
-
+        y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(test_pairs); transform_to_real = true)
         println("Emulator ($(case)) prediction on true parameters: ")
         println(vec(y_mean))
         println("true data: ")
@@ -207,6 +200,8 @@ function main()
         println(sqrt.(diag(y_var[1], 0)))
         println("Emulator ($(case)) MSE (truth): ")
         println(mean((truth_sample - vec(y_mean)) .^ 2))
+        println("Emulator ($(case)) MSE (next ensemble): ")
+        println(mean((get_outputs(test_pairs) - y_mean_test) .^ 2))
 
 
         ###
