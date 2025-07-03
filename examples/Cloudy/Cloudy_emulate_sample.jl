@@ -17,14 +17,6 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
-#using EnsembleKalmanProcesses.ParameterDistributions
-
-function get_standardizing_factors(data::Array{FT, 2}) where {FT}
-    # Input: data size: N_data x N_ensembles
-    # Ensemble median of the data
-    norm_factor = median(data, dims = 2) # N_data x 1 array
-    return norm_factor
-end
 
 ################################################################################
 #                                                                              #
@@ -173,12 +165,10 @@ function main()
         if case == "rf-nonsep"
             encoder_schedule = []
         else
-            encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
+            encoder_schedule = (decorrelate_structure_mat(), "in_and_out") 
         end
-        
-        # output data with information from Γy, if required
-        # Note: The `standardize_outputs_factors` are only used under the
-        # condition that `standardize_outputs` is true.
+
+        # build emulator
         emulator = Emulator(
             mlt,
             input_output_pairs;
