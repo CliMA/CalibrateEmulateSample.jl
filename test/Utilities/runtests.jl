@@ -104,8 +104,29 @@ end
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
-    # get some data as IO pairs for functional tests
 
+
+    cc = canonical_correlation()
+    @test get_retain_var(cc) == 1.0
+    cc2 = canonical_correlation(retain_var=0.7)
+    @test get_retain_var(cc2) == 0.7
+    cc3 = CanonicalCorrelation([1],[2],[3],1.0,"test")
+    @test get_data_mean(cc3) == [1]
+    @test get_encoder_mat(cc3) == [2]
+    @test get_decoder_mat(cc3) == [3]
+    @test get_apply_to(cc3) == "test"
+    
+    
+    # test equalities
+    cc = canonical_correlation()
+    cc_copy = canonical_correlation()
+    dd = decorrelate()
+    dd_copy = decorrelate()
+    @test cc == cc_copy
+    @test dd == dd_copy
+    
+    # get some data as IO pairs for functional tests
+    
     in_dim = 10
     out_dim = 50
     samples = 120
@@ -150,7 +171,7 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+            encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
         (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
             decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
@@ -237,7 +258,7 @@ end
             # Multivariate lossy dim-reduction tests
             if name == "decorrelate-structure-mat-retain-0.95-var"
                 svdc = svd(test_covv)
-                var_cumsum = cumsum(svdc.S .^ 2) ./ sum(svdc.S .^ 2)
+                var_cumsum = cumsum(svdc.S) ./ sum(svdc.S)
                 @test var_cumsum[dimm] > 0.95
                 @test var_cumsum[dimm - 1] < 0.95
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
@@ -302,7 +323,7 @@ end
     @test_logs (:warn,) create_encoder_schedule((zscore_scale(), "bad"))
     func = x -> (get_inputs(x), get_outputs(x))
     bad_encoder_schedule = [(canonical_correlation(), func, "bad")]
-    @test_throws ArgumentError encode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    @test_throws ArgumentError encode_with_schedule!(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
     @test_throws ArgumentError initialize_and_encode_data!(canonical_correlation(), func(io_pairs), prior_cov, "bad")
     @test_throws ArgumentError decode_data(canonical_correlation(), func(io_pairs), "bad")
@@ -312,7 +333,7 @@ end
 
     # encode the data using the schedule
     (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-        encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+        encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
     # decode the data using the schedule
     (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =

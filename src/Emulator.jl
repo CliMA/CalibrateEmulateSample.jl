@@ -141,7 +141,7 @@ function Emulator(
         
     enc_schedule = create_encoder_schedule(encoder_schedule)
     (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
-        encode_with_schedule(
+        encode_with_schedule!(
             enc_schedule,
             input_output_pairs,
             input_structure_mat,

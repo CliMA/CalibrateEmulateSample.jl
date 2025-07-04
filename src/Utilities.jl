@@ -21,7 +21,7 @@ export quartile_scale, minmax_scale, zscore_scale
 export Decorrelater, decorrelate_sample_cov, decorrelate_structure_mat, decorrelate
 export get_type,
     get_shift, get_scale, get_data_mean, get_encoder_mat, get_decoder_mat, get_retain_var, get_decorrelate_with
-export create_encoder_schedule, encode_with_schedule, decode_with_schedule
+export create_encoder_schedule, encode_with_schedule, encode_with_schedule!, decode_with_schedule
 export initialize_processor!,
     initialize_and_encode_data!, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 
@@ -902,7 +902,7 @@ $TYPEDSIGNATURES
 
 Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), and initializes it, and encodes the paired data container, and structure matrices with it.
 """
-function encode_with_schedule(
+function encode_with_schedule!(
     encoder_schedule::VV,
     io_pairs::PDC,
     input_structure_mat::USorM1,
