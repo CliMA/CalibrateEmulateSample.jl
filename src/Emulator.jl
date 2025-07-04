@@ -228,23 +228,31 @@ function predict(
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
+    
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
+
     # return decoded or encoded?
     if transform_to_real
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
-        
+            
         decoded_covariances = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
-               decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
+                decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
             end
         else # == "cov"
             for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-               decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, mat, "out")
+                decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, mat, "out")
             end
         end
-            
-        return decoded_outputs, eachslice(decoded_covariances,dims=3)
+
+        if output_dim > 1
+            return decoded_outputs, eachslice(decoded_covariances,dims=3)
+        else
+            # here the covs are [1 x 1 x samples] just return [1 x samples]
+            return decoded_outputs, decoded_covariances[1,:,:]
+        end
+        
     else
         
         if encoded_output_dim > 1
@@ -266,6 +274,5 @@ function predict(
     end
     
 end
-
 
 end
