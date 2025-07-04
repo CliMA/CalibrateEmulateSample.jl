@@ -22,7 +22,7 @@ build_default_prior
 ```@docs
 ScalarRandomFeatureInterface
 ScalarRandomFeatureInterface(::Int,::Int)
-build_models!(::ScalarRandomFeatureInterface, ::PairedDataContainer{FT}) where {FT <: AbstractFloat}
+build_models!(::ScalarRandomFeatureInterface, ::PairedDataContainer{FT}, input_structure_matrix, output_structure_matrix) where {FT <: AbstractFloat}
 predict(::ScalarRandomFeatureInterface, ::M) where {M <: AbstractMatrix}
 ```
 
@@ -31,7 +31,7 @@ predict(::ScalarRandomFeatureInterface, ::M) where {M <: AbstractMatrix}
 ```@docs
 VectorRandomFeatureInterface
 VectorRandomFeatureInterface(::Int, ::Int, ::Int)
-build_models!(::VectorRandomFeatureInterface, ::PairedDataContainer{FT}) where {FT <: AbstractFloat}
+build_models!(::VectorRandomFeatureInterface, ::PairedDataContainer{FT}, input_structure_matrix, output_structure_matrix) where {FT <: AbstractFloat}
 predict(::VectorRandomFeatureInterface, ::M) where {M <: AbstractMatrix}
 ```
 
