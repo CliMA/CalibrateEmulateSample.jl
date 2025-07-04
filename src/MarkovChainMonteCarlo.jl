@@ -495,13 +495,13 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{AMorAV <: Union{AbstractVector, AbstractMatrix}, AV <: AbstractVector}
+struct MCMCWrapper{AVV, AV <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
-    "A vector or [Nx1] matrix, describing a single observation data (or NxM column-matrix / vector or vectors for multiple observations) provided by the user."
-    observations::AMorAV
+    "[output_dim x N_samples] matrix, of given observation data."
+    observations::AVV
     "Vector of observations describing the data samples to actually used during MCMC sampling (that have been transformed into a space consistent with emulator outputs)."
-    decorrelated_observations::AV
+    encoded_observations::AV
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel
     "Object describing a MCMC sampling algorithm and its settings."
@@ -528,8 +528,7 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
 
-- `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
-  Observation struct using `get_obs_sample`.
+- `obs_sample`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an Observation struct using `get_obs_sample`.
 - `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
   object containing the parameters' prior distributions.
 - `emulator`: [`Emulator`](@ref) to sample from.
@@ -547,8 +546,16 @@ function MCMCWrapper(
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
+    # make into iterable over vectors
+    obs_slice = isa(observation, AbstractMatrix) ? eachcol(observation) : observation
+    if eltype(obs_slice) <: Number # just one observation
+        obs_slice = [obs_slice]
+    end
+    
     # encoding works on columns but mcmc wants vec-of-vec
-    encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in eachcol(observation)]
+    
+    encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
+        
 
     log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
@@ -570,7 +577,7 @@ function MCMCWrapper(
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, observation, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
 end
 
 """

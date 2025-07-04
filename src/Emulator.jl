@@ -239,7 +239,7 @@ function predict(
     if transform_to_real
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
             
-        decoded_covariances = zeros(output_dim, output_dim, size(encoded_uncertainties)[end])
+        decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
                 decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
@@ -259,7 +259,7 @@ function predict(
         
     else
         
-        encoded_covariances_mat = zeros(encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
+        encoded_covariances_mat = zeros(eltype(encoded_outputs),encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"            
             for (i,col) in enumerate(eachcol(encoded_uncertainties))
                 encoded_covariances_mat[:,:,i] = Diagonal(col)
