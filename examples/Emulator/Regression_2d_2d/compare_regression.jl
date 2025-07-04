@@ -96,28 +96,12 @@ function main()
         x1 = range(-2 * pi, stop = 2 * π, length = n_pts)
         x2 = range(-2 * pi, stop = 2 * π, length = n_pts)
 
-        p1 = contourf(
-            x1,
-            x2,
-            g1.(x1', x2),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            aspect_ratio = :equal,
-        )
+        p1 = contourf(x1, x2, g1.(x1', x2), c = :cividis, xlabel = "x1", ylabel = "x2", aspect_ratio = :equal)
         scatter!(p1, X[1, :], X[2, :], c = :black, ms = 3, label = "train point")
 
         figpath = joinpath(output_directory, "g1_true.png")
         savefig(figpath)
-        p2 = contourf(
-            x1,
-            x2,
-            g2.(x1', x2),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            aspect_ratio = :equal,
-        )
+        p2 = contourf(x1, x2, g2.(x1', x2), c = :cividis, xlabel = "x1", ylabel = "x2", aspect_ratio = :equal)
         scatter!(p2, X[1, :], X[2, :], c = :black, ms = 3, label = "train point")
 
         figpath = joinpath(output_directory, "g2_true.png")
