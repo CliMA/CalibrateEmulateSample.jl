@@ -13,6 +13,7 @@ copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-lear
 
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.Utilities
 
 @testset "GaussianProcess" begin
 
@@ -62,32 +63,22 @@ using CalibrateEmulateSample.DataContainers
     @test gp1.prediction_type == pred_type
     @test gp1.alg_reg_noise == 1e-4
 
-
     em1 = Emulator(
         gp1,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
 
-    @test_logs (:warn,) (:warn,) Emulator(
+    @test_logs (:warn,) Emulator(
         gp1,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     ) # check that gp1 does not get more models added under second call
 
     Emulator(
         gp1,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
     @test length(gp1.models) == 1
 
@@ -104,10 +95,7 @@ using CalibrateEmulateSample.DataContainers
     @test_throws ArgumentError Emulator(
         agp,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
 
     gp1_opt_params = Emulators.get_params(gp1)[1] # one model only
@@ -122,21 +110,15 @@ using CalibrateEmulateSample.DataContainers
     em_agp_from_gp1 = Emulator(
         agp,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
         kernel_params = kernel_params,
     )
     optimize_hyperparameters!(em_agp_from_gp1)
     # skip rebuild:
-    @test_logs (:warn,) (:warn,) Emulator(
+    @test_logs (:warn,) Emulator(
         agp,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
         kernel_params = kernel_params,
     )
 
@@ -158,10 +140,7 @@ using CalibrateEmulateSample.DataContainers
     em2 = Emulator(
         gp2,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
 
     Emulators.optimize_hyperparameters!(em2)
@@ -182,35 +161,21 @@ using CalibrateEmulateSample.DataContainers
     em3 = Emulator(
         gp3,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
-    @test_logs (:warn,) (:warn,) Emulator(
+    @test_logs (:warn,) Emulator(
         gp3,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
     Emulator(
         gp3,
         iopairs,
-        obs_noise_cov = nothing,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = [],
     )
     @test length(gp3.models) == 1 # check that gp3 does not get more models added under repeated calls
 
     Emulators.optimize_hyperparameters!(em3)
-
-    #gp3 = GaussianProcess(iopairs, gppackage; GPkernel=GPkernel, obs_noise_cov=nothing,
-    #               normalized=false, noise_learn=true,
-    #	   retained_svd_frac=1.0, standardize=false,
-    #               prediction_type=pred_type, norm_factor=nothing)
 
     μ3, σ3² = Emulators.predict(em3, new_inputs)
     @test vec(μ3) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol = 0.3
@@ -250,16 +215,16 @@ using CalibrateEmulateSample.DataContainers
     @test get_inputs(iopairs2) == X
     @test get_outputs(iopairs2) == Y
 
+    encoder_schedule = (decorrelate_structure_mat(), "out")
+    
     # with noise learning - e.g. we add a kernel to learn the noise (even though we provide the Sigma to the emulator)
     gp4_noise_learnt = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
     # without noise learning, just use the SVD transform to deal with observational noise
     em4_noise_learnt = Emulator(
         gp4_noise_learnt,
         iopairs2,
-        obs_noise_cov = Σ,
-        normalize_inputs = true,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = deepcopy(encoder_schedule),
+        output_structure_matrix = Σ,
     )
 
     gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = false, prediction_type = pred_type)
@@ -267,10 +232,8 @@ using CalibrateEmulateSample.DataContainers
     em4_noise_from_Σ = Emulator(
         gp4,
         iopairs2,
-        obs_noise_cov = Σ,
-        normalize_inputs = true,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
+        encoder_schedule = deepcopy(encoder_schedule),
+        output_structure_matrix = Σ,
     )
 
     Emulators.optimize_hyperparameters!(em4_noise_learnt)
@@ -319,9 +282,8 @@ using CalibrateEmulateSample.DataContainers
     em_agp_from_gp4 = Emulator(
         agp4,
         iopairs2,
-        obs_noise_cov = Σ,
-        normalize_inputs = true,
-        retained_svd_frac = 1.0,
+        encoder_schedule = deepcopy(encoder_schedule),
+        output_structure_matrix = Σ,
         kernel_params = kernel_params,
     )
 
