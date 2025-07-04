@@ -167,11 +167,8 @@ function main()
 
         # Process data
         retain_var = 0.95
-        encoder_schedule = [
-            (quartile_scale(), "in"),
-            (decorrelate_structure_mat(retain_var = retain_var), "out"),
-        ]
-        
+        encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
+
         emulator = Emulator(
             mlt,
             input_output_pairs;
@@ -232,19 +229,25 @@ function main()
         posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
         constrained_posterior_samples =
             mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
-        xlims = extrema(constrained_posterior_samples[1,:])
-        ylims = extrema(constrained_posterior_samples[2,:])
-        
+        xlims = extrema(constrained_posterior_samples[1, :])
+        ylims = extrema(constrained_posterior_samples[2, :])
+
         # plot with PairPlots
 
 
         gr(dpi = 300, size = (300, 300))
-        p = cornerplot(permutedims(constrained_posterior_samples, (2, 1)), label = param_names, compact = true, xlims = xlims, ylims=ylims)
+        p = cornerplot(
+            permutedims(constrained_posterior_samples, (2, 1)),
+            label = param_names,
+            compact = true,
+            xlims = xlims,
+            ylims = ylims,
+        )
         plot!(p.subplots[1], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # vline on top histogram
         plot!(p.subplots[3], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash) # hline on right histogram
         plot!(p.subplots[2], [truth_params_constrained[1]], seriestype = "vline", w = 1.5, c = :steelblue, ls = :dash) # v & h line on scatter.
         plot!(p.subplots[2], [truth_params_constrained[2]], seriestype = "hline", w = 1.5, c = :steelblue, ls = :dash)
-        
+
         figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".pdf")
         savefig(figpath)
         figpath = joinpath(figure_save_directory, "posterior_2d-" * case * ".png")

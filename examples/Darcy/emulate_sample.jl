@@ -18,7 +18,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
-    
+
 include("GModel.jl")
 
 function main()
@@ -93,11 +93,11 @@ function main()
 
         # data processing
         encoding_schedule = (decorrelate_structure_mat(), "in_and_out")
-        
+
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            input_structure_matrix= cov(prior),
+            input_structure_matrix = cov(prior),
             output_structure_matrix = Γy,
             encoding_schedule = encoding_schedule,
         )

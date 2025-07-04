@@ -93,7 +93,7 @@ function Emulator(
     encoder_schedule = nothing,
     input_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
     output_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
-    obs_noise_cov= nothing, # temporary 
+    obs_noise_cov = nothing, # temporary 
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
 
@@ -101,10 +101,14 @@ function Emulator(
     input_dim, output_dim = size(input_output_pairs, 1)
 
     if !isnothing(obs_noise_cov) && isnothing(output_structure_matrix)
-        @warn("Keyword `obs_noise_cov=` is now deprecated, and replaced with `output_structure_matrix`. \n Continuing by setting `output_structure_matrix=obs_noise_cov`.")
+        @warn(
+            "Keyword `obs_noise_cov=` is now deprecated, and replaced with `output_structure_matrix`. \n Continuing by setting `output_structure_matrix=obs_noise_cov`."
+        )
         output_structure_matrix = obs_noise_cov
     elseif !isnothing(obs_noise_cov) && !isnothing(output_structure_matrix)
-        @warn("Keyword `obs_noise_cov=` is now deprecated and will be ignored. \n Continuing with value of `output_structure_matrix=`")
+        @warn(
+            "Keyword `obs_noise_cov=` is now deprecated and will be ignored. \n Continuing with value of `output_structure_matrix=`"
+        )
     end
 
     input_structure_mat = if isnothing(input_structure_matrix)
@@ -114,7 +118,7 @@ function Emulator(
     else
         input_structure_matrix
     end
-    
+
     output_structure_mat = if isnothing(output_structure_matrix)
         Diagonal(FT.(ones(output_dim)))
     elseif isa(output_structure_matrix, UniformScaling)
@@ -137,25 +141,21 @@ function Emulator(
         else
             push!(encoder_schedule, (decorrelate_structure_mat(), "out"))
         end
-    end        
-        
+    end
+
     enc_schedule = create_encoder_schedule(encoder_schedule)
     (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
-        encode_with_schedule!(
-            enc_schedule,
-            input_output_pairs,
-            input_structure_mat,
-            output_structure_mat,
-        )
-    
+        encode_with_schedule!(enc_schedule, input_output_pairs, input_structure_mat, output_structure_mat)
+
     # build the machine learning tool in the encoded space
-    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat; mlt_kwargs...)
-    return Emulator{FT, typeof(enc_schedule)}(
+    build_models!(
         machine_learning_tool,
-        input_output_pairs,
         encoded_io_pairs,
-        enc_schedule,
+        encoded_input_structure_mat,
+        encoded_output_structure_mat;
+        mlt_kwargs...,
     )
+    return Emulator{FT, typeof(enc_schedule)}(machine_learning_tool, input_output_pairs, encoded_io_pairs, enc_schedule)
 end
 
 """
@@ -167,29 +167,45 @@ function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) w
     optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
-    
-function encode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix,DataContainer}}
-    if isa(data, AbstractMatrix) 
+
+function encode_data(
+    emulator::Emulator,
+    data::MorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}}
+    if isa(data, AbstractMatrix)
         return get_data(encode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
     else
         return encode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
     end
 end
 
-function encode_structure_matrix(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function encode_structure_matrix(
+    emulator::Emulator,
+    structure_mat::USorM,
+    in_or_out::AS,
+) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
-    
-function decode_data(emulator::Emulator, data::MorDC, in_or_out::AS) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix,DataContainer}}
-    if isa(data, AbstractMatrix) 
+
+function decode_data(
+    emulator::Emulator,
+    data::MorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}}
+    if isa(data, AbstractMatrix)
         return get_data(decode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
     else
         return decode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
     end
 end
 
-function decode_structure_matrix(emulator::Emulator, structure_mat::USorM, in_or_out::AS) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function decode_structure_matrix(
+    emulator::Emulator,
+    structure_mat::USorM,
+    in_or_out::AS,
+) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -214,9 +230,9 @@ function predict(
     # un-encoded data to get dimensions
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
-    
+
     N_samples = size(new_inputs, 2)
-    
+
     if !(size(new_inputs, 1) == input_dim)
         throw(
             ArgumentError(
@@ -232,52 +248,53 @@ function predict(
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
-    
+
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
     # return decoded or encoded?
     if transform_to_real
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
-            
+
         decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
-            for (i,col) in enumerate(eachcol(encoded_uncertainties))
-                decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
+            for (i, col) in enumerate(eachcol(encoded_uncertainties))
+                decoded_covariances[:, :, i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
             end
         else # == "cov"
-            for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-                decoded_covariances[:,:,i] .= decode_structure_matrix(emulator, mat, "out")
+            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
+                decoded_covariances[:, :, i] .= decode_structure_matrix(emulator, mat, "out")
             end
         end
 
         if output_dim > 1
-            return decoded_outputs, eachslice(decoded_covariances,dims=3)
+            return decoded_outputs, eachslice(decoded_covariances, dims = 3)
         else
             # here the covs are [1 x 1 x samples] just return [1 x samples]
-            return decoded_outputs, decoded_covariances[1,:,:]
+            return decoded_outputs, decoded_covariances[1, :, :]
         end
-        
+
     else
-        
-        encoded_covariances_mat = zeros(eltype(encoded_outputs),encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
-        if var_or_cov == "var"            
-            for (i,col) in enumerate(eachcol(encoded_uncertainties))
-                encoded_covariances_mat[:,:,i] = Diagonal(col)
+
+        encoded_covariances_mat =
+            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
+        if var_or_cov == "var"
+            for (i, col) in enumerate(eachcol(encoded_uncertainties))
+                encoded_covariances_mat[:, :, i] = Diagonal(col)
             end
         else # =="cov"
-            for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-                encoded_covariances_mat[:,:,i] = mat
+            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
+                encoded_covariances_mat[:, :, i] = mat
             end
         end
 
         if encoded_output_dim > 1
-            return encoded_outputs, eachslice(encoded_covariances_mat,dims=3)
-        else    
+            return encoded_outputs, eachslice(encoded_covariances_mat, dims = 3)
+        else
             # here the covs are [1 x 1 x samples] just return [1 x samples]
-            return encoded_outputs, encoded_covariances_mat[1,:,:]
+            return encoded_outputs, encoded_covariances_mat[1, :, :]
         end
     end
-    
+
 end
 
 end

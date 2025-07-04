@@ -451,7 +451,7 @@ function build_models!(
     else
         regularization = output_structure_matrix
     end
-    
+
     # [2.] Estimate covariance at mean value
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]

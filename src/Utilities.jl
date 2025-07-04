@@ -120,8 +120,10 @@ abstract type MinMaxScaling <: UnivariateAffineScaling end
 abstract type ZScoreScaling <: UnivariateAffineScaling end
 
 # define how to have equality
-Base.:(==)(a::DCP, b::DCP) where {DCP <: DataContainerProcessor} = all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP))
-Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} = all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP))
+Base.:(==)(a::DCP, b::DCP) where {DCP <: DataContainerProcessor} =
+    all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP))
+Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
+    all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP))
 
 # Processors
 """
@@ -447,11 +449,11 @@ function initialize_processor!(
             @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
         else
             trunc_val = rk
-            if rk < size(data,1)
+            if rk < size(data, 1)
                 @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
             end
         end
-        
+
         sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc_val]))
         sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc_val]))
         # as we have svd of cov-matrix we can use U or Vt
@@ -636,7 +638,7 @@ function initialize_processor!(
         out_mat_sq, out_mat_nonsq = (size(svdo.U, 1) == size(svdo.U, 2)) ? (svdo.U, svdo.Vt) : (svdo.Vt, svdo.U)
 
         svdio = svd(in_mat_nonsq * out_mat_nonsq')
-        
+
         # retain variance
         ret_var = get_retain_var(cc)
         if ret_var < 1.0
@@ -652,7 +654,7 @@ function initialize_processor!(
             # mat' * Sx⁻¹ * Uxt
             encoder_mat = in_svdio_mat[:, 1:trunc_val]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
             decoder_mat = in_mat_sq * Diagonal(svdi.S) * in_svdio_mat[:, 1:trunc_val]
-            
+
         elseif apply_to == "out"
             out_dim = size(out_data, 1)
             # Vt * Sy⁻¹ * Uyt

@@ -169,10 +169,10 @@ for n in 1:N_iter
     G_ens = hcat(G_n...)  # reformat
     terminate = EnsembleKalmanProcesses.update_ensemble!(ekiobj, G_ens)
     if !isnothing(terminate)
-        n_iter[1] = n-1
+        n_iter[1] = n - 1
         break
     end
-        
+
 end
 
 

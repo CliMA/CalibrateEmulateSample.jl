@@ -270,7 +270,7 @@ rng = Random.MersenneTwister(seed)
         output_dim = 1
         n = 50                                       # number of training points
         x = reshape(2.0 * π * rand(n), 1, n)         # unif(0,2π) predictors/features: 1 x n
-        obs_noise_cov= 0.05^2 * I
+        obs_noise_cov = 0.05^2 * I
         y = reshape(sin.(x) + 0.05 * randn(n)', 1, n) # predictands/targets: 1 x n
         iopairs = PairedDataContainer(x, y, data_are_columns = true)
 
@@ -304,7 +304,7 @@ rng = Random.MersenneTwister(seed)
             rng = rng,
             optimizer_options = Dict("n_cross_val_sets" => 0),
         )
-        
+
         # build emulators
         em_srfi = Emulator(srfi, iopairs, output_structure_matrix = obs_noise_cov)
         n_srfi = length(get_rfms(srfi))

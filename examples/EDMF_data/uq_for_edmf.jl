@@ -160,7 +160,7 @@ function main()
     @info "Begin Emulation stage"
     # Create GP object
     train_frac = 0.9
-    kernel_rank = 3 # svd-sep should be kr - 5 (as input rank is set to 5)
+    kernel_rank = 5 # svd-sep should be kr - 5 (as input rank is set to 5)
     n_cross_val_sets = 2
     @info "Kernel rank: $(kernel_rank)"
     max_feature_size =
@@ -171,9 +171,9 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 1000),
         "cov_sample_multiplier" => 0.2,
         "n_iteration" => 15,
-        "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
+        "n_features_opt" => 100, #Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
         "localization" => SEC(0.05),
-        "n_ensemble" => 400,
+        "n_ensemble" => 100,#400,
         "n_cross_val_sets" => n_cross_val_sets,
     )
     if case == "RF-prior"
@@ -197,7 +197,7 @@ function main()
             noise_learn = false,
         )
     elseif case ∈ ["RF-lr-lr"]
-        kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(kernel_rank, nugget))
+        kernel_structure = SeparableKernel(LowRankFactor(1, nugget), LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -225,15 +225,15 @@ function main()
 
     # data processing:
     retain_var = 0.9
-    encoder_schedule = (decorrelate_structure_mat(retain_var=retain_var), "in_and_out")
-    
+    encoder_schedule = (decorrelate_structure_mat(retain_var = retain_var), "in_and_out")
+
     # Fit an emulator to the data
     emulator = Emulator(
         mlt,
         input_output_pairs;
         input_structure_matrix = cov(prior),
         output_structure_matrix = truth_cov,
-        encoder_schedule=encoder_schedule,
+        encoder_schedule = encoder_schedule,
     )
 
     # Optimize the GP hyperparameters for better fit

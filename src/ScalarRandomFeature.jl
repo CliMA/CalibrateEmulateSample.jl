@@ -363,7 +363,7 @@ function build_models!(
         n_cross_val_sets = 1 # now just pretend there is one partition for looping purposes
         n_train = n_data
         n_test = n_data
-   else
+    else
         train_fraction = optimizer_options["train_fraction"]
         n_train = Int(floor(train_fraction * n_data))
         n_test = n_data - n_train
@@ -394,8 +394,8 @@ function build_models!(
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
-        regularization_i = regularization[i,i]*I
-        
+        regularization_i = regularization[i, i] * I
+
         io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
 
         multithread = optimizer_options["multithread"]
@@ -604,14 +604,14 @@ function predict(
             tullio_threading = tullio_threading,
         )
     end
-    
+
     # add the noise contribution stored within the regularization
     reg = get_regularization(srfi)[1]
-    reg_diag  = isa(reg, UniformScaling) ? reg.λ*ones(M) : diag(reg)
-    
-    for i = 1:M
+    reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
+
+    for i in 1:M
         σ2[i, :] .+= reg_diag[i]
     end
-    
+
     return μ, σ2
 end

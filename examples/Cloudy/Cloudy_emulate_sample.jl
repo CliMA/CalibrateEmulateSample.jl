@@ -113,7 +113,7 @@ function main()
     # We use the same input-output-pairs and normalization factors for
     # Gaussian Process and Random Feature cases
     input_output_pairs = get_training_points(ekiobj, length(get_u(ekiobj)) - 2)
-    test_pairs =  get_training_points(ekiobj, length(get_u(ekiobj)) - 1: length(get_u(ekiobj)) - 1)
+    test_pairs = get_training_points(ekiobj, (length(get_u(ekiobj)) - 1):(length(get_u(ekiobj)) - 1))
     for case in cases[case_mask]
 
         println(" ")
@@ -160,12 +160,12 @@ function main()
             error("Case $case is not implemented yet.")
 
         end
-        
+
         # Data processing
         if case == "rf-nonsep"
             encoder_schedule = []
         else
-            encoder_schedule = (decorrelate_structure_mat(), "in_and_out") 
+            encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
         end
 
         # build emulator

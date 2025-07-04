@@ -247,11 +247,11 @@ function main()
                     optimizer_options = overrides,
                 )
             end
-            
+
             # data processing:
             retain_var = 0.9
-            encoder_schedule = (decorrelate_structure_mat(retain_var=retain_var), "in_and_out")
-            
+            encoder_schedule = (decorrelate_structure_mat(retain_var = retain_var), "in_and_out")
+
             # Fit an emulator to the data
             ttt[rank_id, rep_idx] = @elapsed begin
                 emulator = Emulator(
@@ -259,7 +259,7 @@ function main()
                     train_pairs;
                     input_structure_matrix = cov(prior),
                     output_structure_matrix = truth_cov,
-                    encoder_schedule=encoder_schedule,
+                    encoder_schedule = encoder_schedule,
                 )
 
                 # Optimize the GP hyperparameters for better fit

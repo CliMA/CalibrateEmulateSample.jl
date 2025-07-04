@@ -63,23 +63,11 @@ using CalibrateEmulateSample.Utilities
     @test gp1.prediction_type == pred_type
     @test gp1.alg_reg_noise == 1e-4
 
-    em1 = Emulator(
-        gp1,
-        iopairs,
-        encoder_schedule = [],
-    )
+    em1 = Emulator(gp1, iopairs, encoder_schedule = [])
 
-    @test_logs (:warn,) Emulator(
-        gp1,
-        iopairs,
-        encoder_schedule = [],
-    ) # check that gp1 does not get more models added under second call
+    @test_logs (:warn,) Emulator(gp1, iopairs, encoder_schedule = []) # check that gp1 does not get more models added under second call
 
-    Emulator(
-        gp1,
-        iopairs,
-        encoder_schedule = [],
-    )
+    Emulator(gp1, iopairs, encoder_schedule = [])
     @test length(gp1.models) == 1
 
     Emulators.optimize_hyperparameters!(em1)
@@ -92,11 +80,7 @@ using CalibrateEmulateSample.Utilities
 
     # GaussianProcess 1b: use GPJL to create an abstractGP dist.
     agp = GaussianProcess(AGPJL(); noise_learn = true, alg_reg_noise = 1e-4, prediction_type = pred_type)
-    @test_throws ArgumentError Emulator(
-        agp,
-        iopairs,
-        encoder_schedule = [],
-    )
+    @test_throws ArgumentError Emulator(agp, iopairs, encoder_schedule = [])
 
     gp1_opt_params = Emulators.get_params(gp1)[1] # one model only
     gp1_opt_param_names = get_param_names(gp1)[1] # one model only
@@ -107,20 +91,10 @@ using CalibrateEmulateSample.Utilities
         "log_std_noise" => gp1_opt_params[end],
     )
 
-    em_agp_from_gp1 = Emulator(
-        agp,
-        iopairs,
-        encoder_schedule = [],
-        kernel_params = kernel_params,
-    )
+    em_agp_from_gp1 = Emulator(agp, iopairs, encoder_schedule = [], kernel_params = kernel_params)
     optimize_hyperparameters!(em_agp_from_gp1)
     # skip rebuild:
-    @test_logs (:warn,) Emulator(
-        agp,
-        iopairs,
-        encoder_schedule = [],
-        kernel_params = kernel_params,
-    )
+    @test_logs (:warn,) Emulator(agp, iopairs, encoder_schedule = [], kernel_params = kernel_params)
 
 
     μ1b, σ1b² = Emulators.predict(em_agp_from_gp1, new_inputs)
@@ -137,11 +111,7 @@ using CalibrateEmulateSample.Utilities
 
     gp2 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
 
-    em2 = Emulator(
-        gp2,
-        iopairs,
-        encoder_schedule = [],
-    )
+    em2 = Emulator(gp2, iopairs, encoder_schedule = [])
 
     Emulators.optimize_hyperparameters!(em2)
 
@@ -158,21 +128,9 @@ using CalibrateEmulateSample.Utilities
     GPkernel = var * se
 
     gp3 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em3 = Emulator(
-        gp3,
-        iopairs,
-        encoder_schedule = [],
-    )
-    @test_logs (:warn,) Emulator(
-        gp3,
-        iopairs,
-        encoder_schedule = [],
-    )
-    Emulator(
-        gp3,
-        iopairs,
-        encoder_schedule = [],
-    )
+    em3 = Emulator(gp3, iopairs, encoder_schedule = [])
+    @test_logs (:warn,) Emulator(gp3, iopairs, encoder_schedule = [])
+    Emulator(gp3, iopairs, encoder_schedule = [])
     @test length(gp3.models) == 1 # check that gp3 does not get more models added under repeated calls
 
     Emulators.optimize_hyperparameters!(em3)
@@ -215,23 +173,15 @@ using CalibrateEmulateSample.Utilities
     @test get_inputs(iopairs2) == X
     @test get_outputs(iopairs2) == Y
 
-    
+
     # with noise learning - e.g. we add a kernel to learn the noise (even though we provide the Sigma to the emulator)
     gp4_noise_learnt = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
     # without noise learning, just use the SVD transform to deal with observational noise
-    em4_noise_learnt = Emulator(
-        gp4_noise_learnt,
-        iopairs2,
-        output_structure_matrix = Σ,
-    )
+    em4_noise_learnt = Emulator(gp4_noise_learnt, iopairs2, output_structure_matrix = Σ)
 
     gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = false, prediction_type = pred_type)
 
-    em4_noise_from_Σ = Emulator(
-        gp4,
-        iopairs2,
-        output_structure_matrix = Σ,
-    )
+    em4_noise_from_Σ = Emulator(gp4, iopairs2, output_structure_matrix = Σ)
 
     Emulators.optimize_hyperparameters!(em4_noise_learnt)
     Emulators.optimize_hyperparameters!(em4_noise_from_Σ)
@@ -276,12 +226,7 @@ using CalibrateEmulateSample.Utilities
         ) for model_params in gp4_opt_params
     ]
 
-    em_agp_from_gp4 = Emulator(
-        agp4,
-        iopairs2,
-        output_structure_matrix = Σ,
-        kernel_params = kernel_params,
-    )
+    em_agp_from_gp4 = Emulator(agp4, iopairs2, output_structure_matrix = Σ, kernel_params = kernel_params)
 
     μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs, transform_to_real = true)
 

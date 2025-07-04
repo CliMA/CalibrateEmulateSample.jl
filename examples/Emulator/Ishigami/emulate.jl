@@ -91,7 +91,7 @@ function main()
         "n_ensemble" => 50,
         "n_iteration" => 20,
     )
-    
+
     if case == "Prior"
         # don't do anything
         overrides["n_iteration"] = 0
@@ -102,7 +102,7 @@ function main()
     result_preds = []
     opt_diagnostics = []
     for rep_idx in 1:n_repeats
-        
+
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.SKLJL()
@@ -123,7 +123,8 @@ function main()
         end
 
         # Emulate
-        emulator = Emulator(mlt, iopairs; output_structure_matrix = Γ*I, encoder_schedule = deepcopy(encoder_schedule))
+        emulator =
+            Emulator(mlt, iopairs; output_structure_matrix = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # get EKP errors - just stored in "optimizer" box for now

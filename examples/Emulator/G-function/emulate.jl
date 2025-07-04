@@ -142,7 +142,12 @@ function main()
 
         # Emulate
         times[rep_idx] = @elapsed begin
-            emulator = Emulator(mlt, iopairs; output_structure_matrix = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
+            emulator = Emulator(
+                mlt,
+                iopairs;
+                output_structure_matrix = Γ * I,
+                encoder_schedule = deepcopy(encoder_schedule),
+            )
             optimize_hyperparameters!(emulator)
         end
 

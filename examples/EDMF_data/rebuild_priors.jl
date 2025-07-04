@@ -1,13 +1,13 @@
- # code deprecated due to JLD2
-    #=   
-    prior_filepath = joinpath(exp_dir, "prior.jld2")
-    if !isfile(prior_filepath)
-        LoadError("prior file \"prior.jld2\" not found in directory \"" * exp_dir * "/\"")
-    else
-        prior_dict_raw = load(prior_filepath) #using JLD2
-        prior = prior_dict_raw["prior"]
-    end
-    =#
+# code deprecated due to JLD2
+#=   
+prior_filepath = joinpath(exp_dir, "prior.jld2")
+if !isfile(prior_filepath)
+    LoadError("prior file \"prior.jld2\" not found in directory \"" * exp_dir * "/\"")
+else
+    prior_dict_raw = load(prior_filepath) #using JLD2
+    prior = prior_dict_raw["prior"]
+end
+=#
 # build prior if jld2 does not work
 function get_prior_config(s::SS) where {SS <: AbstractString}
     config = Dict()
@@ -34,6 +34,6 @@ function get_prior_config(s::SS) where {SS <: AbstractString}
         config["unconstrained_σ"] = 1.0
     else
         throw(ArgumentError("prior for experiment $s not found, please implement in uq_for_edmf.jl"))
-        end
+    end
     return config
 end

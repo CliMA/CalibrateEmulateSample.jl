@@ -108,15 +108,15 @@ end
 
     cc = canonical_correlation()
     @test get_retain_var(cc) == 1.0
-    cc2 = canonical_correlation(retain_var=0.7)
+    cc2 = canonical_correlation(retain_var = 0.7)
     @test get_retain_var(cc2) == 0.7
-    cc3 = CanonicalCorrelation([1],[2],[3],1.0,"test")
+    cc3 = CanonicalCorrelation([1], [2], [3], 1.0, "test")
     @test get_data_mean(cc3) == [1]
     @test get_encoder_mat(cc3) == [2]
     @test get_decoder_mat(cc3) == [3]
     @test get_apply_to(cc3) == "test"
-    
-    
+
+
     # test equalities
     cc = canonical_correlation()
     cc_copy = canonical_correlation()
@@ -124,9 +124,9 @@ end
     dd_copy = decorrelate()
     @test cc == cc_copy
     @test dd == dd_copy
-    
+
     # get some data as IO pairs for functional tests
-    
+
     in_dim = 10
     out_dim = 50
     samples = 120

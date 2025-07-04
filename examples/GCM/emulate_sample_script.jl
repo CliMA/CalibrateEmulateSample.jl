@@ -55,7 +55,7 @@ function main()
     priorfile = "priors.jld2"
     prior = load(priorfile)["prior"]
 
-    
+
     #take only first 400 points
     iter_mask = [1, 2, 4]
     data_mask = 1:96
@@ -158,28 +158,23 @@ function main()
     end
 
     if emulator_type == "VectorRFR-nondiag"
-        
-        encoder_schedule = [
-            (quartile_scale(), "in"),
-            (decorrelate_structure_mat(), "out"),
-        ]
+
+        encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(), "out")]
         emulator = Emulator(
             mlt,
             input_output_pairs;
             output_structure_matrix = obs_noise_cov,
-            encoder_schedule=encoder_schedule,
+            encoder_schedule = encoder_schedule,
         )
     else
-        encoder_schedule = [
-            (decorrelate_structure_mat(), "in_and_out"),
-        ]
+        encoder_schedule = [(decorrelate_structure_mat(), "in_and_out")]
 
         emulator = Emulator(
             mlt,
             input_output_pairs;
             input_structure_matrix = cov(prior),
             output_structure_matrix = obs_noise_cov,
-            encoder_schedule=encoder_schedule,
+            encoder_schedule = encoder_schedule,
         )
 
     end

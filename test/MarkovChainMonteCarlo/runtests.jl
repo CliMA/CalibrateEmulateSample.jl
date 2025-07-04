@@ -70,12 +70,7 @@ function test_gp_1(y, σ2_y, iopairs::PairedDataContainer)
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em = Emulator(
-        gp,
-        iopairs;
-        output_structure_matrix = σ2_y,
-        encoder_schedule = [],        
-    )
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = [])
     Emulators.optimize_hyperparameters!(em)
     return em
 end
@@ -88,12 +83,7 @@ function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer)
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em = Emulator(
-        gp,
-        iopairs;
-        output_structure_matrix = σ2_y,
-        encoder_schedule = [],
-    )
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = [])
     Emulators.optimize_hyperparameters!(em)
 
     # now make agp from gp
@@ -110,13 +100,8 @@ function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer)
         ) for model_params in gp_opt_params
     ]
 
-    em_agp = Emulator(
-        agp,
-        iopairs,
-        output_structure_matrix = σ2_y,
-        encoder_schedule = [],
-        kernel_params = kernel_params,
-    )
+    em_agp =
+        Emulator(agp, iopairs, output_structure_matrix = σ2_y, encoder_schedule = [], kernel_params = kernel_params)
 
     return em, em_agp
 end
@@ -130,17 +115,9 @@ function test_gp_2(y, σ2_y, iopairs::PairedDataContainer)
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    retain_var = 0.95 
-    encoder_schedule = [
-        (quartile_scale(), "out"),
-        (decorrelate_structure_mat(retain_var=retain_var), "out")
-    ]
-    em = Emulator(
-        gp,
-        iopairs;
-        output_structure_matrix = σ2_y,
-        encoder_schedule = encoder_schedule
-    )
+    retain_var = 0.95
+    encoder_schedule = [(quartile_scale(), "out"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = encoder_schedule)
     Emulators.optimize_hyperparameters!(em)
 
     return em

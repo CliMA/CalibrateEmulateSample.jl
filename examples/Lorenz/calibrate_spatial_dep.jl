@@ -193,7 +193,7 @@ y_ens = hcat(
 )
 
 # estimate noise as the variability of these pushed-forward samples on the attractor
-obs_noise_cov = cov(y_ens, dims = 2) + 1e-2*I
+obs_noise_cov = cov(y_ens, dims = 2) + 1e-2 * I
 y = y_ens[:, 1]
 
 pl = 4.0
@@ -249,7 +249,7 @@ for i in 1:N_iter
         [
             lorenz_forward(
                 EnsembleMemberConfig(params_i[:, j]),
-                x_on_attractor[:,(i-1) * N_ens + j],
+                x_on_attractor[:, (i - 1) * N_ens + j],
                 lorenz_config_settings,
                 observation_config,
             ) for j in 1:N_ens

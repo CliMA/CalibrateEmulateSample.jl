@@ -1,11 +1,8 @@
 # some context values (from calibrate_spatial_dep.jl)
 
 # some context calues from emulate_sample_spatial_dep.jl
-cases = [
-    "GP", # SLOW
-    "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-]
-case = cases[2]
+cases = ["GP", "RF-scalar"]
+case = cases[1]
 
 # load packages
 # CES 

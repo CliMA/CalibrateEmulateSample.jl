@@ -251,7 +251,7 @@ function emulator_log_density_model(
     # have to reshape()/re-cast input/output; simpler to do here than add a 
     # predict() method.
     g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
-    
+
     if isa(g_cov[1], Real)
 
         return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -551,11 +551,11 @@ function MCMCWrapper(
     if eltype(obs_slice) <: Number # just one observation
         obs_slice = [obs_slice]
     end
-    
+
     # encoding works on columns but mcmc wants vec-of-vec
-    
+
     encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
-        
+
 
     log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
@@ -737,7 +737,7 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
 
-    
+
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
     p_constraints = [

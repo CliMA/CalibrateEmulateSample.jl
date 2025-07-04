@@ -83,7 +83,7 @@ function main()
         output[i] = y[ind[i]] + noise[i]
     end
     iopairs = PairedDataContainer(input, output)
-    
+
     # analytic sobol indices taken from
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8989694/pdf/main.pdf
     a = [(i - 1.0) / 2.0 for i in 1:n_dimensions]  # a_i < a_j => a_i more sensitive
@@ -151,7 +151,12 @@ function main()
 
             # Emulate
             ttt[f_idx, rep_idx] = @elapsed begin
-                emulator = Emulator(mlt, iopairs; output_structure_matrix = Γ * I, encoder_schedule = deepcopy(encoder_schedule))
+                emulator = Emulator(
+                    mlt,
+                    iopairs;
+                    output_structure_matrix = Γ * I,
+                    encoder_schedule = deepcopy(encoder_schedule),
+                )
                 optimize_hyperparameters!(emulator)
             end
 

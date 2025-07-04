@@ -23,7 +23,7 @@ using CalibrateEmulateSample.DataContainers
 function main()
 
     cases = [
-        "GP", 
+        "GP",
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
     ]
 
@@ -83,11 +83,11 @@ function main()
             )
         elseif case == "RF-scalar"
             overrides = Dict(
-         #       "verbose" => true,
+                #       "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 1000.0),
                 "cov_sample_multiplier" => 1.0,
                 "n_iteration" => 8,
-                "n_features_opt" => 40,                
+                "n_features_opt" => 40,
             )
             n_features = 80
             kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor())
@@ -113,8 +113,8 @@ function main()
 
         # plot training points in constrained space
         if case == cases[mask[1]]
-            i1=1
-            i2=10
+            i1 = 1
+            i2 = 10
             gr(dpi = 300, size = (400, 400))
             inputs_unconstrained = get_inputs(input_output_pairs)
             inputs_constrained = transform_unconstrained_to_constrained(priors, inputs_unconstrained)
@@ -139,9 +139,7 @@ function main()
 
         # data processing configuration
         retain_var = 0.95
-        encoder_schedule = [
-            (decorrelate_structure_mat(retain_var = retain_var), "in_and_out"),
-        ]
+        encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
 
         emulator = Emulator(
             mlt,
@@ -180,7 +178,7 @@ function main()
         # First let's run a short chain to determine a good step size
         mcmc = MCMCWrapper(RWMHSampling(), truth_sample, priors, emulator; init_params = u0)
         new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
-        
+
         # Now begin the actual MCMC
         println("Begin MCMC - with step size ", new_step)
         chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)

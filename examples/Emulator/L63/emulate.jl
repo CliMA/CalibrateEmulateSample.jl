@@ -108,7 +108,7 @@ function main()
     ]
 
     case = cases[3] # 7
-    
+
     nugget = Float64(1e-8)
     u_test = []
     u_hist = []
@@ -215,7 +215,7 @@ function main()
         else
             encoder_schedule = (decorrelate_structure_mat(), "out")
         end
-        emulator = Emulator(mlt, iopairs; output_structure_matrix = Γy, encoder_schedule=deepcopy(encoder_schedule))
+        emulator = Emulator(mlt, iopairs; output_structure_matrix = Γy, encoder_schedule = deepcopy(encoder_schedule))
         optimize_hyperparameters!(emulator)
 
         # diagnostics
