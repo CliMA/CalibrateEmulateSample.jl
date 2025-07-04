@@ -71,18 +71,23 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test isapprox(norm(decoded_I - I(d)), 0, atol = tol*d*d)
 
     # test obs_noise_cov   (check the warning at the start)
-    @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov=3.0*I)
+    @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov=Σ)
     @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(gp, io_pairs, input_structure_matrix=4.0*I, obs_noise_cov=3.0*I, output_structure_matrix=2.0*I)
-    em1 = Emulator(gp, io_pairs, obs_noise_cov=3*I)
-    em2 = Emulator(gp, io_pairs, obs_noise_cov=3.0*I, output_structure_matrix=2.0*I)
+    em1 = Emulator(gp, io_pairs, obs_noise_cov=Σ)
+    
+    em2 = Emulator(gp, io_pairs, input_structure_matrix=4.0*I(p), obs_noise_cov=Σ, output_structure_matrix=2.0*I)
+    Γ = randn(p,p)
+    Γ = Γ*Γ'
+    em3= Emulator(gp, io_pairs, input_structure_matrix=Γ)
     enc_sch1 = create_encoder_schedule([(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")])
-    enc_sch2 = deepcopy(enc_sch1)
+    enc_sch2 = create_encoder_schedule([(decorrelate_structure_mat(), "in"), (decorrelate_structure_mat(), "out")])
+    enc_sch3 = create_encoder_schedule([(decorrelate_structure_mat(), "in"), (decorrelate_sample_cov(), "out")])
     (_, _, _) =
         encode_with_schedule!(
             enc_sch1,
             io_pairs,
             1.0*I(p),
-            3.0*I(d), # obs noise cov becomes the output structure matrix
+            Σ, # obs noise cov becomes the output structure matrix
         )
     @test get_encoder_schedule(em1) == enc_sch1
 
@@ -94,7 +99,15 @@ struct MLTester <: Emulators.MachineLearningTool end
             2.0*I(d), # out_struct_mat overrides obs noise cov
         )
     @test get_encoder_schedule(em2) == enc_sch2
-   
+    
+    (_, _, _) =
+        encode_with_schedule!(
+            enc_sch3,
+            io_pairs,
+            Γ, 
+            I(d), 
+        )
+    @test get_encoder_schedule(em3) == enc_sch3
     
     
    
