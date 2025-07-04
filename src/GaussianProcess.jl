@@ -410,7 +410,7 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
             var_sqexp * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[:])) +
             var_noise * KernelFunctions.WhiteKernel()
         opt_f = AbstractGPs.GP(opt_kern)
-        opt_fx = opt_f(input_values', regularization_noise)
+        opt_fx = opt_f(input_values', regularization_noise; obsdim=2)
 
         data_i = output_values[i, :]
         opt_post_fx = posterior(opt_fx, data_i)
@@ -434,7 +434,7 @@ function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: Abstra
     σ2 = zeros(FTorD, N_models, N_samples)
     for i in 1:N_models
         pred_gp = gp.models[i]
-        pred = pred_gp(new_inputs)
+        pred = pred_gp(new_inputs; obsdim=2)
         μ[i, :] = mean(pred)
         σ2[i, :] = var(pred)
     end
