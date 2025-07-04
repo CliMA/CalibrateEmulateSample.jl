@@ -198,6 +198,10 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Makes a prediction using the emulator on new inputs (each new inputs given as data columns).
 Default is to predict in the decorrelated space.
+
+Return type of N inputs:
+  - 1-D: mean [1 x N], cov [1 x N]
+  - p-D: mean [p x N], cov N x [p x p] 
 """
 function predict(
     emulator::Emulator{FT},
@@ -255,22 +259,23 @@ function predict(
         
     else
         
-        if encoded_output_dim > 1
-            encoded_covariances_mat = zeros(encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
-            if var_or_cov == "var"            
-                for (i,col) in enumerate(eachcol(encoded_uncertainties))
-                    encoded_covariances_mat[:,:,i] = Diagonal(col)
-                end
-            else # =="cov"
-                for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
-                    encoded_covariances_mat[:,:,i] = mat
-                end
+        encoded_covariances_mat = zeros(encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
+        if var_or_cov == "var"            
+            for (i,col) in enumerate(eachcol(encoded_uncertainties))
+                encoded_covariances_mat[:,:,i] = Diagonal(col)
             end
-            encoded_covariances = eachslice(encoded_covariances_mat,dims=3)
-        else
-            encoded_covariances = encoded_uncertainties
+        else # =="cov"
+            for (i,mat) in enumerate(eachslice(encoded_uncertainties, dims=3))
+                encoded_covariances_mat[:,:,i] = mat
+            end
         end
-        return encoded_outputs, encoded_covariances
+
+        if encoded_output_dim > 1
+            return encoded_outputs, eachslice(encoded_covariances_mat,dims=3)
+        else    
+            # here the covs are [1 x 1 x samples] just return [1 x samples]
+            return encoded_outputs, encoded_covariances_mat[1,:,:]
+        end
     end
     
 end
