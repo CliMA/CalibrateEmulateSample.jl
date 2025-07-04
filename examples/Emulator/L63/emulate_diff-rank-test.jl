@@ -8,6 +8,7 @@ using JLD2
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.Utilities
 using EnsembleKalmanProcesses.Localizers
 
 function lorenz(du, u, p, t)
@@ -185,12 +186,17 @@ function main()
 
             # Emulate
             if case ∈ ["RF-nosvd-nonsep", "RF-nosvd-sep"]
-                decorrelate = false
+                encoder_schedule = []
             else
-                decorrelate = true
+                encoder_schedule = nothing
             end
             ttt[rank_id, rep_idx] = @elapsed begin
-                emulator = Emulator(mlt, iopairs; obs_noise_cov = Γy, decorrelate = decorrelate)
+                emulator = Emulator(
+                    mlt,
+                    iopairs;
+                    output_structure_matrix = Γy,
+                    encoder_schedule = deepcopy(encoder_schedule),
+                )
                 optimize_hyperparameters!(emulator)
             end
 

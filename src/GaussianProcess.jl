@@ -138,7 +138,9 @@ Method to build Gaussian process models based on the package.
 """
 function build_models!(
     gp::GaussianProcess{GPJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
@@ -258,7 +260,9 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: 
 #now we build the SKLJL implementation
 function build_models!(
     gp::GaussianProcess{SKLJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
@@ -336,7 +340,9 @@ end
 #We build the AGPJL implementation
 function build_models!(
     gp::GaussianProcess{AGPJL},
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kernel_params = nothing,
     kwargs...,
 ) where {FT <: AbstractFloat}
@@ -404,7 +410,7 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
             var_sqexp * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[:])) +
             var_noise * KernelFunctions.WhiteKernel()
         opt_f = AbstractGPs.GP(opt_kern)
-        opt_fx = opt_f(input_values', regularization_noise)
+        opt_fx = opt_f(input_values', regularization_noise; obsdim = 2)
 
         data_i = output_values[i, :]
         opt_post_fx = posterior(opt_fx, data_i)
@@ -428,7 +434,7 @@ function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: Abstra
     σ2 = zeros(FTorD, N_models, N_samples)
     for i in 1:N_models
         pred_gp = gp.models[i]
-        pred = pred_gp(new_inputs)
+        pred = pred_gp(new_inputs; obsdim = 2)
         μ[i, :] = mean(pred)
         σ2[i, :] = var(pred)
     end

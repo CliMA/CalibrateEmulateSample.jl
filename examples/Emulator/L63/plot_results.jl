@@ -7,7 +7,7 @@ function main()
     # filepaths
     output_directory = joinpath(@__DIR__, "output")
     cases = ["GP", "RF-prior", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"] #for paper, 1 2 & 5.
-    case = cases[1]
+    case = cases[3]
     @info "plotting case $case"
     #for later plots
     fontsize = 20

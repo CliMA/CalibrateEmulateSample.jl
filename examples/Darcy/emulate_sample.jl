@@ -18,6 +18,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
+
 include("GModel.jl")
 
 function main()
@@ -90,19 +91,15 @@ function main()
         # Save data
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
 
-        retained_svd_frac = 1.0
-
-        normalized = true
-        # do we want to use SVD to decorrelate outputs
-        decorrelate = true
+        # data processing
+        encoding_schedule = (decorrelate_structure_mat(), "in_and_out")
 
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            obs_noise_cov = Γy,
-            normalize_inputs = normalized,
-            retained_svd_frac = retained_svd_frac,
-            decorrelate = decorrelate,
+            input_structure_matrix = cov(prior),
+            output_structure_matrix = Γy,
+            encoding_schedule = encoding_schedule,
         )
         optimize_hyperparameters!(emulator, kernbounds = [fill(-1e2, n_params + 1), fill(1e2, n_params + 1)])
 

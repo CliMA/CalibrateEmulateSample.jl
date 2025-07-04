@@ -742,7 +742,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     moc_tmp = similar(mean_of_covs)
     mtmp = zeros(output_dim, n_test)
 
-    println("calculating " * string(N_ens) * " ensemble members...")
+    #    println("calculating " * string(N_ens) * " ensemble members...")
 
     for i in ProgressBar(1:N_ens)
         for j in collect(1:repeats)
@@ -947,7 +947,7 @@ function calculate_ensemble_mean_and_coeffnorm(
     n_test = length(test_idx)
 
 
-    println("calculating " * string(N_ens) * " ensemble members...")
+    #    println("calculating " * string(N_ens) * " ensemble members...")
 
     nthreads = Threads.nthreads()
 

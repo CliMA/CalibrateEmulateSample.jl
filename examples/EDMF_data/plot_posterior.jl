@@ -19,7 +19,7 @@ function main()
 
     # 5-parameter calibration exp
     exp_name = "ent-det-tked-tkee-stab-calibration"
-    date_of_run = Date(2024, 11, 03)
+    date_of_run = Date(2025, 07, 03)
     @info "plotting results found in $(date_of_run)"
     # Output figure read/write directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(date_of_run))
@@ -29,13 +29,12 @@ function main()
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-prior",
-        "RF-vector-svd-nonsep",
-        "RF-vector-svd-sep",
-        "RF-vector-nosvd-nonsep",
+        "RF-nonsep",
+        "RF-lr-lr",
     ]
-    case_rf = cases[3]
-    kernel_rank = 3
-    prior_kernel_rank = 3
+    case_rf = cases[4]
+    kernel_rank = 5
+    prior_kernel_rank = 5
     # load
     posterior_filepath = joinpath(data_save_directory, "$(case_rf)_$(kernel_rank)_posterior.jld2")
     if !isfile(posterior_filepath)
