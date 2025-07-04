@@ -215,7 +215,6 @@ using CalibrateEmulateSample.Utilities
     @test get_inputs(iopairs2) == X
     @test get_outputs(iopairs2) == Y
 
-    encoder_schedule = (decorrelate_structure_mat(), "out")
     
     # with noise learning - e.g. we add a kernel to learn the noise (even though we provide the Sigma to the emulator)
     gp4_noise_learnt = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
@@ -223,7 +222,6 @@ using CalibrateEmulateSample.Utilities
     em4_noise_learnt = Emulator(
         gp4_noise_learnt,
         iopairs2,
-        encoder_schedule = deepcopy(encoder_schedule),
         output_structure_matrix = Σ,
     )
 
@@ -232,7 +230,6 @@ using CalibrateEmulateSample.Utilities
     em4_noise_from_Σ = Emulator(
         gp4,
         iopairs2,
-        encoder_schedule = deepcopy(encoder_schedule),
         output_structure_matrix = Σ,
     )
 
@@ -282,7 +279,6 @@ using CalibrateEmulateSample.Utilities
     em_agp_from_gp4 = Emulator(
         agp4,
         iopairs2,
-        encoder_schedule = deepcopy(encoder_schedule),
         output_structure_matrix = Σ,
         kernel_params = kernel_params,
     )
