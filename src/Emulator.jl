@@ -23,7 +23,7 @@ export optimize_hyperparameters!
 export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type to dispatch different emulators:
 
@@ -54,12 +54,12 @@ end
 # We will define the different emulator types after the general statements
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Structure used to represent a general emulator, independently of the algorithm used.
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 """
 struct Emulator{FT <: AbstractFloat, VV <: AbstractVector}
     "Machine learning tool, defined as a struct of type MachineLearningTool."
@@ -72,20 +72,49 @@ struct Emulator{FT <: AbstractFloat, VV <: AbstractVector}
     encoder_schedule::VV
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `machine_learning_tool` field of the `Emulator`
+"""
 get_machine_learning_tool(emulator::Emulator) = emulator.machine_learning_tool
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `io_pairs` field of the `Emulator`
+"""
 get_io_pairs(emulator::Emulator) = emulator.io_pairs
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `encoded_io_pairs` field of the `Emulator`
+"""
 get_encoded_io_pairs(emulator::Emulator) = emulator.encoded_io_pairs
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `encoder_schedul` field of the `Emulator`
+"""
 get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
 # Constructor for the Emulator Object
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
+
+Constructor of the Emulator object,
 
 Positional Arguments
- - `machine_learning_tool` ::MachineLearningTool,
- - `input_output_pairs` ::PairedDataContainer
+ - `machine_learning_tool`: the selected machine learning tool object (e.g. Gaussian process / Random feature interface)
+ - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+
 Keyword Arguments 
- 
+ -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `(decorrelate_samples_cov(), "in_and_out")`. Pass `[]` for no encoding.
+ - `input_structure_matrix`[=`nothing`]: Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. `nothing` sets a default `I(input_dim)`
+ - `output_structure_matrix` [=`nothing`] Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. `nothing` sets a default `I(input_dim)`
+Other keywords are passed to the machine learning tool initialization
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
@@ -114,7 +143,7 @@ function Emulator(
     input_structure_mat = if isnothing(input_structure_matrix)
         Diagonal(FT.(ones(input_dim)))
     elseif isa(input_structure_matrix, UniformScaling)
-        Diagonal(input_structure_matrix(input_dim))
+       input_structure_matrix(input_dim)
     else
         input_structure_matrix
     end
@@ -122,7 +151,7 @@ function Emulator(
     output_structure_mat = if isnothing(output_structure_matrix)
         Diagonal(FT.(ones(output_dim)))
     elseif isa(output_structure_matrix, UniformScaling)
-        Diagonal(output_structure_matrix(output_dim))
+        output_structure_matrix(output_dim)
     else
         output_structure_matrix
     end
@@ -159,15 +188,19 @@ function Emulator(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
-Optimizes the hyperparameters in the machine learning tool.
+Optimizes the hyperparameters in the machine learning tool. Note that some machine learning packages train hyperparameters on construction so this call is not necessary
 """
 function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) where {FT <: AbstractFloat}
     optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
+"""
+$(TYPEDSIGNATURES)
 
+Encode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
+"""
 function encode_data(
     emulator::Emulator,
     data::MorDC,
@@ -180,6 +213,11 @@ function encode_data(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
+"""
 function encode_structure_matrix(
     emulator::Emulator,
     structure_mat::USorM,
@@ -189,6 +227,11 @@ function encode_structure_matrix(
 end
 
 
+"""
+$(TYPEDSIGNATURES)
+
+Decode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
+"""
 function decode_data(
     emulator::Emulator,
     data::MorDC,
@@ -201,6 +244,11 @@ function decode_data(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
+"""
 function decode_structure_matrix(
     emulator::Emulator,
     structure_mat::USorM,
@@ -210,12 +258,12 @@ function decode_structure_matrix(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Makes a prediction using the emulator on new inputs (each new inputs given as data columns).
 Default is to predict in the decorrelated space.
 
-Return type of N inputs:
+Return type of N inputs: (in the output space)
   - 1-D: mean [1 x N], cov [1 x N]
   - p-D: mean [p x N], cov N x [p x p] 
 """
@@ -233,7 +281,7 @@ function predict(
 
     N_samples = size(new_inputs, 2)
 
-    if !(size(new_inputs, 1) == input_dim)
+    if size(new_inputs, 1) != input_dim
         throw(
             ArgumentError(
                 "Emulator object and input observations do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",

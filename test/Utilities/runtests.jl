@@ -13,34 +13,6 @@ using CalibrateEmulateSample.DataContainers
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(41)
 
-    arr = vcat([i * ones(3)' for i in 1:5]...)
-    arr_t = permutedims(arr, (2, 1))
-
-    mean_arr = dropdims(mean(arr, dims = 1), dims = 1)
-    std_arr = dropdims(std(arr, dims = 1), dims = 1)
-    @test mean_arr == [3.0, 3.0, 3.0]
-    @test std_arr ≈ [1.58, 1.58, 1.58] atol = 1e-2
-    z_arr = orig2zscore(arr, mean_arr, std_arr)
-    z_arr_test = [
-        -1.265 -1.265 -1.265
-        -0.632 -0.632 -0.632
-        0.0 0.0 0.0
-        0.632 0.632 0.632
-        1.265 1.265 1.265
-    ]
-    @test z_arr ≈ z_arr_test atol = 1e-2
-    orig_arr = zscore2orig(z_arr, mean_arr, std_arr)
-    @test orig_arr ≈ arr atol = 1e-5
-
-    v = vec([1.0 2.0 3.0])
-    mean_v = vec([0.5 1.5 2.5])
-    std_v = vec([0.5 0.5 0.5])
-    z_v = orig2zscore(v, mean_v, std_v)
-    println(z_v)
-    @test z_v ≈ [1.0, 1.0, 1.0] atol = 1e-5
-    orig_v = zscore2orig(z_v, mean_v, std_v)
-    @test orig_v ≈ v atol = 1e-5
-
     # test get_training_points
     # first create the EnsembleKalmanProcess
     n_ens = 10

@@ -67,48 +67,6 @@ function get_training_points(
     return training_points
 end
 
-function orig2zscore(X::AbstractVector{FT}, mean::AbstractVector{FT}, std::AbstractVector{FT}) where {FT}
-    # Compute the z scores of a vector X using the given mean
-    # and std
-    Z = zeros(size(X))
-    for i in 1:length(X)
-        Z[i] = (X[i] - mean[i]) / std[i]
-    end
-    return Z
-end
-
-function orig2zscore(X::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::AbstractVector{FT}) where {FT}
-    # Compute the z scores of matrix X using the given mean and
-    # std. Transformation is applied column-wise.
-    Z = zeros(size(X))
-    n_cols = size(X)[2]
-    for i in 1:n_cols
-        Z[:, i] = (X[:, i] .- mean[i]) ./ std[i]
-    end
-    return Z
-end
-
-function zscore2orig(Z::AbstractVector{FT}, mean::AbstractVector{FT}, std::AbstractVector{FT}) where {FT}
-    # Transform X (a vector of z scores) back to the original
-    # values
-    X = zeros(size(Z))
-    for i in 1:length(X)
-        X[i] = Z[i] .* std[i] .+ mean[i]
-    end
-    return X
-end
-
-function zscore2orig(Z::AbstractMatrix{FT}, mean::AbstractVector{FT}, std::AbstractVector{FT}) where {FT}
-    X = zeros(size(Z))
-    # Transform X (a matrix of z scores) back to the original
-    # values. Transformation is applied column-wise.
-    n_cols = size(Z)[2]
-    for i in 1:n_cols
-        X[:, i] = Z[:, i] .* std[i] .+ mean[i]
-    end
-    return X
-end
-
 # Data processing tooling:
 
 abstract type PairedDataContainerProcessor end # tools that operate on inputs and outputs 

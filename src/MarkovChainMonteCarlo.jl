@@ -495,7 +495,7 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{AVV, AV <: AbstractVector}
+struct MCMCWrapper{AVV <: AbstractVector , AV <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
     "[output_dim x N_samples] matrix, of given observation data."
