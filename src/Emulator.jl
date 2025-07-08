@@ -143,7 +143,7 @@ function Emulator(
     input_structure_mat = if isnothing(input_structure_matrix)
         Diagonal(FT.(ones(input_dim)))
     elseif isa(input_structure_matrix, UniformScaling)
-       input_structure_matrix(input_dim)
+        input_structure_matrix(input_dim)
     else
         input_structure_matrix
     end
