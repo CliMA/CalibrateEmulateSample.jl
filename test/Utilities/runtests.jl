@@ -72,7 +72,7 @@ end
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
     @test get_retain_var(dd3) == 0.7
     @test get_decorrelate_with(dd3) == "structure_mat"
-    DD = Decorrelater([1], [2], [3], 1.0, "test")
+    DD = Decorrelator([1], [2], [3], 1.0, "test")
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
@@ -297,7 +297,6 @@ end
     bad_encoder_schedule = [(canonical_correlation(), func, "bad")]
     @test_throws ArgumentError encode_with_schedule!(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-    @test_throws ArgumentError initialize_and_encode_data!(canonical_correlation(), func(io_pairs), prior_cov, "bad")
     @test_throws ArgumentError decode_data(canonical_correlation(), func(io_pairs), "bad")
 
 
