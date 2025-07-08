@@ -94,7 +94,12 @@ function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS
     end
 end
 
-function _initialize_and_encode_data!(proc::P, data, structure_mats, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
+function _initialize_and_encode_data!(
+    proc::P,
+    data,
+    structure_mats,
+    apply_to::AS,
+) where {P <: DataProcessor, AS <: AbstractString}
     if P isa PairedDataContainerProcessor
         initialize_processor!(proc, data..., structure_mats..., apply_to)
     else
@@ -188,7 +193,12 @@ function initialize_and_encode_with_schedule!(
     for (processor, apply_to) in encoder_schedule
         @info "Initialize encoding of data: \"$(apply_to)\" with $(processor)"
 
-        processed = _initialize_and_encode_data!(processor, processed_io_pairs, (processed_input_structure_mat, processed_output_structure_mat), apply_to)
+        processed = _initialize_and_encode_data!(
+            processor,
+            processed_io_pairs,
+            (processed_input_structure_mat, processed_output_structure_mat),
+            apply_to,
+        )
 
         if apply_to == "in"
             processed_input_structure_mat = encode_structure_matrix(processor, processed_input_structure_mat)
