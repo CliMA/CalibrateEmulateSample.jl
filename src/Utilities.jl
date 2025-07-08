@@ -95,16 +95,18 @@ function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS
 end
 
 function _initialize_and_encode_data!(proc::P, data, structure_mats, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
-    input_data, output_data = data
-    input_structure_mat, output_structure_mat = structure_mats
-
     if P isa PairedDataContainerProcessor
-        initialize_processor!(proc, input_data, output_data, apply_to == "in" ? input_structure_mat : output_structure_mat, apply_to)
+        initialize_processor!(proc, data..., structure_mats..., apply_to)
     else
+        input_data, output_data = data
+        input_structure_mat, output_structure_mat = structure_mats
+
         if apply_to == "in"
             initialize_processor!(proc, input_data, input_structure_mat)
-        else
+        elseif apply_to == "out"
             initialize_processor!(proc, output_data, output_structure_mat)
+        else
+            bad_apply_to(apply_to)
         end
     end
 

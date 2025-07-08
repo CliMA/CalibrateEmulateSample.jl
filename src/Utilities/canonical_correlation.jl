@@ -170,7 +170,8 @@ initialize_processor!(
     cc::CanonicalCorrelation,
     in_data::MM,
     out_data::MM,
-    structure_matrix,
+    input_structure_matrix,
+    output_structure_matrix,
     apply_to::AS,
 ) where {MM <: AbstractMatrix, AS <: AbstractString} = initialize_processor!(cc, in_data, out_data, apply_to)
 
