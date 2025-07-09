@@ -42,6 +42,7 @@ pages = [
     "Calibrate" => "calibrate.md",
     "Emulate" => emulate,
     "Sample" => "sample.md",
+    "Data Processing and Dimension reduction" => "data_processing.md",
     "Glossary" => "glossary.md",
     "API" => api,
 ]
