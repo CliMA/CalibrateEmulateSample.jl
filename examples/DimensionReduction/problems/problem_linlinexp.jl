@@ -44,11 +44,11 @@ struct LinLinExp{AM <: AbstractMatrix} <: ForwardMapType
 end
 
 function forward_map(X::AVorM, model::LinLinExp) where {AVorM <: AbstractVecOrMat}
-    return model.G * (X .* exp.(0.01X))
+    return model.G * (X .* exp.(0.05X))
 end
 
 function jac_forward_map(X::AbstractVector, model::LinLinExp)
-    return model.G * Diagonal(exp.(0.01X) .* (1 .+ 0.01X))
+    return model.G * Diagonal(exp.(0.05X) .* (1 .+ 0.05X))
 end
 
 function jac_forward_map(X::AbstractMatrix, model::LinLinExp)

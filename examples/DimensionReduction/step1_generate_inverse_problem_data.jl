@@ -49,6 +49,8 @@ end
 
 
 for trial in 1:num_trials
+    @info "Trial $trial"
+
     prior, y, obs_noise_cov, model, true_parameter = problem_fun(input_dim, output_dim, rng)
 
     # [1] EKP run

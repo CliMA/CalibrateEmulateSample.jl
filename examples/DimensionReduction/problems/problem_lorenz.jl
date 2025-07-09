@@ -160,7 +160,7 @@ end
 function forward_map(X::AbstractVector, model::Lorenz; noise = nothing)
     noise = isnothing(noise) ? model.ic_cov_sqrt * randn(model.rng, model.nx) : noise
     lorenz_forward(
-        EnsembleMemberConfig(X),
+        EnsembleMemberConfig(X .+ 8.0),
         (model.x0 .+ noise),
         model.config_settings,
         model.observation_config,
@@ -262,11 +262,11 @@ function lorenz(input_dim, output_dim, rng)
     B_sqrt = sqrt(B)
 
     #Prior mean
-    mu = 8.0 * ones(nx)
+    mu = zeros(nx)
 
     #Creating prior distribution
     distribution = Parameterized(MvNormal(mu, B))
-    constraint = repeat([no_constraint()], 40)
+    constraint = repeat([no_constraint()], nx)
     name = "ml96_prior"
 
     prior = ParameterDistribution(distribution, constraint, name)
