@@ -547,13 +547,13 @@ function MCMCWrapper(
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
     # make into iterable over vectors
-    obs_slice = isa(observation, AbstractMatrix) ? eachcol(observation) : observation
-    if eltype(obs_slice) <: Number # just one observation
-        obs_slice = [obs_slice]
-    end
+    obs_slice = if observation isa AbstractVector{<:AbstractVector}
+        observation
+    else # NB a vector is treated as a column here:
+        eachcol(observation)
+    end    
 
     # encoding works on columns but mcmc wants vec-of-vec
-
     encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
 
 
