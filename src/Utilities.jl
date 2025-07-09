@@ -14,7 +14,14 @@ using ..DataContainers
 export get_training_points
 
 export PairedDataContainerProcessor, DataContainerProcessor
-export create_encoder_schedule, initialize_and_encode_with_schedule!, encode_with_schedule, decode_with_schedule
+export create_encoder_schedule,
+    initialize_and_encode_with_schedule!,
+    encode_with_schedule,
+    decode_with_schedule,
+    encode_data,
+    encode_structure_matrix,
+    decode_data,
+    decode_structure_matrix
 
 
 
@@ -101,7 +108,7 @@ function _initialize_and_encode_data!(
     apply_to::AS,
 ) where {P <: DataProcessor, AS <: AbstractString}
     if proc isa PairedDataContainerProcessor
-        initialize_processor!(proc, data..., structure_mats..., apply_to)
+        initialize_processor!(proc, get_data(data)..., structure_mats..., apply_to)
     else
         input_data, output_data = get_data(data)
         input_structure_mat, output_structure_mat = structure_mats
@@ -250,7 +257,7 @@ function encode_with_schedule(
     structure_matrix::USorM,
     in_or_out::AS,
 ) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
-    if !(in_or_out ∈ ["in", "out"])
+    if in_or_out ∉ ["in", "out"]
         bad_in_or_out(in_or_out)
     end
     processed_structure_matrix = deepcopy(structure_matrix)

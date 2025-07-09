@@ -44,11 +44,11 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test get_io_pairs(em) == io_pairs
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
-    enc_io_pairs, enc_I_in, enc_I_out = encode_with_schedule!(enc_sch, io_pairs, 1.0 * I(p), 1.0 * I(d))
+    enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs, 1.0 * I(p), 1.0 * I(d))
     @test get_encoder_schedule(em)[1][1] == enc_sch[1][1] # inputs: proc
-    @test get_encoder_schedule(em)[1][3] == enc_sch[1][3] # inputs: apply_to
+    @test get_encoder_schedule(em)[1][2] == enc_sch[1][2] # inputs: apply_to
     @test get_encoder_schedule(em)[2][1] == enc_sch[2][1] # outputs...
-    @test get_encoder_schedule(em)[2][3] == enc_sch[2][3]
+    @test get_encoder_schedule(em)[2][2] == enc_sch[2][2]
     @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
     @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
 
@@ -91,7 +91,7 @@ struct MLTester <: Emulators.MachineLearningTool end
     enc_sch1 = create_encoder_schedule([(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")])
     enc_sch2 = create_encoder_schedule([(decorrelate_structure_mat(), "in"), (decorrelate_structure_mat(), "out")])
     enc_sch3 = create_encoder_schedule([(decorrelate_structure_mat(), "in"), (decorrelate_sample_cov(), "out")])
-    (_, _, _) = encode_with_schedule!(
+    (_, _, _) = initialize_and_encode_with_schedule!(
         enc_sch1,
         io_pairs,
         1.0 * I(p),
@@ -99,7 +99,7 @@ struct MLTester <: Emulators.MachineLearningTool end
     )
     @test get_encoder_schedule(em1) == enc_sch1
 
-    (_, _, _) = encode_with_schedule!(
+    (_, _, _) = initialize_and_encode_with_schedule!(
         enc_sch2,
         io_pairs,
         4.0 * I(p),
@@ -107,7 +107,7 @@ struct MLTester <: Emulators.MachineLearningTool end
     )
     @test get_encoder_schedule(em2) == enc_sch2
 
-    (_, _, _) = encode_with_schedule!(enc_sch3, io_pairs, Γ, I(d))
+    (_, _, _) = initialize_and_encode_with_schedule!(enc_sch3, io_pairs, Γ, I(d))
     @test get_encoder_schedule(em3) == enc_sch3
 
 end

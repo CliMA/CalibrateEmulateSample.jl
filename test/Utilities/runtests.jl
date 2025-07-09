@@ -143,7 +143,7 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
         (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
             decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
@@ -293,18 +293,21 @@ end
 
     @test_logs (:warn,) create_encoder_schedule((canonical_correlation(), "bad"))
     @test_logs (:warn,) create_encoder_schedule((zscore_scale(), "bad"))
-    func = x -> (get_inputs(x), get_outputs(x))
-    bad_encoder_schedule = [(canonical_correlation(), func, "bad")]
-    @test_throws ArgumentError encode_with_schedule!(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    bad_encoder_schedule = [(canonical_correlation(), "bad")]
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(
+        bad_encoder_schedule,
+        io_pairs,
+        prior_cov,
+        obs_noise_cov,
+    )
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-    @test_throws ArgumentError decode_data(canonical_correlation(), func(io_pairs), "bad")
 
 
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
     (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-        encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+        initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
     # decode the data using the schedule
     (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
