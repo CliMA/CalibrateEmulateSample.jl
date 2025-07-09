@@ -72,7 +72,7 @@ Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
 
 
 function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
-    input_data, output_data = data
+    input_data, output_data = get_data(data)
     if apply_to == "in"
         return encode_data(proc, input_data)
     elseif apply_to == "out"
@@ -83,7 +83,7 @@ function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS
 end
 
 function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
-    input_data, output_data = data
+    input_data, output_data = get_data(data)
 
     if apply_to == "in"
         return decode_data(proc, input_data)
@@ -100,10 +100,10 @@ function _initialize_and_encode_data!(
     structure_mats,
     apply_to::AS,
 ) where {P <: DataProcessor, AS <: AbstractString}
-    if P isa PairedDataContainerProcessor
+    if proc isa PairedDataContainerProcessor
         initialize_processor!(proc, data..., structure_mats..., apply_to)
     else
-        input_data, output_data = data
+        input_data, output_data = get_data(data)
         input_structure_mat, output_structure_mat = structure_mats
 
         if apply_to == "in"
