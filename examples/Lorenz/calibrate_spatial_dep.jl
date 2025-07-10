@@ -238,7 +238,7 @@ method = Inversion(prior)
 ekpobj = EKP.EnsembleKalmanProcess(initial_params, y, obs_noise_cov, method; rng = copy(rng), verbose = true)
 
 count = 0
-n_iter = 0
+n_iter = N_iter
 n_samples_exp = N_iter * N_ens
 x_on_attractor = x_spun_up[:, shuffled_ids[1:n_samples_exp]] # randomly select points from second half of spin up
 for i in 1:N_iter

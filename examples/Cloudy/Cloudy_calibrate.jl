@@ -160,7 +160,7 @@ dummy = ones(n_params)
 dist_type = ParticleDistributions.GammaPrimitiveParticleDistribution(dummy...)
 model_settings = DynamicalModel.ModelSettings(kernel, dist_type, moments, tspan)
 # EKI iterations
-n_iter = 0
+n_iter = N_iter
 for n in 1:N_iter
     # Return transformed parameters in physical/constrained space
     ϕ_n = get_ϕ_final(priors, ekiobj)
