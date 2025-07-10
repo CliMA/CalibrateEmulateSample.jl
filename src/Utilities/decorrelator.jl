@@ -121,8 +121,8 @@ Computes and populates the `data_mean` and `encoder_mat` and `decoder_mat` field
 function initialize_processor!(
     dd::Decorrelator,
     data::MM,
-    structure_matrix::USorM,
-) where {MM <: AbstractMatrix, USorM <: Union{UniformScaling, AbstractMatrix}}
+    structure_matrix::USorMorN,
+) where {MM <: AbstractMatrix, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
     if length(get_data_mean(dd)) == 0
         push!(get_data_mean(dd), vec(mean(data, dims = 2)))
     end
@@ -132,8 +132,20 @@ function initialize_processor!(
         # Can do tsvd here for large matrices
         decorrelate_with = get_decorrelate_with(dd)
         if decorrelate_with == "structure_mat"
-            svdA = svd(structure_matrix)
-            rk = rank(structure_matrix)
+            if isnothing(structure_matrix)
+                throw(
+                    ArgumentError(
+                        "DataProcessor `decorrelate_structure_mat` requires a user-provided structure matrix: received `nothing`. \n please provide (for input or output as needed) as a keyword argument `Emulator(...; input_structure_matrix=..., output_structure_matrix=...)` ",
+                    ),
+                )
+            elseif isa(structure_matrix, UniformScaling)
+                data_dim = size(data, 1)
+                svdA = svd(structure_matrix(data_dim))
+                rk = data_dim
+            else
+                svdA = svd(structure_matrix)
+                rk = rank(structure_matrix)
+            end
         elseif decorrelate_with == "sample_cov"
             cd = cov(data, dims = 2)
             svdA = svd(cd)
@@ -200,7 +212,10 @@ $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` encoder to a provided structure matrix
 """
-function encode_structure_matrix(dd::Decorrelator, structure_matrix::MM) where {MM <: AbstractMatrix}
+function encode_structure_matrix(
+    dd::Decorrelator,
+    structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
@@ -210,7 +225,10 @@ $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` decoder to a provided structure matrix
 """
-function decode_structure_matrix(dd::Decorrelator, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+function decode_structure_matrix(
+    dd::Decorrelator,
+    enc_structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end

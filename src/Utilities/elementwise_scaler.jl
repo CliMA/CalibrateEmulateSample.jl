@@ -165,7 +165,10 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` encoder to a provided structure matrix
 """
-function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::MM) where {MM <: AbstractMatrix}
+function encode_structure_matrix(
+    es::ElementwiseScaler,
+    structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
@@ -174,6 +177,9 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` decoder to a provided structure matrix
 """
-function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+function decode_structure_matrix(
+    es::ElementwiseScaler,
+    enc_structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end

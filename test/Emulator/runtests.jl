@@ -44,28 +44,34 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test get_io_pairs(em) == io_pairs
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
-    enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs, 1.0 * I(p), 1.0 * I(d))
+    enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs, nothing, 1.0 * I)
     @test get_encoder_schedule(em)[1][1] == enc_sch[1][1] # inputs: proc
     @test get_encoder_schedule(em)[1][2] == enc_sch[1][2] # inputs: apply_to
     @test get_encoder_schedule(em)[2][1] == enc_sch[2][1] # outputs...
     @test get_encoder_schedule(em)[2][2] == enc_sch[2][2]
     @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
     @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
+    @test isnothing(enc_I_in)
 
     #NB - encoders all tested in Utilities here just testing some API
     encoded_mat = encode_data(em, x, "in")
     encoded_dc = encode_data(em, DataContainer(x), "in")
-    encoded_I = encode_structure_matrix(em, I(d), "out")
+    encoded_nothing = encode_structure_matrix(em, nothing, "in")
+    encoded_I = encode_structure_matrix(em, 1.0 * I, "out")
     tol = 1e-14
     @test isapprox(norm(encoded_mat - get_data(encoded_dc)), 0, atol = tol * p * m)
     @test isapprox(norm(encoded_mat - get_inputs(enc_io_pairs)), 0, atol = tol * p * m)
-    @test isapprox(norm(encoded_I - enc_I_out), 0, atol = tol * d * d)
+    @test isnothing(encoded_nothing)
+    @test isapprox(norm(enc_I_out - encoded_I), 0, atol = tol * d * d)
+
     decoded_dc = decode_data(em, encoded_dc, "in")
     decoded_mat = decode_data(em, encoded_mat, "in")
+    decoded_nothing = decode_structure_matrix(em, nothing, "in")
     decoded_I = decode_structure_matrix(em, encoded_I, "out")
     @test isapprox(norm(get_data(decoded_dc) - decoded_mat), 0, atol = tol * p * m)
     @test isapprox(norm(decoded_mat - x), 0, atol = tol * p * m)
-    @test isapprox(norm(decoded_I - I(d)), 0, atol = tol * d * d)
+    @test isnothing(decoded_nothing)
+    @test isapprox(norm(decoded_I - 1.0 * I), 0, atol = tol * d * d)
 
     # test obs_noise_cov   (check the warning at the start)
     @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov = Σ)

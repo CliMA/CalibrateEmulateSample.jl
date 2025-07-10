@@ -112,8 +112,8 @@ Positional Arguments
 
 Keyword Arguments 
  -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `(decorrelate_samples_cov(), "in_and_out")`. Pass `[]` for no encoding.
- - `input_structure_matrix`[=`nothing`]: Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. `nothing` sets a default `I(input_dim)`
- - `output_structure_matrix` [=`nothing`] Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. `nothing` sets a default `I(input_dim)`
+ - `input_structure_matrix`[=`nothing`]: Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. 
+ - `output_structure_matrix` [=`nothing`] Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. 
 Other keywords are passed to the machine learning tool initialization
 """
 function Emulator(
@@ -140,22 +140,6 @@ function Emulator(
         )
     end
 
-    input_structure_mat = if isnothing(input_structure_matrix)
-        Diagonal(FT.(ones(input_dim)))
-    elseif isa(input_structure_matrix, UniformScaling)
-        input_structure_matrix(input_dim)
-    else
-        input_structure_matrix
-    end
-
-    output_structure_mat = if isnothing(output_structure_matrix)
-        Diagonal(FT.(ones(output_dim)))
-    elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix(output_dim)
-    else
-        output_structure_matrix
-    end
-
     # [1.] Initializes and performs data encoding schedule
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
     if isnothing(encoder_schedule)
@@ -173,20 +157,20 @@ function Emulator(
     end
 
     enc_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, encoded_input_structure_mat, encoded_output_structure_mat) =
+    (encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) =
         initialize_and_encode_with_schedule!(
             enc_schedule,
             input_output_pairs,
-            input_structure_mat,
-            output_structure_mat,
+            input_structure_matrix,
+            output_structure_matrix,
         )
 
     # build the machine learning tool in the encoded space
     build_models!(
         machine_learning_tool,
         encoded_io_pairs,
-        encoded_input_structure_mat,
-        encoded_output_structure_mat;
+        encoded_input_structure_matrix,
+        encoded_output_structure_matrix;
         mlt_kwargs...,
     )
     return Emulator{FT, typeof(enc_schedule)}(machine_learning_tool, input_output_pairs, encoded_io_pairs, enc_schedule)
@@ -225,9 +209,9 @@ Encode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function encode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorM,
+    structure_mat::USorMorN,
     in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+) where {AS <: AbstractString, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -256,9 +240,9 @@ Decode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function decode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorM,
+    structure_mat::USorMorN,
     in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+) where {AS <: AbstractString, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 

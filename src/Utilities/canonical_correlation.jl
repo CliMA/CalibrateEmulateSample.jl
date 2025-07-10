@@ -203,7 +203,10 @@ $(TYPEDSIGNATURES)
 
 Apply the `CanonicalCorrelation` encoder to a provided structure matrix
 """
-function encode_structure_matrix(cc::CanonicalCorrelation, structure_matrix::MM) where {MM <: AbstractMatrix}
+function encode_structure_matrix(
+    cc::CanonicalCorrelation,
+    structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     encoder_mat = get_encoder_mat(cc)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
@@ -213,7 +216,10 @@ $(TYPEDSIGNATURES)
 
 Apply the `CanonicalCorrelation` decoder to a provided structure matrix
 """
-function decode_structure_matrix(cc::CanonicalCorrelation, enc_structure_matrix::MM) where {MM <: AbstractMatrix}
+function decode_structure_matrix(
+    cc::CanonicalCorrelation,
+    enc_structure_matrix::USorM,
+) where {USorM <: Union{UniformScaling, AbstractMatrix}}
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end

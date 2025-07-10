@@ -102,27 +102,33 @@ function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS
 end
 
 function _initialize_and_encode_data!(
-    proc::P,
+    proc::PairedDataContainerProcessor,
     data,
     structure_mats,
     apply_to::AS,
-) where {P <: DataProcessor, AS <: AbstractString}
-    if proc isa PairedDataContainerProcessor
-        initialize_processor!(proc, get_data(data)..., structure_mats..., apply_to)
-    else
-        input_data, output_data = get_data(data)
-        input_structure_mat, output_structure_mat = structure_mats
+) where {AS <: AbstractString}
+    initialize_processor!(proc, get_data(data)..., structure_mats..., apply_to)
+    return _encode_data(proc, data, apply_to)
+end
 
-        if apply_to == "in"
-            initialize_processor!(proc, input_data, input_structure_mat)
-        elseif apply_to == "out"
-            initialize_processor!(proc, output_data, output_structure_mat)
-        else
-            bad_apply_to(apply_to)
-        end
+function _initialize_and_encode_data!(
+    proc::DataContainerProcessor,
+    data,
+    structure_mats,
+    apply_to::AS,
+) where {AS <: AbstractString}
+    input_data, output_data = get_data(data)
+    input_structure_mat, output_structure_mat = structure_mats
+
+    if apply_to == "in"
+        initialize_processor!(proc, input_data, input_structure_mat)
+    elseif apply_to == "out"
+        initialize_processor!(proc, output_data, output_structure_mat)
+    else
+        bad_apply_to(apply_to)
     end
 
-    _encode_data(proc, data, apply_to)
+    return _encode_data(proc, data, apply_to)
 end
 
 """
@@ -138,15 +144,15 @@ enc_schedule = [
     (DataProcessor4(...), "in_and_out"), 
 ]
 ```
-This function creates the encoder scheduler that is also machine readable
+This function creates the encoder scheduler that is also machine readable. E.g.,
 ```julia
 enc_schedule = [
-    (DataProcessor1(...), x -> get_inputs(x), "in"), 
-    (DataProcessor2(...), x -> get_outputs(x), "out"), 
-    (DataProcessor2(...), x -> get_outputs(x), "out"),
-    (PairedDataProcessor3(...), x -> (get_outputs(x), get_outputs(x)), "in"), 
-    (DataProcessor4(...), x -> get_inputs(x), "in"),
-    (DataProcessor4(...), x -> get_outputs(x), "out"), 
+    (DataProcessor1(...), "in"), 
+    (DataProcessor2(...), "out"), 
+    (DataProcessor2(...), "out"),
+    (PairedDataProcessor3(...),"in"), 
+    (DataProcessor4(...), "in"),
+    (DataProcessor4(...), "out"), 
 ]
 ```
 and the decoder schedule is a copy of the encoder schedule reversed (and processors copied)
@@ -184,13 +190,13 @@ Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), a
 function initialize_and_encode_with_schedule!(
     encoder_schedule::VV,
     io_pairs::PDC,
-    input_structure_mat::USorM1,
-    output_structure_mat::USorM2,
+    input_structure_mat::USorMorN1,
+    output_structure_mat::USorMorN2,
 ) where {
     VV <: AbstractVector,
     PDC <: PairedDataContainer,
-    USorM1 <: Union{UniformScaling, AbstractMatrix},
-    USorM2 <: Union{UniformScaling, AbstractMatrix},
+    USorMorN1 <: Union{UniformScaling, AbstractMatrix, Nothing},
+    USorMorN2 <: Union{UniformScaling, AbstractMatrix, Nothing},
 }
     processed_io_pairs = deepcopy(io_pairs)
     processed_input_structure_mat = deepcopy(input_structure_mat)
@@ -219,8 +225,22 @@ function initialize_and_encode_with_schedule!(
     return processed_io_pairs, processed_input_structure_mat, processed_output_structure_mat
 end
 
-
 # Functions to encode/decode with initialized schedule
+
+# cases when structure_matrix is Nothing:
+encode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
+decode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
+encode_with_schedule(
+    encoder_schedule::VV,
+    n::Nothing,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString} = nothing
+decode_with_schedule(
+    encoder_schedule::VV,
+    n::Nothing,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString} = nothing
+
 """
 $TYPEDSIGNATURES
 

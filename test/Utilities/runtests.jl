@@ -272,6 +272,14 @@ end
 
     end
 
+    # test throws on lack of sample_mat
+    sch2a = (decorrelate_structure_mat(), "in")
+    schedule2a = create_encoder_schedule(sch2a)
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2a, io_pairs, nothing, obs_noise_cov) # nothing
+    sch2b = (decorrelate_structure_mat(), "out")
+    schedule2b = create_encoder_schedule(sch2b)
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs, prior_cov, nothing)
+
 
 
     # combine a few lossless encoding schedules (lossless requires samples>dims)
