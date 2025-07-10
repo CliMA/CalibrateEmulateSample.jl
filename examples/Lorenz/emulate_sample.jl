@@ -6,6 +6,7 @@ using Distributions  # probability distributions and associated functions
 using LinearAlgebra
 ENV["GKSwstype"] = "100"
 using Plots
+using StatsPlots
 using Random
 using JLD2
 
