@@ -445,7 +445,9 @@ function build_models!(
     )
 
     # think of the output_structure_matrix as the observational noise covariance, or a related quantity
-    if !isposdef(output_structure_matrix)
+    if isnothing(output_structure_matrix)
+        regularization = 1.0*I
+    elseif !isposdef(output_structure_matrix)
         regularization = posdef_correct(output_structure_matrix)
         println("RF output structure matrix is not positive definite, correcting for use as a regularizer")
     else

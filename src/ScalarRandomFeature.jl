@@ -323,6 +323,7 @@ function build_models!(
     output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
+    
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
     output_values = get_outputs(input_output_pairs)
@@ -385,7 +386,7 @@ function build_models!(
     end
 
     #regularization = I #
-    regularization = Diagonal(output_structure_matrix) # creates diag matrix of diagonal
+    regularization =  isnothing(output_structure_matrix) ? 1.0*I : Diagonal(output_structure_matrix) 
 
 
     @info (
