@@ -65,7 +65,7 @@ models.
 $(DocStringExtensions.TYPEDFIELDS)
 
 """
-struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
+struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
     models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}
     "Kernel object."
@@ -76,7 +76,8 @@ struct GaussianProcess{GPPackage, FT} <: MachineLearningTool
     alg_reg_noise::FT
     "Prediction type (`y` to predict the data, `f` to predict the latent function)."
     prediction_type::PredictionType
-
+    "Regularization vector for each output dimension (based on alg_reg_noise"
+    regularization::VV
 end
 
 
@@ -112,7 +113,16 @@ function GaussianProcess(
         alg_reg_noise = 1.0
     end
 
-    return GaussianProcess{typeof(package), FT}(models, kernel, noise_learn, alg_reg_noise, prediction_type)
+    vv = typeof(alg_reg_noise)[]
+
+    return GaussianProcess{typeof(package), FT, typeof(vv)}(
+        models,
+        kernel,
+        noise_learn,
+        alg_reg_noise,
+        prediction_type,
+        vv,
+    )
 end
 
 # First we create  the GPJL implementation
@@ -172,6 +182,7 @@ function build_models!(
         println("Using user-defined kernel", kern)
     end
 
+
     if gp.noise_learn
         # Add white noise to kernel
         white_logstd = log(1.0)
@@ -179,9 +190,12 @@ function build_models!(
         kern = kern + white
         println("Learning additive white noise")
     end
-    logstd_regularization_noise = log(sqrt(gp.alg_reg_noise))
+    # use the output_structure_matrix to scale regularization scale
+    regularization = isnothing(output_structure_matrix) ? 1.0 * ones(N_models) : diag(output_structure_matrix)
+    logstd_regularization_noise = log.(sqrt.(regularization .* gp.alg_reg_noise))
 
     for i in 1:N_models
+        logstd_regularization_i = logstd_regularization_noise[i]
         # Make a copy of the kernel (because it gets altered in every 
         # iteration)
         kernel_i = deepcopy(kern)
@@ -196,12 +210,13 @@ function build_models!(
         kmean = MeanZero()
 
         # Instantiate GP model
-        m = GaussianProcesses.GPE(input_values, output_values[i, :], kmean, kernel_i, logstd_regularization_noise)
+        m = GaussianProcesses.GPE(input_values, output_values[i, :], kmean, kernel_i, logstd_regularization_i)
 
         println("created GP: ", i)
         push!(models, m)
 
     end
+    append!(gp.regularization, logstd_regularization_noise)
 
 end
 
@@ -299,12 +314,15 @@ function build_models!(
         kern = kern + white
         println("Learning additive white noise")
     end
-    regularization_noise = gp.alg_reg_noise
-
+    # use the output_structure_matrix to scale regularization scale
+    regularization = isnothing(output_structure_matrix) ? 1.0 * ones(N_models) : diag(output_structure_matrix)
+    regularization_noise_vec = gp.alg_reg_noise .* regularization
+    @info regularization_noise_vec
     for i in 1:N_models
+        regularization_noise_i = regularization_noise_vec[i]
         kernel_i = deepcopy(kern)
         data_i = output_values[i, :]
-        m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise)
+        m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise_i)
         # ScikitLearn.fit! arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
@@ -314,6 +332,8 @@ function build_models!(
         push!(models, m)
         @info(m.kernel)
     end
+    append!(gp.regularization, regularization_noise_vec)
+
 end
 
 
@@ -331,7 +351,9 @@ function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) whe
 
     # for SKLJL does not return the observational noise (even if return_std = true)
     # we must add contribution depending on whether we learnt the noise or not.
-    σ2[:, :] = σ2[:, :] .+ gp.alg_reg_noise
+    for i in 1:size(σ2, 2)
+        σ2[:, i] = σ2[:, i] + gp.regularization
+    end
 
     return μ, σ2
 end
@@ -392,7 +414,9 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
 
 
     N_models = size(output_values, 1) #size(transformed_data)[1]
-    regularization_noise = gp.alg_reg_noise
+    # use the output_structure_matrix to scale regularization scale
+    regularization = isnothing(output_structure_matrix) ? 1.0 * ones(N_models) : diag(output_structure_matrix)
+    regularization_noise = gp.alg_reg_noise .* regularization
 
     # now obtain the values of the hyperparameters
     if N_models == 1 && !(isa(kernel_params, AbstractVector)) # i.e. just a Dict
@@ -405,12 +429,13 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         var_sqexp = exp.(2 .* kernel_params_vec[i]["log_std_sqexp"]) # Float
         var_noise = exp.(2 .* kernel_params_vec[i]["log_std_noise"]) # Float
         rbf_invlen = 1 ./ exp.(kernel_params_vec[i]["log_rbf_len"])# Vec
+        regularization_noise_i = regularization_noise[i]
 
         opt_kern =
             var_sqexp * (KernelFunctions.SqExponentialKernel() ∘ ARDTransform(rbf_invlen[:])) +
             var_noise * KernelFunctions.WhiteKernel()
         opt_f = AbstractGPs.GP(opt_kern)
-        opt_fx = opt_f(input_values', regularization_noise; obsdim = 2)
+        opt_fx = opt_f(input_values', regularization_noise_i; obsdim = 2)
 
         data_i = output_values[i, :]
         opt_post_fx = posterior(opt_fx, data_i)
@@ -418,6 +443,8 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         push!(models, opt_post_fx)
         println(opt_post_fx.prior.kernel)
     end
+    append!(gp.regularization, regularization_noise)
+
 
 end
 
@@ -438,7 +465,8 @@ function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: Abstra
         μ[i, :] = mean(pred)
         σ2[i, :] = var(pred)
     end
-
-    σ2[:, :] .= σ2[:, :] .+ gp.alg_reg_noise
+    for i in 1:size(σ2, 2)
+        σ2[:, i] .= σ2[:, i] + gp.regularization
+    end
     return μ, σ2
 end
