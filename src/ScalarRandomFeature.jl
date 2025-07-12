@@ -385,9 +385,13 @@ function build_models!(
         end
     end
 
-    regularization =
-        (isnothing(output_structure_matrix) || isa(output_structure_matrix, UniformScaling)) ? 1.0 * I(N_rfms) :
+    regularization = if isnothing(output_structure_matrix)
+        1.0 * I(N_rfms) 
+    elseif isa(output_structure_matrix, UniformScaling) 
+        output_structure_matrix 
+    else
         Diagonal(output_structure_matrix)
+    end
 
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
