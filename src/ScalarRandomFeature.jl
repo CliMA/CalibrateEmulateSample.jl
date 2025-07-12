@@ -386,9 +386,9 @@ function build_models!(
     end
 
     regularization = if isnothing(output_structure_matrix)
-        1.0 * I(n_rfms) 
-    elseif isa(output_structure_matrix, UniformScaling) 
-        output_structure_matrix 
+        1.0 * I(n_rfms)
+    elseif isa(output_structure_matrix, UniformScaling)
+        output_structure_matrix
     else
         Diagonal(output_structure_matrix)
     end
