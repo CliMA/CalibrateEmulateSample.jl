@@ -192,11 +192,11 @@ function build_models!(
     end
     # use the output_structure_matrix to scale regularization scale
     regularization = if isnothing(output_structure_matrix)
-        1.0 * ones(N_models) 
+        1.0 * ones(N_models)
     elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ*ones(N_models)
+        output_structure_matrix.λ * ones(N_models)
     else
-       diag(output_structure_matrix)
+        diag(output_structure_matrix)
     end
 
     logstd_regularization_noise = log.(sqrt.(regularization .* gp.alg_reg_noise))
@@ -323,11 +323,11 @@ function build_models!(
     end
     # use the output_structure_matrix to scale regularization scale
     regularization = if isnothing(output_structure_matrix)
-        1.0 * ones(N_models) 
+        1.0 * ones(N_models)
     elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ*ones(N_models)
+        output_structure_matrix.λ * ones(N_models)
     else
-       diag(output_structure_matrix)
+        diag(output_structure_matrix)
     end
     regularization_noise_vec = gp.alg_reg_noise .* regularization
     for i in 1:N_models
@@ -428,11 +428,11 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
     N_models = size(output_values, 1) #size(transformed_data)[1]
     # use the output_structure_matrix to scale regularization scale
     regularization = if isnothing(output_structure_matrix)
-        1.0 * ones(N_models) 
+        1.0 * ones(N_models)
     elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ*ones(N_models)
+        output_structure_matrix.λ * ones(N_models)
     else
-       diag(output_structure_matrix)
+        diag(output_structure_matrix)
     end
     regularization_noise = gp.alg_reg_noise .* regularization
 
