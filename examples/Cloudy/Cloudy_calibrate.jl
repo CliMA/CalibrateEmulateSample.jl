@@ -160,13 +160,19 @@ dummy = ones(n_params)
 dist_type = ParticleDistributions.GammaPrimitiveParticleDistribution(dummy...)
 model_settings = DynamicalModel.ModelSettings(kernel, dist_type, moments, tspan)
 # EKI iterations
+n_iter = N_iter
 for n in 1:N_iter
     # Return transformed parameters in physical/constrained space
     ϕ_n = get_ϕ_final(priors, ekiobj)
     # Evaluate forward map
     G_n = [DynamicalModel.run_dyn_model(ϕ_n[:, i], model_settings) for i in 1:N_ens]
     G_ens = hcat(G_n...)  # reformat
-    EnsembleKalmanProcesses.update_ensemble!(ekiobj, G_ens)
+    terminate = EnsembleKalmanProcesses.update_ensemble!(ekiobj, G_ens)
+    if !isnothing(terminate)
+        n_iter = n - 1
+        break
+    end
+
 end
 
 
@@ -202,7 +208,7 @@ save(
 gr(size = (1200, 400))
 
 u_init = get_u_prior(ekiobj)
-anim_eki_unconst_cloudy = @animate for i in 1:(N_iter - 1)
+anim_eki_unconst_cloudy = @animate for i in 1:(n_iter - 1)
     u_i = get_u(ekiobj, i)
 
     p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter, xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
@@ -259,7 +265,7 @@ gif(anim_eki_unconst_cloudy, joinpath(output_directory, "cloudy_eki_unconstr.gif
 
 # Plots in the constrained space
 ϕ_init = transform_unconstrained_to_constrained(priors, u_init)
-anim_eki_cloudy = @animate for i in 1:(N_iter - 1)
+anim_eki_cloudy = @animate for i in 1:(n_iter - 1)
     ϕ_i = get_ϕ(priors, ekiobj, i)
 
     p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter, xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))

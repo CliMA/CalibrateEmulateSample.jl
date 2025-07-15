@@ -9,6 +9,7 @@ const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.Utilities
 
 function test_data(; rng_seed = 41, n = 20, var_y = 0.05, rest...)
     # Seed for pseudo-random number generator
@@ -49,19 +50,19 @@ function test_data_mv(; rng_seed = 41, n = 20, var_y = 0.05, input_dim = 10, res
 
     return y, σ2_y, PairedDataContainer(x, y, data_are_columns = true), rng
 end
-function test_gp_mv(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
+function test_gp_mv(y, σ2_y, iopairs::PairedDataContainer)
     gppackage = GPJL()
     pred_type = YType()
     # Construct kernel:
     # Squared exponential kernel (note that hyperparameters are on log scale)
     # with observational noise
     gp = GaussianProcess(gppackage; noise_learn = true, prediction_type = pred_type)
-    em = Emulator(gp, iopairs; obs_noise_cov = σ2_y)
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y)
     Emulators.optimize_hyperparameters!(em)
     return em
 end
 
-function test_gp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
+function test_gp_1(y, σ2_y, iopairs::PairedDataContainer)
     gppackage = GPJL()
     pred_type = YType()
     # Construct kernel:
@@ -69,20 +70,12 @@ function test_gp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em = Emulator(
-        gp,
-        iopairs;
-        obs_noise_cov = σ2_y,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        standardize_outputs_factors = norm_factor,
-        retained_svd_frac = 1.0,
-    )
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = [])
     Emulators.optimize_hyperparameters!(em)
     return em
 end
 
-function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
+function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer)
     gppackage = GPJL()
     pred_type = YType()
     # Construct kernel:
@@ -90,15 +83,7 @@ function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor =
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em = Emulator(
-        gp,
-        iopairs;
-        obs_noise_cov = σ2_y,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        standardize_outputs_factors = norm_factor,
-        retained_svd_frac = 1.0,
-    )
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = [])
     Emulators.optimize_hyperparameters!(em)
 
     # now make agp from gp
@@ -115,22 +100,14 @@ function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer; norm_factor =
         ) for model_params in gp_opt_params
     ]
 
-    em_agp = Emulator(
-        agp,
-        iopairs,
-        obs_noise_cov = σ2_y,
-        normalize_inputs = false,
-        standardize_outputs = false,
-        retained_svd_frac = 1.0,
-        standardize_outputs_factors = norm_factor,
-        kernel_params = kernel_params,
-    )
+    em_agp =
+        Emulator(agp, iopairs, output_structure_matrix = σ2_y, encoder_schedule = [], kernel_params = kernel_params)
 
     return em, em_agp
 end
 
 
-function test_gp_2(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing)
+function test_gp_2(y, σ2_y, iopairs::PairedDataContainer)
     gppackage = GPJL()
     pred_type = YType()
     # Construct kernel:
@@ -138,15 +115,9 @@ function test_gp_2(y, σ2_y, iopairs::PairedDataContainer; norm_factor = nothing
     # with observational noise
     GPkernel = SE(log(1.0), log(1.0))
     gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
-    em = Emulator(
-        gp,
-        iopairs;
-        obs_noise_cov = σ2_y,
-        normalize_inputs = false,
-        standardize_outputs = true,
-        standardize_outputs_factors = norm_factor,
-        retained_svd_frac = 0.9,
-    )
+    retain_var = 0.95
+    encoder_schedule = [(quartile_scale(), "out"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
+    em = Emulator(gp, iopairs; output_structure_matrix = σ2_y, encoder_schedule = encoder_schedule)
     Emulators.optimize_hyperparameters!(em)
 
     return em
@@ -157,7 +128,7 @@ function mcmc_test_template(
     σ2_y,
     em::Emulator;
     mcmc_alg = RWMHSampling(),
-    obs_sample = 1.0,
+    obs_sample = [1.0],
     init_params = 3.0,
     step = 0.25,
     rng = Random.GLOBAL_RNG,
@@ -188,14 +159,6 @@ end
     mcmc_params =
         Dict(:mcmc_alg => RWMHSampling(), :obs_sample => obs_sample, :init_params => [3.0], :step => 0.5, :rng => rng)
 
-
-    @testset "Constructor: standardize" begin
-        em = test_gp_1(y, σ2_y, iopairs)
-        test_obs = MarkovChainMonteCarlo.to_decorrelated(obs_sample, em)
-        # The MCMC stored a SVD-transformed sample, in a vector
-        # 1.0/sqrt(0.05) * obs_sample ≈ 4.472
-        @test isapprox(test_obs[1], (obs_sample ./ sqrt(σ2_y[1, 1])); atol = 1e-2)
-    end
 
     @testset "MV priors" begin
         # 10D dist with 1 name, just build the wrapper for test
@@ -228,9 +191,7 @@ end
         @test all(isapprox.(esjd1, esjd1b, rtol = 0.2))
 
         # now test SVD normalization
-        norm_factor = 10.0
-        norm_factor = fill(norm_factor, size(y[:, 1])) # must be size of output dim
-        em_2 = test_gp_2(y, σ2_y, iopairs; norm_factor = norm_factor)
+        em_2 = test_gp_2(y, σ2_y, iopairs)
         _, posterior_mean_2, chain_2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params...)
         # difference between mean_1 and mean_2 only from MCMC convergence
         @test isapprox(posterior_mean_2, posterior_mean_1; atol = 0.1)
@@ -301,9 +262,7 @@ end
         @test all(isapprox.(esjd1, esjd1b, rtol = 0.2))
 
         # now test SVD normalization
-        norm_factor = 10.0
-        norm_factor = fill(norm_factor, size(y[:, 1])) # must be size of output dim
-        em_2 = test_gp_2(y, σ2_y, iopairs; norm_factor = norm_factor)
+        em_2 = test_gp_2(y, σ2_y, iopairs)
         _, posterior_mean_2, chain_2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params...)
         # difference between mean_1 and mean_2 only from MCMC convergence
         @test isapprox(posterior_mean_2, posterior_mean_1; atol = 0.1)

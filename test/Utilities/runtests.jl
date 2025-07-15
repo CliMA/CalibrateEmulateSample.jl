@@ -13,34 +13,6 @@ using CalibrateEmulateSample.DataContainers
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(41)
 
-    arr = vcat([i * ones(3)' for i in 1:5]...)
-    arr_t = permutedims(arr, (2, 1))
-
-    mean_arr = dropdims(mean(arr, dims = 1), dims = 1)
-    std_arr = dropdims(std(arr, dims = 1), dims = 1)
-    @test mean_arr == [3.0, 3.0, 3.0]
-    @test std_arr ≈ [1.58, 1.58, 1.58] atol = 1e-2
-    z_arr = orig2zscore(arr, mean_arr, std_arr)
-    z_arr_test = [
-        -1.265 -1.265 -1.265
-        -0.632 -0.632 -0.632
-        0.0 0.0 0.0
-        0.632 0.632 0.632
-        1.265 1.265 1.265
-    ]
-    @test z_arr ≈ z_arr_test atol = 1e-2
-    orig_arr = zscore2orig(z_arr, mean_arr, std_arr)
-    @test orig_arr ≈ arr atol = 1e-5
-
-    v = vec([1.0 2.0 3.0])
-    mean_v = vec([0.5 1.5 2.5])
-    std_v = vec([0.5 0.5 0.5])
-    z_v = orig2zscore(v, mean_v, std_v)
-    println(z_v)
-    @test z_v ≈ [1.0, 1.0, 1.0] atol = 1e-5
-    orig_v = zscore2orig(z_v, mean_v, std_v)
-    @test orig_v ≈ v atol = 1e-5
-
     # test get_training_points
     # first create the EnsembleKalmanProcess
     n_ens = 10
@@ -100,10 +72,31 @@ end
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
     @test get_retain_var(dd3) == 0.7
     @test get_decorrelate_with(dd3) == "structure_mat"
-    DD = Decorrelater([1], [2], [3], 1.0, "test")
+    DD = Decorrelator([1], [2], [3], 1.0, "test")
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
+
+
+    cc = canonical_correlation()
+    @test get_retain_var(cc) == 1.0
+    cc2 = canonical_correlation(retain_var = 0.7)
+    @test get_retain_var(cc2) == 0.7
+    cc3 = CanonicalCorrelation([1], [2], [3], 1.0, "test")
+    @test get_data_mean(cc3) == [1]
+    @test get_encoder_mat(cc3) == [2]
+    @test get_decoder_mat(cc3) == [3]
+    @test get_apply_to(cc3) == "test"
+
+
+    # test equalities
+    cc = canonical_correlation()
+    cc_copy = canonical_correlation()
+    dd = decorrelate()
+    dd_copy = decorrelate()
+    @test cc == cc_copy
+    @test dd == dd_copy
+
     # get some data as IO pairs for functional tests
 
     in_dim = 10
@@ -150,7 +143,7 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
         (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
             decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
@@ -237,7 +230,7 @@ end
             # Multivariate lossy dim-reduction tests
             if name == "decorrelate-structure-mat-retain-0.95-var"
                 svdc = svd(test_covv)
-                var_cumsum = cumsum(svdc.S .^ 2) ./ sum(svdc.S .^ 2)
+                var_cumsum = cumsum(svdc.S) ./ sum(svdc.S)
                 @test var_cumsum[dimm] > 0.95
                 @test var_cumsum[dimm - 1] < 0.95
                 @test all(isapprox.(pop_mean, zeros(dimm), atol = tol))
@@ -279,6 +272,14 @@ end
 
     end
 
+    # test throws on lack of sample_mat
+    sch2a = (decorrelate_structure_mat(), "in")
+    schedule2a = create_encoder_schedule(sch2a)
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2a, io_pairs, nothing, obs_noise_cov) # nothing
+    sch2b = (decorrelate_structure_mat(), "out")
+    schedule2b = create_encoder_schedule(sch2b)
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs, prior_cov, nothing)
+
 
 
     # combine a few lossless encoding schedules (lossless requires samples>dims)
@@ -300,19 +301,21 @@ end
 
     @test_logs (:warn,) create_encoder_schedule((canonical_correlation(), "bad"))
     @test_logs (:warn,) create_encoder_schedule((zscore_scale(), "bad"))
-    func = x -> (get_inputs(x), get_outputs(x))
-    bad_encoder_schedule = [(canonical_correlation(), func, "bad")]
-    @test_throws ArgumentError encode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    bad_encoder_schedule = [(canonical_correlation(), "bad")]
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(
+        bad_encoder_schedule,
+        io_pairs,
+        prior_cov,
+        obs_noise_cov,
+    )
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-    @test_throws ArgumentError initialize_and_encode_data!(canonical_correlation(), func(io_pairs), prior_cov, "bad")
-    @test_throws ArgumentError decode_data(canonical_correlation(), func(io_pairs), "bad")
 
 
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
     (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-        encode_with_schedule(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+        initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
 
     # decode the data using the schedule
     (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =

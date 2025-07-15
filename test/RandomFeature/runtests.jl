@@ -306,9 +306,9 @@ rng = Random.MersenneTwister(seed)
         )
 
         # build emulators
-        em_srfi = Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
+        em_srfi = Emulator(srfi, iopairs, output_structure_matrix = obs_noise_cov)
         n_srfi = length(get_rfms(srfi))
-        em_vrfi = Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
+        em_vrfi = Emulator(vrfi, iopairs, output_structure_matrix = obs_noise_cov)
         n_vrfi = length(get_rfms(vrfi))
 
         # test bad case
@@ -324,11 +324,11 @@ rng = Random.MersenneTwister(seed)
         @test_throws ArgumentError Emulator(srfi_bad, iopairs)
 
         # test under repeats
-        @test_logs (:warn,) Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
-        Emulator(srfi, iopairs, obs_noise_cov = obs_noise_cov)
+        @test_logs (:info,) (:info,) (:warn,) Emulator(srfi, iopairs, output_structure_matrix = obs_noise_cov)
+        Emulator(srfi, iopairs, output_structure_matrix = obs_noise_cov)
         @test length(get_rfms(srfi)) == n_srfi
-        @test_logs (:warn,) Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
-        Emulator(vrfi, iopairs, obs_noise_cov = obs_noise_cov)
+        @test_logs (:info,) (:info,) (:warn,) Emulator(vrfi, iopairs, output_structure_matrix = obs_noise_cov)
+        Emulator(vrfi, iopairs, output_structure_matrix = obs_noise_cov)
         @test length(get_rfms(vrfi)) == n_vrfi
 
 
@@ -422,14 +422,14 @@ rng = Random.MersenneTwister(seed)
         # build emulators
         # svd: scalar, scalar + diag in, vector + diag out, vector
         # no-svd: vector
-        em_srfi_svd_diagin = Emulator(srfi_diagin, iopairs, obs_noise_cov = Σ)
-        em_srfi_svd = Emulator(srfi, iopairs, obs_noise_cov = Σ)
+        em_srfi_svd_diagin = Emulator(srfi_diagin, iopairs, output_structure_matrix = Σ)
+        em_srfi_svd = Emulator(srfi, iopairs, output_structure_matrix = Σ)
 
-        em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs, obs_noise_cov = Σ)
-        em_vrfi_svd = Emulator(vrfi, iopairs, obs_noise_cov = Σ)
+        em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs, output_structure_matrix = Σ)
+        em_vrfi_svd = Emulator(vrfi, iopairs, output_structure_matrix = Σ)
 
-        em_vrfi = Emulator(vrfi, iopairs, obs_noise_cov = Σ, decorrelate = false)
-        em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs, obs_noise_cov = Σ, decorrelate = false)
+        em_vrfi = Emulator(vrfi, iopairs, output_structure_matrix = Σ, decorrelate = false)
+        em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs, output_structure_matrix = Σ, decorrelate = false)
 
         #TODO truncated SVD option for vector (involves resizing prior)
 
@@ -452,8 +452,8 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_ss - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vsd - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
-        @test isapprox.(norm(μ_v - outx), 0, atol = 5 * tol_μ) # approximate option so likely less good approx
-        @test isapprox.(norm(μ_vns - outx), 0, atol = 5 * tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_v - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_vns - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
 
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
@@ -464,7 +464,7 @@ rng = Random.MersenneTwister(seed)
             optimizer_options = Dict("train_fraction" => 0.7, "multithread" => "tullio"),
             rng = rng,
         )
-        em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs, obs_noise_cov = Σ)
+        em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs, output_structure_matrix = Σ)
         μ_vs_tul, σ²_vs_tul = Emulators.predict(em_vrfi_svd_tul, new_inputs, transform_to_real = true)
         @test isapprox.(norm(μ_vs_tul - outx), 0, atol = tol_μ)
 

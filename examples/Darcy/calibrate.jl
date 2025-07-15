@@ -55,7 +55,7 @@ function main()
 
     smoothness = 0.1
     corr_length = 1.0
-    dofs = 5
+    dofs = 8
 
     grf = GRF.GaussianRandomField(
         GRF.CovarianceFunction(dim, GRF.Matern(smoothness, corr_length)),
@@ -103,7 +103,7 @@ function main()
     # We perform the inversion loop. Remember that within calls to `get_ϕ_final` the EKP transformations are applied, thus the ensemble that is returned will be the positively-bounded permeability field evaluated at all the discretization points. 
     println("Begin inversion")
     err = []
-    final_it = [N_iter]
+    n_iter = N_iter
     for i in 1:N_iter
         params_i = get_ϕ_final(prior, ekiobj)
         g_ens = run_G_ensemble(darcy, params_i)
@@ -111,11 +111,11 @@ function main()
         push!(err, get_error(ekiobj)[end]) #mean((params_true - mean(params_i,dims=2)).^2)
         println("Iteration: " * string(i) * ", Error: " * string(err[i]))
         if !isnothing(terminate)
-            final_it[1] = i - 1
+            n_iter = i - 1
             break
         end
     end
-    n_iter = final_it[1]
+
     # We plot first the prior ensemble mean and pointwise variance of the permeability field, and also the pressure field solved with the ensemble mean. Each ensemble member is stored as a column and therefore for uses such as plotting one needs to reshape to the desired dimension.
     if PLOT_FLAG
         gr(size = (1500, 400), legend = false)

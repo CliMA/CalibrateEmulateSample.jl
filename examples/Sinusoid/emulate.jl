@@ -20,6 +20,7 @@ using JLD2
 using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.Utilities
 
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
@@ -70,8 +71,11 @@ outputs = CES.Utilities.get_outputs(input_output_pairs)
 gppackage = Emulators.GPJL()
 gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
+# Create a data encoding to be performed on the input-output pairs
+encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
+
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs, normalize_inputs = true, obs_noise_cov = Γ)
+emulator_gp = Emulator(gauss_proc, input_output_pairs, output_structure_matrix = Γ, encoder_schedule = encoder_schedule)
 optimize_hyperparameters!(emulator_gp)
 
 # We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator 
@@ -95,10 +99,9 @@ kernel_structure = NonseparableKernel(LowRankFactor(2, nugget))
 optimizer_options = Dict(
     "n_ensemble" => 50,
     "cov_sample_multiplier" => 10,
-    "scheduler" => EKP.DataMisfitController(on_terminate = "continue"),
-    "n_iteration" => 50,
+    "scheduler" => EKP.DataMisfitController(terminate_at = 1e3),
+    "n_iteration" => 10,
     "rng" => rng,
-    "verbose" => true,
 )
 random_features = VectorRandomFeatureInterface(
     n_features,
@@ -108,8 +111,9 @@ random_features = VectorRandomFeatureInterface(
     kernel_structure = kernel_structure,
     optimizer_options = optimizer_options,
 )
+encoder_schedule_rf = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
 emulator_random_features =
-    Emulator(random_features, input_output_pairs, normalize_inputs = true, obs_noise_cov = Γ, decorrelate = false)
+    Emulator(random_features, input_output_pairs, encoder_schedule = encoder_schedule_rf, output_structure_matrix = Γ)
 optimize_hyperparameters!(emulator_random_features)
 
 

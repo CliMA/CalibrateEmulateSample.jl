@@ -20,6 +20,8 @@ using CalibrateEmulateSample.Utilities
 rng_seed = 42424242
 Random.seed!(rng_seed)
 
+include("rebuild_priors.jl")
+
 
 function main()
 
@@ -32,19 +34,17 @@ function main()
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-prior",
-        "RF-vector-svd-nonsep",
-        "RF-vector-svd-sep", #Bad kernel for comparison
-        "RF-vector-nosvd-nonsep",
+        "RF-nonsep",
+        "RF-lr-lr", #Bad kernel for comparison
     ]
     rank_cases = [
         [0], # not used
         [10], # some rank > 0
         1:10, # 
         1:5, # input rank always 5, output rank 1:5
-        1:10,
     ]
 
-    case_id = 2
+    case_id = 3
     case = cases[case_id]
     rank_test = rank_cases[case_id]
     n_repeats = 1
@@ -157,6 +157,18 @@ function main()
         train_pairs = DataContainers.PairedDataContainer(train_inputs, train_outputs)
     end
 
+    prior_config = get_prior_config(exp_name)
+    means = prior_config["prior_mean"]
+    std = prior_config["unconstrained_σ"]
+    constraints = prior_config["constraints"]
+
+    prior = combine_distributions([
+        ParameterDistribution(
+            Dict("name" => name, "distribution" => Parameterized(Normal(mean, std)), "constraint" => constraints[name]),
+        ) for (name, mean) in means
+    ])
+
+
     @info "Completed data loading stage"
     println(" ")
     ##############################################
@@ -188,7 +200,7 @@ function main()
                 "n_iteration" => n_iteration,
                 "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
                 "localization" => SEC(0.05),
-                "n_ensemble" => 400,
+                "n_ensemble" => 100,
                 "n_cross_val_sets" => n_cross_val_sets,
             )
             if case == "RF-prior"
@@ -209,7 +221,7 @@ function main()
                     prediction_type = pred_type,
                     noise_learn = false,
                 )
-            elseif case ∈ ["RF-vector-svd-sep"]
+            elseif case ∈ ["RF-lr-lr"]
                 kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(rank_val, nugget))
                 n_features = 500
 
@@ -222,7 +234,7 @@ function main()
                     optimizer_options = overrides,
                 )
 
-            elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
+            elseif case ∈ ["RF-nonsep", "RF-prior"]
                 kernel_structure = NonseparableKernel(LowRankFactor(rank_val, nugget))
                 n_features = 500
 
@@ -234,31 +246,20 @@ function main()
                     kernel_structure = kernel_structure,
                     optimizer_options = overrides,
                 )
-            elseif case ∈ ["RF-vector-nosvd-nonsep"]
-                kernel_structure = NonseparableKernel(LowRankFactor(rank_val, nugget))
-                n_features = 500
-
-                mlt = VectorRandomFeatureInterface(
-                    n_features,
-                    input_dim,
-                    output_dim,
-                    rng = rng,
-                    kernel_structure = kernel_structure,
-                    optimizer_options = overrides,
-                )
-                decorrelate = false
             end
 
-            # Fit an emulator to the data
-            normalized = true
+            # data processing:
+            retain_var = 0.9
+            encoder_schedule = (decorrelate_structure_mat(retain_var = retain_var), "in_and_out")
 
+            # Fit an emulator to the data
             ttt[rank_id, rep_idx] = @elapsed begin
                 emulator = Emulator(
                     mlt,
                     train_pairs;
-                    obs_noise_cov = truth_cov,
-                    normalize_inputs = normalized,
-                    decorrelate = decorrelate,
+                    input_structure_matrix = cov(prior),
+                    output_structure_matrix = truth_cov,
+                    encoder_schedule = encoder_schedule,
                 )
 
                 # Optimize the GP hyperparameters for better fit

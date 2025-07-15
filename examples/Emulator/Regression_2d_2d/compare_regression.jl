@@ -9,6 +9,7 @@ using Statistics
 using LinearAlgebra
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 plot_flag = true
 if plot_flag
@@ -41,24 +42,37 @@ function main()
     cases = [
         "gp-skljl",
         "gp-gpjl", # Very slow prediction...
-        "rf-scalar",
-        "rf-svd-diag",
-        "rf-svd-nondiag",
-        "rf-nosvd-diag",
-        "rf-nosvd-nondiag",
-        "rf-svd-nonsep",
-        "rf-nosvd-nonsep",
+        "rf-lr-scalar",
+        "rf-lr-lr",
+        "rf-nonsep",
     ]
-    case_mask = [1, 3:length(cases)...] # (KEEP set to 1:length(cases) when pushing for buildkite)
+
+    encoder_names = ["no-proc", "sample-struct-proc", "sample-proc", "struct-mat-proc", "combined-proc", "cca-proc"]
+    encoders = [
+        [], # no proc
+        nothing, # default proc
+        (decorrelate_sample_cov(), "in_and_out"),
+        (decorrelate_structure_mat(), "in_and_out"),
+        (decorrelate(), "in_and_out"),
+        (canonical_correlation(), "in_and_out"),
+    ]
+
+    # USER CHOICES 
+    encoder_mask = [3, 4, 6] # best performing
+    case_mask = [1, 3, 4, 5] # (KEEP set to 1:length(cases) when pushing for buildkite)
+
 
     #problem
     n = 200  # number of training points
     p = 2   # input dim 
     d = 2   # output dim
-    X = 2.0 * π * rand(p, n)
+    prior_cov = (pi^2) * I(p)
+    X = rand(MvNormal(zeros(p), prior_cov), n)
     # G(x1, x2)
-    g1(x) = sin.(x[1, :]) .+ 2 * cos.(2 * x[2, :])
-    g2(x) = 3 * sin.(3 * x[1, :]) .- 4 * cos.(4 * x[2, :])
+    g1(x) = sin.(x[1, :]) .+ cos.(2 * x[2, :])
+    g2(x) = 2 * sin.(2 * x[1, :]) .- 3 * cos.(x[2, :])
+    g1(x, y) = sin(x) + 2 * cos(2 * y)
+    g2(x, y) = 2 * sin(2 * x) - 3 * cos(y)
     g1x = g1(X)
     g2x = g2(X)
     gx = zeros(2, n)
@@ -67,7 +81,7 @@ function main()
 
     # Add noise η
     μ = zeros(d)
-    Σ = 0.05 * [[0.8, 0.1] [0.1, 0.5]] # d x d
+    Σ = 0.1 * [[0.4, -0.3] [-0.3, 0.5]] # d x d
     noise_samples = rand(MvNormal(μ, Σ), n)
     # y = G(x) + η
     Y = gx .+ noise_samples
@@ -78,258 +92,153 @@ function main()
 
     #plot training data with and without noise
     if plot_flag
-        p1 = plot(
-            X[1, :],
-            X[2, :],
-            g1x,
-            st = :surface,
-            camera = (30, 60),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            zguidefontrotation = 90,
-        )
+        n_pts = 200
+        x1 = range(-2 * pi, stop = 2 * π, length = n_pts)
+        x2 = range(-2 * pi, stop = 2 * π, length = n_pts)
 
-        figpath = joinpath(output_directory, "observed_y1nonoise.png")
+        p1 = contourf(x1, x2, g1.(x1', x2), c = :cividis, xlabel = "x1", ylabel = "x2", aspect_ratio = :equal)
+        scatter!(p1, X[1, :], X[2, :], c = :black, ms = 3, label = "train point")
+
+        figpath = joinpath(output_directory, "g1_true.png")
         savefig(figpath)
+        p2 = contourf(x1, x2, g2.(x1', x2), c = :cividis, xlabel = "x1", ylabel = "x2", aspect_ratio = :equal)
+        scatter!(p2, X[1, :], X[2, :], c = :black, ms = 3, label = "train point")
 
-        p2 = plot(
-            X[1, :],
-            X[2, :],
-            g2x,
-            st = :surface,
-            camera = (30, 60),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            zguidefontrotation = 90,
-        )
-        figpath = joinpath(output_directory, "observed_y2nonoise.png")
-        savefig(figpath)
-
-        p3 = plot(
-            X[1, :],
-            X[2, :],
-            Y[1, :],
-            st = :surface,
-            camera = (30, 60),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            zguidefontrotation = 90,
-        )
-        figpath = joinpath(output_directory, "observed_y1.png")
-        savefig(figpath)
-
-        p4 = plot(
-            X[1, :],
-            X[2, :],
-            Y[2, :],
-            st = :surface,
-            camera = (30, 60),
-            c = :cividis,
-            xlabel = "x1",
-            ylabel = "x2",
-            zguidefontrotation = 90,
-        )
-        figpath = joinpath(output_directory, "observed_y2.png")
+        figpath = joinpath(output_directory, "g2_true.png")
         savefig(figpath)
 
     end
 
     for case in cases[case_mask]
+        for (enc_name, enc) in zip(encoder_names[encoder_mask], encoders[encoder_mask])
 
-        println(" ")
-        @info "running case $case"
+            println(" ")
+            @info """
 
-        # common Gaussian feature setup
-        pred_type = YType()
+            -------------
+            running case $case with encoder $enc_name
+            -------------
+            """
 
-        # common random feature setup
-        n_features = 300
-        optimizer_options =
-            Dict("n_iteration" => 20, "n_features_opt" => 100, "n_ensemble" => 80, "cov_sample_multiplier" => 1.0)
-        nugget = 1e-12
+            # common Gaussian feature setup
+            pred_type = YType()
 
+            # common random feature setup
+            n_features = 200
+            optimizer_options =
+                Dict("n_iteration" => 5, "n_features_opt" => 200, "n_ensemble" => 80, "cov_sample_multiplier" => 5.0)
+            nugget = 1e-8
 
+            # data processing schedule
 
-        if case == "gp-skljl"
-            gppackage = SKLJL()
-            gaussian_process = GaussianProcess(gppackage, noise_learn = true)
-            emulator = Emulator(gaussian_process, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
-        elseif case == "gp-gpjl"
-            @warn "gp-gpjl case is very slow at prediction"
-            gppackage = GPJL()
-            gaussian_process = GaussianProcess(gppackage, noise_learn = true)
-            emulator = Emulator(gaussian_process, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
-        elseif case == "rf-scalar"
-            srfi = ScalarRandomFeatureInterface(
-                n_features,
-                p,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
-                optimizer_options = optimizer_options,
-            )
-            emulator = Emulator(srfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
-        elseif case == "rf-svd-diag"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor()),
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
-        elseif case == "rf-svd-nondiag"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget)),
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
-        elseif case == "rf-svd-nonsep"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
+            if case == "gp-skljl"
+                gppackage = SKLJL()
+                mlt = GaussianProcess(gppackage, noise_learn = true)
 
-        elseif case == "rf-nosvd-diag"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), DiagonalFactor()), # roughly normalize output by noise
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
-        elseif case == "rf-nosvd-nondiag"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget)), # roughly normalize output by noise
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
-        elseif case == "rf-nosvd-nonsep"
-            vrfi = VectorRandomFeatureInterface(
-                n_features,
-                p,
-                d,
-                kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
-                optimizer_options = deepcopy(optimizer_options),
-            )
-            emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
+            elseif case == "gp-gpjl"
+                @warn "gp-gpjl case is very slow at prediction"
+                gppackage = GPJL()
+                mlt = GaussianProcess(gppackage, noise_learn = true)
 
-        end
-        println("build RF with $n training points and $(n_features) random features.")
-
-        optimize_hyperparameters!(emulator) # although RF already optimized
-
-        # Plot mean and variance of the predicted observables y1 and y2
-        # For this, we generate test points on a x1-x2 grid.
-        n_pts = 200
-        x1 = range(0.0, stop = 2 * π, length = n_pts)
-        x2 = range(0.0, stop = 2 * π, length = n_pts)
-        X1, X2 = meshgrid(x1, x2)
-        # Input for predict has to be of size  input_dim x N_samples
-        inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
-
-        em_mean, em_cov = predict(emulator, inputs, transform_to_real = true)
-        println("end predictions at ", n_pts * n_pts, " points")
-
-
-        #plot predictions
-        for y_i in 1:d
-
-            em_var_temp = [diag(em_cov[j]) for j in 1:length(em_cov)] # (40000,)
-            em_var = permutedims(reduce(vcat, [x' for x in em_var_temp]), (2, 1)) # 2 x 40000
-
-            mean_grid = reshape(em_mean[y_i, :], n_pts, n_pts) # 2 x 40000
-            if plot_flag
-                p5 = plot(
-                    x1,
-                    x2,
-                    mean_grid,
-                    st = :surface,
-                    camera = (30, 60),
-                    c = :cividis,
-                    xlabel = "x1",
-                    ylabel = "x2",
-                    zlabel = "mean of y" * string(y_i),
-                    zguidefontrotation = 90,
+            elseif case == "rf-lr-scalar"
+                mlt = ScalarRandomFeatureInterface(
+                    n_features,
+                    p,
+                    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
+                    optimizer_options = optimizer_options,
                 )
-            end
-            var_grid = reshape(em_var[y_i, :], n_pts, n_pts)
-            if plot_flag
-                p6 = plot(
-                    x1,
-                    x2,
-                    var_grid,
-                    st = :surface,
-                    camera = (30, 60),
-                    c = :cividis,
-                    xlabel = "x1",
-                    ylabel = "x2",
-                    zlabel = "var of y" * string(y_i),
-                    zguidefontrotation = 90,
+            elseif case == "rf-lr-lr"
+                mlt = VectorRandomFeatureInterface(
+                    n_features,
+                    p,
+                    d,
+                    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), LowRankFactor(2, nugget)),
+                    optimizer_options = deepcopy(optimizer_options),
+                )
+            elseif case == "rf-nonsep"
+                mlt = VectorRandomFeatureInterface(
+                    n_features,
+                    p,
+                    d,
+                    kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
+                    optimizer_options = deepcopy(optimizer_options),
                 )
 
-                plot(p5, p6, layout = (1, 2), legend = false)
-
-                savefig(joinpath(output_directory, case * "_y" * string(y_i) * "_predictions.png"))
             end
-        end
 
-        # Plot the true components of G(x1, x2)
-        g1_true = g1(inputs)
-        g1_true_grid = reshape(g1_true, n_pts, n_pts)
-        if plot_flag
-            p7 = plot(
-                x1,
-                x2,
-                g1_true_grid,
-                st = :surface,
-                camera = (30, 60),
-                c = :cividis,
-                xlabel = "x1",
-                ylabel = "x2",
-                zlabel = "sin(x1) + cos(x2)",
-                zguidefontrotation = 90,
+            emulator = Emulator(
+                mlt,
+                iopairs,
+                encoder_schedule = enc,
+                input_structure_matrix = prior_cov,
+                output_structure_matrix = Σ,
             )
-            savefig(joinpath(output_directory, case * "_true_g1.png"))
-        end
 
-        g2_true = g2(inputs)
-        g2_true_grid = reshape(g2_true, n_pts, n_pts)
-        if plot_flag
-            p8 = plot(
-                x1,
-                x2,
-                g2_true_grid,
-                st = :surface,
-                camera = (30, 60),
-                c = :cividis,
-                xlabel = "x1",
-                ylabel = "x2",
-                zlabel = "sin(x1) - cos(x2)",
-                zguidefontrotation = 90,
-            )
+
+            optimize_hyperparameters!(emulator) # although RF already optimized
+
+            # Plot mean and variance of the predicted observables y1 and y2
+            # For this, we generate test points on a x1-x2 grid.
+            n_pts = 200
+            x1 = range(-2 * π, stop = 2 * π, length = n_pts)
+            x2 = range(-2 * π, stop = 2 * π, length = n_pts)
+            X1, X2 = meshgrid(x1, x2)
+            # Input for predict has to be of size  input_dim x N_samples
+            inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
+
+            em_mean, em_cov = predict(emulator, inputs, transform_to_real = true)
+            println("end predictions at ", n_pts * n_pts, " points")
+
+
+            #plot predictions
+            for y_i in 1:d
+
+                em_var_temp = [diag(em_cov[j]) for j in 1:length(em_cov)] # (40000,)
+                em_var = permutedims(reduce(vcat, [x' for x in em_var_temp]), (2, 1)) # 2 x 40000
+
+                mean_grid = reshape(em_mean[y_i, :], n_pts, n_pts) # 2 x 40000
+                if plot_flag
+                    p5 = contourf(
+                        x1,
+                        x2,
+                        mean_grid,
+                        c = :cividis,
+                        xlabel = "x1",
+                        ylabel = "x2",
+                        title = "mean output $y_i",
+                    )
+                end
+                var_grid = reshape(em_var[y_i, :], n_pts, n_pts)
+                if plot_flag
+                    p6 = contourf(
+                        x1,
+                        x2,
+                        var_grid,
+                        c = :cividis,
+                        xlabel = "x1",
+                        ylabel = "x2",
+                        title = "var output $y_i",
+                    )
+
+                    plot(p5, p6, layout = (1, 2), legend = false)
+
+                    savefig(joinpath(output_directory, case * "_" * enc_name * "_y" * string(y_i) * "_predictions.png"))
+                end
+            end
+
+            # Plot the true components of G(x1, x2)
+            g1_true = g1(inputs)
+            g1_true_grid = reshape(g1_true, n_pts, n_pts)
+
+
+            g2_true = g2(inputs)
+            g2_true_grid = reshape(g2_true, n_pts, n_pts)
             g_true_grids = [g1_true_grid, g2_true_grid]
-
-            savefig(joinpath(output_directory, case * "_true_g2.png"))
-
-        end
-        MSE = 1 / size(em_mean, 2) * sqrt(sum((em_mean[1, :] - g1_true) .^ 2 + (em_mean[2, :] - g2_true) .^ 2))
-        println("L^2 error of mean and latent truth:", MSE)
-
-        # Plot the difference between the truth and the mean of the predictions
-        for y_i in 1:d
+            MSE = 1 / size(em_mean, 2) * sqrt(sum((em_mean[1, :] - g1_true) .^ 2 + (em_mean[2, :] - g2_true) .^ 2))
+            println("L^2 error of mean and latent truth:", MSE)
+            #=
+            # Plot the difference between the truth and the mean of the predictions
+            for y_i in 1:d
 
             # Reshape em_cov to size N_samples x output_dim
             em_var_temp = [diag(em_cov[j]) for j in 1:length(em_cov)] # (40000,)
@@ -342,21 +251,21 @@ function main()
             if plot_flag
                 zlabel = "1/var * (true_y" * string(y_i) * " - predicted_y" * string(y_i) * ")^2"
 
-                p9 = plot(
+                p9 = contourf(
                     x1,
                     x2,
                     sqrt.(1.0 ./ var_grid .* (g_true_grids[y_i] .- mean_grid) .^ 2),
-                    st = :surface,
-                    camera = (30, 60),
                     c = :magma,
                     zlabel = zlabel,
                     xlabel = "x1",
                     ylabel = "x2",
-                    zguidefontrotation = 90,
+                    title = "weighted difference $y_i"
                 )
 
-                savefig(joinpath(output_directory, case * "_y" * string(y_i) * "_difference_truth_prediction.png"))
+                savefig(joinpath(output_directory, case*"_"* enc_name * "_y" * string(y_i) * "_difference_truth_prediction.png"))
             end
+            end
+            =#
         end
     end
 end

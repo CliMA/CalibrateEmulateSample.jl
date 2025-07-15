@@ -25,6 +25,7 @@ using CalibrateEmulateSample.Utilities
 rng_seed = 42424242
 Random.seed!(rng_seed)
 
+include("rebuild_priors.jl")
 
 function main()
 
@@ -37,11 +38,10 @@ function main()
     cases = [
         "GP", # diagonalize, train scalar GP, assume diag inputs
         "RF-prior",
-        "RF-vector-svd-nonsep",
-        "RF-vector-svd-sep",
-        "RF-vector-nosvd-nonsep",
+        "RF-nonsep",
+        "RF-lr-lr",
     ]
-    case = cases[3]
+    case = cases[4]
 
     # Output figure save directory
     figure_save_directory = joinpath(@__DIR__, "output", exp_name, string(Dates.today()))
@@ -130,45 +130,6 @@ function main()
     end
 
     # load and create prior distributions
-    # code deprecated due to JLD2
-    #=   
-    prior_filepath = joinpath(exp_dir, "prior.jld2")
-    if !isfile(prior_filepath)
-        LoadError("prior file \"prior.jld2\" not found in directory \"" * exp_dir * "/\"")
-    else
-        prior_dict_raw = load(prior_filepath) #using JLD2
-        prior = prior_dict_raw["prior"]
-    end
-    =#
-    # build prior if jld2 does not work
-    function get_prior_config(s::SS) where {SS <: AbstractString}
-        config = Dict()
-        if s == "ent-det-calibration"
-            config["constraints"] =
-                Dict("entrainment_factor" => [bounded(0.0, 1.0)], "detrainment_factor" => [bounded(0.0, 1.0)])
-            config["prior_mean"] = Dict("entrainment_factor" => 0.13, "detrainment_factor" => 0.51)
-            config["unconstrained_σ"] = 1.0
-        elseif s == "ent-det-tked-tkee-stab-calibration"
-            config["constraints"] = Dict(
-                "entrainment_factor" => [bounded(0.0, 1.0)],
-                "detrainment_factor" => [bounded(0.0, 1.0)],
-                "tke_ed_coeff" => [bounded(0.01, 1.0)],
-                "tke_diss_coeff" => [bounded(0.01, 1.0)],
-                "static_stab_coeff" => [bounded(0.01, 1.0)],
-            )
-            config["prior_mean"] = Dict(
-                "entrainment_factor" => 0.13,
-                "detrainment_factor" => 0.51,
-                "tke_ed_coeff" => 0.14,
-                "tke_diss_coeff" => 0.22,
-                "static_stab_coeff" => 0.4,
-            )
-            config["unconstrained_σ"] = 1.0
-        else
-            throw(ArgumentError("prior for experiment $s not found, please implement in uq_for_edmf.jl"))
-        end
-        return config
-    end
     prior_config = get_prior_config(exp_name)
     means = prior_config["prior_mean"]
     std = prior_config["unconstrained_σ"]
@@ -199,7 +160,7 @@ function main()
     @info "Begin Emulation stage"
     # Create GP object
     train_frac = 0.9
-    kernel_rank = 3 # svd-sep should be kr - 5 (as input rank is set to 5)
+    kernel_rank = 5 # svd-sep should be kr - 5 (as input rank is set to 5)
     n_cross_val_sets = 2
     @info "Kernel rank: $(kernel_rank)"
     max_feature_size =
@@ -210,9 +171,9 @@ function main()
         "scheduler" => DataMisfitController(terminate_at = 1000),
         "cov_sample_multiplier" => 0.2,
         "n_iteration" => 15,
-        "n_features_opt" => Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
+        "n_features_opt" => 100, #Int(floor((max_feature_size / 5))),# here: /5 with rank <= 3 works
         "localization" => SEC(0.05),
-        "n_ensemble" => 400,
+        "n_ensemble" => 100,#400,
         "n_cross_val_sets" => n_cross_val_sets,
     )
     if case == "RF-prior"
@@ -235,8 +196,8 @@ function main()
             prediction_type = pred_type,
             noise_learn = false,
         )
-    elseif case ∈ ["RF-vector-svd-sep"]
-        kernel_structure = SeparableKernel(LowRankFactor(5, nugget), LowRankFactor(kernel_rank, nugget))
+    elseif case ∈ ["RF-lr-lr"]
+        kernel_structure = SeparableKernel(LowRankFactor(1, nugget), LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
         mlt = VectorRandomFeatureInterface(
@@ -248,7 +209,7 @@ function main()
             optimizer_options = overrides,
         )
 
-    elseif case ∈ ["RF-vector-svd-nonsep", "RF-prior"]
+    elseif case ∈ ["RF-nonsep", "RF-prior"]
         kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget))
         n_features = 500
 
@@ -260,63 +221,26 @@ function main()
             kernel_structure = kernel_structure,
             optimizer_options = overrides,
         )
-    elseif case ∈ ["RF-vector-nosvd-nonsep"]
-        kernel_structure = NonseparableKernel(LowRankFactor(kernel_rank, nugget))
-        n_features = 500
-
-        mlt = VectorRandomFeatureInterface(
-            n_features,
-            input_dim,
-            output_dim,
-            rng = rng,
-            kernel_structure = kernel_structure,
-            optimizer_options = overrides,
-        )
-        decorrelate = false
     end
 
-    # Fit an emulator to the data
-    normalized = true
+    # data processing:
+    retain_var = 0.9
+    encoder_schedule = (decorrelate_structure_mat(retain_var = retain_var), "in_and_out")
 
+    # Fit an emulator to the data
     emulator = Emulator(
         mlt,
         input_output_pairs;
-        obs_noise_cov = truth_cov,
-        normalize_inputs = normalized,
-        decorrelate = decorrelate,
+        input_structure_matrix = cov(prior),
+        output_structure_matrix = truth_cov,
+        encoder_schedule = encoder_schedule,
     )
 
     # Optimize the GP hyperparameters for better fit
     optimize_hyperparameters!(emulator)
-    if case ∈ ["RF-vector-nosvd-nonsep", "RF-vector-svd-nonsep"]
+    if case ∈ ["RF-nonsep"]
         push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec -> vec
     end
-
-    # plot eki convergence plot
-    #=
-    if length(opt_diagnostics) > 0
-        err_cols = reduce(hcat, opt_diagnostics) #error for each repeat as columns?
-
-        #save data
-        error_filepath = joinpath(data_save_directory, "eki_conv_error.jld2")
-        save(error_filepath, "error", err_cols)
-
-        # print all repeats
-        f5 = Figure(resolution = (1.618 * 300, 300), markersize = 4)
-        ax_conv = Axis(f5[1, 1], xlabel = "Iteration", ylabel = "max-normalized error")
-        if n_repeats == 1
-            lines!(ax_conv, collect(1:size(err_cols, 1))[:], err_cols[:], solid_color = :blue) # If just one repeat
-        else
-            for idx in 1:size(err_cols, 1)
-                err_normalized = (err_cols' ./ err_cols[1, :])' # divide each series by the max, so all errors start at 1
-                series!(ax_conv, err_normalized', solid_color = :blue)
-            end
-        end
-        save(joinpath(figure_save_directory, "eki-conv_$(case).png"), f5, px_per_unit = 3)
-        save(joinpath(figure_save_directory, "eki-conv_$(case).pdf"), f5, px_per_unit = 3)
-
-    end
-    =#
 
     emulator_filepath = joinpath(data_save_directory, "$(case)_$(kernel_rank)_emulator.jld2")
     save(emulator_filepath, "emulator", emulator)

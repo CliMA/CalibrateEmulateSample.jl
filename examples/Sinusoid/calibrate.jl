@@ -87,12 +87,17 @@ ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y_obs, Γ,
 # We are now ready to carry out the inversion. At each iteration, we get the
 # ensemble from the last iteration, apply ``G(\theta)`` to each ensemble member,
 # and apply the Kalman update to the ensemble.
+n_iter = N_iterations
 for i in 1:N_iterations
     params_i = EKP.get_ϕ_final(prior, ensemble_kalman_process)
 
     G_ens = hcat([G(params_i[:, i]; rng = rng) for i in 1:N_ensemble]...)
 
-    EKP.update_ensemble!(ensemble_kalman_process, G_ens)
+    terminate = EKP.update_ensemble!(ensemble_kalman_process, G_ens)
+    if !isnothing(terminate)
+        n_iter = i - 1
+        break
+    end
 end
 
 
@@ -123,8 +128,8 @@ vline!([theta_true[1]], color = :red, style = :dash, label = :false)
 hline!([theta_true[2]], color = :red, style = :dash, label = :false)
 
 
-iteration_colormap = colormap("Blues", N_iterations)
-for j in 1:N_iterations
+iteration_colormap = colormap("Blues", n_iter)
+for j in 1:n_iter
     ensemble_j = EKP.get_ϕ(prior, ensemble_kalman_process, j)
     plot!(
         ensemble_j[1, :],
@@ -165,7 +170,7 @@ save(
     "N_ensemble",
     N_ensemble,
     "N_iterations",
-    N_iterations,
+    n_iter,
     "rng",
     rng,
 )

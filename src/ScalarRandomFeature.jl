@@ -24,6 +24,8 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
     input_dim::Int
     "choice of random number generator"
     rng::RNG
+    "regularization"
+    regularization::Vector{Union{Matrix, UniformScaling, Diagonal}}
     "Kernel structure type (e.g. Separable or Nonseparable)"
     kernel_structure::KST
     "Random Feature decomposition, choose from \"svd\" or \"cholesky\" (default)"
@@ -75,6 +77,14 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 gets the rng field
 """
 EKP.get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
+
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
+
+Gets the regularization field
+"""
+get_regularization(srfi::ScalarRandomFeatureInterface) = srfi.regularization
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -144,6 +154,7 @@ function ScalarRandomFeatureInterface(
     # Initialize vector for GP models
     rfms = Vector{RF.Methods.RandomFeatureMethod}(undef, 0)
     fitted_features = Vector{RF.Methods.Fit}(undef, 0)
+    regularization = Vector{Union{Matrix, UniformScaling, Nothing}}(undef, 0)
 
     if isnothing(kernel_structure)
         kernel_structure = SeparableKernel(cov_structure_from_string("lowrank", input_dim), OneDimFactor())
@@ -191,6 +202,7 @@ function ScalarRandomFeatureInterface(
         n_features,
         input_dim,
         rng,
+        regularization,
         kernel_structure,
         feature_decomposition,
         optimizer_opts,
@@ -294,7 +306,7 @@ RFM_from_hyperparameters(
 ) where {
     RNG <: AbstractRNG,
     ForVM <: Union{Real, AbstractVecOrMat},
-    MorUS <: Union{Matrix, UniformScaling},
+    MorUS <: Union{AbstractMatrix, UniformScaling},
     S <: AbstractString,
     MT <: MultithreadType,
 } = RFM_from_hyperparameters(srfi, rng, l, regularization, n_features, batch_sizes, input_dim, multithread_type)
@@ -306,14 +318,16 @@ Builds the random feature method from hyperparameters. We use cosine activation 
 """
 function build_models!(
     srfi::ScalarRandomFeatureInterface,
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    input_structure_matrix,
+    output_structure_matrix;
     kwargs...,
 ) where {FT <: AbstractFloat}
+
     # get inputs and outputs 
     input_values = get_inputs(input_output_pairs)
     output_values = get_outputs(input_output_pairs)
     n_rfms, n_data = size(output_values)
-    noise_sd = 1.0
 
     input_dim = size(input_values, 1)
 
@@ -371,10 +385,13 @@ function build_models!(
         end
     end
 
-
-
-    #regularization = I = 1.0 in scalar case
-    regularization = I
+    regularization = if isnothing(output_structure_matrix)
+        1.0 * I(n_rfms)
+    elseif isa(output_structure_matrix, UniformScaling)
+        output_structure_matrix
+    else
+        Diagonal(output_structure_matrix)
+    end
 
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
@@ -382,6 +399,7 @@ function build_models!(
     n_iteration = optimizer_options["n_iteration"]
     diagnostics = zeros(n_iteration, n_rfms)
     for i in 1:n_rfms
+        regularization_i = regularization[i, i] * I
 
         io_pairs_opt = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
 
@@ -422,7 +440,7 @@ function build_models!(
                 srfi,
                 rng,
                 μ_hp,
-                regularization,
+                regularization_i,
                 n_features_opt,
                 train_idx[cv_idx],
                 test_idx[cv_idx],
@@ -434,7 +452,7 @@ function build_models!(
                 cov_correction = cov_correction,
             )
             Γ = internal_Γ
-            Γ[1:n_test, 1:n_test] += regularization  # + approx_σ2 
+            Γ[1:n_test, 1:n_test] += regularization_i  # + approx_σ2 
             Γ[(n_test + 1):end, (n_test + 1):end] += I
             if !isposdef(Γ)
                 Γ = posdef_correct(Γ)
@@ -480,7 +498,7 @@ function build_models!(
                     srfi,
                     rng,
                     lvec,
-                    regularization,
+                    regularization_i,
                     n_features_opt,
                     train_idx[cv_idx],
                     test_idx[cv_idx],
@@ -536,7 +554,7 @@ function build_models!(
             srfi,
             rng,
             hp_optimal,
-            regularization,
+            regularization_i,
             n_features,
             batch_sizes,
             input_dim,
@@ -548,6 +566,7 @@ function build_models!(
         push!(fitted_features, fitted_features_i)
 
     end
+    push!(get_regularization(srfi), regularization)
     push!(optimizer, diagnostics)
 
 end
@@ -564,7 +583,7 @@ end
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
+Prediction of emulator mean at new inputs (passed in as columns in a matrix), and a prediction of the total covariance at new inputs equal to (emulator covariance + noise covariance). 
 """
 function predict(
     srfi::ScalarRandomFeatureInterface,
@@ -591,8 +610,13 @@ function predict(
         )
     end
 
-    # add the noise contribution from the regularization
-    σ2[:, :] = σ2[:, :] .+ 1.0
+    # add the noise contribution stored within the regularization
+    reg = get_regularization(srfi)[1]
+    reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
+
+    for i in 1:M
+        σ2[i, :] .+= reg_diag[i]
+    end
 
     return μ, σ2
 end

@@ -50,9 +50,3 @@ EmulatorPosteriorModel
 MCMCState
 accept_ratio
 ```
-
-## Internals - Other
-
-```@docs
-to_decorrelated
-```

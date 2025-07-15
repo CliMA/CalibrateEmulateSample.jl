@@ -169,12 +169,12 @@ x0 = x_spun_up[:, end]  #last element of the run is the initial condition for cr
 
 
 #Creating sythetic data
-T = 14.0
+T = 50.0
 ny = nx * 2   #number of data points
 lorenz_config_settings = LorenzConfig(dt, T)
 
 # construct how we compute Observations
-T_start = 4.0
+T_start = T - 25.0
 T_end = T
 observation_config = ObservationConfig(T_start, T_end)
 
@@ -193,11 +193,11 @@ y_ens = hcat(
 )
 
 # estimate noise as the variability of these pushed-forward samples on the attractor
-obs_noise_cov = cov(y_ens, dims = 2)
+obs_noise_cov = cov(y_ens, dims = 2) + 1e-2 * I
 y = y_ens[:, 1]
 
-pl = 2.0
-psig = 3.0
+pl = 4.0
+psig = 5.0
 #Prior covariance
 B = zeros(nx, nx)
 for ii in 1:nx
@@ -208,7 +208,7 @@ end
 B_sqrt = sqrt(B)
 
 #Prior mean
-mu = 8.0 * ones(nx)
+mu = 4.0 * ones(nx)
 
 #Creating prior distribution
 distribution = Parameterized(MvNormal(mu, B))
@@ -232,13 +232,15 @@ rng = MersenneTwister(rng_seed)
 # initial parameters: N_params x N_ens
 initial_params = construct_initial_ensemble(rng, prior, N_ens)
 
-method = Inversion()
+method = Inversion(prior)
 
 @info "Ensemble size: $(N_ens)"
 ekpobj = EKP.EnsembleKalmanProcess(initial_params, y, obs_noise_cov, method; rng = copy(rng), verbose = true)
 
 count = 0
-n_iter = 0
+n_iter = N_iter
+n_samples_exp = N_iter * N_ens
+x_on_attractor = x_spun_up[:, shuffled_ids[1:n_samples_exp]] # randomly select points from second half of spin up
 for i in 1:N_iter
     params_i = get_ϕ_final(prior, ekpobj)
 
@@ -247,7 +249,7 @@ for i in 1:N_iter
         [
             lorenz_forward(
                 EnsembleMemberConfig(params_i[:, j]),
-                (x0 .+ ic_cov_sqrt * randn(rng, nx)),
+                x_on_attractor[:, (i - 1) * N_ens + j],
                 lorenz_config_settings,
                 observation_config,
             ) for j in 1:N_ens

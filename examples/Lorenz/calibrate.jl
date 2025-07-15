@@ -279,19 +279,19 @@ function main()
     # EKI iterations
     println("EKP inversion error:")
     err = zeros(N_iter)
-    final_iter = [N_iter]
+    n_iter = N_iter
     for i in 1:N_iter
         params_i = EKP.get_ϕ_final(priors, ekiobj) # the `ϕ` indicates that the `params_i` are in the constrained space    
         g_ens = GModel.run_G_ensemble(params_i, lorenz_settings_G)
         terminated = EKP.update_ensemble!(ekiobj, g_ens)
         if !isnothing(terminated)
-            final_iter = i - 1 # final update was previous iteration
+            n_iter = i - 1 # final update was previous iteration
             break
         end
         err[i] = EKP.get_error(ekiobj)[end] #mean((params_true - mean(params_i,dims=2)).^2)
         println("Iteration: " * string(i) * ", Error: " * string(err[i]))
     end
-    N_iter = final_iter[1] #in case it terminated early
+    n_iter #in case it terminated early
 
     # EKI results: Has the ensemble collapsed toward the truth?
     println("True parameters: ")
@@ -331,7 +331,7 @@ function main()
         yaxis = "A",
         ylims = extrema(ϕ_init[2, :]),
     )
-    for i in 1:N_iter
+    for i in 1:n_iter
         ϕ_i = EKP.get_ϕ(priors, ekiobj, i)
         scatter!(p, ϕ_i[1, :], ϕ_i[2, :], color = :grey, label = false)
     end

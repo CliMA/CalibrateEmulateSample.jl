@@ -36,52 +36,6 @@ export EmulatorPosteriorModel,
     sample,
     esjd
 
-# ------------------------------------------------------------------------------------------
-# Output space transformations between original and SVD-decorrelated coordinates.
-# Redundant with what's in Emulators.jl, but need to reimplement since we don't have
-# access to obs_noise_cov
-
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
-
-Transform samples from the original (correlated) coordinate system to the SVD-decorrelated
-coordinate system used by [`Emulator`](@ref). Used in the constructor for [`MCMCWrapper`](@ref).
-
-The keyword `single_vec` wraps the output in a vector if `true` (default).
-"""
-function to_decorrelated(data::AbstractVector{FT}, em::Emulator{FT}; single_vec = true) where {FT <: AbstractFloat}
-    # method for a single sample
-    if em.standardize_outputs && em.standardize_outputs_factors !== nothing
-        # standardize() data by scale factors, if they were given
-        data = data ./ em.standardize_outputs_factors
-    end
-    decomp = em.decomposition
-    if decomp !== nothing
-        # Use SVD decomposition of obs noise cov, if given, to transform data to 
-        # decorrelated coordinates.
-        inv_sqrt_singvals = Diagonal(1.0 ./ sqrt.(decomp.S))
-        return single_vec ? [vec(inv_sqrt_singvals * decomp.Vt * data)] : inv_sqrt_singvals * decomp.Vt * data
-    else
-        return single_vec ? [vec(data)] : data
-    end
-end
-
-function to_decorrelated(data::AbstractMatrix{FT}, em::Emulator{FT}) where {FT <: AbstractFloat}
-    # method for Matrix with columns that are samples
-    return [vec(to_decorrelated(cd, em, single_vec = false)) for cd in eachcol(data)]
-
-end
-
-
-function to_decorrelated(data::AVV, em::Emulator{FT}) where {AVV <: AbstractVector, FT <: AbstractFloat}
-    # method for vector of samples
-    if isa(data[1], AbstractVector)
-        return [vec(to_decorrelated(d, em, single_vec = false)) for d in data]
-    else # turns out it is just one vector of a non-float type
-        return to_decorrelated(convert.(FT, data), em)
-    end
-end
-
 
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -296,8 +250,7 @@ function emulator_log_density_model(
     # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
     # have to reshape()/re-cast input/output; simpler to do here than add a 
     # predict() method.
-    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false, vector_rf_unstandardize = false)
-    #TODO vector_rf will always unstandardize, but other methods will not, so we require this additional flag.
+    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
 
     if isa(g_cov[1], Real)
 
@@ -542,13 +495,13 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{AMorAV <: Union{AbstractVector, AbstractMatrix}, AV <: AbstractVector}
+struct MCMCWrapper{AVV <: AbstractVector, AV <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
-    "A vector or [Nx1] matrix, describing a single observation data (or NxM column-matrix / vector or vectors for multiple observations) provided by the user."
-    observations::AMorAV
+    "[output_dim x N_samples] matrix, of given observation data."
+    observations::AVV
     "Vector of observations describing the data samples to actually used during MCMC sampling (that have been transformed into a space consistent with emulator outputs)."
-    decorrelated_observations::AV
+    encoded_observations::AV
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel
     "Object describing a MCMC sampling algorithm and its settings."
@@ -575,8 +528,7 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
 
-- `obs_sample`: A single sample from the observations. Can, e.g., be picked from an 
-  Observation struct using `get_obs_sample`.
+- `obs_sample`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an Observation struct using `get_obs_sample`.
 - `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
   object containing the parameters' prior distributions.
 - `emulator`: [`Emulator`](@ref) to sample from.
@@ -594,10 +546,18 @@ function MCMCWrapper(
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
-    # decorrelate observations into a vector
-    decorrelated_obs = to_decorrelated(observation, em)
+    # make into iterable over vectors
+    obs_slice = if observation isa AbstractVector{<:AbstractVector}
+        observation
+    else # NB a vector is treated as a column here:
+        eachcol(observation)
+    end
 
-    log_posterior_map = EmulatorPosteriorModel(prior, em, decorrelated_obs)
+    # encoding works on columns but mcmc wants vec-of-vec
+    encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
+
+
+    log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
@@ -617,7 +577,7 @@ function MCMCWrapper(
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, observation, decorrelated_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
 end
 
 """
@@ -776,6 +736,7 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
+
 
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
