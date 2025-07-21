@@ -170,8 +170,8 @@ initialize_processor!(
     cc::CanonicalCorrelation,
     in_data::MM,
     out_data::MM,
-    input_structure_matrix,
-    output_structure_matrix,
+    input_structure_matrices,
+    output_structure_matrices,
     apply_to::AS,
 ) where {MM <: AbstractMatrix, AS <: AbstractString} = initialize_processor!(cc, in_data, out_data, apply_to)
 
@@ -205,8 +205,8 @@ Apply the `CanonicalCorrelation` encoder to a provided structure matrix
 """
 function encode_structure_matrix(
     cc::CanonicalCorrelation,
-    structure_matrix::USorM,
-) where {USorM <: Union{UniformScaling, AbstractMatrix}}
+    structure_matrix::SM,
+) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(cc)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
@@ -218,8 +218,8 @@ Apply the `CanonicalCorrelation` decoder to a provided structure matrix
 """
 function decode_structure_matrix(
     cc::CanonicalCorrelation,
-    enc_structure_matrix::USorM,
-) where {USorM <: Union{UniformScaling, AbstractMatrix}}
+    enc_structure_matrix::SM,
+) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end

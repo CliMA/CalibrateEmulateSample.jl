@@ -24,6 +24,7 @@ export create_encoder_schedule,
     decode_structure_matrix
 
 
+const StructureMatrix = Union{UniformScaling, AbstractMatrix}
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -77,6 +78,23 @@ Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
 
 ####
 
+function get_structure_mat(structure_mats, name = nothing)
+    if isnothing(name)
+        if size(structure_mats) == 1
+            return only(values(structure_mats))
+        elseif isempty(structure_mats)
+            @error "Please provide a structure matrix."
+        else
+            @error "Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use."
+        end
+    else
+        if haskey(structure_mats, name)
+            return structure_mats[name]
+        else
+            @error "Structure matrix $name not found. Options: $(collect(keys(structure_mats)))."
+        end
+    end
+end
 
 function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
     input_data, output_data = get_data(data)
@@ -118,12 +136,12 @@ function _initialize_and_encode_data!(
     apply_to::AS,
 ) where {AS <: AbstractString}
     input_data, output_data = get_data(data)
-    input_structure_mat, output_structure_mat = structure_mats
+    input_structure_mats, output_structure_mats = structure_mats
 
     if apply_to == "in"
-        initialize_processor!(proc, input_data, input_structure_mat)
+        initialize_processor!(proc, input_data, input_structure_mats)
     elseif apply_to == "out"
-        initialize_processor!(proc, output_data, output_structure_mat)
+        initialize_processor!(proc, output_data, output_structure_mats)
     else
         bad_apply_to(apply_to)
     end
@@ -189,18 +207,26 @@ Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), a
 """
 function initialize_and_encode_with_schedule!(
     encoder_schedule::VV,
-    io_pairs::PDC,
-    input_structure_mat::USorMorN1,
-    output_structure_mat::USorMorN2,
+    io_pairs::PDC;
+    input_structure_mats = Dict{Symbol, StructureMatrix}(),
+    output_structure_mats = Dict{Symbol, StructureMatrix}(),
+    input_cov::Union{Nothing, StructureMatrix} = nothing,
+    noise_cov::Union{Nothing, StructureMatrix} = nothing,
 ) where {
     VV <: AbstractVector,
     PDC <: PairedDataContainer,
-    USorMorN1 <: Union{UniformScaling, AbstractMatrix, Nothing},
-    USorMorN2 <: Union{UniformScaling, AbstractMatrix, Nothing},
 }
     processed_io_pairs = deepcopy(io_pairs)
-    processed_input_structure_mat = deepcopy(input_structure_mat)
-    processed_output_structure_mat = deepcopy(output_structure_mat)
+
+    processed_input_structure_mats = deepcopy(input_structure_mats)
+    if !isnothing(input_cov)
+        processed_input_structure_mats[:input_cov] = input_cov
+    end
+
+    processed_output_structure_mats = deepcopy(output_structure_mats)
+    if !isnothing(noise_cov)
+        processed_output_structure_mats[:noise_cov] = noise_cov
+    end
 
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
@@ -209,37 +235,29 @@ function initialize_and_encode_with_schedule!(
         processed = _initialize_and_encode_data!(
             processor,
             processed_io_pairs,
-            (processed_input_structure_mat, processed_output_structure_mat),
+            (processed_input_structure_mats, processed_output_structure_mats),
             apply_to,
         )
 
         if apply_to == "in"
-            processed_input_structure_mat = encode_structure_matrix(processor, processed_input_structure_mat)
+            processed_input_structure_mats = Dict(
+                name => encode_structure_matrix(processor, mat)
+                for (name, mat) in processed_input_structure_mats
+            )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_output_structure_mat = encode_structure_matrix(processor, processed_output_structure_mat)
+            processed_output_structure_mats = Dict(
+                name => encode_structure_matrix(processor, mat)
+                for (name, mat) in processed_output_structure_mats
+            )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs, processed_input_structure_mat, processed_output_structure_mat
+    return processed_io_pairs, processed_input_structure_mats, processed_output_structure_mats
 end
 
 # Functions to encode/decode with initialized schedule
-
-# cases when structure_matrix is Nothing:
-encode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
-decode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
-encode_with_schedule(
-    encoder_schedule::VV,
-    n::Nothing,
-    in_or_out::AS,
-) where {VV <: AbstractVector, AS <: AbstractString} = nothing
-decode_with_schedule(
-    encoder_schedule::VV,
-    n::Nothing,
-    in_or_out::AS,
-) where {VV <: AbstractVector, AS <: AbstractString} = nothing
 
 """
 $TYPEDSIGNATURES
