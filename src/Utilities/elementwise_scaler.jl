@@ -86,7 +86,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{QS},
+    ::Type{QS},
 ) where {MM <: AbstractMatrix, QS <: QuartileScaling}
     quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(data)]
     quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
@@ -97,7 +97,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{MMS},
+    ::Type{MMS},
 ) where {MM <: AbstractMatrix, MMS <: MinMaxScaling}
     minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(data)]
     minmax_mat = reduce(hcat, minmax_vec) # 2 rows: min max
@@ -108,7 +108,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{ZSS},
+    ::Type{ZSS},
 ) where {MM <: AbstractMatrix, ZSS <: ZScoreScaling}
     stat_vec = [[mean(dd), std(dd)] for dd in eachrow(data)]
     stat_mat = reduce(hcat, stat_vec) # 2 rows: mean, std
