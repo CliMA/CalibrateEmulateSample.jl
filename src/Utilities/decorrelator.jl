@@ -123,8 +123,8 @@ Computes and populates the `data_mean` and `encoder_mat` and `decoder_mat` field
 function initialize_processor!(
     dd::Decorrelator,
     data::MM,
-    structure_matrices::USorMorN,
-) where {MM <: AbstractMatrix, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
+    structure_matrices::Dict{Symbol, <:StructureMatrix},
+) where {MM <: AbstractMatrix}
     if length(get_data_mean(dd)) == 0
         push!(get_data_mean(dd), vec(mean(data, dims = 2)))
     end

@@ -211,7 +211,7 @@ function initialize_and_encode_with_schedule!(
     input_structure_mats = Dict{Symbol, StructureMatrix}(),
     output_structure_mats = Dict{Symbol, StructureMatrix}(),
     input_cov::Union{Nothing, StructureMatrix} = nothing,
-    noise_cov::Union{Nothing, StructureMatrix} = nothing,
+    obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
 ) where {
     VV <: AbstractVector,
     PDC <: PairedDataContainer,
@@ -224,8 +224,8 @@ function initialize_and_encode_with_schedule!(
     end
 
     processed_output_structure_mats = deepcopy(output_structure_mats)
-    if !isnothing(noise_cov)
-        processed_output_structure_mats[:noise_cov] = noise_cov
+    if !isnothing(obs_noise_cov)
+        processed_output_structure_mats[:obs_noise_cov] = obs_noise_cov
     end
 
     # apply_to is the string "in", "out" etc.
