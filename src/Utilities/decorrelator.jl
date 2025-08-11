@@ -124,6 +124,7 @@ function initialize_processor!(
     dd::Decorrelator,
     data::MM,
     structure_matrices::Dict{Symbol, <:StructureMatrix},
+    ::Dict{Symbol, <:StructureVector},
 ) where {MM <: AbstractMatrix}
     if length(get_data_mean(dd)) == 0
         push!(get_data_mean(dd), vec(mean(data, dims = 2)))

@@ -156,7 +156,7 @@ $(TYPEDSIGNATURES)
 
 Computes and populates the `shift` and `scale` fields for the `ElementwiseScaler`
 """
-initialize_processor!(es::ElementwiseScaler, data::MM, structure_matrices) where {MM <: AbstractMatrix} =
+initialize_processor!(es::ElementwiseScaler, data::MM, structure_matrices, structure_vectors) where {MM <: AbstractMatrix} =
     initialize_processor!(es, data)
 
 

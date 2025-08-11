@@ -25,6 +25,7 @@ export create_encoder_schedule,
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix}
+const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a matrix, the columns should be seen as vectors
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -78,6 +79,24 @@ Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
 
 ####
 
+function get_structure_vec(structure_vecs, name = nothing)
+    if isnothing(name)
+        if size(structure_vecs) == 1
+            return only(values(structure_vecs))
+        elseif isempty(structure_vecs)
+            @error "Please provide a structure vector."
+        else
+            @error "Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use."
+        end
+    else
+        if haskey(structure_vecs, name)
+            return structure_vecs[name]
+        else
+            @error "Structure vector $name not found. Options: $(collect(keys(structure_vecs)))."
+        end
+    end
+end
+
 function get_structure_mat(structure_mats, name = nothing)
     if isnothing(name)
         if size(structure_mats) == 1
@@ -123,9 +142,10 @@ function _initialize_and_encode_data!(
     proc::PairedDataContainerProcessor,
     data,
     structure_mats,
+    structure_vecs,
     apply_to::AS,
 ) where {AS <: AbstractString}
-    initialize_processor!(proc, get_data(data)..., structure_mats..., apply_to)
+    initialize_processor!(proc, get_data(data)..., structure_mats..., structure_vecs..., apply_to)
     return _encode_data(proc, data, apply_to)
 end
 
@@ -133,15 +153,17 @@ function _initialize_and_encode_data!(
     proc::DataContainerProcessor,
     data,
     structure_mats,
+    structure_vecs,
     apply_to::AS,
 ) where {AS <: AbstractString}
     input_data, output_data = get_data(data)
     input_structure_mats, output_structure_mats = structure_mats
+    input_structure_vecs, output_structure_vecs = structure_vecs
 
     if apply_to == "in"
-        initialize_processor!(proc, input_data, input_structure_mats)
+        initialize_processor!(proc, input_data, input_structure_mats, input_structure_vecs)
     elseif apply_to == "out"
-        initialize_processor!(proc, output_data, output_structure_mats)
+        initialize_processor!(proc, output_data, output_structure_mats, output_structure_vecs)
     else
         bad_apply_to(apply_to)
     end
@@ -210,23 +232,31 @@ function initialize_and_encode_with_schedule!(
     io_pairs::PDC;
     input_structure_mats = Dict{Symbol, StructureMatrix}(),
     output_structure_mats = Dict{Symbol, StructureMatrix}(),
+    input_structure_vecs = Dict{Symbol, StructureVector}(),
+    output_structure_vecs = Dict{Symbol, StructureVector}(),
     input_cov::Union{Nothing, StructureMatrix} = nothing,
     obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
+    observation::Union{Nothing, StructureVector} = nothing,
+    prior_samples_in::Union{Nothing, StructureVector} = nothing,
+    prior_samples_out::Union{Nothing, StructureVector} = nothing,
 ) where {
     VV <: AbstractVector,
     PDC <: PairedDataContainer,
 }
     processed_io_pairs = deepcopy(io_pairs)
 
-    processed_input_structure_mats = deepcopy(input_structure_mats)
-    if !isnothing(input_cov)
-        processed_input_structure_mats[:input_cov] = input_cov
-    end
+    input_structure_mats = deepcopy(input_structure_mats)
+    !isnothing(input_cov) && (input_structure_mats[:input_cov] = input_cov)
 
-    processed_output_structure_mats = deepcopy(output_structure_mats)
-    if !isnothing(obs_noise_cov)
-        processed_output_structure_mats[:obs_noise_cov] = obs_noise_cov
-    end
+    output_structure_mats = deepcopy(output_structure_mats)
+    !isnothing(obs_noise_cov) && (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
+
+    input_structure_vecs = deepcopy(input_structure_vecs)
+    !isnothing(prior_samples_in) && (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+
+    output_structure_vecs = deepcopy(output_structure_vecs)
+    !isnothing(observation) && (output_structure_vecs[:observation] = observation)
+    !isnothing(prior_samples_out) && (output_structure_vecs[:prior_samples_out] = prior_samples_out)
 
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
@@ -235,26 +265,35 @@ function initialize_and_encode_with_schedule!(
         processed = _initialize_and_encode_data!(
             processor,
             processed_io_pairs,
-            (processed_input_structure_mats, processed_output_structure_mats),
+            (input_structure_mats, output_structure_mats),
+            (input_structure_vecs, output_structure_vecs),
             apply_to,
         )
 
         if apply_to == "in"
-            processed_input_structure_mats = Dict(
+            input_structure_mats = Dict(
                 name => encode_structure_matrix(processor, mat)
-                for (name, mat) in processed_input_structure_mats
+                for (name, mat) in input_structure_mats
+            )
+            input_structure_vecs = Dict(
+                name => encode_data(processor, vec)
+                for (name, vec) in input_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_output_structure_mats = Dict(
+            output_structure_mats = Dict(
                 name => encode_structure_matrix(processor, mat)
-                for (name, mat) in processed_output_structure_mats
+                for (name, mat) in output_structure_mats
+            )
+            output_structure_vecs = Dict(
+                name => encode_data(processor, vec)
+                for (name, vec) in output_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs, processed_input_structure_mats, processed_output_structure_mats
+    return processed_io_pairs, input_structure_mats, output_structure_mats, input_structure_vecs, output_structure_vecs
 end
 
 # Functions to encode/decode with initialized schedule
@@ -427,5 +466,6 @@ end
 include("Utilities/canonical_correlation.jl")
 include("Utilities/decorrelator.jl")
 include("Utilities/elementwise_scaler.jl")
+include("Utilities/likelihood_informed.jl")
 
 end # module

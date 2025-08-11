@@ -172,6 +172,8 @@ initialize_processor!(
     out_data::MM,
     input_structure_matrices,
     output_structure_matrices,
+    input_structure_vectors,
+    output_structure_vectors,
     apply_to::AS,
 ) where {MM <: AbstractMatrix, AS <: AbstractString} = initialize_processor!(cc, in_data, out_data, apply_to)
 
