@@ -96,7 +96,7 @@ get_encoded_io_pairs(emulator::Emulator) = emulator.encoded_io_pairs
 """
 $(TYPEDSIGNATURES)
 
-Gets the `encoder_schedul` field of the `Emulator`
+Gets the `encoder_schedule` field of the `Emulator`
 """
 get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
