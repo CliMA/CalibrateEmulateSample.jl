@@ -169,41 +169,41 @@ for trial in 1:num_trials
                 Hg = if α == 0
                     obs_invrt * mean(grad * prior_cov * grad' for grad in grads) * obs_invrt
                 else
-                    vecs = zeros(output_dim, 0)
-                    num_vecs = step2_manopt_num_dims
-                    @assert num_vecs ≤ output_dim
-                    for k in 1:num_vecs
-                        println("vector $k")
-                        counter = 0
+                    Vs0 = qr(randn(output_dim, output_dim)).Q[:, 1:step2_manopt_num_dims]
 
-                        vecs_compl = qr(vecs).Q[:, k:end]
-                        M = Grassmann(output_dim + 1 - k, 1)
+                    f = (_, Vs) -> begin
+                        res = mean(
+                            begin
+                                mat = obs_invrt * grad * prior_rt - Vs*(Vs'*obs_invrt * grad * prior_rt)
+                                a = obs_invrt * (y - g)
 
-                        f =
-                            (_, v) -> begin
-                                Vs = hcat(vecs, vecs_compl * vec(v))
-                                Γtildeinv = obs_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
-                                res =
-                                    mean( # TODO: This isn't yet the right form for α≠0!
-                                        norm((y - g)' * obs_invrt * (I - Vs * Vs') * grad)^2 for (g, grad) in zip(eachcol(gsamp), grads)
-                                    )
-
-                                counter += 1
-                                mod(counter, 100) == 1 && println("   iter $counter: $res")
-
-                                res
+                                (1-α)norm(mat) + α^2 * norm(a' * mat)
                             end
-
-                        v00 = ones(output_dim + 1 - k, 1)
-                        v00 ./= norm(v00)
-                        v0 = [v00 + randn(output_dim + 1 - k, 1) / 2 for _ in 1:output_dim]
-                        v0 = [v0i / norm(v0i) for v0i in v0]
-                        bestvec = NelderMead(M, f, NelderMeadSimplex(v0); stopping_criterion = StopWhenPopulationConcentrated(0.1*100000, 0.1*100000))
-
-                        vecs = hcat(vecs, vecs_compl * bestvec)
+                            for (g, grad) in zip(eachcol(gsamp), grads)
+                        )
+                        println(res)
+                        res
                     end
-                    vecs = hcat(vecs, randn(output_dim, output_dim - num_vecs))
-                    vecs * diagm(vcat(num_vecs:-1:1, zeros(output_dim - num_vecs))) * vecs'
+
+                    egrad = Vs -> begin
+                        -2mean(
+                            begin
+                                a = obs_invrt * (y - g)
+                                mat = obs_invrt * grad * prior_cov * grad' * obs_invrt * (I - Vs * Vs') * ((1-α)I + α^2 * a * a')
+
+                                mat + mat'
+                            end
+                            for (g, grad) in zip(eachcol(gsamp), grads)
+                        ) * Vs
+                    end
+                    rgrad = (_, Vs) -> begin
+                        egrd = egrad(Vs)
+                        res = egrd - Vs * (Vs' * egrd)
+                        res
+                    end
+                    Vs = quasi_Newton(Grassmann(output_dim, step2_manopt_num_dims), f, rgrad, Vs0; stopping_criterion = StopWhenGradientNormLess(3.0))
+                    Vs = hcat(Vs, randn(output_dim, output_dim - step2_manopt_num_dims))
+                    Vs * diagm(vcat(step2_manopt_num_dims:-1:1, zeros(output_dim - step2_manopt_num_dims))) * Vs'
                 end
 
                 diagnostic_matrices_u["Hu_$name_suffix"] = Hu, :black
