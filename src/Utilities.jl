@@ -1,7 +1,5 @@
 module Utilities
 
-
-
 using DocStringExtensions
 using LinearAlgebra
 using Statistics
