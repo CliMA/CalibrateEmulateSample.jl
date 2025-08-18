@@ -17,6 +17,8 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.ParameterDistributions
+using CalibrateEmulateSample.DataContainers
 
 ################################################################################
 #                                                                              #
@@ -90,8 +92,8 @@ function main()
 
     cases = [
         "rf-scalar",
-        "gp-gpjl",  # Veeeery slow predictions
         "rf-nonsep",
+        "gp-gpjl",  # Veeeery slow predictions
     ]
 
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)

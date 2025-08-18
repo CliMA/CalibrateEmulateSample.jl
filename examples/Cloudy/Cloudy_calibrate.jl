@@ -94,8 +94,8 @@ prior_N0 = constrained_gaussian(param_names[1], 400, 300, 0.4 * N0_true, Inf)
 prior_θ = constrained_gaussian(param_names[2], 1.0, 5.0, 1e-1, Inf)
 prior_k = constrained_gaussian(param_names[3], 0.2, 1.0, 1e-4, Inf)
 priors = combine_distributions([prior_N0, prior_θ, prior_k])
-# Plot the priors
-p = plot(priors, constrained = false)
+# Plots.Plot the priors
+p = Plots.plot(priors, constrained = false)
 savefig(p, output_directory * "cloudy_priors.png")
 
 ###
@@ -160,7 +160,7 @@ dummy = ones(n_params)
 dist_type = ParticleDistributions.GammaPrimitiveParticleDistribution(dummy...)
 model_settings = DynamicalModel.ModelSettings(kernel, dist_type, moments, tspan)
 # EKI iterations
-n_iter = N_iter
+n_iter = [N_iter]
 for n in 1:N_iter
     # Return transformed parameters in physical/constrained space
     ϕ_n = get_ϕ_final(priors, ekiobj)
@@ -169,12 +169,12 @@ for n in 1:N_iter
     G_ens = hcat(G_n...)  # reformat
     terminate = EnsembleKalmanProcesses.update_ensemble!(ekiobj, G_ens)
     if !isnothing(terminate)
-        n_iter = n - 1
+        n_iter[1] = n - 1
         break
     end
 
 end
-
+n_iter = n_iter[1]
 
 # EKI results: Has the ensemble collapsed toward the truth?
 θ_true = transform_constrained_to_unconstrained(priors, ϕ_true)
@@ -211,8 +211,14 @@ u_init = get_u_prior(ekiobj)
 anim_eki_unconst_cloudy = @animate for i in 1:(n_iter - 1)
     u_i = get_u(ekiobj, i)
 
-    p1 = plot(u_i[1, :], u_i[2, :], seriestype = :scatter, xlims = extrema(u_init[1, :]), ylims = extrema(u_init[2, :]))
-    plot!(
+    p1 = Plots.plot(
+        u_i[1, :],
+        u_i[2, :],
+        seriestype = :scatter,
+        xlims = extrema(u_init[1, :]),
+        ylims = extrema(u_init[2, :]),
+    )
+    Plots.plot!(
         p1,
         [θ_true[1]],
         xaxis = "u1",
@@ -224,10 +230,16 @@ anim_eki_unconst_cloudy = @animate for i in 1:(n_iter - 1)
         margin = 5mm,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p1, [θ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p2 = plot(u_i[2, :], u_i[3, :], seriestype = :scatter, xlims = extrema(u_init[2, :]), ylims = extrema(u_init[3, :]))
-    plot!(
+    p2 = Plots.plot(
+        u_i[2, :],
+        u_i[3, :],
+        seriestype = :scatter,
+        xlims = extrema(u_init[2, :]),
+        ylims = extrema(u_init[3, :]),
+    )
+    Plots.plot!(
         p2,
         [θ_true[2]],
         xaxis = "u2",
@@ -240,10 +252,16 @@ anim_eki_unconst_cloudy = @animate for i in 1:(n_iter - 1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p2, [θ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(u_i[3, :], u_i[1, :], seriestype = :scatter, xlims = extrema(u_init[3, :]), ylims = extrema(u_init[1, :]))
-    plot!(
+    p3 = Plots.plot(
+        u_i[3, :],
+        u_i[1, :],
+        seriestype = :scatter,
+        xlims = extrema(u_init[3, :]),
+        ylims = extrema(u_init[1, :]),
+    )
+    Plots.plot!(
         p3,
         [θ_true[3]],
         xaxis = "u3",
@@ -256,9 +274,9 @@ anim_eki_unconst_cloudy = @animate for i in 1:(n_iter - 1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p3, [θ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p = plot(p1, p2, p3, layout = (1, 3))
+    p = Plots.plot(p1, p2, p3, layout = (1, 3))
 end
 
 gif(anim_eki_unconst_cloudy, joinpath(output_directory, "cloudy_eki_unconstr.gif"), fps = 1) # hide
@@ -268,8 +286,14 @@ gif(anim_eki_unconst_cloudy, joinpath(output_directory, "cloudy_eki_unconstr.gif
 anim_eki_cloudy = @animate for i in 1:(n_iter - 1)
     ϕ_i = get_ϕ(priors, ekiobj, i)
 
-    p1 = plot(ϕ_i[1, :], ϕ_i[2, :], seriestype = :scatter, xlims = extrema(ϕ_init[1, :]), ylims = extrema(ϕ_init[2, :]))
-    plot!(
+    p1 = Plots.plot(
+        ϕ_i[1, :],
+        ϕ_i[2, :],
+        seriestype = :scatter,
+        xlims = extrema(ϕ_init[1, :]),
+        ylims = extrema(ϕ_init[2, :]),
+    )
+    Plots.plot!(
         p1,
         [ϕ_true[1]],
         xaxis = "ϕ1",
@@ -282,11 +306,17 @@ anim_eki_cloudy = @animate for i in 1:(n_iter - 1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p1, [ϕ_true[2]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p2 = plot(ϕ_i[2, :], ϕ_i[3, :], seriestype = :scatter, xlims = extrema(ϕ_init[2, :]), ylims = extrema(ϕ_init[3, :]))
+    p2 = Plots.plot(
+        ϕ_i[2, :],
+        ϕ_i[3, :],
+        seriestype = :scatter,
+        xlims = extrema(ϕ_init[2, :]),
+        ylims = extrema(ϕ_init[3, :]),
+    )
 
-    plot!(
+    Plots.plot!(
         p2,
         [ϕ_true[2]],
         xaxis = "ϕ2",
@@ -299,10 +329,16 @@ anim_eki_cloudy = @animate for i in 1:(n_iter - 1)
         title = "EKI iteration = " * string(i),
     )
 
-    plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p2, [ϕ_true[3]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p3 = plot(ϕ_i[3, :], ϕ_i[1, :], seriestype = :scatter, xlims = extrema(ϕ_init[3, :]), ylims = extrema(ϕ_init[1, :]))
-    plot!(
+    p3 = Plots.plot(
+        ϕ_i[3, :],
+        ϕ_i[1, :],
+        seriestype = :scatter,
+        xlims = extrema(ϕ_init[3, :]),
+        ylims = extrema(ϕ_init[1, :]),
+    )
+    Plots.plot!(
         p3,
         [ϕ_true[3]],
         xaxis = "ϕ3",
@@ -314,9 +350,9 @@ anim_eki_cloudy = @animate for i in 1:(n_iter - 1)
         label = false,
         title = "EKI iteration = " * string(i),
     )
-    plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
+    Plots.plot!(p3, [ϕ_true[1]], seriestype = "hline", linestyle = :dash, linecolor = :red, label = "optimum")
 
-    p = plot(p1, p2, p3, layout = (1, 3))
+    p = Plots.plot(p1, p2, p3, layout = (1, 3))
 
 end
 

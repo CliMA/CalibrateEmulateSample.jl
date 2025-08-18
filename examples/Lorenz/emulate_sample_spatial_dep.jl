@@ -25,16 +25,18 @@ function main()
     cases = [
         "GP",
         "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
+        "RF-nonsep", # diagonalize, train scalar RF, don't asume diag inputs
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = [1]# 1:1 # e.g. 1:2 or [2]
+    mask = [2] # e.g. 1:2 or [3]
     for (case) in cases[mask]
 
 
         println("case: ", case)
         min_iter = 1
-        max_iter = 7 # number of EKP iterations to use data from is at most this
+        skip_iter = 1
+        max_iter = 6 # number of EKP iterations to use data from is at most this 
 
         ####
 
@@ -71,7 +73,6 @@ function main()
 
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
-        nugget = 1e-3
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
@@ -82,15 +83,17 @@ function main()
                 noise_learn = false,
             )
         elseif case == "RF-scalar"
+            nugget = 1e-6
             overrides = Dict(
-                #       "verbose" => true,
+                "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 1000.0),
                 "cov_sample_multiplier" => 1.0,
-                "n_iteration" => 8,
-                "n_features_opt" => 40,
+                "n_iteration" => 10,
+                "n_features_opt" => 160,
             )
-            n_features = 80
-            kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor())
+            n_features = 200
+            #            kernel_structure = SeparableKernel(LowRankFactor(1,nugget), OneDimFactor())
+            kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
                 n_params,
@@ -98,6 +101,27 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = overrides,
             )
+        elseif case ∈ ["RF-nonsep"]
+            nugget = 1e-6
+            overrides = Dict(
+                "verbose" => true,
+                "scheduler" => DataMisfitController(terminate_at = 1000.0),
+                "cov_sample_multiplier" => 1.0,
+                "n_iteration" => 10,
+                "n_features_opt" => 160,
+            )
+            kernel_structure = NonseparableKernel(LowRankFactor(1, nugget))
+            n_features = 200
+
+            mlt = VectorRandomFeatureInterface(
+                n_features,
+                n_params,
+                output_dim,
+                rng = rng,
+                kernel_structure = kernel_structure,
+                optimizer_options = overrides,
+            )
+
         else
             throw(ArgumentError("case $(case) not recognised, please choose from the list $(cases)"))
         end
@@ -106,8 +130,10 @@ function main()
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekpobj)) - 1) # number of paired iterations taken from EKP
         min_iter = min(max_iter, max(1, min_iter))
-        input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:(N_iter - 1))
+        input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:(N_iter - 1))
         input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:(length(get_u(ekpobj)) - 1)) #  "next" iterations
+        @info "Train iterations: $(min_iter:skip_iter:(N_iter - 1))"
+        @info "Test iterations: $(N_iter:(length(get_u(ekpobj)) - 1))"
         # Save data
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
 
@@ -144,7 +170,7 @@ function main()
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            encoder_schedule = encoder_schedule,
+            encoder_schedule = deepcopy(encoder_schedule),
             encoder_kwargs = (; prior_cov = cov(priors), obs_noise_cov = Γy),
         )
         optimize_hyperparameters!(emulator)

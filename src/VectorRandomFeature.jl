@@ -158,7 +158,8 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
       - "accelerator": use EKP accelerators (default is no acceleration)
       - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
-      - "cov_correction" => "shrinkage", type of conditioning to improve estimated covariance (Ledoit Wolfe 03), also "nice" for (Vishny, Morzfeld et al. 2024)
+     - "cov_correction" => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
+      - "overfit" => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
       - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 
 """
@@ -202,8 +203,9 @@ function VectorRandomFeatureInterface(
         "verbose" => false, # verbose optimizer statements
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
-        "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
+        "cov_correction" => "nice", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if set to 0, removes data split. i.e takes train & test to be the same data set
+        "overfit" => 1.0, # if >1 this forcibly overfits to the data 
     )
 
     if !isnothing(optimizer_options)
@@ -218,7 +220,9 @@ function VectorRandomFeatureInterface(
             opt_tmp[key] = optimizer_opts[key]
         end
     end
-    @info("hyperparameter optimization with EKI configured with $opt_tmp")
+    if optimizer_opts["verbose"]
+        @info("hyperparameter optimization with EKI configured with $opt_tmp")
+    end
 
     return VectorRandomFeatureInterface{S, RNG, KSType}(
         rfms,
@@ -243,21 +247,26 @@ function hyperparameter_distribution_from_flat(
     input_dim::Int,
     output_dim::Int,
     kernel_structure::SK,
+    prior_in_scale,
 ) where {VV <: AbstractVector, SK <: SeparableKernel}
-    M = zeros(input_dim, output_dim) # n x p mean
 
     U, V = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
-
-    if !isposdef(U)
-        println("U not posdef - correcting")
-        U = posdef_correct(U)
+    Uscaled = Diagonal(vec(prior_in_scale)) * U
+    Vscaled = Diagonal(vec(prior_in_scale)) * V
+    Uscaled = 0.5 * (Uscaled + Uscaled')
+    Vscaled = 0.5 * (Vscaled + Vscaled')
+    if !isposdef(Uscaled)
+        @info abs(minimum(eigvals(Uscaled)))
+        println("U not posdef - correcting.  Consider increasing argument eps in the chosen kernel structure")
+        Uscaled = posdef_correct(Uscaled)
     end
-    if !isposdef(V)
-        println("V not posdef - correcting")
-        V = posdef_correct(V)
+    if !isposdef(Vscaled)
+        @info abs(minimum(eigvals(Vscaled)))
+        println("V not posdef - correcting. Consider increasing argument eps in the chosen kernel structure")
+        Vscaled = posdef_correct(Vscaled)
     end
 
-    dist = MatrixNormal(M, U, V)
+    dist = MatrixNormal(zeros(input_dim, output_dim), Uscaled, Vscaled)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
@@ -273,14 +282,18 @@ function hyperparameter_distribution_from_flat(
     input_dim::Int,
     output_dim::Int,
     kernel_structure::NK,
+    prior_in_scale,
 ) where {VV <: AbstractVector, NK <: NonseparableKernel}
 
     C = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
-    if !isposdef(C)
-        println("C not posdef - correcting")
-        C = posdef_correct(C)
+    scale_vec = reduce(vcat, repeat(vec(prior_in_scale), output_dim)) # make repeating vector ("out_dim" times)    
+    Cscaled = Diagonal(vec(scale_vec)) * C * Diagonal(vec(scale_vec))
+    Cscaled = 0.5 * (Cscaled + Cscaled')
+    if !isposdef(Cscaled)
+        println("C not posdef - correcting, consider increasing argument eps in the chosen kernel structure")
+        Cscaled = posdef_correct(Cscaled)
     end
-    dist = MvNormal(zeros(input_dim * output_dim), C)
+    dist = MvNormal(zeros(input_dim * output_dim), Cscaled)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
@@ -306,7 +319,9 @@ function RFM_from_hyperparameters(
     batch_sizes::Union{Dict{S, Int}, Nothing},
     input_dim::Int,
     output_dim::Int,
-    multithread_type::MT;
+    multithread_type::MT,
+    prior_in_scale,
+    prior_out_scale,
 ) where {
     S <: AbstractString,
     RNG <: AbstractRNG,
@@ -315,15 +330,15 @@ function RFM_from_hyperparameters(
     MT <: MultithreadType,
 }
 
-    xi_hp = l[1:(end - 1)]
-    sigma_hp = l[end]
+    xi_hp = isa(l, AbstractVecOrMat) ? l[:] : [l]
+    prior_out_scale_scalar = maximum(prior_out_scale) # most conservative scaling
 
     kernel_structure = get_kernel_structure(vrfi)
-    pd = hyperparameter_distribution_from_flat(xi_hp, input_dim, output_dim, kernel_structure)
+    pd = hyperparameter_distribution_from_flat(xi_hp, input_dim, output_dim, kernel_structure, prior_in_scale)
 
     feature_sampler = RF.Samplers.FeatureSampler(pd, output_dim, rng = rng)
 
-    feature_parameters = Dict("sigma" => sigma_hp)
+    feature_parameters = Dict("sigma" => prior_out_scale_scalar * sqrt(2))
     vff = RF.Features.VectorFourierFeature(
         n_features,
         output_dim,
@@ -380,6 +395,7 @@ function build_models!(
     batch_sizes = get_batch_sizes(vrfi)
     decomp_type = get_feature_decomposition(vrfi)
     optimizer_options = get_optimizer_options(vrfi)
+    opt_verbose_flag = optimizer_options["verbose"]
     optimizer = get_optimizer(vrfi)
     multithread = optimizer_options["multithread"]
     if multithread == "ensemble"
@@ -393,7 +409,7 @@ function build_models!(
             ),
         )
     end
-    prior = optimizer_options["prior"]
+    prior = build_default_prior(input_dim, output_dim, kernel_structure)
     rng = get_rng(vrfi)
 
     # where prior space has changed we need to rebuild the priors [TODO just build them here in the first place?]
@@ -404,6 +420,10 @@ function build_models!(
         @info "Original input-output space of dimension ($(get_input_dim(vrfi)), $(get_output_dim(vrfi))) has been truncated to ($(input_dim), $(output_dim)). \n Rebuilding prior... number of hyperparameters reduced from $(ndims(prior)) to $(n_hp)."
         prior = build_default_prior(input_dim, output_dim, kernel_structure)
     end
+
+    # scale up the prior so that default priors are always "reasonable"
+    prior_in_scale = 1.0 ./ std(input_values, dims = 2)
+    prior_out_scale = std(output_values, dims = 2)
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
@@ -460,6 +480,8 @@ function build_models!(
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
     cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
     cov_correction = optimizer_options["cov_correction"]
+    overfit = max(optimizer_options["overfit"], 1e-4)
+
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
             n_cov_samples_min = n_test + 2 # diagonal case
@@ -486,14 +508,18 @@ function build_models!(
             n_cov_samples,
             decomp_type,
             multithread_type,
+            prior_in_scale,
+            prior_out_scale,
             cov_correction = cov_correction,
+            verbose = opt_verbose_flag,
         )
 
         if tikhonov_opt_val == 0
             # Build the covariance
-            Γ = internal_Γ
+            Γ = deepcopy(internal_Γ)
             Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
                 isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
             Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
             data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
 
@@ -501,8 +527,10 @@ function build_models!(
             # augment the state to add tikhonov
             outsize = size(internal_Γ, 1)
             Γ = zeros(outsize + n_hp, outsize + n_hp)
-            Γ[1:outsize, 1:outsize] = internal_Γ
+            Γ[1:outsize, 1:outsize] = deepcopy(internal_Γ)
             Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
+            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
+
             Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
 
             Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
@@ -520,6 +548,7 @@ function build_models!(
                 ),
             )
         end
+
         if !isposdef(Γ)
             Γ = posdef_correct(Γ)
         end
@@ -538,11 +567,14 @@ function build_models!(
 
 
     initial_params = construct_initial_ensemble(rng, prior, n_ensemble)
+    # bug with scalar mean o/w
+    prior_mean = isa(mean(prior), AbstractVector) ? mean(prior) : [mean(prior)]
+    prior_cov = cov(prior)
 
     ekiobj = EKP.EnsembleKalmanProcess(
         initial_params,
         observation,
-        Inversion(),
+        TransformInversion(prior_mean, prior_cov),
         scheduler = scheduler,
         rng = rng,
         verbose = opt_verbose_flag,
@@ -574,6 +606,9 @@ function build_models!(
                 input_output_pairs,
                 decomp_type,
                 multithread_type,
+                prior_in_scale,
+                prior_out_scale,
+                verbose = opt_verbose_flag,
             )
             if tikhonov_opt_val > 0
                 # augment with the computational parameters (u not ϕ)
@@ -641,9 +676,10 @@ function build_models!(
         input_dim,
         output_dim,
         multithread_type,
+        prior_in_scale,
+        prior_out_scale,
     )
     fitted_features_tmp = fit(rfm_tmp, input_output_pairs, decomposition_type = decomp_type)
-
 
     push!(rfms, rfm_tmp)
     push!(fitted_features, fitted_features_tmp)

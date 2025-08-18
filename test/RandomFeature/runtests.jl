@@ -45,7 +45,7 @@ rng = Random.MersenneTwister(seed)
         @test calculate_n_hyperparameters(d, odf) == 0
         @test calculate_n_hyperparameters(d, df) == d
         @test calculate_n_hyperparameters(d, cf) == Int(d * (d + 1) / 2)
-        @test calculate_n_hyperparameters(d, lrf) == Int(r + d * r)
+        @test calculate_n_hyperparameters(d, lrf) == Int(d + d * r)
         @test calculate_n_hyperparameters(d, hlrf) == Int(r * (r + 1) / 2 + d * r)
 
         # hyperparameters_from_flat - only check shape
@@ -79,12 +79,12 @@ rng = Random.MersenneTwister(seed)
 
         # calculate_n_hyperparameters
         @test calculate_n_hyperparameters(d, p, k_sep) ==
-              calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out) + 1
-        @test calculate_n_hyperparameters(d, p, k_nonsep) == calculate_n_hyperparameters(d * p, c_in) + 1
+              calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out)
+        @test calculate_n_hyperparameters(d, p, k_nonsep) == calculate_n_hyperparameters(d * p, c_in)
         k_sep1d = SeparableKernel(odf, odf)
         k_nonsep1d = NonseparableKernel(odf)
-        @test calculate_n_hyperparameters(1, 1, k_sep1d) == 2
-        @test calculate_n_hyperparameters(1, 1, k_nonsep1d) == 2
+        @test calculate_n_hyperparameters(1, 1, k_sep1d) == 1
+        @test calculate_n_hyperparameters(1, 1, k_nonsep1d) == 1
 
         # hyper_parameters_from_flat: not applied with scaling hyperparameter
         x = ones(calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out))
@@ -102,13 +102,12 @@ rng = Random.MersenneTwister(seed)
         # build_default_prior
         @test ndims(build_default_prior(d, p, k_sep)) ==
               ndims(build_default_prior("input", calculate_n_hyperparameters(d, c_in), c_in)) +
-              ndims(build_default_prior("output", calculate_n_hyperparameters(p, c_out), c_out)) +
-              1
+              ndims(build_default_prior("output", calculate_n_hyperparameters(p, c_out), c_out))
         @test ndims(build_default_prior(d, p, k_nonsep)) ==
-              ndims(build_default_prior("full", calculate_n_hyperparameters(d * p, c_in), c_in)) + 1
+              ndims(build_default_prior("full", calculate_n_hyperparameters(d * p, c_in), c_in))
 
-        @test ndims(build_default_prior(1, 1, k_sep1d)) == 2
-        @test ndims(build_default_prior(1, 1, k_nonsep1d)) == 2
+        @test ndims(build_default_prior(1, 1, k_sep1d)) == 1
+        @test ndims(build_default_prior(1, 1, k_nonsep1d)) == 1
 
 
         # test shrinkage utility
@@ -152,7 +151,7 @@ rng = Random.MersenneTwister(seed)
             "multithread" => "ensemble",
             "accelerator" => NesterovAccelerator(),
             "verbose" => false,
-            "cov_correction" => "shrinkage",
+            "cov_correction" => "nice",
             "n_cross_val_sets" => 2,
         )
 
@@ -217,8 +216,9 @@ rng = Random.MersenneTwister(seed)
             "accelerator" => NesterovAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
-            "cov_correction" => "shrinkage",
+            "cov_correction" => "nice",
             "n_cross_val_sets" => 2,
+            "overfit" => 1.0,
         )
 
         #build interfaces

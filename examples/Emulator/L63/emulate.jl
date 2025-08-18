@@ -26,7 +26,7 @@ function main()
     # rng
     rng = MersenneTwister(1232435)
 
-    n_repeats = 1 # repeat exp with same data.
+    n_repeats = 5 # repeat exp with same data.
     println("run experiment $n_repeats times")
 
     #for later plots
@@ -96,20 +96,11 @@ function main()
 
 
     # Emulate
-    cases = [
-        "GP",
-        "RF-prior",
-        "RF-scalar",
-        "RF-scalar-diagin",
-        "RF-svd-nonsep",
-        "RF-nosvd-nonsep",
-        "RF-nosvd-sep",
-        "RF-svd-sep",
-    ]
+    cases = ["GP", "RF-prior", "RF-lr-scalar", "rf-diag-scalar", "RF-lr-lr", "RF-nonsep"]
 
-    case = cases[3] # 7
+    case = cases[4] # 7
 
-    nugget = Float64(1e-8)
+    nugget = Float64(1e-4)
     u_test = []
     u_hist = []
     train_err = []
@@ -148,10 +139,10 @@ function main()
                 optimizer_options = rf_optimizer_overrides,
             )
 
-        elseif case ∈ ["RF-scalar", "RF-scalar-diagin"]
+        elseif case ∈ ["RF-lr-scalar", "rf-diag-scalar"]
             n_features = 10 * Int(floor(sqrt(3 * n_tp)))
             kernel_structure =
-                case == "RF-scalar-diagin" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
+                case == "rf-diag-scalar" ? SeparableKernel(DiagonalFactor(nugget), OneDimFactor()) :
                 SeparableKernel(LowRankFactor(3, nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
@@ -160,7 +151,7 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-svd-nonsep"]
+        elseif case ∈ ["RF-nonsep"]
             kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
             n_features = 500
 
@@ -172,18 +163,7 @@ function main()
                 kernel_structure = kernel_structure,
                 optimizer_options = rf_optimizer_overrides,
             )
-        elseif case ∈ ["RF-nosvd-nonsep"]
-            kernel_structure = NonseparableKernel(LowRankFactor(4, nugget))
-            n_features = 500
-            mlt = VectorRandomFeatureInterface(
-                n_features,
-                3,
-                3,
-                rng = rng,
-                kernel_structure = kernel_structure,
-                optimizer_options = rf_optimizer_overrides,
-            )
-        elseif case ∈ ["RF-nosvd-sep", "RF-svd-sep"]
+        elseif case ∈ ["RF-lr-lr"]
             kernel_structure = SeparableKernel(LowRankFactor(3, nugget), LowRankFactor(1, nugget))
             n_features = 500
             mlt = VectorRandomFeatureInterface(
@@ -210,7 +190,7 @@ function main()
         end
 
         # Emulate
-        if case ∈ ["RF-nosvd-nonsep", "RF-nosvd-sep"]
+        if case ∈ ["RF-nonsep"]
             encoder_schedule = [] # no encoding
         else
             encoder_schedule = (decorrelate_structure_mat(), "out")
@@ -224,7 +204,7 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # diagnostics
-        if case ∈ ["RF-svd-nonsep", "RF-nosvd-nonsep", "RF-svd-sep"]
+        if case ∈ ["RF-nonsep" "RF-lr-lr"]
             push!(opt_diagnostics, get_optimizer(mlt)[1]) #length-1 vec of vec  -> vec
         end
 
