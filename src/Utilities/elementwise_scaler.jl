@@ -156,8 +156,12 @@ $(TYPEDSIGNATURES)
 
 Computes and populates the `shift` and `scale` fields for the `ElementwiseScaler`
 """
-initialize_processor!(es::ElementwiseScaler, data::MM, structure_matrices, structure_vectors) where {MM <: AbstractMatrix} =
-    initialize_processor!(es, data)
+initialize_processor!(
+    es::ElementwiseScaler,
+    data::MM,
+    structure_matrices,
+    structure_vectors,
+) where {MM <: AbstractMatrix} = initialize_processor!(es, data)
 
 
 """
@@ -165,10 +169,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` encoder to a provided structure matrix
 """
-function encode_structure_matrix(
-    es::ElementwiseScaler,
-    structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
     return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
@@ -177,9 +178,6 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` decoder to a provided structure matrix
 """
-function decode_structure_matrix(
-    es::ElementwiseScaler,
-    enc_structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end

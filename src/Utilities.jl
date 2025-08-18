@@ -239,10 +239,7 @@ function initialize_and_encode_with_schedule!(
     observation::Union{Nothing, StructureVector} = nothing,
     prior_samples_in::Union{Nothing, StructureVector} = nothing,
     prior_samples_out::Union{Nothing, StructureVector} = nothing,
-) where {
-    VV <: AbstractVector,
-    PDC <: PairedDataContainer,
-}
+) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
 
     input_structure_mats = deepcopy(input_structure_mats)
@@ -271,24 +268,14 @@ function initialize_and_encode_with_schedule!(
         )
 
         if apply_to == "in"
-            input_structure_mats = Dict(
-                name => encode_structure_matrix(processor, mat)
-                for (name, mat) in input_structure_mats
-            )
-            input_structure_vecs = Dict(
-                name => encode_data(processor, vec)
-                for (name, vec) in input_structure_vecs
-            )
+            input_structure_mats =
+                Dict(name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats)
+            input_structure_vecs = Dict(name => encode_data(processor, vec) for (name, vec) in input_structure_vecs)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            output_structure_mats = Dict(
-                name => encode_structure_matrix(processor, mat)
-                for (name, mat) in output_structure_mats
-            )
-            output_structure_vecs = Dict(
-                name => encode_data(processor, vec)
-                for (name, vec) in output_structure_vecs
-            )
+            output_structure_mats =
+                Dict(name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats)
+            output_structure_vecs = Dict(name => encode_data(processor, vec) for (name, vec) in output_structure_vecs)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end

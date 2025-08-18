@@ -211,10 +211,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` encoder to a provided structure matrix
 """
-function encode_structure_matrix(
-    dd::Decorrelator,
-    structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function encode_structure_matrix(dd::Decorrelator, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
@@ -224,10 +221,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` decoder to a provided structure matrix
 """
-function decode_structure_matrix(
-    dd::Decorrelator,
-    enc_structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function decode_structure_matrix(dd::Decorrelator, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end
