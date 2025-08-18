@@ -7,8 +7,8 @@ function main()
     output_directory = "output"
     cases = ["Prior", "GP", "RF-scalar"]
     case = cases[3]
-    n_dimensions = 3
-    filename = joinpath(output_directory, "Gfunction_$(case)_$(n_dimensions).jld2")
+    n_dimensions = 20
+    filename = joinpath(output_directory, "GFunction_$(case)_$(n_dimensions).jld2")
     legend = true
 
     (
@@ -35,7 +35,7 @@ function main()
         "observed_y",
         "estimated_sobol",
     )
-
+    
     n_repeats = length(mlt_sobol)
     fontsize = 24
     if n_repeats == 1

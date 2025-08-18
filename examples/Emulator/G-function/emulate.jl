@@ -40,8 +40,8 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 5# repeat exp with same data.
-    n_dimensions = 10
+    n_repeats = 10# repeat exp with same data.
+    n_dimensions = 20
     # To create the sampling
     n_data_gen = 800
 
@@ -81,7 +81,8 @@ function main()
         input[:, i] = samples[ind[i], :]
         output[i] = y[ind[i]] + noise[i]
     end
-    encoder_schedule = (decorrelate_structure_mat(), "out")
+#    encoder_schedule = (decorrelate_structure_mat(), "out")
+    encoder_schedule = (minmax_scale(), "in_and_out")
     iopairs = PairedDataContainer(input, output)
 
     # analytic sobol indices taken from
@@ -99,12 +100,11 @@ function main()
     overrides = Dict(
         "verbose" => true,
         "scheduler" => DataMisfitController(terminate_at = 1e2),
-        "n_features_opt" => 120,
+        "n_features_opt" => 100,#120,
         "n_iteration" => 10,
-        "cov_sample_multiplier" => 3.0,
-        #"localization" => SEC(0.1),#,Doesnt help much tbh
+        "cov_sample_multiplier" => 0.1,
         "n_ensemble" => 100, #40*n_dimensions,
-        "n_cross_val_sets" => 4,
+        "n_cross_val_sets" => 2,
     )
     if case == "Prior"
         # don't do anything
@@ -126,7 +126,8 @@ function main()
 
         elseif case ∈ ["RF-scalar", "Prior"]
             rank = n_dimensions #<= 10 ? n_dimensions : 10
-            kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
+           # kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
+            kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor())
             n_features = n_dimensions <= 10 ? n_dimensions * 100 : 1000
             if (n_features / n_train_pts > 0.9) && (n_features / n_train_pts < 1.1)
                 @warn "The number of features similar to the number of training points, poor performance expected, change one or other of these"
