@@ -86,7 +86,11 @@ function get_structure_vec(structure_vecs, name = nothing)
         elseif isempty(structure_vecs)
             throw(ArgumentError("Please provide a structure vector."))
         else
-            throw(ArgumentError("Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use."))
+            throw(
+                ArgumentError(
+                    "Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use.",
+                ),
+            )
         end
     else
         if haskey(structure_vecs, name)
@@ -104,7 +108,11 @@ function get_structure_mat(structure_mats, name = nothing)
         elseif isempty(structure_mats)
             throw(ArgumentError("Please provide a structure matrix."))
         else
-            throw(ArgumentError("Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use."))
+            throw(
+                ArgumentError(
+                    "Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use.",
+                ),
+            )
         end
     else
         if haskey(structure_mats, name)
@@ -268,14 +276,20 @@ function initialize_and_encode_with_schedule!(
         )
 
         if apply_to == "in"
-            input_structure_mats =
-                Dict{Symbol, StructureMatrix}(name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats)
-            input_structure_vecs = Dict{Symbol, StructureVector}(name => encode_data(processor, vec) for (name, vec) in input_structure_vecs)
+            input_structure_mats = Dict{Symbol, StructureMatrix}(
+                name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats
+            )
+            input_structure_vecs = Dict{Symbol, StructureVector}(
+                name => encode_data(processor, vec) for (name, vec) in input_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            output_structure_mats =
-                Dict{Symbol, StructureMatrix}(name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats)
-            output_structure_vecs = Dict{Symbol, StructureVector}(name => encode_data(processor, vec) for (name, vec) in output_structure_vecs)
+            output_structure_mats = Dict{Symbol, StructureMatrix}(
+                name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats
+            )
+            output_structure_vecs = Dict{Symbol, StructureVector}(
+                name => encode_data(processor, vec) for (name, vec) in output_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end

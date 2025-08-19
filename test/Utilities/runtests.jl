@@ -145,8 +145,12 @@ end
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
             initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
 
-        (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) =
-            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_input_structure_mats[:prior_cov], encoded_output_structure_mats[:obs_noise_cov])
+        (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
+            encoder_schedule,
+            encoded_io_pairs,
+            encoded_input_structure_mats[:prior_cov],
+            encoded_output_structure_mats[:obs_noise_cov],
+        )
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
             (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),

@@ -100,8 +100,7 @@ function test_gp_and_agp_1(y, σ2_y, iopairs::PairedDataContainer)
         ) for model_params in gp_opt_params
     ]
 
-    em_agp =
-        Emulator(agp, iopairs, (obs_noise_cov = σ2_y,); encoder_schedule = [], kernel_params = kernel_params)
+    em_agp = Emulator(agp, iopairs, (obs_noise_cov = σ2_y,); encoder_schedule = [], kernel_params = kernel_params)
 
     return em, em_agp
 end
