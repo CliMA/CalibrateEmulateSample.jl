@@ -84,33 +84,33 @@ function get_structure_vec(structure_vecs, name = nothing)
         if size(structure_vecs) == 1
             return only(values(structure_vecs))
         elseif isempty(structure_vecs)
-            @error "Please provide a structure vector."
+            throw(ArgumentError("Please provide a structure vector."))
         else
-            @error "Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use."
+            throw(ArgumentError("Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use."))
         end
     else
         if haskey(structure_vecs, name)
             return structure_vecs[name]
         else
-            @error "Structure vector $name not found. Options: $(collect(keys(structure_vecs)))."
+            throw(ArgumentError("Structure vector $name not found. Options: $(collect(keys(structure_vecs)))."))
         end
     end
 end
 
 function get_structure_mat(structure_mats, name = nothing)
     if isnothing(name)
-        if size(structure_mats) == 1
+        if length(structure_mats) == 1
             return only(values(structure_mats))
         elseif isempty(structure_mats)
-            @error "Please provide a structure matrix."
+            throw(ArgumentError("Please provide a structure matrix."))
         else
-            @error "Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use."
+            throw(ArgumentError("Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use."))
         end
     else
         if haskey(structure_mats, name)
             return structure_mats[name]
         else
-            @error "Structure matrix $name not found. Options: $(collect(keys(structure_mats)))."
+            throw(ArgumentError("Structure matrix $name not found. Options: $(collect(keys(structure_mats)))."))
         end
     end
 end
@@ -234,7 +234,7 @@ function initialize_and_encode_with_schedule!(
     output_structure_mats = Dict{Symbol, StructureMatrix}(),
     input_structure_vecs = Dict{Symbol, StructureVector}(),
     output_structure_vecs = Dict{Symbol, StructureVector}(),
-    input_cov::Union{Nothing, StructureMatrix} = nothing,
+    prior_cov::Union{Nothing, StructureMatrix} = nothing,
     obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
     observation::Union{Nothing, StructureVector} = nothing,
     prior_samples_in::Union{Nothing, StructureVector} = nothing,
@@ -243,7 +243,7 @@ function initialize_and_encode_with_schedule!(
     processed_io_pairs = deepcopy(io_pairs)
 
     input_structure_mats = deepcopy(input_structure_mats)
-    !isnothing(input_cov) && (input_structure_mats[:input_cov] = input_cov)
+    !isnothing(prior_cov) && (input_structure_mats[:prior_cov] = prior_cov)
 
     output_structure_mats = deepcopy(output_structure_mats)
     !isnothing(obs_noise_cov) && (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
@@ -269,13 +269,13 @@ function initialize_and_encode_with_schedule!(
 
         if apply_to == "in"
             input_structure_mats =
-                Dict(name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats)
-            input_structure_vecs = Dict(name => encode_data(processor, vec) for (name, vec) in input_structure_vecs)
+                Dict{Symbol, StructureMatrix}(name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats)
+            input_structure_vecs = Dict{Symbol, StructureVector}(name => encode_data(processor, vec) for (name, vec) in input_structure_vecs)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
             output_structure_mats =
-                Dict(name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats)
-            output_structure_vecs = Dict(name => encode_data(processor, vec) for (name, vec) in output_structure_vecs)
+                Dict{Symbol, StructureMatrix}(name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats)
+            output_structure_vecs = Dict{Symbol, StructureVector}(name => encode_data(processor, vec) for (name, vec) in output_structure_vecs)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
@@ -453,6 +453,5 @@ end
 include("Utilities/canonical_correlation.jl")
 include("Utilities/decorrelator.jl")
 include("Utilities/elementwise_scaler.jl")
-include("Utilities/likelihood_informed.jl")
 
 end # module

@@ -2,6 +2,8 @@
 using EnsembleKalmanProcesses.DataContainers
 using DocStringExtensions
 
+using ..Utilities: get_structure_mat
+
 # [1] For GaussianProcesses
 import GaussianProcesses: predict, get_params, get_param_names
 using GaussianProcesses
@@ -149,8 +151,8 @@ Method to build Gaussian process models based on the package.
 function build_models!(
     gp::GaussianProcess{GPJL},
     input_output_pairs::PairedDataContainer{FT},
-    input_structure_matrix,
-    output_structure_matrix;
+    input_structure_mats,
+    output_structure_mats;
     kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
@@ -191,12 +193,15 @@ function build_models!(
         println("Learning additive white noise")
     end
     # use the output_structure_matrix to scale regularization scale
-    regularization = if isnothing(output_structure_matrix)
+    regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
-    elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ * ones(N_models)
     else
-        diag(output_structure_matrix)
+        output_structure_mat = get_structure_mat(output_structure_mats)
+        if isa(output_structure_mat, UniformScaling)
+            output_structure_mat.λ * ones(N_models)
+        else
+            diag(output_structure_mat)
+        end
     end
 
     logstd_regularization_noise = log.(sqrt.(regularization .* gp.alg_reg_noise))
@@ -283,9 +288,8 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: 
 function build_models!(
     gp::GaussianProcess{SKLJL},
     input_output_pairs::PairedDataContainer{FT},
-    input_structure_matrix,
-    output_structure_matrix;
-    kwargs...,
+    input_structure_mats,
+    output_structure_mats,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
     input_values = permutedims(get_inputs(input_output_pairs), (2, 1))
@@ -322,12 +326,15 @@ function build_models!(
         println("Learning additive white noise")
     end
     # use the output_structure_matrix to scale regularization scale
-    regularization = if isnothing(output_structure_matrix)
+    regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
-    elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ * ones(N_models)
     else
-        diag(output_structure_matrix)
+        output_structure_mat = get_structure_mat(output_structure_mats)
+        if isa(output_structure_mat, UniformScaling)
+            output_structure_mat.λ * ones(N_models)
+        else
+            diag(output_structure_mat)
+        end
     end
     regularization_noise_vec = gp.alg_reg_noise .* regularization
     for i in 1:N_models
@@ -375,10 +382,9 @@ end
 function build_models!(
     gp::GaussianProcess{AGPJL},
     input_output_pairs::PairedDataContainer{FT},
-    input_structure_matrix,
-    output_structure_matrix;
+    input_structure_mats,
+    output_structure_mats;
     kernel_params = nothing,
-    kwargs...,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs
     input_values = permutedims(get_inputs(input_output_pairs), (2, 1))
@@ -427,12 +433,15 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
 
     N_models = size(output_values, 1) #size(transformed_data)[1]
     # use the output_structure_matrix to scale regularization scale
-    regularization = if isnothing(output_structure_matrix)
+    regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
-    elseif isa(output_structure_matrix, UniformScaling)
-        output_structure_matrix.λ * ones(N_models)
     else
-        diag(output_structure_matrix)
+        output_structure_mat = get_structure_mat(output_structure_mats)
+        if isa(output_structure_mat, UniformScaling)
+            output_structure_mat.λ * ones(N_models)
+        else
+            diag(output_structure_mat)
+        end
     end
     regularization_noise = gp.alg_reg_noise .* regularization
 

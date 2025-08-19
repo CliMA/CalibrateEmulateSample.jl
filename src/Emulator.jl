@@ -17,7 +17,6 @@ using Random
 
 export Emulator
 
-export calculate_normalization
 export build_models!
 export optimize_hyperparameters!
 export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
@@ -41,7 +40,7 @@ include("RandomFeature.jl")
 function throw_define_mlt()
     throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
 end
-function build_models!(mlt, iopairs, mlt_kwargs...)
+function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
     throw_define_mlt()
 end
 function optimize_hyperparameters!(mlt)
@@ -109,71 +108,60 @@ Constructor of the Emulator object,
 Positional Arguments
  - `machine_learning_tool`: the selected machine learning tool object (e.g. Gaussian process / Random feature interface)
  - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+ - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
 
 Keyword Arguments 
- -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `(decorrelate_samples_cov(), "in_and_out")`. Pass `[]` for no encoding.
- - `input_structure_matrix`[=`nothing`]: Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. 
- - `output_structure_matrix` [=`nothing`] Some encoders make use of an input structure (e.g., the prior covariance matrix). Particularly useful for few samples. 
+ -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
 Other keywords are passed to the machine learning tool initialization
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
-    input_output_pairs::PairedDataContainer{FT};
+    input_output_pairs::PairedDataContainer{FT},
+    encoder_kwargs = NamedTuple();
     encoder_schedule = nothing,
-    input_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
-    output_structure_matrix::Union{AbstractMatrix{FT}, UniformScaling{FT}, Nothing} = nothing,
-    obs_noise_cov = nothing, # temporary 
+    obs_noise_cov = nothing, # temporary
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
 
-    # For Consistency checks
-    input_dim, output_dim = size(input_output_pairs, 1)
-
-    if !isnothing(obs_noise_cov) && isnothing(output_structure_matrix)
-        @warn(
-            "Keyword `obs_noise_cov=` is now deprecated, and replaced with `output_structure_matrix`. \n Continuing by setting `output_structure_matrix=obs_noise_cov`."
-        )
-        output_structure_matrix = obs_noise_cov
-    elseif !isnothing(obs_noise_cov) && !isnothing(output_structure_matrix)
-        @warn(
-            "Keyword `obs_noise_cov=` is now deprecated and will be ignored. \n Continuing with value of `output_structure_matrix=`"
-        )
+    if !isnothing(obs_noise_cov)
+        if haskey(encoder_kwargs, :obs_noise_cov)
+            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs[:obs_noise_cov]`."
+        else
+            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs[:obs_noise_cov]` instead."
+        end
     end
 
     # [1.] Initializes and performs data encoding schedule
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
     if isnothing(encoder_schedule)
         encoder_schedule = []
-        if isnothing(input_structure_matrix)
-            push!(encoder_schedule, (decorrelate_sample_cov(), "in"))
-        else
-            push!(encoder_schedule, (decorrelate_structure_mat(), "in"))
-        end
-        if isnothing(output_structure_matrix)
-            push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
-        else
+
+        push!(encoder_schedule, (decorrelate_sample_cov(), "in"))
+        if haskey(encoder_kwargs, :obs_noise_cov) || !isnothing(obs_noise_cov)
             push!(encoder_schedule, (decorrelate_structure_mat(), "out"))
+        else
+            push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
         end
     end
 
-    enc_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, encoded_input_structure_matrix, encoded_output_structure_matrix) =
+    encoder_schedule = create_encoder_schedule(encoder_schedule)
+    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
         initialize_and_encode_with_schedule!(
-            enc_schedule,
-            input_output_pairs,
-            input_structure_matrix,
-            output_structure_matrix,
+            encoder_schedule,
+            input_output_pairs;
+            obs_noise_cov,
+            encoder_kwargs...,
         )
 
     # build the machine learning tool in the encoded space
     build_models!(
         machine_learning_tool,
         encoded_io_pairs,
-        encoded_input_structure_matrix,
-        encoded_output_structure_matrix;
+        input_structure_mats,
+        output_structure_mats;
         mlt_kwargs...,
     )
-    return Emulator{FT, typeof(enc_schedule)}(machine_learning_tool, input_output_pairs, encoded_io_pairs, enc_schedule)
+    return Emulator{FT, typeof(encoder_schedule)}(machine_learning_tool, input_output_pairs, encoded_io_pairs, encoder_schedule)
 end
 
 """
@@ -209,9 +197,9 @@ Encode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function encode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorMorN,
+    structure_mat::USorM,
     in_or_out::AS,
-) where {AS <: AbstractString, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
+) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -240,9 +228,9 @@ Decode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function decode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorMorN,
+    structure_mat::USorM,
     in_or_out::AS,
-) where {AS <: AbstractString, USorMorN <: Union{UniformScaling, AbstractMatrix, Nothing}}
+) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 

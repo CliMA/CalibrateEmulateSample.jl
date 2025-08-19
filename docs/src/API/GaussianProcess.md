@@ -15,7 +15,7 @@ GaussianProcess(
     ::FT,
     ::PredictionType,
 ) where {GPPkg <: GaussianProcessesPackage, K <: GaussianProcesses.Kernel, KPy <: PyObject, AK <:AbstractGPs.Kernel, FT <: AbstractFloat}
-build_models!(::GaussianProcess{GPJL}, ::PairedDataContainer{FT}, input_structure_matrix, output_structure_matrix) where {FT <: AbstractFloat}
+build_models!(::GaussianProcess{GPJL}, ::PairedDataContainer{FT}, input_structure_mats, output_structure_mats) where {FT <: AbstractFloat}
 optimize_hyperparameters!(::GaussianProcess{GPJL})
 predict(::GaussianProcess{GPJL},  ::AbstractMatrix{FT}) where {FT <: AbstractFloat}
 ```

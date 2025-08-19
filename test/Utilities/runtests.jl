@@ -72,7 +72,7 @@ end
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
     @test get_retain_var(dd3) == 0.7
     @test get_decorrelate_with(dd3) == "structure_mat"
-    DD = Decorrelator([1], [2], [3], 1.0, "test")
+    DD = Decorrelator([1], [2], [3], 1.0, "test", nothing)
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
@@ -142,17 +142,17 @@ end
 
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
-        (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+        (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
 
-        (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =
-            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov)
+        (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) =
+            decode_with_schedule(encoder_schedule, encoded_io_pairs, encoded_input_structure_mats[:prior_cov], encoded_output_structure_mats[:obs_noise_cov])
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
             (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
             (get_inputs(io_pairs), get_outputs(io_pairs)),
-            (encoded_prior_cov, encoded_obs_noise_cov),
-            (decoded_prior_cov, decoded_obs_noise_cov),
+            (encoded_input_structure_mats[:prior_cov], encoded_output_structure_mats[:obs_noise_cov]),
+            (decoded_input_structure_mat, decoded_output_structure_mat),
             (prior_cov, obs_noise_cov),
             (in_dim, out_dim),
         )
@@ -275,10 +275,10 @@ end
     # test throws on lack of sample_mat
     sch2a = (decorrelate_structure_mat(), "in")
     schedule2a = create_encoder_schedule(sch2a)
-    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2a, io_pairs, nothing, obs_noise_cov) # nothing
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2a, io_pairs; obs_noise_cov) # nothing
     sch2b = (decorrelate_structure_mat(), "out")
     schedule2b = create_encoder_schedule(sch2b)
-    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs, prior_cov, nothing)
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs; prior_cov)
 
 
 
@@ -304,7 +304,7 @@ end
     bad_encoder_schedule = [(canonical_correlation(), "bad")]
     @test_throws ArgumentError initialize_and_encode_with_schedule!(
         bad_encoder_schedule,
-        io_pairs,
+        io_pairs;
         prior_cov,
         obs_noise_cov,
     )
@@ -314,8 +314,10 @@ end
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule
-    (encoded_io_pairs, encoded_prior_cov, encoded_obs_noise_cov) =
-        initialize_and_encode_with_schedule!(encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
+    (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats) =
+        initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+    encoded_prior_cov = encoded_input_structure_mats[:prior_cov]
+    encoded_obs_noise_cov = encoded_output_structure_mats[:obs_noise_cov]
 
     # decode the data using the schedule
     (decoded_io_pairs, decoded_prior_cov, decoded_obs_noise_cov) =

@@ -353,9 +353,8 @@ Build Vector Random Feature model for the input-output pairs subject to regulari
 function build_models!(
     vrfi::VectorRandomFeatureInterface,
     input_output_pairs::PairedDataContainer{FT},
-    input_structure_matrix,
-    output_structure_matrix;
-    kwargs...,
+    input_structure_mats,
+    output_structure_mats,
 ) where {FT <: AbstractFloat}
 
     # get inputs and outputs 
@@ -445,13 +444,16 @@ function build_models!(
     )
 
     # think of the output_structure_matrix as the observational noise covariance, or a related quantity
-    if isnothing(output_structure_matrix)
-        regularization = 1.0 * I
-    elseif !isposdef(output_structure_matrix)
-        regularization = posdef_correct(output_structure_matrix)
-        println("RF output structure matrix is not positive definite, correcting for use as a regularizer")
+    regularization = if isempty(output_structure_mats)
+        1.0 * I
     else
-        regularization = output_structure_matrix
+        output_structure_mat = get_structure_mat(output_structure_mats)
+        if !isposdef(output_structure_mat)
+            println("RF output structure matrix is not positive definite, correcting for use as a regularizer")
+            posdef_correct(output_structure_mat)
+        else
+            output_structure_mat
+        end
     end
 
     # [2.] Estimate covariance at mean value
