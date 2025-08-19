@@ -81,7 +81,7 @@ function main()
         input[:, i] = samples[ind[i], :]
         output[i] = y[ind[i]] + noise[i]
     end
-#    encoder_schedule = (decorrelate_structure_mat(), "out")
+    #    encoder_schedule = (decorrelate_structure_mat(), "out")
     encoder_schedule = (minmax_scale(), "in_and_out")
     iopairs = PairedDataContainer(input, output)
 
@@ -126,7 +126,7 @@ function main()
 
         elseif case ∈ ["RF-scalar", "Prior"]
             rank = n_dimensions #<= 10 ? n_dimensions : 10
-           # kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
+            # kernel_structure = SeparableKernel(LowRankFactor(rank, nugget), OneDimFactor())
             kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor())
             n_features = n_dimensions <= 10 ? n_dimensions * 100 : 1000
             if (n_features / n_train_pts > 0.9) && (n_features / n_train_pts < 1.1)

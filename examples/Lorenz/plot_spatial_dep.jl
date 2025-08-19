@@ -87,13 +87,7 @@ savefig(plt, figure_save_directory * "data_spatial_dep.pdf")
 p3 = deepcopy(p1)
 p4 = deepcopy(p2)
 
-plot!(p1,
-    range(0, nx - 1, step = 1),
-    final_params,
-      label = "mean ensemble input",
-    color = :lightgreen,
-    linewidth = 4,
-)
+plot!(p1, range(0, nx - 1, step = 1), final_params, label = "mean ensemble input", color = :lightgreen, linewidth = 4)
 plot!(p2, 1:length(y), get_g_mean_final(ekpobj), label = "mean ensemble output", color = :lightgreen, linewidth = 4)
 
 l = @layout [a b]
@@ -103,45 +97,57 @@ savefig(plt, figure_save_directory * "solution_spatial_dep_ens$(N_ens).png")
 savefig(plt, figure_save_directory * "solution_spatial_dep_ens$(N_ens).pdf")
 
 #
-plot!(p3,
-      range(0, nx - 1, step = 1),
-      get_ϕ_final(prior, ekpobj)[:,1],
-      label = "ensemble inputs",
-      color = :lightgreen,
-      linewidth = 4,
-      linealpha=0.1,
-      )
+plot!(
+    p3,
+    range(0, nx - 1, step = 1),
+    get_ϕ_final(prior, ekpobj)[:, 1],
+    label = "ensemble inputs",
+    color = :lightgreen,
+    linewidth = 4,
+    linealpha = 0.1,
+)
 
-plot!(p3,
-      range(0, nx - 1, step = 1),
-      get_ϕ_final(prior, ekpobj)[:,2:end],
-      label = "",
-      color = :lightgreen,
-      linewidth = 4,
-      linealpha=0.1,
-      )
-plot!(p3,
-      range(0, nx - 1, step = 1),
-      get_ϕ(prior, ekpobj,1)[:,1],
-      label = "",
-      color = :lightgreen,
-      linewidth = 4,
-      linealpha=0.1,
-      )
+plot!(
+    p3,
+    range(0, nx - 1, step = 1),
+    get_ϕ_final(prior, ekpobj)[:, 2:end],
+    label = "",
+    color = :lightgreen,
+    linewidth = 4,
+    linealpha = 0.1,
+)
+plot!(
+    p3,
+    range(0, nx - 1, step = 1),
+    get_ϕ(prior, ekpobj, 1)[:, 1],
+    label = "",
+    color = :lightgreen,
+    linewidth = 4,
+    linealpha = 0.1,
+)
 
-plot!(p3,
-      range(0, nx - 1, step = 1),
-      get_ϕ(prior, ekpobj,1)[:,2:end],
-      label = "",
-      color = :lightgreen,
-      linewidth = 4,
-      linealpha=0.1,
-      )
+plot!(
+    p3,
+    range(0, nx - 1, step = 1),
+    get_ϕ(prior, ekpobj, 1)[:, 2:end],
+    label = "",
+    color = :lightgreen,
+    linewidth = 4,
+    linealpha = 0.1,
+)
 
-plot!(p4, 1:length(y), get_g_final(ekpobj)[:,1], color = :lightgreen, label = "ensemble outputs", linewidth = 4, linealpha=0.1)
-plot!(p4, 1:length(y), get_g_final(ekpobj)[:,2:end], color = :lightgreen, label = "", linewidth = 4, linealpha=0.1)
-plot!(p4, 1:length(y), get_g(ekpobj,1)[:,1], color = :lightgreen, label = "", linewidth = 4, linealpha=0.1)
-plot!(p4, 1:length(y), get_g(ekpobj,1)[:,2:end], color = :lightgreen, label = "", linewidth = 4, linealpha=0.1)
+plot!(
+    p4,
+    1:length(y),
+    get_g_final(ekpobj)[:, 1],
+    color = :lightgreen,
+    label = "ensemble outputs",
+    linewidth = 4,
+    linealpha = 0.1,
+)
+plot!(p4, 1:length(y), get_g_final(ekpobj)[:, 2:end], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
+plot!(p4, 1:length(y), get_g(ekpobj, 1)[:, 1], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
+plot!(p4, 1:length(y), get_g(ekpobj, 1)[:, 2:end], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
 
 
 plt = plot(p3, p4, layout = l)
@@ -238,7 +244,7 @@ plot!(
     label = "GP posterior",
     linewidth = 4,
     ribbon = [quantiles_GP[:, 2] - quantiles_GP[:, 1] quantiles_GP[:, 3] - quantiles_GP[:, 2]],
-    linealpha=0.5,
+    linealpha = 0.5,
     fillalpha = 0.1,
 )
 
@@ -250,7 +256,7 @@ plot!(
     label = "posterior_RF",
     linewidth = 4,
     ribbon = [quantiles_RF[:, 2] - quantiles_RF[:, 1] quantiles_RF[:, 3] - quantiles_RF[:, 2]],
-    linealpha=0.5,
+    linealpha = 0.5,
     fillalpha = 0.1,
 )
 
@@ -258,7 +264,3 @@ plot!(
 figpath = joinpath(figure_save_directory, "posterior_ribbons_both")
 savefig(figpath * ".png")
 savefig(figpath * ".pdf")
-
-
-
-

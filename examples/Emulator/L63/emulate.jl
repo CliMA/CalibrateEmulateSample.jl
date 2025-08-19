@@ -107,7 +107,7 @@ function main()
         "RF-svd-sep",
     ]
 
-    case = cases[3] # 7
+    case = cases[4] # 7
 
     nugget = Float64(1e-8)
     u_test = []

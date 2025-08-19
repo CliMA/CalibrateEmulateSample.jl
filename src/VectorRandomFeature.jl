@@ -205,8 +205,7 @@ function VectorRandomFeatureInterface(
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "shrinkage", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if set to 0, removes data split. i.e takes train & test to be the same data set
-        "overfit" => 1.0 # if >1 this forcibly overfits to the data 
-
+        "overfit" => 1.0, # if >1 this forcibly overfits to the data 
     )
 
     if !isnothing(optimizer_options)
@@ -252,10 +251,10 @@ function hyperparameter_distribution_from_flat(
 ) where {VV <: AbstractVector, SK <: SeparableKernel}
 
     U, V = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
-    Uscaled = Diagonal(vec(default_in_scale))*U
-    Vscaled = Diagonal(vec(default_in_scale))*V
-    Uscaled = 0.5*(Uscaled+Uscaled')
-    Vscaled = 0.5*(Vscaled+Vscaled')
+    Uscaled = Diagonal(vec(default_in_scale)) * U
+    Vscaled = Diagonal(vec(default_in_scale)) * V
+    Uscaled = 0.5 * (Uscaled + Uscaled')
+    Vscaled = 0.5 * (Vscaled + Vscaled')
     if !isposdef(Uscaled)
         println("U not posdef - correcting")
         Uscaled = posdef_correct(Uscaled)
@@ -265,11 +264,7 @@ function hyperparameter_distribution_from_flat(
         Vscaled = posdef_correct(Vscaled)
     end
 
-    dist = MatrixNormal(
-        zeros(input_dim, output_dim),
-        Uscaled,
-        Vscaled,
-    )
+    dist = MatrixNormal(zeros(input_dim, output_dim), Uscaled, Vscaled)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
@@ -290,16 +285,13 @@ function hyperparameter_distribution_from_flat(
 
     C = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
     scale_vec = reduce(vcat, repeat(vec(default_in_scale), output_dim)) # make repeating vector ("out_dim" times)    
-    Cscaled = Diagonal(vec(scale_vec))*C*Diagonal(vec(scale_vec))
-    Cscaled = 0.5*(Cscaled+Cscaled')
+    Cscaled = Diagonal(vec(scale_vec)) * C * Diagonal(vec(scale_vec))
+    Cscaled = 0.5 * (Cscaled + Cscaled')
     if !isposdef(Cscaled)
         println("C not posdef - correcting")
         Cscaled = posdef_correct(Cscaled)
     end
-    dist = MvNormal(
-        zeros(input_dim * output_dim),
-        Cscaled,
-    )
+    dist = MvNormal(zeros(input_dim * output_dim), Cscaled)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
@@ -339,13 +331,13 @@ function RFM_from_hyperparameters(
     xi_hp = l[1:(end - 1)]
     sigma_hp = l[end]
     default_out_scale_scalar = maximum(default_out_scale) # most conservative scaling
-    
+
     kernel_structure = get_kernel_structure(vrfi)
     pd = hyperparameter_distribution_from_flat(xi_hp, input_dim, output_dim, kernel_structure, default_in_scale)
 
     feature_sampler = RF.Samplers.FeatureSampler(pd, output_dim, rng = rng)
 
-    feature_parameters = Dict("sigma" => default_out_scale_scalar*sigma_hp)
+    feature_parameters = Dict("sigma" => default_out_scale_scalar * sigma_hp)
     vff = RF.Features.VectorFourierFeature(
         n_features,
         output_dim,
@@ -430,8 +422,8 @@ function build_models!(
     end
 
     # scaling so that default priors are reasonable 
-    default_in_scale = 1.0 ./(maximum(input_values,dims=2) - minimum(input_values,dims=2))
-    default_out_scale = (maximum(output_values, dims=2) - minimum(output_values, dims=2))
+    default_in_scale = 1.0 ./ (maximum(input_values, dims = 2) - minimum(input_values, dims = 2))
+    default_out_scale = (maximum(output_values, dims = 2) - minimum(output_values, dims = 2))
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
@@ -504,7 +496,7 @@ function build_models!(
             vrfi,
             rng,
             μ_hp, # take mean values
-            regularization, 
+            regularization,
             n_features_opt,
             train_idx[cv_idx],
             test_idx[cv_idx],

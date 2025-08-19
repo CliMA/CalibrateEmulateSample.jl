@@ -35,7 +35,7 @@ function main()
         "observed_y",
         "estimated_sobol",
     )
-    
+
     n_repeats = length(mlt_sobol)
     fontsize = 24
     if n_repeats == 1

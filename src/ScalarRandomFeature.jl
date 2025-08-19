@@ -180,7 +180,7 @@ function ScalarRandomFeatureInterface(
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "cov_correction" => "nice", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
-        "overfit" => 1.0 # if >1 this forcibly overfits to the data 
+        "overfit" => 1.0, # if >1 this forcibly overfits to the data 
     )
 
     if !isnothing(optimizer_options)
@@ -220,20 +220,17 @@ function hyperparameter_distribution_from_flat(
     kernel_structure::SK,
     default_in_scale,
 ) where {VV <: AbstractVector, SK <: SeparableKernel}
-    
+
     U = hyperparameters_from_flat(x, input_dim, kernel_structure)
     # make symmetric
-    UU = Diagonal(vec(default_in_scale))*U*Diagonal(vec(default_in_scale))
-    UU = 0.5*(UU+UU')
+    UU = Diagonal(vec(default_in_scale)) * U * Diagonal(vec(default_in_scale))
+    UU = 0.5 * (UU + UU')
     if !isposdef(UU)
         println("U not posdef - correcting")
         UU = posdef_correct(UU)
-    end    
-    
-    dist = MvNormal(
-        zeros(input_dim),
-        UU,
-    )
+    end
+
+    dist = MvNormal(zeros(input_dim), UU)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
@@ -322,7 +319,18 @@ RFM_from_hyperparameters(
     MorUS <: Union{AbstractMatrix, UniformScaling},
     S <: AbstractString,
     MT <: MultithreadType,
-} = RFM_from_hyperparameters(srfi, rng, l, regularization, n_features, batch_sizes, input_dim, multithread_type, default_in_scale, default_out_scale)
+} = RFM_from_hyperparameters(
+    srfi,
+    rng,
+    l,
+    regularization,
+    n_features,
+    batch_sizes,
+    input_dim,
+    multithread_type,
+    default_in_scale,
+    default_out_scale,
+)
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -341,7 +349,7 @@ function build_models!(
     input_values = get_inputs(input_output_pairs)
     output_values = get_outputs(input_output_pairs)
     n_rfms, n_data = size(output_values)
-    
+
     input_dim = size(input_values, 1)
 
     kernel_structure = get_kernel_structure(srfi)
@@ -404,7 +412,7 @@ function build_models!(
     else
         Diagonal(output_structure_matrix)
     end
-    
+
     @info (
         "hyperparameter learning for $n_rfms models using $n_train training points, $n_test validation points and $n_features_opt features"
     )
@@ -429,12 +437,12 @@ function build_models!(
                 ),
             )
         end
-       
+
         # K = (out_scale)^2 cos(a*inscale*x + b)cos(a*inscale*x + b)'
         # prior = optimizer_options["prior"]
-        default_in_scale = 1.0 ./(maximum(input_values,dims=2) - minimum(input_values,dims=2))
-        default_out_scale = (maximum(output_values[i,:]) - minimum(output_values[i,:]))
-    
+        default_in_scale = 1.0 ./ (maximum(input_values, dims = 2) - minimum(input_values, dims = 2))
+        default_out_scale = (maximum(output_values[i, :]) - minimum(output_values[i, :]))
+
         prior = build_default_prior(input_dim, kernel_structure)
 
         # where prior space has changed we need to rebuild the priors
@@ -459,7 +467,7 @@ function build_models!(
 
         observation_vec = []
         for cv_idx in 1:n_cross_val_sets
-            
+
             internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
                 srfi,
                 rng,
@@ -485,7 +493,7 @@ function build_models!(
             Γ[1:n_test, 1:n_test] /= overfit^2 # shrink the data noise artificially
             Γ[(n_test + 1):end, (n_test + 1):end] += I
             # small features this has a larger effect - though doesn't -> I as n-> infty
-                       
+
             if !isposdef(Γ)
                 Γ = posdef_correct(Γ)
             end
@@ -651,7 +659,7 @@ function predict(
     # add the noise contribution stored within the regularization
     reg = get_regularization(srfi)[1]
     reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
-    
+
     for i in 1:M
         σ2[i, :] .+= reg_diag[i]
     end

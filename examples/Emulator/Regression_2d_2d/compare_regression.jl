@@ -46,7 +46,8 @@ function main()
         "rf-nonsep",
     ]
 
-    encoder_names = ["no-proc", "sample-struct-proc", "sample-proc", "struct-mat-proc", "combined-proc", "cca-proc", "minmax"]
+    encoder_names =
+        ["no-proc", "sample-struct-proc", "sample-proc", "struct-mat-proc", "combined-proc", "cca-proc", "minmax"]
     encoders = [
         [], # no proc
         nothing, # default proc
@@ -58,17 +59,17 @@ function main()
     ]
 
     # USER CHOICES 
-    encoder_mask = [1,7] # best performing
-    case_mask = [1,3, 5] 
+    encoder_mask = [1, 7] # best performing
+    case_mask = [1, 3, 5]
 
 
     # scales the problem to different in-out domains (but g gives the same "function" on all domain sizes
     out_scaling = 1e1  # scales range(g1) to out_scaling
     in_scaling = 1.0 # scales range(x) to in_scaling
-    
+
     # (necessary to get the ranges correct above)
-    out_scaling /= 40.0 
-    in_scaling /= 4.0*pi
+    out_scaling /= 40.0
+    in_scaling /= 4.0 * pi
 
     #problem
     n = 200  # number of training points
@@ -79,10 +80,10 @@ function main()
 
     @info "problem scaling " in_scaling out_scaling
     # G(x1, x2)
-    g1(x) = out_scaling*10*(sin.(1/in_scaling*x[1, :]) .+ cos.(1/in_scaling* 2 * x[2, :]))
-    g2(x) = out_scaling*10*(2 * sin.(1/in_scaling*2 * x[1, :]) .- 3 * cos.(1/in_scaling*x[2, :]))
-    g1(x, y) = out_scaling*10*(sin(1/in_scaling*x) + 2 * cos(1/in_scaling*2 * y))
-    g2(x, y) = out_scaling*10*(2 * sin(1/in_scaling*2 * x) - 3 * cos(1/in_scaling*y))
+    g1(x) = out_scaling * 10 * (sin.(1 / in_scaling * x[1, :]) .+ cos.(1 / in_scaling * 2 * x[2, :]))
+    g2(x) = out_scaling * 10 * (2 * sin.(1 / in_scaling * 2 * x[1, :]) .- 3 * cos.(1 / in_scaling * x[2, :]))
+    g1(x, y) = out_scaling * 10 * (sin(1 / in_scaling * x) + 2 * cos(1 / in_scaling * 2 * y))
+    g2(x, y) = out_scaling * 10 * (2 * sin(1 / in_scaling * 2 * x) - 3 * cos(1 / in_scaling * y))
     g1x = g1(X)
     g2x = g2(X)
     gx = zeros(2, n)
@@ -93,7 +94,7 @@ function main()
     μ = zeros(d)
     #Σ = 0.1 * [[0.4, -0.3] [-0.3, 0.5]] # d x d
     #Σ = 0.001 * [[0.4, -0.0] [-0.0, 0.5]] # d x d
-    Σ = out_scaling*out_scaling*1.0*I
+    Σ = out_scaling * out_scaling * 1.0 * I
     noise_samples = rand(rng, MvNormal(μ, Σ), n)
     # y = G(x) + η
     Y = gx .+ noise_samples
@@ -137,8 +138,14 @@ function main()
 
             # common random feature setup #large n_features, small n_features_opt
             n_features = 500
-            optimizer_options =
-                Dict("n_iteration" => 5, "n_features_opt" => 100, "n_ensemble" => 100, "cov_sample_multiplier" => 10.0, "verbose" => true, "cov_correction" => "nice")
+            optimizer_options = Dict(
+                "n_iteration" => 5,
+                "n_features_opt" => 100,
+                "n_ensemble" => 100,
+                "cov_sample_multiplier" => 10.0,
+                "verbose" => true,
+                "cov_correction" => "nice",
+            )
             nugget = 1e-12
 
             # data processing schedule
@@ -156,7 +163,7 @@ function main()
                 mlt = ScalarRandomFeatureInterface(
                     n_features,
                     p,
-                #    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
+                    #    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
                     kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor()),
                     optimizer_options = optimizer_options,
                 )
