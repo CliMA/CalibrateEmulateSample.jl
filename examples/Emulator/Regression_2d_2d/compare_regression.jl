@@ -59,13 +59,17 @@ function main()
 
     # USER CHOICES 
     encoder_mask = [1,7] # best performing
-    case_mask = [3]#[1, 3, 4, 5] # (KEEP set to 1:length(cases) when pushing for buildkite)
+    case_mask = [1,3, 5] 
 
 
     # scales the problem to different in-out domains (but g gives the same "function" on all domain sizes
-    out_scaling = 1e-2/(40) # scales range(g1) = 1
-    in_scaling = 1/(4*pi) # scales range(x) = 1
+    out_scaling = 1e1  # scales range(g1) to out_scaling
+    in_scaling = 1.0 # scales range(x) to in_scaling
     
+    # (necessary to get the ranges correct above)
+    out_scaling /= 40.0 
+    in_scaling /= 4.0*pi
+
     #problem
     n = 200  # number of training points
     p = 2   # input dim 

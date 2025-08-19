@@ -289,7 +289,8 @@ function hyperparameter_distribution_from_flat(
 ) where {VV <: AbstractVector, NK <: NonseparableKernel}
 
     C = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
-    Cscaled = Diagonal(vec(default_in_scale))*C*Diagonal(vec(default_in_scale))
+    scale_vec = reduce(vcat, repeat(vec(default_in_scale), output_dim)) # make repeating vector ("out_dim" times)    
+    Cscaled = Diagonal(vec(scale_vec))*C*Diagonal(vec(scale_vec))
     Cscaled = 0.5*(Cscaled+Cscaled')
     if !isposdef(Cscaled)
         println("C not posdef - correcting")
@@ -337,13 +338,14 @@ function RFM_from_hyperparameters(
 
     xi_hp = l[1:(end - 1)]
     sigma_hp = l[end]
+    default_out_scale_scalar = maximum(default_out_scale) # most conservative scaling
     
     kernel_structure = get_kernel_structure(vrfi)
     pd = hyperparameter_distribution_from_flat(xi_hp, input_dim, output_dim, kernel_structure, default_in_scale)
 
     feature_sampler = RF.Samplers.FeatureSampler(pd, output_dim, rng = rng)
 
-    feature_parameters = Dict("sigma" => default_out_scale*sigma_hp)
+    feature_parameters = Dict("sigma" => default_out_scale_scalar*sigma_hp)
     vff = RF.Features.VectorFourierFeature(
         n_features,
         output_dim,
@@ -429,7 +431,7 @@ function build_models!(
 
     # scaling so that default priors are reasonable 
     default_in_scale = 1.0 ./(maximum(input_values,dims=2) - minimum(input_values,dims=2))
-    default_out_scale = (maximum(output_values) - minimum(output_values)) # no vectorization of sigma yet so take scalar
+    default_out_scale = (maximum(output_values, dims=2) - minimum(output_values, dims=2))
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)
