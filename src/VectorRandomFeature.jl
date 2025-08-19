@@ -401,6 +401,7 @@ function build_models!(
     batch_sizes = get_batch_sizes(vrfi)
     decomp_type = get_feature_decomposition(vrfi)
     optimizer_options = get_optimizer_options(vrfi)
+    opt_verbose_flag = optimizer_options["verbose"]
     optimizer = get_optimizer(vrfi)
     multithread = optimizer_options["multithread"]
     if multithread == "ensemble"
