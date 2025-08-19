@@ -678,7 +678,6 @@ function build_models!(
         multithread_type,
         default_in_scale,
         default_out_scale,
-        verbose = opt_verbose_flag,
     )
     fitted_features_tmp = fit(rfm_tmp, input_output_pairs, decomposition_type = decomp_type)
 
