@@ -2,6 +2,8 @@
 
 using Manifolds, Manopt
 
+export LikelihoodInformed, likelihood_informed
+
 mutable struct LikelihoodInformed{FT <: Real} <: PairedDataContainerProcessor
     encoder_mat::Union{Nothing, AbstractMatrix}
     decoder_mat::Union{Nothing, AbstractMatrix}
@@ -33,7 +35,7 @@ function initialize_processor!(
     output_structure_vectors::Dict{Symbol, <:StructureVector},
     apply_to::AbstractString,
 ) where {MM <: AbstractMatrix}
-    output_dim = size(out_data, 2)
+    output_dim = size(out_data, 1)
 
     if isnothing(get_encoder_mat(li))
         α = li.α
@@ -116,7 +118,6 @@ function initialize_processor!(
                 egrad = (_, Vs) -> begin
                     B = Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
                     prec = noise_cov_inv - B
-                    
 
                     -2mean(begin
                         A = ((1-α)I + α^2 * (y - g)*(y - g)')
@@ -154,9 +155,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `LikelihoodInformed` encoder, on a columns-are-data matrix
+Apply the `LikelihoodInformed` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
+function encode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     encoder_mat = get_encoder_mat(li)
     return encoder_mat * data
 end
@@ -164,9 +165,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix
+Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
+function decode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     decoder_mat = get_decoder_mat(li)
     return decoder_mat * data
 end
