@@ -205,7 +205,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix or a data vector
 """
 function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = zeros(size(data))
@@ -217,7 +217,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix or a data vector
 """
 function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = zeros(size(data))
