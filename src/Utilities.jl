@@ -88,7 +88,7 @@ function get_structure_vec(structure_vecs, name = nothing)
         else
             throw(
                 ArgumentError(
-                    "Structure vectors $(collect(keys(structure_vecs))) are present. Please indicate which to use.",
+                    "Structure vectors $(collect(keys(structure_vecs))) are present. I received argument `name = nothing`, so I don't know which to use.",
                 ),
             )
         end
@@ -110,7 +110,7 @@ function get_structure_mat(structure_mats, name = nothing)
         else
             throw(
                 ArgumentError(
-                    "Structure matrices $(collect(keys(structure_mats))) are present. Please indicate which to use.",
+                    "Structure matrices $(collect(keys(structure_mats))) are present. I received argument `name = nothing`, so I don't know which to use.",
                 ),
             )
         end
@@ -251,17 +251,27 @@ function initialize_and_encode_with_schedule!(
     processed_io_pairs = deepcopy(io_pairs)
 
     input_structure_mats = deepcopy(input_structure_mats)
-    !isnothing(prior_cov) && (input_structure_mats[:prior_cov] = prior_cov)
+    if !isnothing(prior_cov)
+        (input_structure_mats[:prior_cov] = prior_cov)
+    end
 
     output_structure_mats = deepcopy(output_structure_mats)
-    !isnothing(obs_noise_cov) && (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
+    if !isnothing(obs_noise_cov)
+        (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
+    end
 
     input_structure_vecs = deepcopy(input_structure_vecs)
-    !isnothing(prior_samples_in) && (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+    if !isnothing(prior_samples_in)
+        (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+    end
 
     output_structure_vecs = deepcopy(output_structure_vecs)
-    !isnothing(observation) && (output_structure_vecs[:observation] = observation)
-    !isnothing(prior_samples_out) && (output_structure_vecs[:prior_samples_out] = prior_samples_out)
+    if !isnothing(observation)
+        (output_structure_vecs[:observation] = observation)
+    end
+    if !isnothing(prior_samples_out)
+        (output_structure_vecs[:prior_samples_out] = prior_samples_out)
+    end
 
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule

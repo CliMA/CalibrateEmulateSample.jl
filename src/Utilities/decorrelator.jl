@@ -36,7 +36,7 @@ struct Decorrelator{VV1, VV2, VV3, FT, AS <: AbstractString} <: DataContainerPro
     retain_var::FT
     "Switch to choose what form of matrix to use to decorrelate the data"
     decorrelate_with::AS
-    ""
+    "When given, use the structure matrix by this name if `decorrelate_with` uses structure matrices. When `nothing`, try to use the only present structure matrix instead."
     structure_mat_name::Union{Nothing, Symbol}
 end
 
