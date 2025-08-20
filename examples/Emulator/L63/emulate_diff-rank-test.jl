@@ -191,12 +191,7 @@ function main()
                 encoder_schedule = nothing
             end
             ttt[rank_id, rep_idx] = @elapsed begin
-                emulator = Emulator(
-                    mlt,
-                    iopairs;
-                    output_structure_matrix = Γy,
-                    encoder_schedule = deepcopy(encoder_schedule),
-                )
+                emulator = Emulator(mlt, iopairs, (; obs_noise_cov = Γy); encoder_schedule = deepcopy(encoder_schedule))
                 optimize_hyperparameters!(emulator)
             end
 

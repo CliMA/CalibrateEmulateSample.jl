@@ -160,20 +160,15 @@ function main()
     if emulator_type == "VectorRFR-nondiag"
 
         encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(), "out")]
-        emulator = Emulator(
-            mlt,
-            input_output_pairs;
-            output_structure_matrix = obs_noise_cov,
-            encoder_schedule = encoder_schedule,
-        )
+        emulator =
+            Emulator(mlt, input_output_pairs, (; obs_noise_cov = obs_noise_cov); encoder_schedule = encoder_schedule)
     else
         encoder_schedule = [(decorrelate_structure_mat(), "in_and_out")]
 
         emulator = Emulator(
             mlt,
-            input_output_pairs;
-            input_structure_matrix = cov(prior),
-            output_structure_matrix = obs_noise_cov,
+            input_output_pairs,
+            (; prior_cov = cov(prior), obs_noise_cov = obs_noise_cov);
             encoder_schedule = encoder_schedule,
         )
 

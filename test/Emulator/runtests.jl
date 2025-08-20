@@ -74,10 +74,10 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(
         gp,
         io_pairs,
-        (prior_cov = 4.0 * I, obs_noise_cov = 2.0 * I);
+        (; prior_cov = 4.0 * I, obs_noise_cov = 2.0 * I);
         obs_noise_cov = 3.0 * I,
     )
-    em1 = Emulator(gp, io_pairs, (obs_noise_cov = Σ,))
+    em1 = Emulator(gp, io_pairs, (; obs_noise_cov = Σ))
 
     enc_sch1 = create_encoder_schedule([(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")])
     initialize_and_encode_with_schedule!(

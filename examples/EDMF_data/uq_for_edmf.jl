@@ -230,9 +230,8 @@ function main()
     # Fit an emulator to the data
     emulator = Emulator(
         mlt,
-        input_output_pairs;
-        input_structure_matrix = cov(prior),
-        output_structure_matrix = truth_cov,
+        input_output_pairs,
+        (; prior_cov = cov(prior), obs_noise_cov = truth_cov);
         encoder_schedule = encoder_schedule,
     )
 

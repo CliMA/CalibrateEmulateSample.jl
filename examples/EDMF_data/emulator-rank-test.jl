@@ -256,9 +256,8 @@ function main()
             ttt[rank_id, rep_idx] = @elapsed begin
                 emulator = Emulator(
                     mlt,
-                    train_pairs;
-                    input_structure_matrix = cov(prior),
-                    output_structure_matrix = truth_cov,
+                    train_pairs,
+                    (; prior_cov = cov(prior), obs_noise_cov = truth_cov);
                     encoder_schedule = encoder_schedule,
                 )
 

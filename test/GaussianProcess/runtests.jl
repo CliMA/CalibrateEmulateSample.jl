@@ -177,11 +177,11 @@ using CalibrateEmulateSample.Utilities
     # with noise learning - e.g. we add a kernel to learn the noise (even though we provide the Sigma to the emulator)
     gp4_noise_learnt = GaussianProcess(gppackage; kernel = nothing, noise_learn = true, prediction_type = pred_type)
     # without noise learning, just use the SVD transform to deal with observational noise
-    em4_noise_learnt = Emulator(gp4_noise_learnt, iopairs2, (obs_noise_cov = Σ,))
+    em4_noise_learnt = Emulator(gp4_noise_learnt, iopairs2, (; obs_noise_cov = Σ))
 
     gp4 = GaussianProcess(gppackage; kernel = nothing, noise_learn = false, prediction_type = pred_type)
 
-    em4_noise_from_Σ = Emulator(gp4, iopairs2, (obs_noise_cov = Σ,))
+    em4_noise_from_Σ = Emulator(gp4, iopairs2, (; obs_noise_cov = Σ))
 
     Emulators.optimize_hyperparameters!(em4_noise_learnt)
     Emulators.optimize_hyperparameters!(em4_noise_from_Σ)
@@ -226,7 +226,7 @@ using CalibrateEmulateSample.Utilities
         ) for model_params in gp4_opt_params
     ]
 
-    em_agp_from_gp4 = Emulator(agp4, iopairs2, (obs_noise_cov = Σ,); kernel_params = kernel_params)
+    em_agp_from_gp4 = Emulator(agp4, iopairs2, (; obs_noise_cov = Σ); kernel_params = kernel_params)
 
     μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs, transform_to_real = true)
 

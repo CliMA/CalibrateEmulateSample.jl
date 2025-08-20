@@ -28,7 +28,7 @@ complex_schedule = [
 In this (rather unrealistic) chain;
 1. The inputs are decorrelated with their sample mean and covariance (and projected to low dimensional subspace if necessary) i.e PCA
 2. The scaled inputs are then subject to a "Robust" univariate scaling, mapping 1st-3rd quartiles to [0,1]
-3. The outputs are decorrelated using an "output structure matrix" (provided to the emulator `output_structure_matrix=`). Furthermore, apply a dimension-reduction to a space that retains 95% of the total variance. 
+3. The outputs are decorrelated using an "output structure matrix" (provided to the emulator in the `encoder_kwargs` parameter, e.g. as `(; obs_cov_noise =)`). Furthermore, apply a dimension-reduction to a space that retains 95% of the total variance. 
 4. In the reduced input-output space, a canonical correlation analysis is performed. Data is oriented and reduced (if necessary) maximize the joint correlation between inputs and outputs.
 
 !!! note "Default Encoder schedule"
@@ -44,12 +44,12 @@ The schedule is then passed into the Emulator, along with the data and desired s
 ```julia
 emulator = Emulator(
     machine_learning_tool,       
-    input_output_pairs; 
-    output_structure_matrix = obs_noise_cov, 
+    input_output_pairs,
+    (; obs_noise_cov = obs_noise_cov);
     encoder_schedule = complex_schedule,
 )
 ```
-Note that due to the item `(decorrelate_structure_mat(retain_var=0.95), "out")` in the schedule, we must provide the `output_structure_matrix`.
+Note that due to the item `(decorrelate_structure_mat(retain_var=0.95), "out")` in the schedule, we must provide an output structure matrix. In this case, we provide `obs_noise_cov`.
 
 # Types of data processors
 

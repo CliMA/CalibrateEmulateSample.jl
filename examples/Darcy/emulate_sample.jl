@@ -96,9 +96,8 @@ function main()
 
         emulator = Emulator(
             mlt,
-            input_output_pairs;
-            input_structure_matrix = cov(prior),
-            output_structure_matrix = Γy,
+            input_output_pairs,
+            (; prior_cov = cov(prior), obs_noise_cov = Γy);
             encoding_schedule = encoding_schedule,
         )
         optimize_hyperparameters!(emulator, kernbounds = [fill(-1e2, n_params + 1), fill(1e2, n_params + 1)])
