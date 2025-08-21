@@ -257,8 +257,8 @@ function main()
                 emulator = Emulator(
                     mlt,
                     train_pairs,
-                    (; prior_cov = cov(prior), obs_noise_cov = truth_cov);
                     encoder_schedule = encoder_schedule,
+                    encoder_kwargs = (; prior_cov = cov(prior), obs_noise_cov = truth_cov),
                 )
 
                 # Optimize the GP hyperparameters for better fit

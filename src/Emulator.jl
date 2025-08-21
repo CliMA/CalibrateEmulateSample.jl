@@ -108,17 +108,17 @@ Constructor of the Emulator object,
 Positional Arguments
  - `machine_learning_tool`: the selected machine learning tool object (e.g. Gaussian process / Random feature interface)
  - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
- - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
 
 Keyword Arguments 
  -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
+ - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
 Other keywords are passed to the machine learning tool initialization
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
-    input_output_pairs::PairedDataContainer{FT},
-    encoder_kwargs = NamedTuple();
+    input_output_pairs::PairedDataContainer{FT};
     encoder_schedule = nothing,
+    encoder_kwargs = NamedTuple(),
     obs_noise_cov = nothing, # temporary
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
@@ -145,8 +145,12 @@ function Emulator(
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
-        initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; obs_noise_cov = obs_noise_cov, encoder_kwargs...)
+    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) = initialize_and_encode_with_schedule!(
+        encoder_schedule,
+        input_output_pairs;
+        obs_noise_cov = obs_noise_cov,
+        encoder_kwargs...,
+    )
 
     # build the machine learning tool in the encoded space
     build_models!(machine_learning_tool, encoded_io_pairs, input_structure_mats, output_structure_mats; mlt_kwargs...)

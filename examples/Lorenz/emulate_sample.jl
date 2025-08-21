@@ -170,7 +170,12 @@ function main()
         retain_var = 0.95
         encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
 
-        emulator = Emulator(mlt, input_output_pairs, (; obs_noise_cov = Γy); encoder_schedule = encoder_schedule)
+        emulator = Emulator(
+            mlt,
+            input_output_pairs;
+            encoder_schedule = encoder_schedule,
+            encoder_kwargs = (; obs_noise_cov = Γy),
+        )
         optimize_hyperparameters!(emulator)
 
         # Check how well the Gaussian Process regression predicts on the

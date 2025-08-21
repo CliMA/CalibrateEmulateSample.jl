@@ -306,9 +306,9 @@ rng = Random.MersenneTwister(seed)
         )
 
         # build emulators
-        em_srfi = Emulator(srfi, iopairs, (; obs_noise_cov = obs_noise_cov))
+        em_srfi = Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = obs_noise_cov))
         n_srfi = length(get_rfms(srfi))
-        em_vrfi = Emulator(vrfi, iopairs, (; obs_noise_cov = obs_noise_cov))
+        em_vrfi = Emulator(vrfi, iopairs; encoder_kwargs = (; obs_noise_cov = obs_noise_cov))
         n_vrfi = length(get_rfms(vrfi))
 
         # test bad case
@@ -324,11 +324,19 @@ rng = Random.MersenneTwister(seed)
         @test_throws ArgumentError Emulator(srfi_bad, iopairs)
 
         # test under repeats
-        @test_logs (:info,) (:info,) (:warn,) Emulator(srfi, iopairs, (; obs_noise_cov = obs_noise_cov))
-        Emulator(srfi, iopairs, (; obs_noise_cov = obs_noise_cov))
+        @test_logs (:info,) (:info,) (:warn,) Emulator(
+            srfi,
+            iopairs;
+            encoder_kwargs = (; obs_noise_cov = obs_noise_cov),
+        )
+        Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = obs_noise_cov))
         @test length(get_rfms(srfi)) == n_srfi
-        @test_logs (:info,) (:info,) (:warn,) Emulator(vrfi, iopairs, (; obs_noise_cov = obs_noise_cov))
-        Emulator(vrfi, iopairs, (; obs_noise_cov = obs_noise_cov))
+        @test_logs (:info,) (:info,) (:warn,) Emulator(
+            vrfi,
+            iopairs;
+            encoder_kwargs = (; obs_noise_cov = obs_noise_cov),
+        )
+        Emulator(vrfi, iopairs; encoder_kwargs = (; obs_noise_cov = obs_noise_cov))
         @test length(get_rfms(vrfi)) == n_vrfi
 
 
@@ -422,14 +430,14 @@ rng = Random.MersenneTwister(seed)
         # build emulators
         # svd: scalar, scalar + diag in, vector + diag out, vector
         # no-svd: vector
-        em_srfi_svd_diagin = Emulator(srfi_diagin, iopairs, (; obs_noise_cov = Σ))
-        em_srfi_svd = Emulator(srfi, iopairs, (; obs_noise_cov = Σ))
+        em_srfi_svd_diagin = Emulator(srfi_diagin, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
+        em_srfi_svd = Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
-        em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs, (; obs_noise_cov = Σ))
-        em_vrfi_svd = Emulator(vrfi, iopairs, (; obs_noise_cov = Σ))
+        em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi_svd = Emulator(vrfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
-        em_vrfi = Emulator(vrfi, iopairs, (; obs_noise_cov = Σ); encoder_schedule = [])
-        em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs, (; obs_noise_cov = Σ); encoder_schedule = [])
+        em_vrfi = Emulator(vrfi, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
 
         #TODO truncated SVD option for vector (involves resizing prior)
 
@@ -464,7 +472,7 @@ rng = Random.MersenneTwister(seed)
             optimizer_options = Dict("train_fraction" => 0.7, "multithread" => "tullio"),
             rng = rng,
         )
-        em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs, (; obs_noise_cov = Σ))
+        em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
         μ_vs_tul, σ²_vs_tul = Emulators.predict(em_vrfi_svd_tul, new_inputs, transform_to_real = true)
         @test isapprox.(norm(μ_vs_tul - outx), 0, atol = tol_μ)
 

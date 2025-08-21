@@ -166,7 +166,12 @@ function main()
 
             end
 
-            emulator = Emulator(mlt, iopairs, (; prior_cov = prior_cov, obs_noise_cov = Σ); encoder_schedule = enc)
+            emulator = Emulator(
+                mlt,
+                iopairs;
+                encoder_schedule = enc,
+                encoder_kwargs = (; prior_cov = prior_cov, obs_noise_cov = Σ),
+            )
 
 
             optimize_hyperparameters!(emulator) # although RF already optimized

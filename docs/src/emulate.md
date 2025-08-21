@@ -16,9 +16,9 @@ Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc
 ```julia
 emulator = Emulator(
     gauss_proc, 
-    input_output_pairs,
-    (; obs_noise_cov = Γy); # optional arguments after this
+    input_output_pairs; # optional arguments after this
     encoder_schedule = encoder_schedule,
+    encoder_kwargs = (; obs_noise_cov = Γy),
 )
 ```
 The optional arguments above relate to the data processing, which is described [here](@ref data-proc)

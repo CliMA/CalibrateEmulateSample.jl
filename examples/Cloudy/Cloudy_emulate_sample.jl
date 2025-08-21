@@ -171,9 +171,9 @@ function main()
         # build emulator
         emulator = Emulator(
             mlt,
-            input_output_pairs,
-            (; prior_cov = cov(priors), obs_noise_cov = Γy);
+            input_output_pairs;
             encoder_schedule = encoder_schedule,
+            encoder_kwargs = (; prior_cov = cov(priors), obs_noise_cov = Γy),
         )
 
         optimize_hyperparameters!(emulator)
