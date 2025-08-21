@@ -49,6 +49,25 @@ end
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(4154)
 
+    # Tests for get_structure_vec and get_structure_mat
+    structure_vecs = Dict("a" => [1, 2, 3], "b" => [4, 5, 6])
+    structure_mats = Dict("c" => [1 2; 3 4], "d" => [5 6; 7 8])
+    @test Utilities.get_structure_vec(structure_vecs, "a") == [1, 2, 3]
+    @test Utilities.get_structure_vec(structure_vecs, "b") == [4, 5, 6]
+    @test Utilities.get_structure_mat(structure_mats, "c") == [1 2; 3 4]
+    @test Utilities.get_structure_mat(structure_mats, "d") == [5 6; 7 8]
+    @test_throws ArgumentError Utilities.get_structure_vec(structure_vecs, "c")
+    @test_throws ArgumentError Utilities.get_structure_mat(structure_mats, "a")
+    @test_throws ArgumentError Utilities.get_structure_vec(structure_vecs)
+    @test_throws ArgumentError Utilities.get_structure_mat(structure_mats)
+
+    structure_vecs = Dict("a" => [1, 2, 3])
+    @test Utilities.get_structure_vec(structure_vecs) == [1, 2, 3]
+    @test Utilities.get_structure_vec(structure_vecs, "a") == [1, 2, 3]
+    structure_mats = Dict("c" => [1 2; 3 4])
+    @test Utilities.get_structure_mat(structure_mats) == [1 2; 3 4]
+    @test Utilities.get_structure_mat(structure_mats, "c") == [1 2; 3 4]
+
     # quick build tests and test getters
     zs = zscore_scale()
     mm = minmax_scale()

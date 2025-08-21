@@ -81,7 +81,7 @@ Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
 
 function get_structure_vec(structure_vecs, name = nothing)
     if isnothing(name)
-        if size(structure_vecs) == 1
+        if length(structure_vecs) == 1
             return only(values(structure_vecs))
         elseif isempty(structure_vecs)
             throw(ArgumentError("Please provide a structure vector."))
