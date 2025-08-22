@@ -139,6 +139,10 @@ using CalibrateEmulateSample.Utilities
     @test vec(μ3) ≈ [0.0, 1.0, 0.0, -1.0, 0.0] atol = 0.3
     @test vec(σ3²) ≈ [0.016, 0.002, 0.003, 0.004, 0.003] atol = 1e-2
 
+    gp = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
+    Γ = 0.05I
+    em = Emulator(gp, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Γ))
+    @test gp.regularization[end] == gp.alg_reg_noise * Γ.λ
 
     # -------------------------------------------------------------------------
     # Test case 2: 2D input, 2D output
