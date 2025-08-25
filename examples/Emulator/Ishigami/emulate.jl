@@ -37,7 +37,7 @@ function main()
 
     rng = MersenneTwister(seed)
 
-    n_repeats = 30 # repeat exp with same data.
+    n_repeats = 10 # repeat exp with same data.
 
     # To create the sampling
     n_data_gen = 2000
@@ -82,14 +82,14 @@ function main()
     end
     iopairs = PairedDataContainer(input, output)
     cases = ["Prior", "GP", "RF-scalar"]
-    case = cases[2]
+    case = cases[3]
     encoder_schedule = (decorrelate_structure_mat(), "out")
-    nugget = Float64(1e-4)
+    nugget = Float64(1e-8)
     overrides = Dict(
         "scheduler" => DataMisfitController(terminate_at = 1e4),
         "n_features_opt" => 150,
         "n_ensemble" => 50,
-        "n_iteration" => 20,
+        "n_iteration" => 10,
     )
 
     if case == "Prior"

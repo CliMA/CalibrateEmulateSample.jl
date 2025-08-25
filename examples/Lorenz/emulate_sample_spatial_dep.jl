@@ -28,13 +28,14 @@ function main()
     ]
 
     #### CHOOSE YOUR CASE: 
-    mask = [1]# 1:1 # e.g. 1:2 or [2]
+    mask = [2]# 1:1 # e.g. 1:2 or [2]
     for (case) in cases[mask]
 
 
         println("case: ", case)
         min_iter = 1
-        max_iter = 7 # number of EKP iterations to use data from is at most this
+        skip_iter = 1
+        max_iter = 8 # number of EKP iterations to use data from is at most this
 
         ####
 
@@ -71,7 +72,7 @@ function main()
 
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
-        nugget = 1e-3
+        nugget = 1e-8
         if case == "GP"
             gppackage = Emulators.GPJL()
             pred_type = Emulators.YType()
@@ -106,7 +107,7 @@ function main()
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekpobj)) - 1) # number of paired iterations taken from EKP
         min_iter = min(max_iter, max(1, min_iter))
-        input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:(N_iter - 1))
+        input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:(N_iter - 1))
         input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:(length(get_u(ekpobj)) - 1)) #  "next" iterations
         # Save data
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs

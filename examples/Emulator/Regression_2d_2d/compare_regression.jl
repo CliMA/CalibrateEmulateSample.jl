@@ -32,8 +32,7 @@ end
 
 function main()
 
-    rng_seed = 41
-    Random.seed!(rng_seed)
+    rng = MersenneTwister(41)
     output_directory = joinpath(@__DIR__, "output")
     if !isdir(output_directory)
         mkdir(output_directory)
@@ -47,7 +46,8 @@ function main()
         "rf-nonsep",
     ]
 
-    encoder_names = ["no-proc", "sample-struct-proc", "sample-proc", "struct-mat-proc", "combined-proc", "cca-proc"]
+    encoder_names =
+        ["no-proc", "sample-struct-proc", "sample-proc", "struct-mat-proc", "combined-proc", "cca-proc", "minmax"]
     encoders = [
         [], # no proc
         nothing, # default proc
@@ -55,24 +55,35 @@ function main()
         (decorrelate_structure_mat(), "in_and_out"),
         (decorrelate(), "in_and_out"),
         (canonical_correlation(), "in_and_out"),
+        (minmax_scale(), "in_and_out"),
     ]
 
     # USER CHOICES 
-    encoder_mask = [3, 4, 6] # best performing
-    case_mask = [1, 3, 4, 5] # (KEEP set to 1:length(cases) when pushing for buildkite)
+    encoder_mask = [1, 7] # best performing
+    case_mask = [1, 3, 5]
 
+
+    # scales the problem to different in-out domains (but g gives the same "function" on all domain sizes
+    out_scaling = 1e1  # scales range(g1) to out_scaling
+    in_scaling = 1.0 # scales range(x) to in_scaling
+
+    # (necessary to get the ranges correct above)
+    out_scaling /= 40.0
+    in_scaling /= 4.0 * pi
 
     #problem
     n = 200  # number of training points
     p = 2   # input dim 
     d = 2   # output dim
-    prior_cov = (pi^2) * I(p)
-    X = rand(MvNormal(zeros(p), prior_cov), n)
+    prior_cov = (pi^2) * I(p) * in_scaling * in_scaling
+    X = rand(rng, MvNormal(zeros(p), prior_cov), n)
+
+    @info "problem scaling " in_scaling out_scaling
     # G(x1, x2)
-    g1(x) = sin.(x[1, :]) .+ cos.(2 * x[2, :])
-    g2(x) = 2 * sin.(2 * x[1, :]) .- 3 * cos.(x[2, :])
-    g1(x, y) = sin(x) + 2 * cos(2 * y)
-    g2(x, y) = 2 * sin(2 * x) - 3 * cos(y)
+    g1(x) = out_scaling * 10 * (sin.(1 / in_scaling * x[1, :]) .+ cos.(1 / in_scaling * 2 * x[2, :]))
+    g2(x) = out_scaling * 10 * (2 * sin.(1 / in_scaling * 2 * x[1, :]) .- 3 * cos.(1 / in_scaling * x[2, :]))
+    g1(x, y) = out_scaling * 10 * (sin(1 / in_scaling * x) + 2 * cos(1 / in_scaling * 2 * y))
+    g2(x, y) = out_scaling * 10 * (2 * sin(1 / in_scaling * 2 * x) - 3 * cos(1 / in_scaling * y))
     g1x = g1(X)
     g2x = g2(X)
     gx = zeros(2, n)
@@ -81,8 +92,10 @@ function main()
 
     # Add noise η
     μ = zeros(d)
-    Σ = 0.1 * [[0.4, -0.3] [-0.3, 0.5]] # d x d
-    noise_samples = rand(MvNormal(μ, Σ), n)
+    #Σ = 0.1 * [[0.4, -0.3] [-0.3, 0.5]] # d x d
+    #Σ = 0.001 * [[0.4, -0.0] [-0.0, 0.5]] # d x d
+    Σ = out_scaling * out_scaling * 1.0 * I
+    noise_samples = rand(rng, MvNormal(μ, Σ), n)
     # y = G(x) + η
     Y = gx .+ noise_samples
 
@@ -93,8 +106,8 @@ function main()
     #plot training data with and without noise
     if plot_flag
         n_pts = 200
-        x1 = range(-2 * pi, stop = 2 * π, length = n_pts)
-        x2 = range(-2 * pi, stop = 2 * π, length = n_pts)
+        x1 = range(-2 * pi * in_scaling, stop = 2 * π * in_scaling, length = n_pts)
+        x2 = range(-2 * pi * in_scaling, stop = 2 * π * in_scaling, length = n_pts)
 
         p1 = contourf(x1, x2, g1.(x1', x2), c = :cividis, xlabel = "x1", ylabel = "x2", aspect_ratio = :equal)
         scatter!(p1, X[1, :], X[2, :], c = :black, ms = 3, label = "train point")
@@ -123,11 +136,17 @@ function main()
             # common Gaussian feature setup
             pred_type = YType()
 
-            # common random feature setup
-            n_features = 200
-            optimizer_options =
-                Dict("n_iteration" => 5, "n_features_opt" => 200, "n_ensemble" => 80, "cov_sample_multiplier" => 5.0)
-            nugget = 1e-8
+            # common random feature setup #large n_features, small n_features_opt
+            n_features = 500
+            optimizer_options = Dict(
+                "n_iteration" => 5,
+                "n_features_opt" => 100,
+                "n_ensemble" => 100,
+                "cov_sample_multiplier" => 10.0,
+                "verbose" => true,
+                "cov_correction" => "nice",
+            )
+            nugget = 1e-12
 
             # data processing schedule
 
@@ -144,7 +163,8 @@ function main()
                 mlt = ScalarRandomFeatureInterface(
                     n_features,
                     p,
-                    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
+                    #    kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()),
+                    kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor()),
                     optimizer_options = optimizer_options,
                 )
             elseif case == "rf-lr-lr"
@@ -169,7 +189,7 @@ function main()
             emulator = Emulator(
                 mlt,
                 iopairs,
-                encoder_schedule = enc,
+                encoder_schedule = deepcopy(enc), # must copy! 
                 input_structure_matrix = prior_cov,
                 output_structure_matrix = Σ,
             )
@@ -180,15 +200,21 @@ function main()
             # Plot mean and variance of the predicted observables y1 and y2
             # For this, we generate test points on a x1-x2 grid.
             n_pts = 200
-            x1 = range(-2 * π, stop = 2 * π, length = n_pts)
-            x2 = range(-2 * π, stop = 2 * π, length = n_pts)
+            x1 = range(-2 * π * in_scaling, stop = 2 * π * in_scaling, length = n_pts)
+            x2 = range(-2 * π * in_scaling, stop = 2 * π * in_scaling, length = n_pts)
             X1, X2 = meshgrid(x1, x2)
+
             # Input for predict has to be of size  input_dim x N_samples
             inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
 
             em_mean, em_cov = predict(emulator, inputs, transform_to_real = true)
             println("end predictions at ", n_pts * n_pts, " points")
 
+            g1_true = g1(inputs)
+            g1_true_grid = reshape(g1_true, n_pts, n_pts)
+            g2_true = g2(inputs)
+            g2_true_grid = reshape(g2_true, n_pts, n_pts)
+            g_true_grids = [g1_true_grid, g2_true_grid]
 
             #plot predictions
             for y_i in 1:d

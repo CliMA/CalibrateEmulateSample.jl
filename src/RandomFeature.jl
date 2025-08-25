@@ -236,25 +236,21 @@ function hyperparameters_from_flat(x::V, hlrf::HierarchicalLowRankFactor) where 
 end
 
 
-"""
-$(DocStringExtensions.TYPEDSIGNATURES)
 
-builds a prior distribution for the kernel hyperparameters to initialize optimization.
-"""
-build_default_prior(name::SS, n_hp::Int, odf::OneDimFactor) where {SS <: AbstractString} = nothing
+build_default_prior(name::SS, n_hp::Int, odf::OneDimFactor; kwargs...) where {SS <: AbstractString} = nothing
 
 function build_default_prior(name::SS, n_hp::Int, df::DiagonalFactor) where {SS <: AbstractString}
     return ParameterDistribution(
         Dict(
             "name" => "$(name)_diagonal",
-            "distribution" => VectorOfParameterized(repeat([Normal(0, 3)], n_hp)),
-            "constraint" => repeat([bounded_below(0.0)], n_hp),
+            "distribution" => VectorOfParameterized(repeat([Normal(log(100.0 / n_hp), 2)], n_hp)),
+            "constraint" => repeat([bounded_below(1.0 / n_hp)], n_hp),
         ),
     )
 end
 
 function build_default_prior(name::SS, n_hp::Int, df::CholeskyFactor) where {SS <: AbstractString}
-    return constrained_gaussian("$(name)_cholesky", 0.0, 5.0, -Inf, Inf, repeats = n_hp)
+    return constrained_gaussian("$(name)_cholesky", 0.0, 10.0 / n_hp, -Inf, Inf, repeats = n_hp)
 end
 
 function build_default_prior(name::SS, n_hp::Int, lrf::LowRankFactor) where {SS <: AbstractString}
@@ -263,19 +259,26 @@ function build_default_prior(name::SS, n_hp::Int, lrf::LowRankFactor) where {SS 
     D = ParameterDistribution(
         Dict(
             "name" => "$(name)_lowrank_diagonal",
-            "distribution" => VectorOfParameterized(repeat([Normal(0, 3)], r)),
-            "constraint" => repeat([bounded_below(0.0)], r),
+            "distribution" => VectorOfParameterized(repeat([Normal(log(100.0 / r), 2)], r)),
+            "constraint" => repeat([bounded_below(1.0 / r)], r),
         ),
     )
-    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 100.0, -Inf, Inf, repeats = Int(d * r))
+    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 10.0 / (d * r), -Inf, Inf, repeats = Int(d * r))
     return combine_distributions([D, U])
 end
 
 function build_default_prior(name::SS, n_hp::Int, hlrf::HierarchicalLowRankFactor) where {SS <: AbstractString}
     r = rank(hlrf)
     d = Int(n_hp / r - (r + 1) / 2)
-    L = constrained_gaussian("$(name)_lowrank_Kchol", 0.0, 5.0, -Inf, Inf, repeats = Int(r * (r + 1) / 2))
-    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 100.0, -Inf, Inf, repeats = Int(d * r))
+    L = constrained_gaussian(
+        "$(name)_lowrank_Kchol",
+        0.0,
+        10.0 / (r * (r + 1) / 2),
+        -Inf,
+        Inf,
+        repeats = Int(r * (r + 1) / 2),
+    )
+    U = constrained_gaussian("$(name)_lowrank_U", 0.0, 10.0 / (d * r), -Inf, Inf, repeats = Int(d * r))
     return combine_distributions([L, U])
 end
 
@@ -323,7 +326,11 @@ end
 
 
 
+"""
+$(DocStringExtensions.TYPEDSIGNATURES)
 
+Builds a prior distribution for the kernel hyperparameters to initialize optimization. The parameter distributions built from these priors will be scaled such that the input and output range of the data is O(1).
+"""
 function build_default_prior(input_dim::Int, output_dim::Int, kernel_structure::SK) where {SK <: SeparableKernel}
     input_cov_structure = get_input_cov_structure(kernel_structure)
     output_cov_structure = get_output_cov_structure(kernel_structure)
@@ -331,9 +338,9 @@ function build_default_prior(input_dim::Int, output_dim::Int, kernel_structure::
     n_hp_in = calculate_n_hyperparameters(input_dim, input_cov_structure)
     input_prior = build_default_prior("input", n_hp_in, input_cov_structure)
     n_hp_out = calculate_n_hyperparameters(output_dim, output_cov_structure)
-    output_prior = build_default_prior("output", n_hp_out, output_cov_structure)
+    output_prior = build_default_prior("output", n_hp_out, output_cov_structure) # use output scale only for sigma
 
-    scaling_kern = constrained_gaussian("sigma", 1, 5, 0, Inf)
+    scaling_kern = constrained_gaussian("sigma", 2.0, 2.0, 0.001, Inf)
 
     # We only use OneDimFactor values, default to input if both in and output dimension are one dimensional.Otherwise they are ignored
     if isnothing(input_prior) && isnothing(output_prior)
@@ -362,7 +369,7 @@ function build_default_prior(input_dim::Int, output_dim::Int, kernel_structure::
         pd_kern = build_default_prior("full", n_hp, cov_structure)
     end
 
-    scaling_kern = constrained_gaussian("sigma", 1, 5, 0, Inf)
+    scaling_kern = constrained_gaussian("sigma", 2.0, 2.0, 0.001, Inf)
     return combine_distributions([pd_kern, scaling_kern])
 end
 
@@ -440,6 +447,8 @@ function calculate_mean_cov_and_coeffs(
     cov_store::A,
     buffer::A,
     multithread_type::MT,
+    default_in_scale,
+    default_out_scale,
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -473,6 +482,8 @@ function calculate_mean_cov_and_coeffs(
         input_dim,
         output_dim,
         multithread_type,
+        default_in_scale,
+        default_out_scale,
     )
     fitted_features = RF.Methods.fit(rfm, io_train_cost, decomposition_type = decomp_type)
 
@@ -487,15 +498,11 @@ function calculate_mean_cov_and_coeffs(
         buffer,
         tullio_threading = thread_opt,
     )
-
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
     ## TODO - the theory states that the following should be set:
     scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
 
-    #scaled_coeffs = 1e-3 * rand(n_features)#overwrite with noise...
-    # However the convergence is much improved with setting this to zero:
-    #scaled_coeffs = 0    
     if decomp_type == "cholesky"
         chol_fac = RF.Methods.get_decomposition(RF.Methods.get_feature_factors(fitted_features)).L
 
@@ -505,18 +512,17 @@ function calculate_mean_cov_and_coeffs(
         complexity = sum(log, svd_singval) # note this is log(abs(det))
     end
     complexity = sqrt(complexity)
+
     return scaled_coeffs, complexity
 
 end
-
-
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
 Calculate the empirical covariance, additionally applying a shrinkage operator (here the Ledoit Wolf 2004 shrinkage operation). Known to have better stability properties than Monte-Carlo for low sample sizes
 """
-function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
+function shrinkage_cov(sample_mat::AA; cov_or_corr = "cov", verbose = false) where {AA <: AbstractMatrix}
     n_out, n_sample = size(sample_mat)
 
     # de-mean (as we will use the samples directly for calculation of β)
@@ -524,22 +530,42 @@ function shrinkage_cov(sample_mat::AA) where {AA <: AbstractMatrix}
     # Ledoit Wolf shrinkage to I
 
     # get sample covariance
-    Γ = cov(sample_mat_zeromean, dims = 2)
+    if cov_or_corr == "cov"
+        Γ = cov(sample_mat_zeromean, dims = 2)
+        ss = sample_mat_zeromean
+    else # "corr"
+        Γcov = cov(sample_mat_zeromean, dims = 2)
+        bd_tol = 1e8 * eps()
+        v = sqrt.(diag(Γcov))
+        V = Diagonal(v) #stds
+        V_inv = inv(V)
+        Γ = clamp.(V_inv * Γcov * V_inv, -1 + bd_tol, 1 - bd_tol) # full corr
+        ss = V_inv * sample_mat_zeromean
+
+    end
     # estimate opt shrinkage
     μ_shrink = 1 / n_out * tr(Γ)
     δ_shrink = norm(Γ - μ_shrink * I)^2 / n_out # (scaled) frob norm of Γ_m
     #once de-meaning, we need to correct the sample covariance with an n_sample -> n_sample-1
-    β_shrink = sum([norm(c * c' - Γ)^2 / n_out for c in eachcol(sample_mat_zeromean)]) / (n_sample - 1)^2
+    β_shrink = sum([norm(c * c' - Γ)^2 / n_out for c in eachcol(ss)]) / (n_sample - 1)^2
 
     γ_shrink = min(β_shrink / δ_shrink, 1) # clipping is typically rare
+    if β_shrink / δ_shrink > 1 && verbose
+        @warn "clipping applied; forcing shrinkage parameters β/δ=$(β_shrink/δ_shrink) -> 1."
+    end
     #  γμI + (1-γ)Γ
     Γ .*= (1 - γ_shrink)
     for i in 1:n_out
         Γ[i, i] += γ_shrink * μ_shrink
     end
-
-    @info "Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)\n shrinkage covariance condition number: $(cond(Γ))"
-    return Γ
+    if verbose
+        @info "Shrinkage scale: $(γ_shrink), (0 = none, 1 = revert to scaled Identity)\n shrinkage covariance condition number: $(cond(Γ))"
+    end
+    if cov_or_corr == "cov"
+        return Γ
+    else
+        return V * Γ * V
+    end
 end
 
 
@@ -548,7 +574,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Calculate the empirical covariance, additionally applying the Noise Informed Covariance Estimator (NICE) Vishnay et al. 2024.
 """
-function nice_cov(sample_mat::AA, δ::FT = 1.0) where {AA <: AbstractMatrix, FT <: Real}
+function nice_cov(sample_mat::AA; δ::FT = 1.0, verbose = false) where {AA <: AbstractMatrix, FT <: Real}
 
     n_sample_cov = size(sample_mat, 2)
     Γ = cov(sample_mat, dims = 2)
@@ -587,12 +613,37 @@ function nice_cov(sample_mat::AA, δ::FT = 1.0) where {AA <: AbstractMatrix, FT 
         end
     end
     out = posdef_correct(V * corr * V) # rebuild the cov matrix
-    @info "NICE-adjusted covariance condition number: $(cond(out))"
+    if verbose
+        @info "NICE-adjusted covariance condition number: $(cond(out))"
+    end
     return out
 
 end
 
-
+"""
+Build covariance from the three blocks, blockmeans, coeffl2norm and complexity with additional regularization
+"""
+function correct_covariance(
+    blockmeans::AM,
+    coeffl2norm::AM,
+    complexity::AM,
+    cov_correction::AS;
+    verbose = false,
+) where {AM <: AbstractMatrix, AS <: AbstractString}
+    if cov_correction == "shrinkage"
+        sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+        return shrinkage_cov(sample_mat; verbose = verbose)
+    elseif cov_correction == "shrinkage_corr"
+        sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+        return shrinkage_cov(sample_mat; cov_or_corr = "corr", verbose = verbose)
+    elseif cov_correction == "nice"
+        sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+        return nice_cov(sample_mat; verbose = verbose)
+    else
+        sample_mat = vcat(blockmeans, coeffl2norm, complexity)
+        return cov(sample_mat, dims = 2)
+    end
+end
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -611,9 +662,12 @@ function estimate_mean_and_coeffnorm_covariance(
     io_pairs::PairedDataContainer,
     n_samples::Int,
     decomp_type::S,
-    multithread_type::TullioThreading;
+    multithread_type::TullioThreading,
+    default_in_scale,
+    default_out_scale;
     repeats::Int = 1,
     cov_correction = "shrinkage",
+    verbose = false,
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -633,7 +687,9 @@ function estimate_mean_and_coeffnorm_covariance(
     buffer = zeros(n_test, output_dim, n_features)
     complexity = zeros(1, n_samples)
     coeffl2norm = zeros(1, n_samples)
-    println("estimate cov with " * string(n_samples) * " iterations...")
+    if verbose
+        println("estimate cov with " * string(n_samples) * " iterations...")
+    end
 
     for i in ProgressBar(1:n_samples)
         for j in 1:repeats
@@ -652,6 +708,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 moc_tmp,
                 buffer,
                 multithread_type,
+                default_in_scale,
+                default_out_scale,
             )
 
             # m output_dim x n_test
@@ -680,15 +738,7 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
-    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-
-    if cov_correction == "shrinkage"
-        Γ = shrinkage_cov(sample_mat)
-    elseif cov_correction == "nice"
-        Γ = nice_cov(sample_mat)
-    else
-        Γ = cov(sample_mat, dims = 2)
-    end
+    Γ = correct_covariance(blockmeans, coeffl2norm, complexity, cov_correction; verbose = verbose)
 
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
@@ -698,6 +748,7 @@ function estimate_mean_and_coeffnorm_covariance(
     return Γ, approx_σ2
 
 end
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -715,8 +766,11 @@ function calculate_ensemble_mean_and_coeffnorm(
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
-    multithread_type::TullioThreading;
+    multithread_type::TullioThreading,
+    default_in_scale,
+    default_out_scale;
     repeats::Int = 1,
+    verbose = false,
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -763,6 +817,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                 moc_tmp,
                 buffer,
                 multithread_type,
+                default_in_scale,
+                default_out_scale,
             )
             # m output_dim x n_test
             # v output_dim x output_dim x n_test
@@ -805,9 +861,12 @@ function estimate_mean_and_coeffnorm_covariance(
     io_pairs::PairedDataContainer,
     n_samples::Int,
     decomp_type::S,
-    multithread_type::EnsembleThreading;
+    multithread_type::EnsembleThreading,
+    default_in_scale,
+    default_out_scale;
     repeats::Int = 1,
     cov_correction = "shrinkage",
+    verbose = false,
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -819,8 +878,9 @@ function estimate_mean_and_coeffnorm_covariance(
 
     output_dim = size(get_outputs(io_pairs), 1)
     n_test = length(test_idx)
-    println("estimate cov with " * string(n_samples) * " iterations...")
-
+    if verbose
+        println("estimate cov with " * string(n_samples) * " iterations...")
+    end
     nthreads = Threads.nthreads()
 
     coeffl2norm = zeros(1, n_samples)
@@ -861,6 +921,8 @@ function estimate_mean_and_coeffnorm_covariance(
                     moc_tmp[tid],
                     buffer[tid],
                     multithread_type,
+                    default_in_scale,
+                    default_out_scale,
                 )
 
 
@@ -870,9 +932,8 @@ function estimate_mean_and_coeffnorm_covariance(
                 # cplxty 1
 
                 # update vbles needed for cov
-                # update vbles needed for cov
                 means[:, i, :] += mtmp[tid] ./ repeats
-                coeffl2norm[1, i] += sqrt(sum(abs2, c)) / repeats
+                coeffl2norm[1, i] += sqrt(sum(c .^ 2)) / repeats
                 complexity[1, i] += cplxty / repeats
 
                 # update vbles needed for mean
@@ -893,17 +954,7 @@ function estimate_mean_and_coeffnorm_covariance(
         blockmeans[id, :] = permutedims(means[i, :, :], (2, 1))
     end
 
-
-    sample_mat = vcat(blockmeans, coeffl2norm, complexity)
-
-    if cov_correction == "shrinkage"
-        Γ = shrinkage_cov(sample_mat)
-    elseif cov_correction == "nice"
-        Γ = nice_cov(sample_mat)
-    else
-        Γ = cov(sample_mat, dims = 2)
-    end
-
+    Γ = correct_covariance(blockmeans, coeffl2norm, complexity, cov_correction; verbose = verbose)
     if !isposdef(approx_σ2)
         println("approx_σ2 not posdef")
         approx_σ2 = posdef_correct(approx_σ2)
@@ -927,8 +978,11 @@ function calculate_ensemble_mean_and_coeffnorm(
     batch_sizes::Union{Dict{S, Int}, Nothing},
     io_pairs::PairedDataContainer,
     decomp_type::S,
-    multithread_type::EnsembleThreading;
+    multithread_type::EnsembleThreading,
+    default_in_scale,
+    default_out_scale;
     repeats::Int = 1,
+    verbose = false,
 ) where {
     RFI <: RandomFeatureInterface,
     RNG <: AbstractRNG,
@@ -989,6 +1043,8 @@ function calculate_ensemble_mean_and_coeffnorm(
                     moc_tmp[tid],
                     buffer[tid],
                     multithread_type,
+                    default_in_scale,
+                    default_out_scale,
                 )
 
                 # m output_dim x n_test
@@ -1017,7 +1073,6 @@ function calculate_ensemble_mean_and_coeffnorm(
         println("blockcovmat not posdef")
         blockcovmat = posdef_correct(blockcovmat)
     end
-
     return vcat(blockmeans, coeffl2norm, complexity), blockcovmat
 
 end

@@ -169,12 +169,12 @@ x0 = x_spun_up[:, end]  #last element of the run is the initial condition for cr
 
 
 #Creating sythetic data
-T = 50.0
+T = 24.0
 ny = nx * 2   #number of data points
 lorenz_config_settings = LorenzConfig(dt, T)
 
 # construct how we compute Observations
-T_start = T - 25.0
+T_start = T - 20.0
 T_end = T
 observation_config = ObservationConfig(T_start, T_end)
 
@@ -196,9 +196,10 @@ y_ens = hcat(
 obs_noise_cov = cov(y_ens, dims = 2) + 1e-2 * I
 y = y_ens[:, 1]
 
+#Prior covariance
+
 pl = 4.0
 psig = 5.0
-#Prior covariance
 B = zeros(nx, nx)
 for ii in 1:nx
     for jj in 1:nx
@@ -206,6 +207,12 @@ for ii in 1:nx
     end
 end
 B_sqrt = sqrt(B)
+
+#=
+psig = 5.0
+B = psig^2*I
+B_sqrt = sqrt(B)
+=#
 
 #Prior mean
 mu = 4.0 * ones(nx)
