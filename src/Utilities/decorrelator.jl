@@ -187,9 +187,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `Decorrelator` encoder, on a columns-are-data matrix
+Apply the `Decorrelator` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
+function encode_data(dd::Decorrelator, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * (data .- data_mean)
@@ -198,9 +198,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `Decorrelator` decoder, on a columns-are-data matrix
+Apply the `Decorrelator` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
+function decode_data(dd::Decorrelator, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * data .+ data_mean

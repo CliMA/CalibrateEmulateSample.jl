@@ -1,7 +1,5 @@
 module Utilities
 
-
-
 using DocStringExtensions
 using LinearAlgebra
 using Statistics
@@ -477,5 +475,6 @@ end
 include("Utilities/canonical_correlation.jl")
 include("Utilities/decorrelator.jl")
 include("Utilities/elementwise_scaler.jl")
+include("Utilities/likelihood_informed.jl")
 
 end # module

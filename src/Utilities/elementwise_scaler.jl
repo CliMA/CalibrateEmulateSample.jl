@@ -126,9 +126,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+function encode_data(es::ElementwiseScaler, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     out = deepcopy(data)
     for i in 1:size(out, 1)
         out[i, :] .-= get_shift(es)[i]
@@ -140,9 +140,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
+Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+function decode_data(es::ElementwiseScaler, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     out = deepcopy(data)
     for i in 1:size(out, 1)
         out[i, :] *= get_scale(es)[i]
