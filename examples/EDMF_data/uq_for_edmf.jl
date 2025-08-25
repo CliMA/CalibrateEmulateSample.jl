@@ -230,10 +230,9 @@ function main()
     # Fit an emulator to the data
     emulator = Emulator(
         mlt,
-        input_output_pairs;
-        input_structure_matrix = cov(prior),
-        output_structure_matrix = truth_cov,
+        input_output_pairs,
         encoder_schedule = encoder_schedule,
+        encoder_kwargs = (; prior_cov = cov(prior), obs_noise_cov = truth_cov),
     )
 
     # Optimize the GP hyperparameters for better fit

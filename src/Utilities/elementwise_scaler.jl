@@ -86,7 +86,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{QS},
+    ::Type{QS},
 ) where {MM <: AbstractMatrix, QS <: QuartileScaling}
     quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(data)]
     quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
@@ -97,7 +97,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{MMS},
+    ::Type{MMS},
 ) where {MM <: AbstractMatrix, MMS <: MinMaxScaling}
     minmax_vec = [[minimum(dd), maximum(dd)] for dd in eachrow(data)]
     minmax_mat = reduce(hcat, minmax_vec) # 2 rows: min max
@@ -108,7 +108,7 @@ end
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,
-    T::Type{ZSS},
+    ::Type{ZSS},
 ) where {MM <: AbstractMatrix, ZSS <: ZScoreScaling}
     stat_vec = [[mean(dd), std(dd)] for dd in eachrow(data)]
     stat_mat = reduce(hcat, stat_vec) # 2 rows: mean, std
@@ -156,8 +156,12 @@ $(TYPEDSIGNATURES)
 
 Computes and populates the `shift` and `scale` fields for the `ElementwiseScaler`
 """
-initialize_processor!(es::ElementwiseScaler, data::MM, structure_matrix) where {MM <: AbstractMatrix} =
-    initialize_processor!(es, data)
+initialize_processor!(
+    es::ElementwiseScaler,
+    data::MM,
+    structure_matrices,
+    structure_vectors,
+) where {MM <: AbstractMatrix} = initialize_processor!(es, data)
 
 
 """
@@ -165,10 +169,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` encoder to a provided structure matrix
 """
-function encode_structure_matrix(
-    es::ElementwiseScaler,
-    structure_matrix::USorM,
-) where {USorM <: Union{UniformScaling, AbstractMatrix}}
+function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
     return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
@@ -177,9 +178,6 @@ $(TYPEDSIGNATURES)
 
 Apply the `ElementwiseScaler` decoder to a provided structure matrix
 """
-function decode_structure_matrix(
-    es::ElementwiseScaler,
-    enc_structure_matrix::USorM,
-) where {USorM <: Union{UniformScaling, AbstractMatrix}}
+function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end

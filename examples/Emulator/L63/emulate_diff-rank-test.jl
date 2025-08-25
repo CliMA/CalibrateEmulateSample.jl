@@ -194,8 +194,8 @@ function main()
                 emulator = Emulator(
                     mlt,
                     iopairs;
-                    output_structure_matrix = Γy,
                     encoder_schedule = deepcopy(encoder_schedule),
+                    encoder_kwargs = (; obs_noise_cov = Γy),
                 )
                 optimize_hyperparameters!(emulator)
             end

@@ -168,10 +168,9 @@ function main()
 
             emulator = Emulator(
                 mlt,
-                iopairs,
+                iopairs;
                 encoder_schedule = enc,
-                input_structure_matrix = prior_cov,
-                output_structure_matrix = Σ,
+                encoder_kwargs = (; prior_cov = prior_cov, obs_noise_cov = Σ),
             )
 
 

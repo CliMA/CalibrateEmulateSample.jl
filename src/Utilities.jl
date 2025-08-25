@@ -24,6 +24,8 @@ export create_encoder_schedule,
     decode_structure_matrix
 
 
+const StructureMatrix = Union{UniformScaling, AbstractMatrix}
+const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a matrix, the columns should be seen as vectors
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -77,6 +79,49 @@ Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
 
 ####
 
+function get_structure_vec(structure_vecs, name = nothing)
+    if isnothing(name)
+        if length(structure_vecs) == 1
+            return only(values(structure_vecs))
+        elseif isempty(structure_vecs)
+            throw(ArgumentError("Please provide a structure vector."))
+        else
+            throw(
+                ArgumentError(
+                    "Structure vectors $(collect(keys(structure_vecs))) are present. I received argument `name = nothing`, so I don't know which to use.",
+                ),
+            )
+        end
+    else
+        if haskey(structure_vecs, name)
+            return structure_vecs[name]
+        else
+            throw(ArgumentError("Structure vector $name not found. Options: $(collect(keys(structure_vecs)))."))
+        end
+    end
+end
+
+function get_structure_mat(structure_mats, name = nothing)
+    if isnothing(name)
+        if length(structure_mats) == 1
+            return only(values(structure_mats))
+        elseif isempty(structure_mats)
+            throw(ArgumentError("Please provide a structure matrix."))
+        else
+            throw(
+                ArgumentError(
+                    "Structure matrices $(collect(keys(structure_mats))) are present. I received argument `name = nothing`, so I don't know which to use.",
+                ),
+            )
+        end
+    else
+        if haskey(structure_mats, name)
+            return structure_mats[name]
+        else
+            throw(ArgumentError("Structure matrix $name not found. Options: $(collect(keys(structure_mats)))."))
+        end
+    end
+end
 
 function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
     input_data, output_data = get_data(data)
@@ -105,9 +150,10 @@ function _initialize_and_encode_data!(
     proc::PairedDataContainerProcessor,
     data,
     structure_mats,
+    structure_vecs,
     apply_to::AS,
 ) where {AS <: AbstractString}
-    initialize_processor!(proc, get_data(data)..., structure_mats..., apply_to)
+    initialize_processor!(proc, get_data(data)..., structure_mats..., structure_vecs..., apply_to)
     return _encode_data(proc, data, apply_to)
 end
 
@@ -115,15 +161,17 @@ function _initialize_and_encode_data!(
     proc::DataContainerProcessor,
     data,
     structure_mats,
+    structure_vecs,
     apply_to::AS,
 ) where {AS <: AbstractString}
     input_data, output_data = get_data(data)
-    input_structure_mat, output_structure_mat = structure_mats
+    input_structure_mats, output_structure_mats = structure_mats
+    input_structure_vecs, output_structure_vecs = structure_vecs
 
     if apply_to == "in"
-        initialize_processor!(proc, input_data, input_structure_mat)
+        initialize_processor!(proc, input_data, input_structure_mats, input_structure_vecs)
     elseif apply_to == "out"
-        initialize_processor!(proc, output_data, output_structure_mat)
+        initialize_processor!(proc, output_data, output_structure_mats, output_structure_vecs)
     else
         bad_apply_to(apply_to)
     end
@@ -189,18 +237,41 @@ Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), a
 """
 function initialize_and_encode_with_schedule!(
     encoder_schedule::VV,
-    io_pairs::PDC,
-    input_structure_mat::USorMorN1,
-    output_structure_mat::USorMorN2,
-) where {
-    VV <: AbstractVector,
-    PDC <: PairedDataContainer,
-    USorMorN1 <: Union{UniformScaling, AbstractMatrix, Nothing},
-    USorMorN2 <: Union{UniformScaling, AbstractMatrix, Nothing},
-}
+    io_pairs::PDC;
+    input_structure_mats = Dict{Symbol, StructureMatrix}(),
+    output_structure_mats = Dict{Symbol, StructureMatrix}(),
+    input_structure_vecs = Dict{Symbol, StructureVector}(),
+    output_structure_vecs = Dict{Symbol, StructureVector}(),
+    prior_cov::Union{Nothing, StructureMatrix} = nothing,
+    obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
+    observation::Union{Nothing, StructureVector} = nothing,
+    prior_samples_in::Union{Nothing, StructureVector} = nothing,
+    prior_samples_out::Union{Nothing, StructureVector} = nothing,
+) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
-    processed_input_structure_mat = deepcopy(input_structure_mat)
-    processed_output_structure_mat = deepcopy(output_structure_mat)
+
+    input_structure_mats = deepcopy(input_structure_mats)
+    if !isnothing(prior_cov)
+        (input_structure_mats[:prior_cov] = prior_cov)
+    end
+
+    output_structure_mats = deepcopy(output_structure_mats)
+    if !isnothing(obs_noise_cov)
+        (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
+    end
+
+    input_structure_vecs = deepcopy(input_structure_vecs)
+    if !isnothing(prior_samples_in)
+        (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+    end
+
+    output_structure_vecs = deepcopy(output_structure_vecs)
+    if !isnothing(observation)
+        (output_structure_vecs[:observation] = observation)
+    end
+    if !isnothing(prior_samples_out)
+        (output_structure_vecs[:prior_samples_out] = prior_samples_out)
+    end
 
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
@@ -209,37 +280,34 @@ function initialize_and_encode_with_schedule!(
         processed = _initialize_and_encode_data!(
             processor,
             processed_io_pairs,
-            (processed_input_structure_mat, processed_output_structure_mat),
+            (input_structure_mats, output_structure_mats),
+            (input_structure_vecs, output_structure_vecs),
             apply_to,
         )
 
         if apply_to == "in"
-            processed_input_structure_mat = encode_structure_matrix(processor, processed_input_structure_mat)
+            input_structure_mats = Dict{Symbol, StructureMatrix}(
+                name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats
+            )
+            input_structure_vecs = Dict{Symbol, StructureVector}(
+                name => encode_data(processor, vec) for (name, vec) in input_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_output_structure_mat = encode_structure_matrix(processor, processed_output_structure_mat)
+            output_structure_mats = Dict{Symbol, StructureMatrix}(
+                name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats
+            )
+            output_structure_vecs = Dict{Symbol, StructureVector}(
+                name => encode_data(processor, vec) for (name, vec) in output_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
 
-    return processed_io_pairs, processed_input_structure_mat, processed_output_structure_mat
+    return processed_io_pairs, input_structure_mats, output_structure_mats, input_structure_vecs, output_structure_vecs
 end
 
 # Functions to encode/decode with initialized schedule
-
-# cases when structure_matrix is Nothing:
-encode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
-decode_structure_matrix(dp::DP, n::Nothing) where {DP <: DataProcessor} = nothing
-encode_with_schedule(
-    encoder_schedule::VV,
-    n::Nothing,
-    in_or_out::AS,
-) where {VV <: AbstractVector, AS <: AbstractString} = nothing
-decode_with_schedule(
-    encoder_schedule::VV,
-    n::Nothing,
-    in_or_out::AS,
-) where {VV <: AbstractVector, AS <: AbstractString} = nothing
 
 """
 $TYPEDSIGNATURES

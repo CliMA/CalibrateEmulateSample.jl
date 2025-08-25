@@ -17,8 +17,8 @@ Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc
 emulator = Emulator(
     gauss_proc, 
     input_output_pairs; # optional arguments after this
-    output_structure_matrix = Γy,
     encoder_schedule = encoder_schedule,
+    encoder_kwargs = (; obs_noise_cov = Γy),
 )
 ```
 The optional arguments above relate to the data processing, which is described [here](@ref data-proc)
@@ -44,7 +44,7 @@ Developers may contribute new tools by performing the following
 2. Create a struct `MyMLTool <: MachineLearningTool`, containing any arguments or optimizer options 
 3. Create the following three methods to build, train, and predict with your tool (use `GaussianProcess.jl` as a guide)
 ```
-build_models!(mlt::MyMLTool, iopairs::PairedDataContainer) -> Nothing
+build_models!(mlt::MyMLTool, iopairs::PairedDataContainer, input_structure_mats::Dict{Symbol, <:StructureMatrix}, output_structure_mats::Dict{Symbol, <:StructureMatrix}) -> Nothing
 optimize_hyperparameters!(mlt::MyMLTool, args...; kwargs...) -> Nothing
 function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{Matrix, Array{,3}
 ```

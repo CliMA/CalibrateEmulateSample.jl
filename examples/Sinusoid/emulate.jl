@@ -75,7 +75,7 @@ gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
 
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs, output_structure_matrix = Γ, encoder_schedule = encoder_schedule)
+emulator_gp = Emulator(gauss_proc, input_output_pairs, (obs_cov_noise = Γ,); encoder_schedule = encoder_schedule)
 optimize_hyperparameters!(emulator_gp)
 
 # We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator 
@@ -113,7 +113,7 @@ random_features = VectorRandomFeatureInterface(
 )
 encoder_schedule_rf = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
 emulator_random_features =
-    Emulator(random_features, input_output_pairs, encoder_schedule = encoder_schedule_rf, output_structure_matrix = Γ)
+    Emulator(random_features, input_output_pairs, (obs_cov_noise = Γ,); encoder_schedule = encoder_schedule_rf)
 optimize_hyperparameters!(emulator_random_features)
 
 

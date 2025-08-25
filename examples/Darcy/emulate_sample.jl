@@ -92,14 +92,13 @@ function main()
         @save joinpath(data_save_directory, "input_output_pairs.jld2") input_output_pairs
 
         # data processing
-        encoding_schedule = (decorrelate_structure_mat(), "in_and_out")
+        encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
 
         emulator = Emulator(
             mlt,
             input_output_pairs;
-            input_structure_matrix = cov(prior),
-            output_structure_matrix = Γy,
-            encoding_schedule = encoding_schedule,
+            encoder_schedule = encoder_schedule,
+            encoder_kwargs = (; prior_cov = cov(prior), obs_noise_cov = Γy),
         )
         optimize_hyperparameters!(emulator, kernbounds = [fill(-1e2, n_params + 1), fill(1e2, n_params + 1)])
 
