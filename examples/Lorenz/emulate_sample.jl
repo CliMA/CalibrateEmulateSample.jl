@@ -39,7 +39,7 @@ function main()
             "scheduler" => DataMisfitController(terminate_at = 100.0),
             "cov_sample_multiplier" => 1.0,
             "n_iteration" => 20,
-            "n_features_opt" => 100
+            "n_features_opt" => 100,
         )
         # we do not want termination, as our priors have relatively little interpretation
 
