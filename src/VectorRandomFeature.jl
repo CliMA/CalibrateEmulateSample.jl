@@ -251,22 +251,21 @@ function hyperparameter_distribution_from_flat(
 ) where {VV <: AbstractVector, SK <: SeparableKernel}
 
     U, V = hyperparameters_from_flat(x, input_dim, output_dim, kernel_structure)
-    Uscaled = Diagonal(vec(prior_in_scale)) * U
-    Vscaled = Diagonal(vec(prior_in_scale)) * V
+    Uscaled = Diagonal(vec(prior_in_scale)) * U * Diagonal(vec(prior_in_scale))  # scale U only
     Uscaled = 0.5 * (Uscaled + Uscaled')
-    Vscaled = 0.5 * (Vscaled + Vscaled')
+    V = 0.5 * (V + V')
     if !isposdef(Uscaled)
         @info abs(minimum(eigvals(Uscaled)))
         println("U not posdef - correcting.  Consider increasing argument eps in the chosen kernel structure")
         Uscaled = posdef_correct(Uscaled)
     end
-    if !isposdef(Vscaled)
-        @info abs(minimum(eigvals(Vscaled)))
+    if !isposdef(V)
+        @info abs(minimum(eigvals(V)))
         println("V not posdef - correcting. Consider increasing argument eps in the chosen kernel structure")
-        Vscaled = posdef_correct(Vscaled)
+        V = posdef_correct(V)
     end
 
-    dist = MatrixNormal(zeros(input_dim, output_dim), Uscaled, Vscaled)
+    dist = MatrixNormal(zeros(input_dim, output_dim), Uscaled, V)
     pd = ParameterDistribution(
         Dict(
             "distribution" => Parameterized(dist),
