@@ -255,12 +255,10 @@ function hyperparameter_distribution_from_flat(
     Uscaled = 0.5 * (Uscaled + Uscaled')
     V = 0.5 * (V + V')
     if !isposdef(Uscaled)
-        @info abs(minimum(eigvals(Uscaled)))
         println("U not posdef - correcting.  Consider increasing argument eps in the chosen kernel structure")
         Uscaled = posdef_correct(Uscaled)
     end
     if !isposdef(V)
-        @info abs(minimum(eigvals(V)))
         println("V not posdef - correcting. Consider increasing argument eps in the chosen kernel structure")
         V = posdef_correct(V)
     end
