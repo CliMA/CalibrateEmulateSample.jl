@@ -304,7 +304,6 @@ rng = Random.MersenneTwister(seed)
         eps = 1e-8 # more reg needed here for some reason...
         vector_ks = SeparableKernel(DiagonalFactor(eps), CholeskyFactor()) # Diagonalize input (ARD-type kernel)
         # Scalar RF options to mimic squared-exp ARD kernel
-        n_features = 100
         srfi = ScalarRandomFeatureInterface(
             n_features,
             input_dim,
@@ -407,7 +406,6 @@ rng = Random.MersenneTwister(seed)
 
 
         # RF parameters
-        n_features = 150
 
         # Test a few options branches for RF
         # 1) scalar + diag in
@@ -423,6 +421,7 @@ rng = Random.MersenneTwister(seed)
         vector_ks = SeparableKernel(LowRankFactor(r, eps), HierarchicalLowRankFactor(r, eps))
         vector_nonsep_ks = NonseparableKernel(LowRankFactor(r + 1, eps))
 
+        n_features = 100
         srfi_diagin =
             ScalarRandomFeatureInterface(n_features, input_dim, kernel_structure = scalar_diagin_ks, rng = rng)
         srfi = ScalarRandomFeatureInterface(
@@ -442,6 +441,7 @@ rng = Random.MersenneTwister(seed)
             optimizer_options = Dict("cov_correction" => "shrinkage"),
         )
 
+        n_features = 200
         vrfi = VectorRandomFeatureInterface(
             n_features,
             input_dim,
