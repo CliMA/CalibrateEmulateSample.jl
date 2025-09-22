@@ -417,7 +417,7 @@ rng = Random.MersenneTwister(seed)
         # 4) vector , correct cov by shrinkage (corr)
         # 5) vector nonseparable , default correction with "nice"
         eps = 1e-8
-        r = 1
+        r = 2
         scalar_diagin_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor())
         scalar_ks = SeparableKernel(CholeskyFactor(eps), OneDimFactor())
         vector_diagout_ks = SeparableKernel(CholeskyFactor(eps), DiagonalFactor(eps))
