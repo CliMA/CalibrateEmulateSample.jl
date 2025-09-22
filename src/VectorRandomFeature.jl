@@ -151,7 +151,6 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
       - "n_iteration": number of eki iterations
       - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
       - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0) 
-      - "tikhonov": tikhonov regularization parameter if > 0
       - "inflation": additive inflation ∈ [0,1] with 0 being no inflation
       - "train_fraction": e.g. 0.8 (default)  means 80:20 train - test split
       - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
@@ -195,7 +194,6 @@ function VectorRandomFeatureInterface(
         "n_iteration" => 10, # number of eki iterations
         "scheduler" => EKP.DataMisfitController(terminate_at = 1000), # Adaptive timestepping
         "cov_sample_multiplier" => 10.0, # multiplier for samples to estimate covariance in optimization scheme 
-        "tikhonov" => 0, # tikhonov regularization parameter if >0
         "inflation" => 1e-4, # additive inflation ∈ [0,1] with 0 being no inflation
         "train_fraction" => 0.8, # 80:20 train - test split
         "n_features_opt" => n_features, # number of features for the optimization 
@@ -490,7 +488,6 @@ function build_models!(
     end
     n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
     observation_vec = []
-    tikhonov_opt_val = optimizer_options["tikhonov"]
     for cv_idx in 1:n_cross_val_sets
         internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
             vrfi,
@@ -511,40 +508,13 @@ function build_models!(
             verbose = opt_verbose_flag,
         )
 
-        if tikhonov_opt_val == 0
-            # Build the covariance
-            Γ = deepcopy(internal_Γ)
-            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
-                isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
-            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
-            Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
-            data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
-
-        elseif tikhonov_opt_val > 0
-            # augment the state to add tikhonov
-            outsize = size(internal_Γ, 1)
-            Γ = zeros(outsize + n_hp, outsize + n_hp)
-            Γ[1:outsize, 1:outsize] = deepcopy(internal_Γ)
-            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] += kron(I(n_test), regularization) # block diag regularization
-            Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
-
-            Γ[(n_test * output_dim + 1):outsize, (n_test * output_dim + 1):outsize] += I
-
-            Γ[(outsize + 1):end, (outsize + 1):end] = tikhonov_opt_val .* cov(prior)
-
-            data = vcat(
-                reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1),
-                0.0,
-                0.0,
-                zeros(size(Γ, 1) - outsize, 1),
-            ) #flatten data with additional zeros
-        else
-            throw(
-                ArgumentError(
-                    "Tikhonov parameter must be non-negative, instead received tikhonov_opt_val=$tikhonov_opt_val",
-                ),
-            )
-        end
+        # Build the covariance
+        Γ = deepcopy(internal_Γ)
+        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
+            isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
+        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
+        Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
+        data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
 
         if !isposdef(Γ)
             Γ = posdef_correct(Γ)
@@ -585,11 +555,7 @@ function build_models!(
         #get parameters:
         lvec = get_ϕ_final(prior, ekiobj)
 
-        if tikhonov_opt_val > 0
-            g_ens = zeros(n_cross_val_sets * (output_dim * n_test + input_dim + 2), n_ensemble)
-        else
-            g_ens = zeros(n_cross_val_sets * (output_dim * n_test + 2), n_ensemble)
-        end
+        g_ens = zeros(n_cross_val_sets * (output_dim * n_test + 2), n_ensemble)
         for cv_idx in 1:n_cross_val_sets
             g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
                 vrfi,
@@ -607,19 +573,9 @@ function build_models!(
                 prior_out_scale,
                 verbose = opt_verbose_flag,
             )
-            if tikhonov_opt_val > 0
-                # augment with the computational parameters (u not ϕ)
-                uvecormat = get_u_final(ekiobj)
-                if isa(uvecormat, AbstractVector)
-                    umat = reshape(uvecormat, 1, :)
-                else
-                    umat = uvecormat
-                end
+            indices = ((cv_idx - 1) * (output_dim * n_test + 2) + 1):(cv_idx * (output_dim * n_test + 2))
 
-                g_ens_tmp = vcat(g_ens_tmp, umat)
-            end
-
-            g_ens[((cv_idx - 1) * (output_dim * n_test + 2) + 1):(cv_idx * (output_dim * n_test + 2)), :] = g_ens_tmp
+            g_ens[indices, :] = g_ens_tmp
 
         end
 

@@ -227,7 +227,6 @@ rng = Random.MersenneTwister(seed)
             "scheduler" => DataMisfitController(terminate_at = 1000),
             "cov_sample_multiplier" => 10.0,
             "n_features_opt" => n_features,
-            "tikhonov" => 0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",

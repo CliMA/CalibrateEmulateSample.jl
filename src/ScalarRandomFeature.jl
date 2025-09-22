@@ -131,7 +131,6 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "n_iteration":  number of eki iterations
      - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0)  
      - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
-     - "tikhonov":  tikhonov regularization parameter if >0
      - "inflation":  additive inflation ∈ [0,1] with 0 being no inflation
      - "train_fraction":  e.g. 0.8 (default)  means 80:20 train - test split
      - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
