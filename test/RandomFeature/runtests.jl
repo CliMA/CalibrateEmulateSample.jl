@@ -492,8 +492,8 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_ss - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vsd - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
-        @test isapprox.(norm(μ_v - outx), 0, atol = 2*tol_μ) # approximate option so likely less good approx
-        @test isapprox.(norm(μ_vns - outx), 0, atol = 2*tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_v - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_vns - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
             n_features,
