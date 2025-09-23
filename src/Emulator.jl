@@ -125,9 +125,9 @@ function Emulator(
 
     if !isnothing(obs_noise_cov)
         if haskey(encoder_kwargs, :obs_noise_cov)
-            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs[:obs_noise_cov]`."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs=(obs_noise_cov=...)`."
         else
-            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs[:obs_noise_cov]` instead."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs=(obs_noise_cov=...)` instead."
         end
     end
 
@@ -271,7 +271,7 @@ function predict(
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
-
+    
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
     # return decoded or encoded?
