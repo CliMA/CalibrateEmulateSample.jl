@@ -254,9 +254,9 @@ function emulator_log_density_model(
 
     if isa(g_cov[1], Real)
 
-        return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
     else
-        return 1.0 / length(obs_vec) * sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
     end
 
 end
