@@ -275,7 +275,7 @@ function build_default_prior(name::SS, n_hp::Int, hlrf::HierarchicalLowRankFacto
     L = constrained_gaussian(
         "$(name)_lowrank_Kchol",
         0.0,
-        0.1 / (r * (r + 1) / 2),
+        1.0 / (r * (r + 1) / 2),
         -Inf,
         Inf,
         repeats = Int(r * (r + 1) / 2),

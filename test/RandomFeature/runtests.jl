@@ -380,7 +380,7 @@ rng = Random.MersenneTwister(seed)
     end
     @testset "RF within Emulator: 2D -> 2D" begin
         # Generate training data
-        n = 200 # number of training points
+        n = 100 # number of training points
 
         input_dim = 2   # input dim
         output_dim = 2   # output dim
@@ -412,13 +412,14 @@ rng = Random.MersenneTwister(seed)
         # 3) vector + diag out, correct cov by shrinkage (cov)
         # 4) vector , correct cov by shrinkage (corr)
         # 5) vector nonseparable , default correction with "nice"
-        eps = 1e-8
-        r = 1
+        eps = 1e-6
+        r_sep = 1
+        r_nonsep = 2
         scalar_diagin_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor())
         scalar_ks = SeparableKernel(CholeskyFactor(eps), OneDimFactor())
         vector_diagout_ks = SeparableKernel(CholeskyFactor(eps), DiagonalFactor(eps))
-        vector_ks = SeparableKernel(LowRankFactor(r, eps), HierarchicalLowRankFactor(r, eps))
-        vector_nonsep_ks = NonseparableKernel(LowRankFactor(r + 1, eps))
+        vector_ks = SeparableKernel(HierarchicalLowRankFactor(r_sep, eps), LowRankFactor(r_sep, eps))
+        vector_nonsep_ks = NonseparableKernel(LowRankFactor(r_nonsep, eps))
 
         n_features = 100
         srfi_diagin =
@@ -440,14 +441,13 @@ rng = Random.MersenneTwister(seed)
             optimizer_options = Dict("cov_correction" => "shrinkage_corr"),
         )
 
-        n_features = 200
         vrfi = VectorRandomFeatureInterface(
             n_features,
             input_dim,
             output_dim,
             kernel_structure = vector_ks,
             rng = rng,
-            optimizer_options = Dict("cov_correction" => "shrinkage"),
+            optimizer_options = Dict("verbose" => true, "cov_correction" => "shrinkage"),
         )
 
         vrfi_nonsep = VectorRandomFeatureInterface(
@@ -466,9 +466,9 @@ rng = Random.MersenneTwister(seed)
         em_srfi_svd = Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
         em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
-        em_vrfi_svd = Emulator(vrfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi_svd = Emulator(deepcopy(vrfi), iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
-        em_vrfi = Emulator(vrfi, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi = Emulator(deepcopy(vrfi), iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
         em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
 
         #TODO truncated SVD option for vector (involves resizing prior)
@@ -492,10 +492,8 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_ss - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vsd - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
-        @test isapprox.(norm(μ_v - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
-        @info norm(μ_v - outx) 10 * tol_μ
-        @test isapprox.(norm(μ_vns - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
-        @info norm(μ_vs - outx) norm(μ_ssd - outx) norm(μ_vns - outx)
+        @test isapprox.(norm(μ_v - outx), 0, atol = 2*tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_vns - outx), 0, atol = 2*tol_μ) # approximate option so likely less good approx
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
             n_features,
