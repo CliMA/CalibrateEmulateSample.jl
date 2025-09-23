@@ -81,7 +81,6 @@ function main()
     # setup random features
     eki_options_override = Dict(
         "verbose" => true,
-        "tikhonov" => 0.0,
         "scheduler" => DataMisfitController(on_terminate = "continue"),
         "n_iteration" => 10,
         "multithread" => "ensemble",

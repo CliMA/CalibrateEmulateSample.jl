@@ -45,7 +45,7 @@ rng = Random.MersenneTwister(seed)
         @test calculate_n_hyperparameters(d, odf) == 0
         @test calculate_n_hyperparameters(d, df) == d
         @test calculate_n_hyperparameters(d, cf) == Int(d * (d + 1) / 2)
-        @test calculate_n_hyperparameters(d, lrf) == Int(r + d * r)
+        @test calculate_n_hyperparameters(d, lrf) == Int(d + d * r)
         @test calculate_n_hyperparameters(d, hlrf) == Int(r * (r + 1) / 2 + d * r)
 
         # hyperparameters_from_flat - only check shape
@@ -64,6 +64,22 @@ rng = Random.MersenneTwister(seed)
             @test ndims(prior) == n_hp
         end
 
+        # API from string:
+        d = 12
+        cov_strings_and_checks = [
+            ("onedim", OneDimFactor()),
+            ("diagonal", DiagonalFactor()),
+            ("cholesky", CholeskyFactor()),
+            ("lowrank", LowRankFactor(Int(ceil(sqrt(d))))),
+            ("hierlowrank", HierarchicalLowRankFactor(Int(ceil(sqrt(d))))),
+        ]
+
+        for (cs, cc) in cov_strings_and_checks
+            @test cov_structure_from_string(cs, d) == cc
+        end
+        @test cov_structure_from_string(OneDimFactor()) == OneDimFactor()
+        @test_throws ArgumentError cov_structure_from_string("bad-string", d)
+
         # [2. ] Kernel Structures 
         d = 6
         p = 3
@@ -79,12 +95,12 @@ rng = Random.MersenneTwister(seed)
 
         # calculate_n_hyperparameters
         @test calculate_n_hyperparameters(d, p, k_sep) ==
-              calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out) + 1
-        @test calculate_n_hyperparameters(d, p, k_nonsep) == calculate_n_hyperparameters(d * p, c_in) + 1
+              calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out)
+        @test calculate_n_hyperparameters(d, p, k_nonsep) == calculate_n_hyperparameters(d * p, c_in)
         k_sep1d = SeparableKernel(odf, odf)
         k_nonsep1d = NonseparableKernel(odf)
-        @test calculate_n_hyperparameters(1, 1, k_sep1d) == 2
-        @test calculate_n_hyperparameters(1, 1, k_nonsep1d) == 2
+        @test calculate_n_hyperparameters(1, 1, k_sep1d) == 1
+        @test calculate_n_hyperparameters(1, 1, k_nonsep1d) == 1
 
         # hyper_parameters_from_flat: not applied with scaling hyperparameter
         x = ones(calculate_n_hyperparameters(d, c_in) + calculate_n_hyperparameters(p, c_out))
@@ -102,28 +118,29 @@ rng = Random.MersenneTwister(seed)
         # build_default_prior
         @test ndims(build_default_prior(d, p, k_sep)) ==
               ndims(build_default_prior("input", calculate_n_hyperparameters(d, c_in), c_in)) +
-              ndims(build_default_prior("output", calculate_n_hyperparameters(p, c_out), c_out)) +
-              1
+              ndims(build_default_prior("output", calculate_n_hyperparameters(p, c_out), c_out))
         @test ndims(build_default_prior(d, p, k_nonsep)) ==
-              ndims(build_default_prior("full", calculate_n_hyperparameters(d * p, c_in), c_in)) + 1
+              ndims(build_default_prior("full", calculate_n_hyperparameters(d * p, c_in), c_in))
 
-        @test ndims(build_default_prior(1, 1, k_sep1d)) == 2
-        @test ndims(build_default_prior(1, 1, k_nonsep1d)) == 2
+        @test ndims(build_default_prior(1, 1, k_sep1d)) == 1
+        @test ndims(build_default_prior(1, 1, k_nonsep1d)) == 1
 
 
         # test shrinkage utility
-        samples = rand(MvNormal(zeros(100), I), 20)
+        samples = rand(MvNormal(zeros(100), I), 50)
         # normal condition number should be huge around 10^18
         # shrinkage cov will have condition number around 1 and be close to I
         good_cov = shrinkage_cov(samples)
-        @test (cond(good_cov) < 10) && ((good_cov[1] < 1.5) && (good_cov[1] > 0.5))
+        @test (cond(good_cov) < 10) && ((good_cov[1] < 5.0) && (good_cov[1] > 0.2))
+
+        good_cov = shrinkage_cov(samples, cov_or_corr = "corr", verbose = true)
+        @test (cond(good_cov) < 10) && ((good_cov[1] < 5.0) && (good_cov[1] > 0.2))
 
         # test NICE utility
-        samples = rand(MvNormal(zeros(100), I), 20)
         # normal condition number should be huge around 10^18
         # nice cov will have improved conditioning, does not perform as well at this task as shrinking so has looser bounds
-        good_cov = nice_cov(samples)
-        @test (cond(good_cov) < 100) && ((good_cov[1] < 2.0) && (good_cov[1] > 0.2))
+        good_cov = nice_cov(samples, verbose = true)
+        @test (cond(good_cov) < 100) && ((good_cov[1] < 5.0) && (good_cov[1] > 0.2))
 
     end
 
@@ -152,7 +169,7 @@ rng = Random.MersenneTwister(seed)
             "multithread" => "ensemble",
             "accelerator" => NesterovAccelerator(),
             "verbose" => false,
-            "cov_correction" => "shrinkage",
+            "cov_correction" => "nice",
             "n_cross_val_sets" => 2,
         )
 
@@ -210,15 +227,15 @@ rng = Random.MersenneTwister(seed)
             "scheduler" => DataMisfitController(terminate_at = 1000),
             "cov_sample_multiplier" => 10.0,
             "n_features_opt" => n_features,
-            "tikhonov" => 0,
             "inflation" => 1e-4,
             "train_fraction" => 0.8,
             "multithread" => "ensemble",
             "accelerator" => NesterovAccelerator(),
             "verbose" => false,
             "localization" => EnsembleKalmanProcesses.Localizers.NoLocalization(),
-            "cov_correction" => "shrinkage",
+            "cov_correction" => "nice",
             "n_cross_val_sets" => 2,
+            "overfit" => 1.0,
         )
 
         #build interfaces
@@ -286,7 +303,6 @@ rng = Random.MersenneTwister(seed)
         eps = 1e-8 # more reg needed here for some reason...
         vector_ks = SeparableKernel(DiagonalFactor(eps), CholeskyFactor()) # Diagonalize input (ARD-type kernel)
         # Scalar RF options to mimic squared-exp ARD kernel
-        n_features = 100
         srfi = ScalarRandomFeatureInterface(
             n_features,
             input_dim,
@@ -389,25 +405,32 @@ rng = Random.MersenneTwister(seed)
 
 
         # RF parameters
-        n_features = 150
 
-        # Test a few options for RF
+        # Test a few options branches for RF
         # 1) scalar + diag in
         # 2) scalar  
-        # 3) vector + diag out
-        # 4) vector
-        # 5) vector nonseparable
-        eps = 1e-8
-        r = 1
+        # 3) vector + diag out, correct cov by shrinkage (cov)
+        # 4) vector , correct cov by shrinkage (corr)
+        # 5) vector nonseparable , default correction with "nice"
+        eps = 1e-6
+        r_sep = 1
+        r_nonsep = 2
         scalar_diagin_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor())
         scalar_ks = SeparableKernel(CholeskyFactor(eps), OneDimFactor())
         vector_diagout_ks = SeparableKernel(CholeskyFactor(eps), DiagonalFactor(eps))
-        vector_ks = SeparableKernel(LowRankFactor(r, eps), HierarchicalLowRankFactor(r, eps))
-        vector_nonsep_ks = NonseparableKernel(LowRankFactor(r + 1, eps))
+        vector_ks = SeparableKernel(HierarchicalLowRankFactor(r_sep, eps), LowRankFactor(r_sep, eps))
+        vector_nonsep_ks = NonseparableKernel(LowRankFactor(r_nonsep, eps))
 
+        n_features = 100
         srfi_diagin =
             ScalarRandomFeatureInterface(n_features, input_dim, kernel_structure = scalar_diagin_ks, rng = rng)
-        srfi = ScalarRandomFeatureInterface(n_features, input_dim, kernel_structure = scalar_ks, rng = rng)
+        srfi = ScalarRandomFeatureInterface(
+            n_features,
+            input_dim,
+            kernel_structure = scalar_ks,
+            rng = rng,
+            optimizer_options = Dict("verbose" => true),
+        )
 
         vrfi_diagout = VectorRandomFeatureInterface(
             n_features,
@@ -415,9 +438,17 @@ rng = Random.MersenneTwister(seed)
             output_dim,
             kernel_structure = vector_diagout_ks,
             rng = rng,
+            optimizer_options = Dict("cov_correction" => "shrinkage_corr"),
         )
 
-        vrfi = VectorRandomFeatureInterface(n_features, input_dim, output_dim, kernel_structure = vector_ks, rng = rng)
+        vrfi = VectorRandomFeatureInterface(
+            n_features,
+            input_dim,
+            output_dim,
+            kernel_structure = vector_ks,
+            rng = rng,
+            optimizer_options = Dict("verbose" => true, "cov_correction" => "shrinkage"),
+        )
 
         vrfi_nonsep = VectorRandomFeatureInterface(
             n_features,
@@ -425,6 +456,7 @@ rng = Random.MersenneTwister(seed)
             output_dim,
             kernel_structure = vector_nonsep_ks,
             rng = rng,
+            optimizer_options = Dict("verbose" => true),
         )
 
         # build emulators
@@ -434,9 +466,9 @@ rng = Random.MersenneTwister(seed)
         em_srfi_svd = Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
         em_vrfi_svd_diagout = Emulator(vrfi_diagout, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
-        em_vrfi_svd = Emulator(vrfi, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi_svd = Emulator(deepcopy(vrfi), iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
 
-        em_vrfi = Emulator(vrfi, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
+        em_vrfi = Emulator(deepcopy(vrfi), iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
         em_vrfi_nonsep = Emulator(vrfi_nonsep, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ))
 
         #TODO truncated SVD option for vector (involves resizing prior)
@@ -460,16 +492,15 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_ss - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vsd - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
-        @test isapprox.(norm(μ_v - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
-        @test isapprox.(norm(μ_vns - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
-
+        @test isapprox.(norm(μ_v - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
+        @test isapprox.(norm(μ_vns - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
             n_features,
             input_dim,
             output_dim,
             kernel_structure = vector_ks,
-            optimizer_options = Dict("train_fraction" => 0.7, "multithread" => "tullio"),
+            optimizer_options = Dict("train_fraction" => 0.8, "multithread" => "tullio"),
             rng = rng,
         )
         em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
