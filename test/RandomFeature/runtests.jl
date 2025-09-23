@@ -413,7 +413,7 @@ rng = Random.MersenneTwister(seed)
         # 4) vector , correct cov by shrinkage (corr)
         # 5) vector nonseparable , default correction with "nice"
         eps = 1e-8
-        r = 2
+        r = 1
         scalar_diagin_ks = SeparableKernel(DiagonalFactor(eps), OneDimFactor())
         scalar_ks = SeparableKernel(CholeskyFactor(eps), OneDimFactor())
         vector_diagout_ks = SeparableKernel(CholeskyFactor(eps), DiagonalFactor(eps))
@@ -437,7 +437,7 @@ rng = Random.MersenneTwister(seed)
             output_dim,
             kernel_structure = vector_diagout_ks,
             rng = rng,
-            optimizer_options = Dict("cov_correction" => "shrinkage"),
+            optimizer_options = Dict("cov_correction" => "shrinkage_corr"),
         )
 
         n_features = 200
@@ -447,7 +447,7 @@ rng = Random.MersenneTwister(seed)
             output_dim,
             kernel_structure = vector_ks,
             rng = rng,
-            optimizer_options = Dict("cov_correction" => "shrinkage_corr"),
+            optimizer_options = Dict("cov_correction" => "shrinkage"),
         )
 
         vrfi_nonsep = VectorRandomFeatureInterface(
@@ -493,8 +493,9 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_vsd - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_v - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
+        @info norm(μ_v - outx) 10 * tol_μ
         @test isapprox.(norm(μ_vns - outx), 0, atol = 10 * tol_μ) # approximate option so likely less good approx
-
+        @info norm(μ_vs - outx) norm(μ_ssd - outx) norm(μ_vns - outx)
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
             n_features,
