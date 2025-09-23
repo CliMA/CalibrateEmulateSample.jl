@@ -233,7 +233,14 @@ autodiff_hessian(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Defines the internal log-density function over a vector of observation samples using an assumed conditionally indepedent likelihood, that is with a log-likelihood of `ℓ(y,θ) = sum^n_i log( p(y_i|θ) )`. 
+Defines the internal log-density function over a vector of observation samples using an assumed conditionally indepedent likelihood, that is with a log-likelihood of `ℓ(y,θ) = sum^n_i log( p(y_i|θ) )`.
+
+Inputs:
+=======
+- θ: Parameters in physical (constrained) coordinates.
+- prior: Prior distribution as a ParameterDistribution
+- em: Emulator object with predict(.) method, evaluations returned in encoded space 
+- obs_vec: encoded data vector sample(s)
 """
 function emulator_log_density_model(
     θ,
@@ -242,18 +249,14 @@ function emulator_log_density_model(
     obs_vec::AV,
 ) where {FT <: AbstractFloat, AV <: AbstractVector}
 
-    # θ: model params we evaluate at; in original coords.
-    # transform_to_real = false means g, g_cov, obs_sample are in decorrelated coords.
+    # 
+    # transform_to_real = false means g, g_cov, obs_sample are in encoded coords.
 
-    # Recall predict() written to return multiple N_samples: expects input to be a 
-    # Matrix with N_samples columns. Returned g is likewise a Matrix, and g_cov is a
-    # Vector of N_samples covariance matrices. For MH, N_samples is always 1, so we 
-    # have to reshape()/re-cast input/output; simpler to do here than add a 
-    # predict() method.
+    # predict is written to apply to columns.
+    # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
     g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
 
     if isa(g_cov[1], Real)
-
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
     else
         return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
