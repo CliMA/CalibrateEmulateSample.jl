@@ -271,7 +271,7 @@ function predict(
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
     encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
-    
+
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
     # return decoded or encoded?
