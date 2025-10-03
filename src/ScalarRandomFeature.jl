@@ -140,7 +140,6 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
      - "cov_correction" => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
      - "overfit" => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
      - "n_cross_val_sets" => 2: train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
-     - "estimate_cov_at" => "prior_mean": estimate the noise in optimization at prior mean, also available is "prior_sample" which estimates it at the lowest-loss-value sample from the prior.
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -180,7 +179,6 @@ function ScalarRandomFeatureInterface(
         "cov_correction" => "nice", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
         "overfit" => 1.0, # if >1 this forcibly overfits to the data
-        "estimate_cov_at" => "prior_mean" # estimate the noise in optimization at "prior mean"
     )
 
     if !isnothing(optimizer_options)
@@ -453,50 +451,10 @@ function build_models!(
             prior = build_default_prior(input_dim, kernel_structure)
 
         end
-        # [2a.] identify reasonable point to estimate the cov.
+        # [2a.] Estimate the covariance at prior mean
         n_ensemble = optimizer_options["n_ensemble"]
-        estimate_cov_at = optimizer_options["estimate_cov_at"]
-        if estimate_cov_at == "prior_sample"
-
-            candidate_diff = zeros(n_cross_val_sets * (n_test + 2), n_ensemble)
-            data = zeros(n_cross_val_sets * (n_test + 2))
-            lvec = transform_unconstrained_to_constrained(prior, construct_initial_ensemble(rng, prior, n_ensemble))
-
-            for cv_idx in 1:n_cross_val_sets
-                g_ens_tmp, _ = calculate_ensemble_mean_and_coeffnorm(
-                    srfi,
-                    rng,
-                    lvec,
-                    regularization_i,
-                    n_features_opt,
-                    train_idx[cv_idx],
-                    test_idx[cv_idx],
-                    batch_sizes,
-                    io_pairs_opt,
-                    decomp_type,
-                    multithread_type,
-                    prior_in_scale,
-                    prior_out_scale,
-                    verbose = opt_verbose_flag,
-                )
-                data[((cv_idx - 1) * (n_test + 2) + 1):(cv_idx * (n_test + 2))] =
-                    vcat(get_outputs(io_pairs_opt)[test_idx[cv_idx]], 0.0, 0.0)
-                candidate_diff[((cv_idx - 1) * (n_test + 2) + 1):(cv_idx * (n_test + 2)), :] = g_ens_tmp
-            end
-            mse = sum((candidate_diff .- data) .^ 2, dims = 1)
-            ff = findfirst(mm -> mm == minimum(mse), mse) # ff.I = (1,idx)
-            μ_hp = lvec[ff.I[2]]
-
-            @info "Estimating covariance at prior_sample of lowest loss. \n norm to mean of prior = $(norm(μ_hp - transform_unconstrained_to_constrained(prior, mean(prior)))) "
-
-        elseif estimate_cov_at == "prior_mean"
-            μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
-            @info "Estimating covariance at prior mean."
-        else
-            throw(ArgumentError("Unknown value \"$(estimate_cov_at)\", for optimizer_option (\"estimate_cov_at\"). Please choose from \"estimate_cov_at\" => \"prior_mean\" or \"prior_sample\" "))
-        end
+        μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
         
-        # [2b.] Estimate covariance at chosen value
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
         cov_correction = optimizer_options["cov_correction"]
         overfit = max(optimizer_options["overfit"], 1e-4)
