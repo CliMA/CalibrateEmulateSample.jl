@@ -125,9 +125,9 @@ function Emulator(
 
     if !isnothing(obs_noise_cov)
         if haskey(encoder_kwargs, :obs_noise_cov)
-            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs[:obs_noise_cov]`."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs=(obs_noise_cov=...)`."
         else
-            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs[:obs_noise_cov]` instead."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs=(obs_noise_cov=...)` instead."
         end
     end
 

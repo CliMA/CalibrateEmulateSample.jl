@@ -178,7 +178,7 @@ function ScalarRandomFeatureInterface(
         "localization" => EKP.Localizers.NoLocalization(), # localization / sample error correction for small ensembles
         "cov_correction" => "nice", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if >1 do cross validation, else if 0 do no data splitting and no training fraction
-        "overfit" => 1.0, # if >1 this forcibly overfits to the data 
+        "overfit" => 1.0, # if >1 this forcibly overfits to the data
     )
 
     if !isnothing(optimizer_options)
@@ -436,11 +436,9 @@ function build_models!(
                 ),
             )
         end
-
         # scale up the prior so that default priors are always "reasonable"
         prior_in_scale = 1.0 ./ std(input_values, dims = 2)
         prior_out_scale = std(output_values[i, :])
-
 
         prior = build_default_prior(input_dim, kernel_structure)
 
@@ -453,7 +451,8 @@ function build_models!(
             prior = build_default_prior(input_dim, kernel_structure)
 
         end
-        # [2.] Estimate covariance at mean value
+        # [2a.] Estimate the covariance at prior mean
+        n_ensemble = optimizer_options["n_ensemble"]
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
 
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
@@ -461,8 +460,8 @@ function build_models!(
         overfit = max(optimizer_options["overfit"], 1e-4)
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
-        println("estimating covariances with " * string(n_cov_samples) * " iterations...")
 
+        println("estimating covariances with " * string(n_cov_samples) * " iterations...")
         observation_vec = []
         for cv_idx in 1:n_cross_val_sets
 
@@ -504,7 +503,6 @@ function build_models!(
         end
         observation = combine_observations(observation_vec)
         # [3.] set up EKP optimization
-        n_ensemble = optimizer_options["n_ensemble"]
         n_iteration = optimizer_options["n_iteration"]
         scheduler = optimizer_options["scheduler"]
         accelerator = optimizer_options["accelerator"]
@@ -594,6 +592,7 @@ function build_models!(
         end
 
         io_pairs_i = PairedDataContainer(input_values, reshape(output_values[i, :], 1, size(output_values, 2)))
+
         # Now, fit new RF model with the optimized hyperparameters
 
         rfm_i = RFM_from_hyperparameters(

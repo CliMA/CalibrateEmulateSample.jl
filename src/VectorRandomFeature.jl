@@ -160,7 +160,6 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
      - "cov_correction" => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
       - "overfit" => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
       - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
-
 """
 function VectorRandomFeatureInterface(
     n_features::Int,
@@ -203,7 +202,7 @@ function VectorRandomFeatureInterface(
         "accelerator" => EKP.NesterovAccelerator(), # acceleration with momentum
         "cov_correction" => "nice", # type of conditioning to improve estimated covariance
         "n_cross_val_sets" => 2, # if set to 0, removes data split. i.e takes train & test to be the same data set
-        "overfit" => 1.0, # if >1 this forcibly overfits to the data 
+        "overfit" => 1.0, # if >1 this forcibly overfits to the data
     )
 
     if !isnothing(optimizer_options)
@@ -471,11 +470,9 @@ function build_models!(
         end
     end
 
-    # [2.] Estimate covariance at mean value
+    # [2a.] Estimate the cov at prior mean
+    n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
-    cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
-    cov_correction = optimizer_options["cov_correction"]
-    overfit = max(optimizer_options["overfit"], 1e-4)
 
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
@@ -486,7 +483,13 @@ function build_models!(
     else
         n_cov_samples_min = (n_test * output_dim + 2)
     end
+
+    cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
+    cov_correction = optimizer_options["cov_correction"]
+    overfit = max(optimizer_options["overfit"], 1e-4)
     n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
+
+    println("estimating covariances with " * string(n_cov_samples) * " iterations...")
     observation_vec = []
     for cv_idx in 1:n_cross_val_sets
         internal_Γ, approx_σ2 = estimate_mean_and_coeffnorm_covariance(
@@ -525,7 +528,6 @@ function build_models!(
     observation = combine_observations(observation_vec)
 
     # [3.] set up EKP optimization
-    n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
     n_iteration = optimizer_options["n_iteration"]
     opt_verbose_flag = optimizer_options["verbose"]
     scheduler = optimizer_options["scheduler"]

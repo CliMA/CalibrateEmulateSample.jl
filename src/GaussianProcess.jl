@@ -167,7 +167,6 @@ function build_models!(
     end
     N_models = size(output_values, 1) #size(transformed_data)[1]
 
-
     # Use a default kernel unless a kernel was supplied to GaussianProcess
     if gp.kernel === nothing
         println("Using default squared exponential kernel, learning length scale and variance parameters")
@@ -183,7 +182,6 @@ function build_models!(
         kern = deepcopy(gp.kernel)
         println("Using user-defined kernel", kern)
     end
-
 
     if gp.noise_learn
         # Add white noise to kernel
@@ -202,9 +200,10 @@ function build_models!(
         else
             diag(output_structure_mat)
         end
-    end
 
-    logstd_regularization_noise = log.(sqrt.(regularization .* gp.alg_reg_noise))
+    end
+    regularization_noise = regularization .* gp.alg_reg_noise
+    logstd_regularization_noise = log.(sqrt.(regularization_noise))
 
     for i in 1:N_models
         logstd_regularization_i = logstd_regularization_noise[i]
@@ -228,7 +227,7 @@ function build_models!(
         push!(models, m)
 
     end
-    append!(gp.regularization, logstd_regularization_noise)
+    append!(gp.regularization, regularization_noise)
 
 end
 
@@ -262,6 +261,7 @@ function _predict(
     # Predicts columns of inputs: input_dim × N_samples
     μ = zeros(M, N_samples)
     σ2 = zeros(M, N_samples)
+    # predict method ::YType will add gp.regularization back in here, ::FType will not
     for i in 1:M
         μ[i, :], σ2[i, :] = predict_method(gp.models[i], new_inputs)
     end
@@ -429,7 +429,6 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
 3. Build a new Emulator with kwargs `kernel_params=kernel_params`
         """))
     end
-
 
     N_models = size(output_values, 1) #size(transformed_data)[1]
     # use the output_structure_matrix to scale regularization scale
