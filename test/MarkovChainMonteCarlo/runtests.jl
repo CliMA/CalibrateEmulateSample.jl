@@ -107,6 +107,7 @@ function test_data_mv(prior; rng_seed = 41, n = 500, var_y = 0.01, input_dim = 4
     # number of training points
     x = 5.0 * rand(rng, Float64, (input_dim, n))                 # predictors/features: 1 × n
     σ2_y = var_y * I #reshape([var_y], 1, 1)
+    # scaled by input_dim, so that the prior/training inputs remain reasonable in different input dimensions.
     y = reshape(G([norm(xx) / input_dim for xx in eachcol(x)]), 1, n) + rand(rng, MvNormal(zeros(1), σ2_y), n) # predictands/targets: 1 × n
 
     return y,
@@ -521,12 +522,11 @@ end
             @info "ESJD (ND-1D) [GPJL,RW] = $esjd_mv"
             # as function performs f(norm(x)), posterior should have good properties of the mean(norm(x))
             samples_mat_mv = reduce(vcat, [v for v in values(constrained_posterior_samples_mv)])
-            @info samples_mat_mv[:, (end - 20):end]
             norm_samples_mv = norm.([c for c in eachcol(samples_mat_mv)])
             posterior_norm_mean_mv = mean(norm_samples_mv)
             G_mean_mv = mean(G(norm_samples_mv / input_dim))
             @info "Mean of posterior sample norm: $(posterior_norm_mean_mv) ≈ $(mle_norm_mv)"
-            @info "Mean of G sample norm: $(G_mean_mv) ≈ $(obs_sample_mv)"
+            @info "Mean of G sample norm: $(G_mean_mv) ≈ $(obs_sample_mv[1])"
         end
     end
 
