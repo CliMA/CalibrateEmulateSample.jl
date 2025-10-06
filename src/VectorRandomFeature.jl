@@ -473,7 +473,7 @@ function build_models!(
     # [2a.] Estimate the cov at prior mean
     n_ensemble = optimizer_options["n_ensemble"] # minimal ensemble size n_hp,
     μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
-    
+
     if nameof(typeof(kernel_structure)) == :SeparableKernel
         if nameof(typeof(get_output_cov_structure(kernel_structure))) == :DiagonalFactor
             n_cov_samples_min = n_test + 2 # diagonal case

@@ -454,7 +454,7 @@ function build_models!(
         # [2a.] Estimate the covariance at prior mean
         n_ensemble = optimizer_options["n_ensemble"]
         μ_hp = transform_unconstrained_to_constrained(prior, mean(prior))
-        
+
         cov_sample_multiplier = optimizer_options["cov_sample_multiplier"]
         cov_correction = optimizer_options["cov_correction"]
         overfit = max(optimizer_options["overfit"], 1e-4)

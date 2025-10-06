@@ -11,6 +11,9 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
 
+# range 0->2, with lengthscale of transition 0.5, and y=1 at x=2
+G(x) = 5 * (tanh.((x .- 2) ./ 0.5) .+ 1)
+
 function test_data(prior; rng_seed = 41, n = 80, var_y = 0.05, rest...)
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(rng_seed)
@@ -18,8 +21,7 @@ function test_data(prior; rng_seed = 41, n = 80, var_y = 0.05, rest...)
     # that's tested in test/GaussianProcesses/runtests.jl Case 1
     x = 5 * rand(rng, Float64, (1, n))                 # predictors/features: 1 × n
     σ2_y = var_y * I #reshape([var_y], 1, 1)
-    # range 0->2, with lengthscale of transition 0.5, and y=1 at x=2
-    y = 5 * (tanh.((x .- 2) ./ 0.5) .+ 1) + sqrt(σ2_y.λ) * randn(rng, 1, n) # predictands/targets: 1 × n
+    y = G(x) + sqrt(σ2_y.λ) * randn(rng, 1, n) # predictands/targets: 1 × n
 
     return y,
     σ2_y,
@@ -31,11 +33,11 @@ function validate_emulator(em, data_name, prior, test_data_kwargs; exp_name = "t
     tpk = merge(test_data_kwargs, (; rng_seed = 235412))
 
     if data_name == "test_data"
-        _, _, validation_data, _ = test_data(prior; test_data_kwargs)
+        _, _, validation_data, _ = test_data(prior; test_data_kwargs...)
     elseif data_name == "test_data_2d"
-        _, _, validation_data, _ = test_data_2d(prior; test_data_kwargs)
+        _, _, validation_data, _ = test_data_2d(prior; test_data_kwargs...)
     elseif data_name == "test_data_mv"
-        _, _, validation_data, _ = test_data_mv(prior; test_data_kwargs)
+        _, _, validation_data, _ = test_data_mv(prior; test_data_kwargs...)
     end
 
 
@@ -98,13 +100,14 @@ end
 
 test_prior_2d() = test_prior_mv(2)
 
-function test_data_mv(prior; rng_seed = 41, n = 80, var_y = 0.05, input_dim = 10, rest...)
+function test_data_mv(prior; rng_seed = 41, n = 500, var_y = 0.01, input_dim = 4, rest...)
+
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(rng_seed)
     # number of training points
     x = 5.0 * rand(rng, Float64, (input_dim, n))                 # predictors/features: 1 × n
     σ2_y = var_y * I #reshape([var_y], 1, 1)
-    y = reshape(sin.([norm(xx) for xx in eachcol(x)]), 1, n) + rand(rng, MvNormal(zeros(1), σ2_y), n) # predictands/targets: 1 × n
+    y = reshape(G([norm(xx) / input_dim for xx in eachcol(x)]), 1, n) + rand(rng, MvNormal(zeros(1), σ2_y), n) # predictands/targets: 1 × n
 
     return y,
     σ2_y,
@@ -245,6 +248,7 @@ function mcmc_test_template(
     step = 0.25,
     rng = Random.GLOBAL_RNG,
     target_acc = 0.25,
+    return_samples = false,
 )
     if !isa(obs_sample, AbstractVecOrMat)
         obs_sample = reshape(collect(obs_sample), 1) # scalar -> Vector 
@@ -258,7 +262,6 @@ function mcmc_test_template(
     # Now begin the actual MCMC, sample is multiply exported so we qualify
     chain = MCMC.sample(rng, mcmc, 50_000; stepsize = new_step, discard_initial = 10000)
     posterior_distribution = get_posterior(mcmc, chain)
-    constrained_posterior_mean = transform_unconstrained_to_constrained(prior, mean(posterior_distribution))
     if TEST_PLOT_OUTPUT
         # plot:
         pp = plot(prior, title = exp_name, color = :grey)
@@ -266,10 +269,18 @@ function mcmc_test_template(
         savefig(pp, joinpath(@__DIR__, "posterior_$(exp_name).png"))
     end
 
-    if length(constrained_posterior_mean) == 1
-        return new_step, constrained_posterior_mean[1], chain
+
+    if return_samples # return sanples not mean
+        constrained_posterior_samples =
+            transform_unconstrained_to_constrained(prior, get_distribution(posterior_distribution)) # still a Dict (param_name => samples)
+        return new_step, constrained_posterior_samples, chain
     else
-        return new_step, constrained_posterior_mean, chain
+        constrained_posterior_mean = transform_unconstrained_to_constrained(prior, mean(posterior_distribution))
+        if length(constrained_posterior_mean) == 1
+            return new_step, constrained_posterior_mean[1], chain
+        else
+            return new_step, constrained_posterior_mean, chain
+        end
     end
 
 end
@@ -284,7 +295,7 @@ end
     mle = 2.0
     prior = test_prior()
     test_data_kwargs = (; rng_seed = 42, n = 80, var_y = 0.05)
-    y, σ2_y, iopairs, rng = test_data(prior; test_data_kwargs) # iopairs unconstrained inputs
+    y, σ2_y, iopairs, rng = test_data(prior; test_data_kwargs...) # iopairs unconstrained inputs
 
     # mcmc setup
     mcmc_params = Dict(
@@ -313,11 +324,12 @@ end
 
     # [2.] 10D -> 1D
     # setup
-    obs_sample_mv = obs_sample
-    mle_mv = 2.0
-    prior_mv = test_prior_mv()
-    test_data_mv_kwargs = (; input_dim = 10)
-    y_mv, σ2_y_mv, iopairs_mv, rng_mv = test_data_mv(prior_mv; test_data_mv_kwargs) # iopairs unconstrained inputs
+    obs_sample_mv = [5.0]
+    input_dim = 5
+    mle_norm_mv = 2.0 * input_dim
+    prior_mv = test_prior_mv(input_dim)
+    test_data_mv_kwargs = (; input_dim = input_dim)
+    y_mv, σ2_y_mv, iopairs_mv, rng_mv = test_data_mv(prior_mv; test_data_mv_kwargs...) # iopairs unconstrained inputs
 
     # build and validate the emulators
     em_mv = test_gp_mv(y_mv, σ2_y_mv, iopairs_mv)
@@ -327,18 +339,24 @@ end
     mcmc_params_mv = Dict(
         :mcmc_alg => RWMHSampling(),
         :obs_sample => obs_sample_mv,
-        :init_params => transform_constrained_to_unconstrained(prior_mv, repeat([0.0], 10)),
-        :step => 0.025,
+        :init_params => transform_constrained_to_unconstrained(prior_mv, repeat([2.1], input_dim)),
+        :step => 0.25,
         :rng => rng_mv,
     )
 
+    mcmc_params_mv_pcn = deepcopy(mcmc_params_mv)
+    mcmc_params_mv_pcn[:mcmc_alg] = pCNMHSampling()
+    mcmc_params_mv_pcn[:target_acc] = 0.6
+    mcmc_params_mv_pcn[:step] = 0.025
+
     # [3.] 2D -> 2D
+
     # setup
     obs_sample_2d = [1.0, 1.0]
     mle_2d = [π / 2, π / 2]
     prior_2d = test_prior_2d()
     test_data_2d_kwargs = (; rng_seed = 4141, n = 100, cov_y = 0.05 * [[0.5, 0.2] [0.2, 0.5]])
-    y_2d, σ2_y_2d, iopairs_2d, rng_2d = test_data_2d(prior_2d; test_data_2d_kwargs)
+    y_2d, σ2_y_2d, iopairs_2d, rng_2d = test_data_2d(prior_2d; test_data_2d_kwargs...)
     em_v = test_vrfi(y_2d, σ2_y_2d, iopairs_2d)
     validate_emulator(em_v, "test_data_2d", prior_2d, (; test_data_2d_kwargs))
 
@@ -349,7 +367,6 @@ end
         :step => 0.025,
         :rng => rng_2d,
     )
-
 
     @testset "1D-1D GP/RF & RW Metropolis" begin
 
@@ -435,12 +452,6 @@ end
 
     end
 
-    @testset "10D-1D" begin
-        # 10D dist with 1 name, just build the wrapper for test
-        mcmc = MCMCWrapper(RWMHSampling(), obs_sample_mv, prior_mv, em_mv; mcmc_params_mv...)
-
-    end
-
 
     @testset "2D-2D RF & RW" begin
 
@@ -498,6 +509,25 @@ end
 
         @test all(isapprox.(esjd1, esjd2, rtol = 0.2))
 
+    end
+
+    @testset "ND-1D" begin
+        @info "Input dimension: $(input_dim)"
+        for params in (mcmc_params_mv, mcmc_params_mv_pcn)
+            # 10D dist with 1 name, just build the wrapper for test
+            new_step_mv, constrained_posterior_samples_mv, chain_mv =
+                mcmc_test_template(prior_mv, σ2_y_mv, em_mv; exp_name = "gpjl_10d", return_samples = true, params...)
+            esjd_mv = esjd(chain_mv)
+            @info "ESJD (ND-1D) [GPJL,RW] = $esjd_mv"
+            # as function performs f(norm(x)), posterior should have good properties of the mean(norm(x))
+            samples_mat_mv = reduce(vcat, [v for v in values(constrained_posterior_samples_mv)])
+            @info samples_mat_mv[:, (end - 20):end]
+            norm_samples_mv = norm.([c for c in eachcol(samples_mat_mv)])
+            posterior_norm_mean_mv = mean(norm_samples_mv)
+            G_mean_mv = mean(G(norm_samples_mv / input_dim))
+            @info "Mean of posterior sample norm: $(posterior_norm_mean_mv) ≈ $(mle_norm_mv)"
+            @info "Mean of G sample norm: $(G_mean_mv) ≈ $(obs_sample_mv)"
+        end
     end
 
     @testset "Autodiff MCMC variants" begin

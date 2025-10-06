@@ -559,7 +559,6 @@ function MCMCWrapper(
     # encoding works on columns but mcmc wants vec-of-vec
     encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
 
-
     log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
