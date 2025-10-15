@@ -15,4 +15,5 @@ docs/site/
 *.vscode*
 *.DS_Store
 *.jld2
+*~
 output*
