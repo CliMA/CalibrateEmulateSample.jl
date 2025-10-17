@@ -11,15 +11,15 @@ mutable struct LikelihoodInformed{FT <: Real} <: PairedDataContainerProcessor
     dim_criterion::Tuple{Symbol, <:Number}
     α::FT
     grad_type::Symbol
-    use_prior_samples::Bool
+    use_data_as_samples::Bool
 end
 
-function likelihood_informed(retain_KL; alpha = 0.0, grad_type = :localsl, use_prior_samples = true)
+function likelihood_informed(; retain_KL, alpha = 0.0, grad_type = :localsl, use_data_as_samples = false)
     if grad_type ∉ [:linreg, :localsl]
         @error "Unknown grad_type=$grad_type"
     end
 
-    LikelihoodInformed(nothing, nothing, nothing, (:retain_KL, retain_KL), alpha, grad_type, use_prior_samples)
+    LikelihoodInformed(nothing, nothing, nothing, (:retain_KL, retain_KL), alpha, grad_type, use_data_as_samples)
 end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
@@ -45,14 +45,13 @@ function initialize_processor!(
         else
             get_structure_vec(output_structure_vectors, :observation)
         end
-        samples_in, samples_out = if li.use_prior_samples
-            @assert α ≈ 0.0
-            (
-                get_structure_vec(input_structure_vectors, :prior_samples_in),
-                get_structure_vec(output_structure_vectors, :prior_samples_out),
-            )
-        else
+        samples_in, samples_out = if li.use_data_as_samples
             (in_data, out_data)
+        else
+            (
+                get_structure_vec(input_structure_vectors, :samples_in),
+                get_structure_vec(output_structure_vectors, :samples_out),
+            )
         end
         obs_noise_cov = get_structure_mat(output_structure_matrices, :obs_noise_cov)
         noise_cov_inv = inv(obs_noise_cov)
@@ -79,10 +78,10 @@ function initialize_processor!(
 
         li.encoder_mat = if apply_to == "in" || α ≈ 0
             decomp = if apply_to == "in"
-                eigen(mean(grad' * noise_cov_inv * ((1-α)obs_noise_cov + α^2 * (y - g) * (y - g)') * noise_cov_inv * grad for (g, grad) in zip(eachcol(samples_out), grads)), sortby = (-))
+                eigen(hermitianpart(mean(grad' * noise_cov_inv * ((1-α)obs_noise_cov + α^2 * (y - g) * (y - g)') * noise_cov_inv * grad for (g, grad) in zip(eachcol(samples_out), grads))), sortby = (-))
             else
                 @assert apply_to == "out"
-                eigen(mean(grad * grad' for grad in grads), obs_noise_cov, sortby = (-))
+                eigen(hermitianpart(mean(grad * grad' for grad in grads)), obs_noise_cov, sortby = (-))
             end
 
             if li.dim_criterion[1] == :retain_KL
@@ -93,6 +92,7 @@ function initialize_processor!(
                 @assert li.dim_criterion[1] == :dimension
                 trunc_val = li.dim_criterion[2]
             end
+            @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the KL divergence reduction"
             li.encoder_mat = decomp.vectors[:, 1:trunc_val]'
         else
             @assert apply_to == "out"
@@ -135,13 +135,18 @@ function initialize_processor!(
                 if li.dim_criterion[1] == :retain_KL
                     retain_KL = li.dim_criterion[2]
                     ref = f(M, zeros(output_dim, 0))
-                    if f(M, Vs) / ref ≤ 1 - retain_KL
+                    val = f(M, Vs)
+                    if val / ref ≤ 1 - retain_KL
+                        @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                         break # TODO: Start bisecting?
                     else
                         k *= 2
                     end
                 else
                     @assert li.dim_criterion[1] == :dimension
+                    ref = f(M, zeros(output_dim, 0))
+                    val = f(M, Vs)
+                    @info "    truncating at $(li.dim_criterion[2])/$output_dim retaining $(100.0*val/ref)% of the KL divergence reduction"
                     break
                 end
             end

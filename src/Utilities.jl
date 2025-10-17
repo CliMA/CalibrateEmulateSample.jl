@@ -495,8 +495,8 @@ function initialize_and_encode_with_schedule!(
     prior_cov::Union{Nothing, StructureMatrix} = nothing,
     obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
     observation::Union{Nothing, StructureVector} = nothing,
-    prior_samples_in::Union{Nothing, StructureVector} = nothing,
-    prior_samples_out::Union{Nothing, StructureVector} = nothing,
+    samples_in::Union{Nothing, StructureVector} = nothing,
+    samples_out::Union{Nothing, StructureVector} = nothing,
 ) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
 
@@ -528,16 +528,16 @@ function initialize_and_encode_with_schedule!(
     end
 
     input_structure_vecs = deepcopy(input_structure_vecs)
-    if !isnothing(prior_samples_in)
-        (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+    if !isnothing(samples_in)
+        (input_structure_vecs[:samples_in] = samples_in)
     end
 
     output_structure_vecs = deepcopy(output_structure_vecs)
     if !isnothing(observation)
         (output_structure_vecs[:observation] = observation)
     end
-    if !isnothing(prior_samples_out)
-        (output_structure_vecs[:prior_samples_out] = prior_samples_out)
+    if !isnothing(samples_out)
+        (output_structure_vecs[:samples_out] = samples_out)
     end
 
     # apply_to is the string "in", "out" etc.
