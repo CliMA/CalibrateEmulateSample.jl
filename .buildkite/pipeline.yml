@@ -1,5 +1,5 @@
 agents:
-  queue: new-central
+  queue: central
   modules: climacommon/2024_03_18 
   
 env:
