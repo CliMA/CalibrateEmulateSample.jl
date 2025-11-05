@@ -1,0 +1,85 @@
+[a_bar1]
+prior = "constrained_gaussian(a_bar1, 5e5,1.7e5, 0.2e6,0.8e6)"
+description = """
+a_bar=a*sigma.
+"""
+[a_bar2]
+prior = "constrained_gaussian(a_bar2, 5e5,1.7e5, 0.2e6,0.8e6)"
+description = """
+a_bar=a*sigma.
+"""
+[a_bar3]
+prior = "constrained_gaussian(a_bar3, 5e5,1.7e5, 0.2e6,0.8e6)"
+description = """
+a_bar=a*sigma.
+"""
+[a_bar4]
+prior = "constrained_gaussian(a_bar4, 5e5,1.7e5, 0.2e6,0.8e6)"
+description = """
+a_bar=a*sigma.
+"""
+[a_bar5]
+prior = "constrained_gaussian(a_bar5, 5e5,1.7e5, 0.2e6,0.8e6)"
+description = """
+a_bar=a*sigma.
+"""
+[x_1]
+prior="constrained_gaussian(x_1,0.5,0.28,0,1)"
+description = """
+bar b_1= bar a * x_1
+"""
+[x_2]
+prior="constrained_gaussian(x_2,0.5,0.28,0,1)"
+description = """
+bar b_2= bar a /  x_2
+"""
+[x_3]
+prior="constrained_gaussian(x_3,0.5,0.28,0,1)"
+description = """
+bar b_3= bar a * x_3
+"""
+[x_4]
+prior="constrained_gaussian(x_4,0.5,0.28,0,1)"
+description = """
+bar b_4= bar a / x_4
+"""
+[x_5]
+prior="constrained_gaussian(x_5,0.5,0.28,0,1)"
+description = """
+bar b_5 = bar a * x_5
+"""
+[drs1]
+prior = "constrained_gaussian(drs1,0.011,0.005,0.002,0.02)"
+description = """
+The characteristic slip distance (drs).
+"""
+[drs2]
+prior = "constrained_gaussian(drs2,0.011,0.005,0.002,0.02)"
+description = """
+The characteristic slip distance (drs).
+"""
+[drs3]
+prior = "constrained_gaussian(drs3,0.011,0.005,0.002,0.02)"
+description = """
+The characteristic slip distance (drs).
+"""
+[drs4]
+prior = "constrained_gaussian(drs4,0.011,0.005,0.002,0.02)"
+description = """
+The characteristic slip distance (drs).
+"""
+[drs5]
+prior = "constrained_gaussian(drs5,0.011,0.005,0.002,0.02)"
+description = """
+The characteristic slip distance (drs).
+"""
+[l1]
+prior="constrained_gaussian(l1,9e3,3.4e3,3e3,15e3)"
+description = """
+l1 in km
+"""
+[l2]
+prior="constrained_gaussian(l2,9e3,3.4e3,3e3,15e3)"
+description = """
+l2 in km
+"""
