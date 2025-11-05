@@ -56,7 +56,7 @@ mlt = GaussianProcess(gppackage, noise_learn = false)
 # data processing & dim reduction
 retain_var = 0.95 # decorrelate, and reduce, retaining X fraction of variance
 encoder_schedule = [(decorrelate_sample_cov(retain_var=retain_var), "in") ,(decorrelate_structure_mat(retain_var=retain_var), "out")]
-encoder_kwargs = (; obs_noise_cov = Γ)
+
 # Build the emulator
 emulator = Emulator(mlt, train_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = (; obs_noise_cov = Γ), verbose=true)
 optimize_hyperparameters!(emulator)
