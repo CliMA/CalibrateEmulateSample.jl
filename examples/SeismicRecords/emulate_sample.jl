@@ -1,4 +1,4 @@
-using JLD2
+using JLD2, TOML
 using Plots
 using Distributions, LinearAlgebra, Statistics, Random
 using CalibrateEmulateSample
@@ -24,32 +24,41 @@ eki_filename = "eki.jld2"
 
 # get the priors
 priors_filename = "priors_experiment3_0.toml"
-param_dict = TOML.parsefile(toml_path)
+param_dict = TOML.parsefile(priors_filename)
 names = ["a_bar1", "a_bar2", "a_bar3", "a_bar4", "a_bar5", "x_1", "x_2", "x_3", "x_4", "x_5", "drs1", "drs2", "drs3", "drs4", "drs5", "l1", "l2"]
 prior_vec = [get_parameter_distribution(param_dict, n) for n in names]
 prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 10 # trains on data 1:N_train
+N_train = 6 # trains on data 1:N_train
 N_iterations_max = length(get_u(eki))
-train_iterations = 1:min(N_train , N_iterations_max - 1)
+train_iterations = 1:min(N_train , N_iterations_max - 2)
 train_pairs = get_training_points(eki, train_iterations)
 
-test_iterations = train_iterations+1:N_iterations_max
+test_iterations = train_iterations[end]+1:N_iterations_max-1
 test_pairs = get_training_points(eki, test_iterations)
 
+# prune NaNs (mainly in first few iterations)
+nan_cols = findall( sum(isnan.(get_outputs(train_pairs)),dims=1)[:] .> 0)
+not_nan_cols = setdiff(collect(1:size(get_outputs(train_pairs),2)), nan_cols)
+train_pairs = PairedDataContainer(get_inputs(train_pairs)[:,not_nan_cols],get_outputs(train_pairs)[:,not_nan_cols])
+
+nan_cols = findall( sum(isnan.(get_outputs(test_pairs)),dims=1)[:] .> 0)
+not_nan_cols = setdiff(collect(1:size(get_outputs(test_pairs),2)), nan_cols)
+test_pairs = PairedDataContainer(get_inputs(test_pairs)[:,not_nan_cols],get_outputs(test_pairs)[:,not_nan_cols])
+
+                                  
 # Create the ML tool (GP first)
 gppackage = GPJL()
 mlt = GaussianProcess(gppackage, noise_learn = false)
 
 # data processing & dim reduction
-retain_var = 0.99 # decorrelate, and reduce, retaining X fraction of variance
-encoder_schedule = (decorrelate_structure_mat(retain_var=retain_var), "out")
-encoder_kwargs = (obs_cov_noise = Γ,)
-
+retain_var = 0.95 # decorrelate, and reduce, retaining X fraction of variance
+encoder_schedule = [(decorrelate_sample_cov(retain_var=retain_var), "in") ,(decorrelate_structure_mat(retain_var=retain_var), "out")]
+encoder_kwargs = (; obs_noise_cov = Γ)
 # Build the emulator
-emulator = Emulator(mlt, train_pairs; encoder_schedule = encoder_schedule, enocder_kwargs = encoder_kwargs)
+emulator = Emulator(mlt, train_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = (; obs_noise_cov = Γ), verbose=true)
 optimize_hyperparameters!(emulator)
 
 
@@ -59,7 +68,7 @@ optimize_hyperparameters!(emulator)
 # Then perform the sampling - here use pCN for 17d problem
 chain_length = 100_000
 
-init_sample = EKP.get_u_mean_final(eki)
+init_sample = get_u_mean_final(eki)
 
 mcmc = MCMCWrapper(pCNMHSampling(), y, prior, emulator; init_params = init_sample)
 @info "Finding reasonable stepsize..."
@@ -75,10 +84,14 @@ posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 # Back to constrained coordinates
 constrained_posterior =
     Emulators.transform_unconstrained_to_constrained(prior, MarkovChainMonteCarlo.get_distribution(posterior))
+constrained_eki_optimal = transform_unconstrained_to_constrained(prior, init_sample)
 
 p = plot(prior, fill = :lightgray)
 plot!(posterior, fill = :darkblue, alpha = 0.5)
-savefig(p, joinpath(data_save_directory, "posterior_marginals.png"))
+for (i,sp) in enumerate(p.subplots)
+    vline!(sp, [constrained_eki_optimal[i]], lc="black", lw=4) # eki at final iteration
+end
+savefig(p, joinpath(@__DIR__, "posterior_marginals.png"))
 
 
 
