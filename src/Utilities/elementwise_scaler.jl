@@ -21,6 +21,10 @@ struct ElementwiseScaler{T, VV <: AbstractVector} <: DataContainerProcessor
     shift::VV
     "storage for the scaling"
     scale::VV
+    "the matrix used to perform encoding"
+    encoder_mat::VV2
+    "the inverse of the the matrix used to perform encoding"
+    decoder_mat::VV3
 end
 
 abstract type UnivariateAffineScaling end
@@ -78,10 +82,25 @@ Gets the `scale` field of the `ElementwiseScaler`
 """
 get_scale(es::ElementwiseScaler) = es.scale
 
+"""
+$(TYPEDSIGNATURES)
+
+returns the `encoder_mat` field of the `ElementwiseScalar`.
+"""
+get_encoder_mat(es::ElementwiseScalar) = es.encoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `decoder_mat` field of the `ElementwiseScalar`.
+"""
+get_decoder_mat(es::ElementwiseScalar) = es.decoder_mat
+
 function Base.show(io::IO, es::ElementwiseScaler)
     out = "ElementwiseScaler: $(get_type(es))"
     print(io, out)
 end
+
 
 function initialize_processor!(
     es::ElementwiseScaler,
@@ -90,8 +109,12 @@ function initialize_processor!(
 ) where {MM <: AbstractMatrix, QS <: QuartileScaling}
     quartiles_vec = [quantile(dd, [0.25, 0.5, 0.75]) for dd in eachrow(data)]
     quartiles_mat = reduce(hcat, quartiles_vec) # 3 rows: Q1, Q2, and Q3
+
+    # we use these more for saving readable data
     append!(get_shift(es), quartiles_mat[2, :])
     append!(get_scale(es), (quartiles_mat[3, :] - quartiles_mat[1, :]))
+
+    _create_encoder_decoder!(es,data)
 end
 
 function initialize_processor!(
@@ -120,6 +143,23 @@ function initialize_processor!(es::ElementwiseScaler, data::MM) where {MM <: Abs
     if length(get_shift(es)) == 0
         T = get_type(es)
         initialize_processor!(es, data, T)
+
+        # we explicitly make the encoder/decoder maps
+        encoder_map =  LinearMap(
+            x -> (x .- get_shift(es)) ./ get_scale(es), # Ax
+            x -> (x .- get_shift(es)) ./ get_scale(es), # A'x
+            size(data, 1), # size(A,1)
+            size(data, 1), # size(A,2)
+        )
+        decoder_map =  LinearMap(
+            x -> x .* get_scale(es) .+ get_shift(es), # Ax        
+            x -> x .* get_scale(es) .+ get_shift(es), # A'x 
+            size(data, 1), # size(A,1)
+            size(data, 1), # size(A,2)
+        )
+        
+        push!(get_encoder_mat(es), encoder_map)
+        push!(get_decoder_mat(es), decoder_map)
     end
 end
 
@@ -130,10 +170,8 @@ Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
 """
 function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
-    for i in 1:size(out, 1)
-        out[i, :] .-= get_shift(es)[i]
-        out[i, :] /= get_scale(es)[i]
-    end
+    enc = get_encoder_mat(es)
+    mul!(out, enc, out)  # must use this form to get matrix output of enc*out
     return out
 end
 
@@ -144,10 +182,8 @@ Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
 """
 function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = deepcopy(data)
-    for i in 1:size(out, 1)
-        out[i, :] *= get_scale(es)[i]
-        out[i, :] .+= get_shift(es)[i]
-    end
+    dec = get_decoder_mat(es)
+    mul!(out, dec, out)  # must use this form to get matrix output of dec*out
     return out
 end
 
@@ -167,18 +203,18 @@ initialize_processor!(
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` encoder to a provided structure matrix
+Apply the `ElementwiseScaler` encoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
 """
 function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
-    return Diagonal(1 ./ get_scale(es)) * lmul_compact(structure_matrix, Diagonal(1 ./ get_scale(es)))
+    return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` decoder to a provided structure matrix
+Apply the `ElementwiseScaler` decoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
 """
 function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
-    return Diagonal(get_scale(es))* lmul_compact(enc_structure_matrix, Diagonal(get_scale(es)))
+    return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end
 

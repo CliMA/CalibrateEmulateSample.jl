@@ -24,7 +24,7 @@ export create_encoder_schedule,
     decode_structure_matrix
 
 
-const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector} # The vector appears due to possible block-structured matrices (build=false)
+const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
 const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a matrix, the columns should be seen as vectors
 
 """
@@ -353,7 +353,6 @@ This function creates the encoder scheduler that is also machine readable. E.g.,
 enc_schedule = [
     (DataProcessor1(...), "in"), 
     (DataProcessor2(...), "out"), 
-    (DataProcessor2(...), "out"),
     (PairedDataProcessor3(...),"in"), 
     (DataProcessor4(...), "in"),
     (DataProcessor4(...), "out"), 
@@ -406,16 +405,23 @@ function initialize_and_encode_with_schedule!(
 ) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
 
+    # We additionally convert to `mats` into a linear-maps for flexible handling of massive covariances. In a matrix-free manner
     input_structure_mats = deepcopy(input_structure_mats)
     if !isnothing(prior_cov)
         (input_structure_mats[:prior_cov] = prior_cov)
     end
-
+    for (key,val) in input_structure_mats
+        input_structure_mats[key] = create_compact_linear_map(mat)
+    end
+    
     output_structure_mats = deepcopy(output_structure_mats)
     if !isnothing(obs_noise_cov)
         (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
     end
-
+    for (key,val) in output_structure_mats
+        output_structure_mats[key] = create_compact_linear_map(mat)
+    end
+    
     input_structure_vecs = deepcopy(input_structure_vecs)
     if !isnothing(prior_samples_in)
         (input_structure_vecs[:prior_samples_in] = prior_samples_in)

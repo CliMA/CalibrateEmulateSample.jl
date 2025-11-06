@@ -25,7 +25,7 @@ The SVD is taken to be the sum of structure matrix and estimated covariance. Thi
 # Fields
 $(TYPEDFIELDS)
 """
-struct Decorrelator{VV1, VV2, VV3, FT, AS <: AbstractString} <: DataContainerProcessor
+struct Decorrelator{VV1, VV2, VV3, FT, NT <: NamedTuple, AS <: AbstractString} <: DataContainerProcessor
     "storage for the data mean"
     data_mean::VV1
     "the matrix used to perform encoding"
@@ -34,6 +34,12 @@ struct Decorrelator{VV1, VV2, VV3, FT, AS <: AbstractString} <: DataContainerPro
     decoder_mat::VV3
     "the fraction of variance to be retained after truncating singular values (1 implies no truncation)"
     retain_var::FT
+    "when retain_var < 1, number of samples to estimate the total variance. Larger values reduce the error in approximation at the cost of additional matrix-vector products."
+    n_totvar_samples::Int
+    "maximum dimension of subspace for `retain_var < 1`. The search may become expensive at large ranks, and therefore can be cut-off in this way"
+    max_rank::Int
+    "when `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. here, kwargs can be passed in as a NamedTuple"
+    psvd_kwargs::NT
     "Switch to choose what form of matrix to use to decorrelate the data"
     decorrelate_with::AS
     "When given, use the structure matrix by this name if `decorrelate_with` uses structure matrices. When `nothing`, try to use the only present structure matrix instead."
@@ -50,8 +56,15 @@ Constructs the `Decorrelator` struct. Users can add optional keyword arguments:
   - `"sample_cov"`, see [`decorrelate_sample_cov`](@ref)
   - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 """
-decorrelate(; retain_var::FT = Float64(1.0), decorrelate_with = "combined", structure_mat_name = nothing) where {FT} =
-    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), decorrelate_with, structure_mat_name)
+decorrelate(;
+            retain_var::FT = Float64(1.0),
+            decorrelate_with = "combined",
+            structure_mat_name = nothing,
+            n_totvar_samples::Int=100,
+            max_rank::Int=100,
+            psvd_kwargs=(;rtol=1e-3),
+            ) where {FT} =
+    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), n_totvar_samples, max_rank, psvd_kwargs, decorrelate_with, structure_mat_name)
 
 """
 $(TYPEDSIGNATURES)
@@ -59,8 +72,13 @@ $(TYPEDSIGNATURES)
 Constructs the `Decorrelator` struct, setting decorrelate_with = "sample_cov". Encoding data with this will ensure that the distribution of data samples after encoding will be `Normal(0,I)`. One can additionally add keywords:
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
-decorrelate_sample_cov(; retain_var::FT = Float64(1.0)) where {FT} =
-    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), "sample_cov", nothing)
+decorrelate_sample_cov(;
+                       retain_var::FT = Float64(1.0),
+                       n_totvar_samples::Int=100,
+                       max_rank::Int=100,
+                       psvd_kwargs=(;rtol=1e-3),
+                       ) where {FT} =
+    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), n_totvar_samples, max_rank, psvd_kwargs, "sample_cov", nothing)
 
 """
 $(TYPEDSIGNATURES)
@@ -68,8 +86,14 @@ $(TYPEDSIGNATURES)
 Constructs the `Decorrelator` struct, setting decorrelate_with = "structure_mat". This encoding will transform a provided structure matrix into `I`. One can additionally add keywords:
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 """
-decorrelate_structure_mat(; retain_var::FT = Float64(1.0), structure_mat_name = nothing) where {FT} =
-    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), "structure_mat", structure_mat_name)
+decorrelate_structure_mat(;
+                          retain_var::FT = Float64(1.0),
+                          structure_mat_name = nothing,
+                          n_totvar_samples::Int=100,
+                          max_rank::Int=100,
+                          psvd_kwargs=(; rtol=1e-3),
+                          ) where {FT} =
+    Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), n_totvar_samples, max_rank, psvd_kwargs, "structure_mat", structure_mat_name)
 
 """
 $(TYPEDSIGNATURES)
@@ -98,6 +122,27 @@ $(TYPEDSIGNATURES)
 returns the `retain_var` field of the `Decorrelator`.
 """
 get_retain_var(dd::Decorrelator) = dd.retain_var
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `n_totvar_samples` field of the `Decorrelator`.
+"""
+get_n_totvar_samples(dd::Decorrelator) = dd.n_totvar_samples
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `max_rank` field of the `Decorrelator`.
+"""
+get_max_rank(dd::Decorrelator) = dd.max_rank
+
+"""
+$(TYPEDSIGNATURES)
+
+returns the `psvd_kwargs` field of the `Decorrelator`.
+"""
+get_psvd_kwargs(dd::Decorrelator) = dd.psvd_kwargs
 
 """
 $(TYPEDSIGNATURES)
@@ -136,17 +181,15 @@ function initialize_processor!(
         # Note: can only multiply Linear Maps with vectors, not matrices...
         decorrelate_with = get_decorrelate_with(dd)
         if decorrelate_with == "structure_mat"
-            decorrelation_action = get_structure_mat(structure_matrices, dd.structure_mat_name)
-            decorrelation_map = create_compact_linear_map(decorrelation_action)
+            decorrelation_map = get_structure_mat(structure_matrices, dd.structure_mat_name)
 
         elseif decorrelate_with == "sample_cov"
-            decorrelation_action = tsvd_cov_from_samples(cd)
+            decorrelation_action = tsvd_cov_from_samples(data)
             decorrelation_map = create_compact_linear_map(decorrelation_action)
 
         elseif decorrelate_with == "combined"
-            decorrelation_action1 = get_structure_mat(structure_matrices, dd.structure_mat_name)
+            map1 = get_structure_mat(structure_matrices, dd.structure_mat_name)
             decorrelation_action2 = tsvd_cov_from_samples(data)
-            map1 = create_compact_linear_map(decorrelation_action1)
             map2 = create_compact_linear_map(decorrelation_action2)
             decorrelation_map = map1+map2 # x -> dm.maps[1].f(x) + dm.maps[2].f(x)
         else
@@ -157,19 +200,19 @@ function initialize_processor!(
             )
         end
 
+        n_totvar_samples = get_n_totvar_samples(dd)
+        max_rank = get_max_rank(dd)
+        psvd_kwargs = get_psvd_kwargs(dd)
         ret_var = get_retain_var(dd)
         U=[]
         S=[]
         Vt=[]
         if ret_var < 1.0
-            # TODO make n_est_frobenius, rk_max_tol, rtol in psvd,  parameters
-            
             # approximate Frobenius norm of the map
-            n_est_frobenius = 200 # bootstrap to get approx errors.
             norm_approx = zeros(10)
             for i = 1:10
-                samples = randn(size(decorrelation_map,1), n_est_frobenius)
-                norm_approx[i] = 1/n_est_frobenius * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
+                samples = randn(size(decorrelation_map,1), n_totvar_samples)
+                norm_approx[i] = 1/n_totvar_samples * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
             end
             @info "relative error of total variance $(std(norm_approx)/mean(norm_approx))"
             retain_var_max = 1 - std(norm_approx) / mean(norm_approx)
@@ -177,10 +220,9 @@ function initialize_processor!(
             # Two methods of truncation: partial svd or truncated svd.
             # psvd truncates to dimension where resulting SVD has a cerain error (NB sing values are different)
             # tsvd truncates to dimension where resulting SVD has the same coeffs
-            rk_max_tol = 100
             ret_var_tmp = min(ret_var, retain_var_max)
             
-            for rk in 1:rk_max_tol                
+            for rk in 1:max_rank                
                 Utmp,Stmp,Vtmp = tsvd(decorrelation_map, rk)
                 retain_var_current = sum(Stmp.^2) / (retain_var_max * mean(norm_approx))
                 if retain_var_current > ret_var_tmp
@@ -191,7 +233,7 @@ function initialize_processor!(
                     break
                 end
                 if rk ==rk_max_tol
-                    @warn "Maximum tolerance of SVD truncation hit ($(rk_max_tol)), consider increasing `rk_max_tol` in decorrelator, this may also result from `retain_var` being close to 1, while `N_est_frobenius` is low. Proceeding with final iterant."
+                    @warn "Maximum tolerance of SVD truncation hit ($(rk_max_tol)), consider increasing `rk_max_tol` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
                     push!(U,Utmp)
                     push!(S,Stmp)
                     push!(Vt,Vtmp')
@@ -201,7 +243,7 @@ function initialize_processor!(
             end
         else
             # check V or Vt
-            Utmp,Stmp,Vtmp = psvd(decorrelation_map, rtol=1e-3) # randomized algorithm to avoid building the matrix, but this will be big.
+            Utmp,Stmp,Vtmp = psvd(decorrelation_map, psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
 
             if length(s) < size(data, 1)
                 @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
@@ -211,11 +253,25 @@ function initialize_processor!(
             push!(Vt,Vtmp')
             
         end
-        encoder_mat = Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1]
-        decoder_mat = Vt[1]' *  Diagonal(sqrt.(S[1]))
         
-        push!(get_encoder_mat(dd), encoder_mat)
-        push!(get_decoder_mat(dd), decoder_mat)
+        
+        # we explicitly make the encoder/decoder maps 
+        encoder_map =  LinearMap(
+            x -> Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1] * x # Ax
+            x -> Vt[1]' * Diagonal(1.0 ./ sqrt.(S[1])) * x # A'x
+            size(Vt[1], 1), # size(A,1)
+            size(Vt[1], 2), # size(A,2)
+        )
+
+        decoder_map =  LinearMap(
+            x -> Vt[1]' * Diagonal(sqrt.(S[1])) * x # Ax
+            x -> Diagonal(sqrt.(S[1])) * Vt[1] * x # A'x
+            size(Vt[1]', 1), # size(A,1)
+            size(Vt[1]', 2), # size(A,2)
+        )
+                
+        push!(get_encoder_mat(dd), encoder_map)
+        push!(get_decoder_mat(dd), decoder_map)
     end
 end
 
@@ -228,7 +284,9 @@ Apply the `Decorrelator` encoder, on a columns-are-data matrix
 function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
-    return encoder_mat * (data .- data_mean)
+    out = deepcopy(data)
+    mul!(out, encoder_mat, out .- data_mean)
+    return out
 end
 
 """
@@ -239,13 +297,15 @@ Apply the `Decorrelator` decoder, on a columns-are-data matrix
 function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
-    return decoder_mat * data .+ data_mean
+    out = deepcopy(data)
+    mul!(out, decoder_mat, out)
+    return out .+ data_mean
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Apply the `Decorrelator` encoder to a provided structure matrix
+Apply the `Decorrelator` encoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
 """
 function encode_structure_matrix(dd::Decorrelator, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(dd)[1]
@@ -255,7 +315,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `Decorrelator` decoder to a provided structure matrix
+Apply the `Decorrelator` decoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
 """
 function decode_structure_matrix(dd::Decorrelator, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(dd)[1]
