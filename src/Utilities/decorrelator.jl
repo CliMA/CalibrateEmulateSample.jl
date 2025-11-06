@@ -123,36 +123,32 @@ Computes and populates the `data_mean` and `encoder_mat` and `decoder_mat` field
 function initialize_processor!(
     dd::Decorrelator,
     data::MM,
-    structure_matrices::Dict{Symbol, <:StructureMatrix},
-    ::Dict{Symbol, <:StructureVector},
-) where {MM <: AbstractMatrix}
+    structure_matrices::Dict{Symbol, SM},
+    ::Dict{Symbol, SV},
+) where {MM <: AbstractMatrix, SM <: StructureMatrix, SV <: StructureVector} 
     if length(get_data_mean(dd)) == 0
         push!(get_data_mean(dd), vec(mean(data, dims = 2)))
     end
 
     if length(get_encoder_mat(dd)) == 0
 
-        # Can do tsvd here for large matrices
+        # To unify the actions here, we use LinearMaps.jl
+        # Note: can only multiply Linear Maps with vectors, not matrices...
         decorrelate_with = get_decorrelate_with(dd)
         if decorrelate_with == "structure_mat"
-            structure_matrix = get_structure_mat(structure_matrices, dd.structure_mat_name)
-            if isa(structure_matrix, UniformScaling)
-                data_dim = size(data, 1)
-                svdA = svd(structure_matrix(data_dim))
-                rk = data_dim
-            else
-                svdA = svd(structure_matrix)
-                rk = rank(structure_matrix)
-            end
+            decorrelation_action = get_structure_mat(structure_matrices, dd.structure_mat_name)
+            decorrelation_map = create_compact_linear_map(decorrelation_action)
+
         elseif decorrelate_with == "sample_cov"
-            cd = cov(data, dims = 2)
-            svdA = svd(cd)
-            rk = rank(cd)
+            decorrelation_action = tsvd_cov_from_samples(cd)
+            decorrelation_map = create_compact_linear_map(decorrelation_action)
+
         elseif decorrelate_with == "combined"
-            structure_matrix = get_structure_mat(structure_matrices, dd.structure_mat_name)
-            spluscd = structure_matrix + cov(data, dims = 2)
-            svdA = svd(spluscd)
-            rk = rank(spluscd)
+            decorrelation_action1 = get_structure_mat(structure_matrices, dd.structure_mat_name)
+            decorrelation_action2 = tsvd_cov_from_samples(data)
+            map1 = create_compact_linear_map(decorrelation_action1)
+            map2 = create_compact_linear_map(decorrelation_action2)
+            decorrelation_map = map1+map2 # x -> dm.maps[1].f(x) + dm.maps[2].f(x)
         else
             throw(
                 ArgumentError(
@@ -160,24 +156,64 @@ function initialize_processor!(
                 ),
             )
         end
+
         ret_var = get_retain_var(dd)
+        U=[]
+        S=[]
+        Vt=[]
         if ret_var < 1.0
-            sv_cumsum = cumsum(svdA.S) / sum(svdA.S) # variance contributions are (sing_val) for these matrices
-            trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
-            @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
+            # TODO make n_est_frobenius, rk_max_tol, rtol in psvd,  parameters
+            
+            # approximate Frobenius norm of the map
+            n_est_frobenius = 200 # bootstrap to get approx errors.
+            norm_approx = zeros(10)
+            for i = 1:10
+                samples = randn(size(decorrelation_map,1), n_est_frobenius)
+                norm_approx[i] = 1/n_est_frobenius * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
+            end
+            @info "relative error of total variance $(std(norm_approx)/mean(norm_approx))"
+            retain_var_max = 1 - std(norm_approx) / mean(norm_approx)
+            
+            # Two methods of truncation: partial svd or truncated svd.
+            # psvd truncates to dimension where resulting SVD has a cerain error (NB sing values are different)
+            # tsvd truncates to dimension where resulting SVD has the same coeffs
+            rk_max_tol = 100
+            ret_var_tmp = min(ret_var, retain_var_max)
+            
+            for rk in 1:rk_max_tol                
+                Utmp,Stmp,Vtmp = tsvd(decorrelation_map, rk)
+                retain_var_current = sum(Stmp.^2) / (retain_var_max * mean(norm_approx))
+                if retain_var_current > ret_var_tmp
+                    push!(U,Utmp)
+                    push!(S,Stmp)
+                    push!(Vt,Vtmp')
+                     @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_approx)/mean(norm_approx)))% of the variance of the structure matrix"
+                    break
+                end
+                if rk ==rk_max_tol
+                    @warn "Maximum tolerance of SVD truncation hit ($(rk_max_tol)), consider increasing `rk_max_tol` in decorrelator, this may also result from `retain_var` being close to 1, while `N_est_frobenius` is low. Proceeding with final iterant."
+                    push!(U,Utmp)
+                    push!(S,Stmp)
+                    push!(Vt,Vtmp')
+          
+                end
+
+            end
         else
-            trunc_val = rk
-            if rk < size(data, 1)
+            # check V or Vt
+            Utmp,Stmp,Vtmp = psvd(decorrelation_map, rtol=1e-3) # randomized algorithm to avoid building the matrix, but this will be big.
+
+            if length(s) < size(data, 1)
                 @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
             end
+            push!(U,Utmp)
+            push!(S,Stmp)
+            push!(Vt,Vtmp')
+            
         end
-
-        sqrt_inv_sv = Diagonal(1.0 ./ sqrt.(svdA.S[1:trunc_val]))
-        sqrt_sv = Diagonal(sqrt.(svdA.S[1:trunc_val]))
-        # as we have svd of cov-matrix we can use U or Vt
-        encoder_mat = sqrt_inv_sv * svdA.Vt[1:trunc_val, :]
-        decoder_mat = svdA.Vt[1:trunc_val, :]' * sqrt_sv
-
+        encoder_mat = Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1]
+        decoder_mat = Vt[1]' *  Diagonal(sqrt.(S[1]))
+        
         push!(get_encoder_mat(dd), encoder_mat)
         push!(get_decoder_mat(dd), decoder_mat)
     end

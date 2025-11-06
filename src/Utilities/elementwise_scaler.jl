@@ -170,7 +170,7 @@ $(TYPEDSIGNATURES)
 Apply the `ElementwiseScaler` encoder to a provided structure matrix
 """
 function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
-    return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
+    return Diagonal(1 ./ get_scale(es)) * lmul_compact(structure_matrix, Diagonal(1 ./ get_scale(es)))
 end
 
 """
@@ -179,5 +179,6 @@ $(TYPEDSIGNATURES)
 Apply the `ElementwiseScaler` decoder to a provided structure matrix
 """
 function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
-    return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
+    return Diagonal(get_scale(es))* lmul_compact(enc_structure_matrix, Diagonal(get_scale(es)))
 end
+

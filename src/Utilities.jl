@@ -1,14 +1,14 @@
 module Utilities
 
-
-
 using DocStringExtensions
 using LinearAlgebra
+using LinearMaps
 using Statistics
 using StatsBase
 using Random
 using ..EnsembleKalmanProcesses
-EnsembleKalmanProcess = EnsembleKalmanProcesses.EnsembleKalmanProcess
+const EKP = EnsembleKalmanProcesses
+using EnsembleKalmanProcesses.ParameterDistributions
 using ..DataContainers
 
 export get_training_points
@@ -24,7 +24,7 @@ export create_encoder_schedule,
     decode_structure_matrix
 
 
-const StructureMatrix = Union{UniformScaling, AbstractMatrix}
+const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector} # The vector appears due to possible block-structured matrices (build=false)
 const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a matrix, the columns should be seen as vectors
 
 """
@@ -38,7 +38,7 @@ Extract the training points needed to train the Gaussian process regression.
 
 """
 function get_training_points(
-    ekp::EnsembleKalmanProcess{FT, IT, P},
+    ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
     train_iterations::Union{IT, AbstractVector{IT}},
 ) where {FT, IT, P}
 
@@ -62,6 +62,162 @@ function get_training_points(
 
     return training_points
 end
+
+# Using Observation Objects:
+
+function encoder_kwargs_from(obs::OB) where {OB <: Observation}
+    return (obs_noise_cov = get_covs(obs, build=false), observation = get_obs(obs))
+end
+
+function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
+    obs_vec = get_observations(os)
+    return [encoder_kwargs_from(obs) for obs in obs_vec]
+end
+
+function encoder_kwargs_from(prior::PD; rng=Random.default_rng(), n_samples = 100) where {PD <: ParameterDistribution}
+    return (prior_cov = cov(prior), prior_samples_in = sample(rng, prior, n_samples))
+end
+
+##  multiplication with observation covariance objects without building
+"""
+$(TYPEDSIGNATURES)
+
+Left-multiply `X` by structure matrix `A` without building it (if provided in a compact form).
+
+This is useful when A is high dimensional and provided as an `SVD` or `SumOfCovariances` etc. object from EnsembleKalmanProcesses. 
+"""
+function lmul_compact(A, X::AVorM) where {AVorM <: AbstractVecOrMat}
+    # A is presumed a vector, of (compact) matrix types.
+    return isa(A, AbstractVector) ? EKP.lmul_without_build(A,X) : EKP.lmul_without_build([A],X)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Produces a linear map of type `LinearMap` that can evaluates the stacked actions of the structure matrix in compact form. by calling say `linear_map.f(x)` or `linear_map.fc(x)` to obtain `Ax`, or `A'x`. This particular type can be used by packages like `TSVD.jl` or `IterativeSolvers.jl` for further computations.
+
+This compact map constructs the following form of the Linear map f:
+
+1. get compact form svd-plus-d form "USVt + D" of the `blocks`
+2. create the f via stacking `A.U * A.S * A.Vt * x[block] + A.D * x[block] for (A,block) in blocks`
+
+kwargs:
+------
+When computing the svd internally from an abstract matrix
+- `svd_dim_max=4000`: this switches to an approximate tsvd approach when applying to covariance matrices above dimension 4000 
+- `tsvd_rank=50`: when using tsvd, what rank to truncate at.
+
+"""
+function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
+    Avec = isa(A, AbstractVector) ? A  : [A]
+
+    # explicitly write the loop here:
+    Us = []
+    Ss = []
+    VTs = []
+    ds = []
+    batches=[]
+    shift = 0
+    for a in Avec
+        if isa(a, AbstractMatrix)
+            if size(a,1) <= svd_dim_max
+                svda = svd(a)
+                diaga = zeros(size(a,1))
+                bsize = size(a,1)                    
+            else
+                svda = EKP.tsvd_mat(a, min(tsvd_rank, size(a,1)-1)) # swap to tsvd for performance
+                diaga = zeros(size(a,1))
+                bsize = size(a,1)
+            end                
+        elseif isa(a, SVD)
+            svda = a
+            diaga = zeros(size(a.U,1))
+            bsize = size(a.U,1)
+        elseif isa(a, SVDplusD)  
+            svda = a.svd_cov
+            diaga = (a.diag_cov).diag
+            bsize = length(diaga)
+        end
+        push!(Us, svda.U)
+        push!(Ss, svda.S)
+        push!(VTs, svda.Vt)
+        push!(ds, diaga)
+        
+        batch = shift+1:shift+bsize
+        push!(batches, batch)
+        shift = batch[end]
+    end
+        
+    # then create the LinearMap with entries  f(x) = A*x, f(x) = A'*x, size(A,1), size(A,2)
+    # LinearMaps can only be applied to vectors in general, so we only provide this argumentation
+    
+    Amap = LinearMap(
+    x -> reduce(vcat, [U * (S .* (Vt * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]), 
+    x -> reduce(vcat, [Vt' * (S .* (U' * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]),        
+        sum(size(U, 1) for U in Us),
+        sum(size(Vt, 2) for Vt in VTs),
+    )
+
+    return Amap
+    
+end
+
+
+#=
+"""
+$(TYPEDSIGNATURES)
+
+svd of a sum of two matrices `A` and `B` in svd form without building A+B directly. 
+
+This is useful when A and B are low rank, but high dimensional and provided as SVD types. (e.g. from `EKP.tsvd_cov_from_samples`)
+"""
+function svd_of_sum(svdA::SS1,svdB::SS2) where { SS1 <: SVD, SS2 <: SVD}
+    
+    # treat A + B as just "low rank"
+    # can write A+B = L * R = [Ua Ub] * [ Sa * Va'; Sb * Vb']
+    L = [svdA.U svdB.U] # N x (r1+r2)
+    R = [Diagonal(svdA.S) * svdA.Vt ; Diagonal(svdB.S) * svdB.Vt] # (r1+r2) x N
+    qrl = qr(L) # Q1 R1
+    qrr = qr(R') # Q2 R2
+    # A+B = Q_1 * R_1 * R_2' * Q_2' = Q1 * (ss.U * ss.S * ss.V' * Q2' = (Q1 ss.U) * ss.S * (Q2 ss.V)'
+    ss = svd(qrl.R*qrr.R') 
+
+    return SVD(qrl.Q*ss.U, ss.S, ss.Vt*qrr.Q') # build the new svd
+    
+end
+        
+function inv_sqrt_of_svdplusd(a)
+    D = a.diag_cov
+    D += sqrt(eps())*I # minimum tolerance for some operations below
+    iD = inv(D) # 
+    irD = sqrt.(iD)
+    ss = a.svd_cov
+    U = ss.U
+    S = Diagonal(ss.S)
+    
+    # begin computing the whitening transform
+    M = inv(S) + U'*iD*U
+    riM = sqrt(inv(M))
+    B = irD*U
+    C = riM*B'*B*riM 
+    ev = eigen(C)
+    V = ev.vectors
+    # if A = B*riM => 
+    #    (I-AA')^{1/2} = I - A * Chat * A'
+    #                  = I - A * V * Diag(chat) * V' * A'
+    # LHS evals sqrt(1-σ_i^2), rhs evals 1 - chat * σ_i^2
+    #     => chat = (1 - sqrt(1-σ_i^2))/(σ_i^2) # where σ_i is eval of A = sqrt(ev.values)
+    ev_correction = Diagonal((1.0 .-sqrt.(1.0 .- ev.values)) ./ ev.values)
+    
+    # Then,  (I - BM^{-1}B')^{1/2} = I - B M^{-1/2} V sv V' M^{-1/2} B'
+    rt_ImBiMB = I - B * riM * V * ev_correction * V' * riM * B'
+    # Idea is that woodbury: Σ^{-1} = D^{-1/2} * ImBiMB * D^{-1/2}
+    # Then W = rt_ImBiMB * D^{-1/2} satisfies W Σ W' = I 
+    W = rt_ImBiMB * irD # perhaps keep this in a compact form until use:
+    return W
+end
+=#
+
 
 
 # Data processing tooling:
@@ -342,9 +498,9 @@ Takes in an already initialized encoder schedule, and encodes a structure matrix
 """
 function encode_with_schedule(
     encoder_schedule::VV,
-    structure_matrix::USorM,
+    structure_matrix::SM,
     in_or_out::AS,
-) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
+) where {VV <: AbstractVector, SM <: StructureMatrix, AS <: AbstractString}
     if in_or_out ∉ ["in", "out"]
         bad_in_or_out(in_or_out)
     end
@@ -368,12 +524,12 @@ Takes in an already initialized encoder schedule, and decodes a `DataContainer`,
 function decode_with_schedule(
     encoder_schedule::VV,
     io_pairs::PDC,
-    input_structure_mat::USorM1,
-    output_structure_mat::USorM2,
+    input_structure_mat::SM1,
+    output_structure_mat::SM2,
 ) where {
     VV <: AbstractVector,
-    USorM1 <: Union{UniformScaling, AbstractMatrix},
-    USorM2 <: Union{UniformScaling, AbstractMatrix},
+    SM1 <: StructureMatrix,
+    SM2 <: StructureMatrix,
     PDC <: PairedDataContainer,
 }
     processed_io_pairs = deepcopy(io_pairs)
@@ -433,9 +589,9 @@ Takes in an already initialized encoder schedule, and decodes a structure matrix
 """
 function decode_with_schedule(
     encoder_schedule::VV,
-    structure_matrix::USorM,
+    structure_matrix::SM,
     in_or_out::AS,
-) where {VV <: AbstractVector, USorM <: Union{UniformScaling, AbstractMatrix}, AS <: AbstractString}
+) where {VV <: AbstractVector, SM <: StructureMatrix, AS <: AbstractString}
     if in_or_out ∉ ["in", "out"]
         bad_in_or_out(in_or_out)
     end
