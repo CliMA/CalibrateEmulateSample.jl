@@ -10,6 +10,7 @@ using ..EnsembleKalmanProcesses
 const EKP = EnsembleKalmanProcesses
 using EnsembleKalmanProcesses.ParameterDistributions
 using ..DataContainers
+using LowRankApprox
 
 export get_training_points
 
@@ -119,36 +120,49 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
     batches=[]
     shift = 0
     for a in Avec
+        bsize=[0]
+        if isa(a, UniformScaling)
+            throw(ArgumentError("Detected `UniformScaling` (i.e. \"λI\") StructureMatrix, and unable to infer dimensionality. \n Please recast this as a diagonal matrix, defining \"λI(d)\" for dimension d"))
+        end
         if isa(a, AbstractMatrix)
             if size(a,1) <= svd_dim_max
                 svda = svd(a)
-                diaga = zeros(size(a,1))
-                bsize = size(a,1)                    
+                push!(Us, svda.U)
+                push!(Ss, svda.S)
+                push!(VTs, svda.Vt)
+                push!(ds, zeros(size(a,1)))
+                bsize[1] = size(a,1)
             else
                 svda = EKP.tsvd_mat(a, min(tsvd_rank, size(a,1)-1)) # swap to tsvd for performance
-                diaga = zeros(size(a,1))
-                bsize = size(a,1)
+                push!(Us, svda.U)
+                push!(Ss, svda.S)
+                push!(VTs, svda.Vt)
+                push!(ds, zeros(size(a,1)))
+                bsize[1] = size(a,1)
             end                
         elseif isa(a, SVD)
             svda = a
-            diaga = zeros(size(a.U,1))
-            bsize = size(a.U,1)
+            push!(Us, svda.U)
+            push!(Ss, svda.S)
+            push!(VTs, svda.Vt)
+            push!(ds, zeros(size(a.U,1)))
+            bsize[1] = size(a.U,1)
         elseif isa(a, SVDplusD)  
             svda = a.svd_cov
             diaga = (a.diag_cov).diag
-            bsize = length(diaga)
+            push!(Us, svda.U)
+            push!(Ss, svda.S)
+            push!(VTs, svda.Vt)
+            push!(ds, diaga)
+            bsize[1] = length(diaga)
         end
-        push!(Us, svda.U)
-        push!(Ss, svda.S)
-        push!(VTs, svda.Vt)
-        push!(ds, diaga)
         
-        batch = shift+1:shift+bsize
+        batch = shift+1:shift+bsize[1]
         push!(batches, batch)
         shift = batch[end]
     end
         
-    # then create the LinearMap with entries  f(x) = A*x, f(x) = A'*x, size(A,1), size(A,2)
+    # then create the LinearMap with entries  (f(x) = A*x, f(x) = A'*x, size(A,1), size(A,2))
     # LinearMaps can only be applied to vectors in general, so we only provide this argumentation
     
     Amap = LinearMap(
@@ -411,7 +425,12 @@ function initialize_and_encode_with_schedule!(
         (input_structure_mats[:prior_cov] = prior_cov)
     end
     for (key,val) in input_structure_mats
-        input_structure_mats[key] = create_compact_linear_map(mat)
+        if isa(val, UniformScaling) # remove this annoying case immediately
+            input_dim = size(get_inputs(io_pairs),1)
+            input_structure_mats[key] = create_compact_linear_map(val(input_dim))
+        else
+            input_structure_mats[key] = create_compact_linear_map(val)
+        end
     end
     
     output_structure_mats = deepcopy(output_structure_mats)
@@ -419,7 +438,12 @@ function initialize_and_encode_with_schedule!(
         (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
     end
     for (key,val) in output_structure_mats
-        output_structure_mats[key] = create_compact_linear_map(mat)
+        if isa(val, UniformScaling) # remove this annoying case immediately
+            output_dim = size(get_outputs(io_pairs),1)            
+            output_structure_mats[key] = create_compact_linear_map(val(output_dim))
+        else
+            output_structure_mats[key] = create_compact_linear_map(val)
+        end
     end
     
     input_structure_vecs = deepcopy(input_structure_vecs)

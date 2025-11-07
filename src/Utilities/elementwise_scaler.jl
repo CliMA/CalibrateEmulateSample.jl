@@ -16,7 +16,7 @@ Different methods `T` will build different transformations:
 
 and are accessed with [`get_type`](@ref)
 """
-struct ElementwiseScaler{T, VV <: AbstractVector} <: DataContainerProcessor
+struct ElementwiseScaler{T, VV <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector} <: DataContainerProcessor
     "storage for the shift applied to data"
     shift::VV
     "storage for the scaling"
@@ -85,16 +85,16 @@ get_scale(es::ElementwiseScaler) = es.scale
 """
 $(TYPEDSIGNATURES)
 
-returns the `encoder_mat` field of the `ElementwiseScalar`.
+returns the `encoder_mat` field of the `ElementwiseScaler`.
 """
-get_encoder_mat(es::ElementwiseScalar) = es.encoder_mat
+get_encoder_mat(es::ElementwiseScaler) = es.encoder_mat
 
 """
 $(TYPEDSIGNATURES)
 
-returns the `decoder_mat` field of the `ElementwiseScalar`.
+returns the `decoder_mat` field of the `ElementwiseScaler`.
 """
-get_decoder_mat(es::ElementwiseScalar) = es.decoder_mat
+get_decoder_mat(es::ElementwiseScaler) = es.decoder_mat
 
 function Base.show(io::IO, es::ElementwiseScaler)
     out = "ElementwiseScaler: $(get_type(es))"

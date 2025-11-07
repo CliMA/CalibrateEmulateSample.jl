@@ -243,10 +243,10 @@ function initialize_processor!(
             end
         else
             # check V or Vt
-            Utmp,Stmp,Vtmp = psvd(decorrelation_map, psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
+            Utmp,Stmp,Vtmp = psvd(decorrelation_map; psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
 
-            if length(s) < size(data, 1)
-                @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
+            if length(Stmp) < size(data, 1)
+                @info "    truncating at $(length(Stmp))/$(size(data,1)), as low-rank data detected"
             end
             push!(U,Utmp)
             push!(S,Stmp)
@@ -257,15 +257,15 @@ function initialize_processor!(
         
         # we explicitly make the encoder/decoder maps 
         encoder_map =  LinearMap(
-            x -> Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1] * x # Ax
-            x -> Vt[1]' * Diagonal(1.0 ./ sqrt.(S[1])) * x # A'x
+            x -> Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1] * x, # Ax
+            x -> Vt[1]' * Diagonal(1.0 ./ sqrt.(S[1])) * x, # A'x
             size(Vt[1], 1), # size(A,1)
             size(Vt[1], 2), # size(A,2)
         )
 
         decoder_map =  LinearMap(
-            x -> Vt[1]' * Diagonal(sqrt.(S[1])) * x # Ax
-            x -> Diagonal(sqrt.(S[1])) * Vt[1] * x # A'x
+            x -> Vt[1]' * Diagonal(sqrt.(S[1])) * x, # Ax
+            x -> Diagonal(sqrt.(S[1])) * Vt[1] * x, # A'x
             size(Vt[1]', 1), # size(A,1)
             size(Vt[1]', 2), # size(A,2)
         )

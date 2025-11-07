@@ -195,9 +195,9 @@ Encode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function encode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorM,
+    structure_mat,
     in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+) where {AS <: AbstractString}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -226,9 +226,9 @@ Decode a new structure matrix in the input space (`"in"`) or output space (`"out
 """
 function decode_structure_matrix(
     emulator::Emulator,
-    structure_mat::USorM,
+    structure_mat,
     in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+) where {AS <: AbstractString}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
