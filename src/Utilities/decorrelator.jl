@@ -60,7 +60,7 @@ decorrelate(;
             retain_var::FT = Float64(1.0),
             decorrelate_with = "combined",
             structure_mat_name = nothing,
-            n_totvar_samples::Int=100,
+            n_totvar_samples::Int=500,
             max_rank::Int=100,
             psvd_kwargs=(;rtol=1e-3),
             ) where {FT} =
@@ -74,7 +74,7 @@ Constructs the `Decorrelator` struct, setting decorrelate_with = "sample_cov". E
 """
 decorrelate_sample_cov(;
                        retain_var::FT = Float64(1.0),
-                       n_totvar_samples::Int=100,
+                       n_totvar_samples::Int=500,
                        max_rank::Int=100,
                        psvd_kwargs=(;rtol=1e-3),
                        ) where {FT} =
@@ -89,7 +89,7 @@ Constructs the `Decorrelator` struct, setting decorrelate_with = "structure_mat"
 decorrelate_structure_mat(;
                           retain_var::FT = Float64(1.0),
                           structure_mat_name = nothing,
-                          n_totvar_samples::Int=100,
+                          n_totvar_samples::Int=500,
                           max_rank::Int=100,
                           psvd_kwargs=(; rtol=1e-3),
                           ) where {FT} =
@@ -232,8 +232,8 @@ function initialize_processor!(
                      @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_approx)/mean(norm_approx)))% of the variance of the structure matrix"
                     break
                 end
-                if rk ==rk_max_tol
-                    @warn "Maximum tolerance of SVD truncation hit ($(rk_max_tol)), consider increasing `rk_max_tol` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
+                if rk == max_rank
+                    @warn "Maximum tolerance of SVD truncation hit ($(rank_max)), consider increasing `rank_max` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
                     push!(U,Utmp)
                     push!(S,Stmp)
                     push!(Vt,Vtmp')
@@ -284,8 +284,8 @@ Apply the `Decorrelator` encoder, on a columns-are-data matrix
 function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
-    out = deepcopy(data)
-    mul!(out, encoder_mat, out .- data_mean)
+    out = zeros(size(encoder_mat,1), size(data,2))
+    mul!(out, encoder_mat, deepcopy(data).- data_mean)
     return out
 end
 
@@ -297,8 +297,8 @@ Apply the `Decorrelator` decoder, on a columns-are-data matrix
 function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
-    out = deepcopy(data)
-    mul!(out, decoder_mat, out)
+    out = zeros(size(decoder_mat,1), size(data,2))
+    mul!(out, decoder_mat, deepcopy(data))
     return out .+ data_mean
 end
 
