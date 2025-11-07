@@ -10,7 +10,9 @@ using ..EnsembleKalmanProcesses
 const EKP = EnsembleKalmanProcesses
 using EnsembleKalmanProcesses.ParameterDistributions
 using ..DataContainers
+
 using LowRankApprox
+using TSVD
 
 export get_training_points
 
