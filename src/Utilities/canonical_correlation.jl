@@ -186,7 +186,9 @@ Apply the `CanonicalCorrelation` encoder, on a columns-are-data matrix
 function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(cc)[1]
     encoder_mat = get_encoder_mat(cc)[1]
-    return encoder_mat * (data .- data_mean)
+    out = zeros(size(encoder_mat,1), size(data,2))
+    mul!(out, encoder_mat, deepcopy(data).- data_mean)
+    return out
 end
 
 """
@@ -197,7 +199,9 @@ Apply the `CanonicalCorrelation` decoder, on a columns-are-data matrix
 function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(cc)[1]
     decoder_mat = get_decoder_mat(cc)[1]
-    return decoder_mat * data .+ data_mean
+    out = zeros(size(decoder_mat,1), size(data,2))
+    mul!(out, decoder_mat, deepcopy(data))
+    return out .+ data_mean
 end
 
 """
