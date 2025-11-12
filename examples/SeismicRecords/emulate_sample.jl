@@ -17,8 +17,7 @@ exp_data_filename = "5500Experiment3.jld2"
 @load exp_data_filename y Γ
 
 # get the eki object
-# Requires EKI vX.Y.Z
-# Requires JLD2 vX.Y.Z
+# Requires Julia <v1.12, EKI v2.1.0, JLD2 v0.5.11
 eki_filename = "eki.jld2"
 @load eki_filename eki
 
@@ -31,9 +30,10 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 6 # trains on data 1:N_train
+N_train = 7 # trains on data 1:skip:skip*N_train
+skip = 2
 N_iterations_max = length(get_u(eki))
-train_iterations = 1:min(N_train , N_iterations_max - 2)
+train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
 train_pairs = get_training_points(eki, train_iterations)
 
 test_iterations = train_iterations[end]+1:N_iterations_max-1
