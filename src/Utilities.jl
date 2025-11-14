@@ -241,14 +241,128 @@ end
 abstract type DataProcessor end
 abstract type PairedDataContainerProcessor <: DataProcessor end # tools that operate on inputs and outputs 
 abstract type DataContainerProcessor <: DataProcessor end # tools that operate on only inputs or outputs
-
 # define how to have equality
-Base.:(==)(a::DCP, b::DCP) where {DCP <: DataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP))
-Base.:(==)(a::PDCP, b::PDCP) where {PDCP <: PairedDataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP))
+# this gets messy with LinearMaps, 
 
+"""
+$(TYPEDSIGNATURES)
 
+Tests equality for a LinearMap on a standard basis of the input space. Note that this operation requires a matrix multiply per input dimension so can be expensive.
+
+Kwargs:
+-------
+- n_eval (=nothing): the number of basis vectors to compare against (randomly selected without replacement if `n_eval < size(A,1)`)
+- tol (=2*eps()): the tolerance for equality on evaluation per entry
+- rng (=default_rng()): When provided, and `n_eval < size(A,1)`; a random subset of the basis is compared, using this `rng`.
+- up_to_sign(=false): Only assess equality up to a sign-error (sufficient for e.g. encoder/decoder matrices)
+"""
+function isequal_linear(A::LM1, B::LM2; tol=2*eps(), n_eval=nothing, rng = Random.default_rng(), up_to_sign=false) where {LM1 <: LinearMap, LM2 <: LinearMap}
+    m, n = size(A)
+    if !(n == size(B, 2))
+        return false
+    end
+    if  !(m == size(B, 1))
+        return false
+    end
+    
+    # test on standard basis (up to n_eval tests)
+    basis_id = isa(n_eval, Nothing) ? collect(1:n) : randperm(rng, n)[1:n_eval]
+
+    e = vec(zeros(eltype(A), n))
+    for j in basis_id
+        e[j] += 1
+        if up_to_sign
+            AmB = abs.(A * e) - abs.(B * e)
+        else
+            AmB = A * e - B * e
+        end
+        @info AmB
+        if !(norm(AmB) <= n * tol)
+            return false
+        end
+        e[j] -= 1        
+    end
+    return true
+end
+
+function isequal_linear(A::AMorV1, B::AMorV2; kwargs...) where {AMorV1 <: AbstractVecOrMat, AMorV2 <: AbstractVecOrMat}
+    if !(size(A) == size(B))
+        return false
+    end
+    
+    return all(isequal_linear(a,b; kwargs...) for (a,b) in zip(A[:],B[:]))
+end
+
+function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
+    n=size(a,2)    
+    if n < 1e4 # gets expensive
+        return isequal_linear(a,b; tol=1e-12)
+    else
+        return isequal_linear(a,b; n_eval=Int(floor(sqrt(n))), tol=1e-12) # 1e4 compares ~ 100 evals, 1e7 compares ~ 3000 evals
+    end
+end
+
+function isequal_encoder_decoder(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
+    n=size(a,2)    
+    if n < 1e4 # gets expensive
+        return isequal_linear(a,b, up_to_sign=true, tol=1e-12)
+    else
+        return isequal_linear(a,b; n_eval=Int(floor(sqrt(n))), up_to_sign=true, tol=1e-12) # 1e4 compares ~ 100 evals, 1e7 compares ~ 3000 evals
+    end
+end
+
+function isequal_encoder_decoder(A::AMorV1, B::AMorV2; kwargs...) where {AMorV1 <: AbstractVecOrMat, AMorV2 <: AbstractVecOrMat}
+    if !(size(A) == size(B))
+        return false
+    end
+    
+    return all(isequal_encoder_decoder(a,b) for (a,b) in zip(A[:],B[:]))
+end
+
+function Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor}
+    out = BitVector(repeat([false],length(fieldnames(DCP1))))
+    for (idx,f) in enumerate(fieldnames(DCP1))
+        af = getfield(a,f)
+        bf = getfield(b,f)
+        if !(typeof(af) == typeof(bf))
+            out[idx] = 0 
+        elseif isa(af, LinearMap)
+            out[idx] = isequal_encoder_decoder(af,bf) ? 1 : 0
+        elseif isa(af, AbstractVecOrMat)
+            if isa(af[1], LinearMap)
+                out[idx] = isequal_encoder_decoder(af, bf) ? 1 : 0
+            else
+                out[idx] = (af == bf) ? 1 : 0
+            end                
+        else
+            out[idx] = (af == bf) ? 1 : 0
+        end
+    end
+
+    return all(out)
+end
+        
+function Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} 
+    out = BitVector(repeat([false],length(fieldnames(DCP1))))
+    for (idx,f) in enumerate(fieldnames(PDCP1))
+        af = getfield(a,f)
+        bf = getfield(b,f)
+        if !(typeof(af) == typeof(bf))
+            out[idx] = 0 
+        elseif isa(af, LinearMap)
+            out[idx] = isequal_encoder_decoder(af,bf) ? 1 : 0
+        elseif isa(af, AbstractVecOrMat)
+            if isa(af[1], LinearMap)
+                out[idx] = isequal_encoder_decoder(af, bf) ? 1 : 0
+            else
+                out[idx] = (af == bf) ? 1 : 0
+            end                
+        else
+            out[idx] = (af == bf) ? 1 : 0
+        end
+    end
+    return all(out)
+end
 ####
 
 function get_structure_vec(structure_vecs, name = nothing)
