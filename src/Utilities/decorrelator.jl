@@ -253,8 +253,14 @@ function initialize_processor!(
             push!(Vt,Vtmp')
             
         end
-        
-        
+
+        # Enforce a sign convention for the singular vectors (rows Vt have positive first entry)
+        for (j,row) in enumerate(eachrow(Vt[1]))
+            if row[1] < 0
+                Vt[1][j,:] *= -1
+            end
+        end
+
         # we explicitly make the encoder/decoder maps 
         encoder_map =  LinearMap(
             x -> Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1] * x, # Ax

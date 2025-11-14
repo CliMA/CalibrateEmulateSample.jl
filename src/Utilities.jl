@@ -15,7 +15,7 @@ using LowRankApprox
 using TSVD
 
 export get_training_points
-
+export create_compact_linear_map
 export PairedDataContainerProcessor, DataContainerProcessor
 export create_encoder_schedule,
     initialize_and_encode_with_schedule!,
@@ -163,10 +163,10 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
         push!(batches, batch)
         shift = batch[end]
     end
-        
+
     # then create the LinearMap with entries  (f(x) = A*x, f(x) = A'*x, size(A,1), size(A,2))
     # LinearMaps can only be applied to vectors in general, so we only provide this argumentation
-    
+
     Amap = LinearMap(
     x -> reduce(vcat, [U * (S .* (Vt * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]), 
     x -> reduce(vcat, [Vt' * (S .* (U' * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]),        
@@ -276,7 +276,6 @@ function isequal_linear(A::LM1, B::LM2; tol=2*eps(), n_eval=nothing, rng = Rando
         else
             AmB = A * e - B * e
         end
-        @info AmB
         if !(norm(AmB) <= n * tol)
             return false
         end
