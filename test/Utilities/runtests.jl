@@ -442,7 +442,7 @@ end
         
     end
 
-    dts_tols = 2*[dts_samp[2], dts_struct[2], dts_comb[2]]
+    dts_tols = 2*[dts_samp[2], dts_struct[2], dts_comb[2]] # baseline value
     for i in 1:length(ds)
 
         if i == 1
@@ -452,8 +452,8 @@ end
             # increate the tolerances by the factor
             tols = ds[i]/ds[2] * dts_tols
             println("$(ds[i]), $(dts_samp[i]), $(dts_struct[i]), $(dts_comb[i])")
-            if [dts_samp[i], dts_struct[i], dts_comb[i]] .> tols
-                @error("timings have exceeded linear scaling")
+            if any([dts_samp[i], dts_struct[i], dts_comb[i]] .> tols)
+                @error("∟ timings have exceeded linear scaling")
             end
             
         end
