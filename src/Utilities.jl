@@ -14,6 +14,8 @@ using ..DataContainers
 using LowRankApprox
 using TSVD
 
+import LinearAlgebra: norm
+
 export get_training_points
 export create_compact_linear_map
 export PairedDataContainerProcessor, DataContainerProcessor
@@ -24,7 +26,8 @@ export create_encoder_schedule,
     encode_data,
     encode_structure_matrix,
     decode_data,
-    decode_structure_matrix
+    decode_structure_matrix,
+    norm
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -301,67 +304,29 @@ function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
     end
 end
 
-function isequal_encoder_decoder(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
-    n=size(a,2)    
-    if n < 1e4 # gets expensive
-        return isequal_linear(a,b, up_to_sign=true, tol=1e-12)
-    else
-        return isequal_linear(a,b; n_eval=Int(floor(sqrt(n))), up_to_sign=true, tol=1e-12) # 1e4 compares ~ 100 evals, 1e7 compares ~ 3000 evals
+Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor} =
+    all(getfield(a,f) == getfield(b,f) for f in fieldnames(DCP1))
+
+Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} =
+    all(getfield(a,f) == getfield(b,f) for f in fieldnames(PDCP1))
+
+function norm_linear_map(A::LM, p::Real=2; n_eval=nothing) where {LM <: LinearMap}
+    m, n = size(A)
+    # test on standard basis (up to n_eval tests)
+    basis_id = isa(n_eval, Nothing) ? collect(1:n) : randperm(rng, n)[1:n_eval]
+
+    e = vec(zeros(eltype(A), n))
+    norm_val = [0.0]
+    for j in basis_id
+        e[j] += 1
+        norm_val[1] += 1.0 / n * norm(A * e, p)
+        e[j] -= 1        
     end
+    return norm_val[1]
 end
 
-function isequal_encoder_decoder(A::AMorV1, B::AMorV2; kwargs...) where {AMorV1 <: AbstractVecOrMat, AMorV2 <: AbstractVecOrMat}
-    if !(size(A) == size(B))
-        return false
-    end
-    
-    return all(isequal_encoder_decoder(a,b) for (a,b) in zip(A[:],B[:]))
-end
+LinearAlgebra.norm(A::LM, p::Real = 2; lm_kwargs...) where {LM <: LinearMap} = norm_linear_map(A, p; lm_kwargs...)
 
-function Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor}
-    out = BitVector(repeat([false],length(fieldnames(DCP1))))
-    for (idx,f) in enumerate(fieldnames(DCP1))
-        af = getfield(a,f)
-        bf = getfield(b,f)
-        if !(typeof(af) == typeof(bf))
-            out[idx] = 0 
-        elseif isa(af, LinearMap)
-            out[idx] = isequal_encoder_decoder(af,bf) ? 1 : 0
-        elseif isa(af, AbstractVecOrMat)
-            if isa(af[1], LinearMap)
-                out[idx] = isequal_encoder_decoder(af, bf) ? 1 : 0
-            else
-                out[idx] = (af == bf) ? 1 : 0
-            end                
-        else
-            out[idx] = (af == bf) ? 1 : 0
-        end
-    end
-
-    return all(out)
-end
-        
-function Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} 
-    out = BitVector(repeat([false],length(fieldnames(DCP1))))
-    for (idx,f) in enumerate(fieldnames(PDCP1))
-        af = getfield(a,f)
-        bf = getfield(b,f)
-        if !(typeof(af) == typeof(bf))
-            out[idx] = 0 
-        elseif isa(af, LinearMap)
-            out[idx] = isequal_encoder_decoder(af,bf) ? 1 : 0
-        elseif isa(af, AbstractVecOrMat)
-            if isa(af[1], LinearMap)
-                out[idx] = isequal_encoder_decoder(af, bf) ? 1 : 0
-            else
-                out[idx] = (af == bf) ? 1 : 0
-            end                
-        else
-            out[idx] = (af == bf) ? 1 : 0
-        end
-    end
-    return all(out)
-end
 ####
 
 function get_structure_vec(structure_vecs, name = nothing)

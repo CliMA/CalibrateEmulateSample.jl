@@ -1,7 +1,7 @@
 # included in Utilities.jl
 
 export Decorrelator, decorrelate_sample_cov, decorrelate_structure_mat, decorrelate
-export get_data_mean, get_encoder_mat, get_decoder_mat, get_retain_var, get_decorrelate_with
+export get_data_mean, get_encoder_mat, get_decoder_mat, get_retain_var, get_decorrelate_with, get_n_totvar_samples, get_max_rank, get_psvd_kwargs
 
 """
 $(TYPEDEF)
@@ -21,6 +21,17 @@ The SVD is taken over the estimated covariance of the data. The data samples wil
 
 For `decorrelate(;decorrelate_with="combined")` (default):
 The SVD is taken to be the sum of structure matrix and estimated covariance. This may be more robust to ill-specification of structure matrix, or poor estimation of the sample covariance.
+
+Depending on the size of the matrix, we perform different options of SVD:
+
+Small Matrix (dim < 3000):
+    use LinearAlgebra.svd(Matrix)
+Large Matrix (dim > 3000):
+    if retain_var = 1.0
+        use LowRankApprox.psvd(LinearMap; psvd_kwargs...)
+    if retain_var < 1.0
+        use TSVD.tsvd(LinearMap)
+
 
 # Fields
 $(TYPEDFIELDS)
@@ -62,7 +73,7 @@ decorrelate(;
             structure_mat_name = nothing,
             n_totvar_samples::Int=500,
             max_rank::Int=100,
-            psvd_kwargs=(;rtol=1e-3),
+            psvd_kwargs=(;rtol=1e-5),
             ) where {FT} =
     Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), n_totvar_samples, max_rank, psvd_kwargs, decorrelate_with, structure_mat_name)
 
@@ -76,7 +87,7 @@ decorrelate_sample_cov(;
                        retain_var::FT = Float64(1.0),
                        n_totvar_samples::Int=500,
                        max_rank::Int=100,
-                       psvd_kwargs=(;rtol=1e-3),
+                       psvd_kwargs=(;rtol=1e-5),
                        ) where {FT} =
     Decorrelator([], [], [], clamp(retain_var, FT(0), FT(1)), n_totvar_samples, max_rank, psvd_kwargs, "sample_cov", nothing)
 
@@ -204,63 +215,89 @@ function initialize_processor!(
         max_rank = get_max_rank(dd)
         psvd_kwargs = get_psvd_kwargs(dd)
         ret_var = get_retain_var(dd)
-        U=[]
+
         S=[]
-        Vt=[]
-        if ret_var < 1.0
-            # approximate Frobenius norm of the map
-            norm_approx = zeros(10)
-            for i = 1:10
-                samples = randn(size(decorrelation_map,1), n_totvar_samples)
-                norm_approx[i] = 1/n_totvar_samples * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
-            end
-            @info "relative error of total variance $(std(norm_approx)/mean(norm_approx))"
-            retain_var_max = 1 - std(norm_approx) / mean(norm_approx)
-            
-            # Two methods of truncation: partial svd or truncated svd.
-            # psvd truncates to dimension where resulting SVD has a cerain error (NB sing values are different)
-            # tsvd truncates to dimension where resulting SVD has the same coeffs
-            ret_var_tmp = min(ret_var, retain_var_max)
-            
-            for rk in 1:max_rank                
-                Utmp,Stmp,Vtmp = tsvd(decorrelation_map, rk)
-                retain_var_current = sum(Stmp.^2) / (retain_var_max * mean(norm_approx))
-                if retain_var_current > ret_var_tmp
-                    push!(U,Utmp)
-                    push!(S,Stmp)
-                    push!(Vt,Vtmp')
-                     @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_approx)/mean(norm_approx)))% of the variance of the structure matrix"
-                    break
-                end
-                if rk == max_rank
-                    @warn "Maximum tolerance of SVD truncation hit ($(rank_max)), consider increasing `rank_max` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
-                    push!(U,Utmp)
-                    push!(S,Stmp)
-                    push!(Vt,Vtmp')
-          
-                end
+        Vt=[]        
 
+        # Three methods of performing: svd, partial svd or truncated svd.
+        # svd: convert to matrix and perform actual SVD. [good for small matrix (d < ~3000)]
+        # psvd: approximates SVD to a given error tolerance (can truncate too) [good for full svd approx]
+        # tsvd: truncates to dimension where resulting SVD has the same s.vals as the true [good of low rank approx]
+        max_svd_size = 3000
+        if max(size(decorrelation_map)...) < max_svd_size
+            # svd options
+            svdA = svd(Matrix(decorrelation_map))
+            rk = rank(Matrix(decorrelation_map))
+            
+            ret_var = get_retain_var(dd)
+            if ret_var < 1.0
+                sv_cumsum = cumsum(svdA.S) / sum(svdA.S) # variance contributions are (sing_val) for these matrices
+                trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
+                @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance of the structure matrix"
+            else
+                trunc_val = rk
+                if rk < size(data, 1)
+                    @info "    truncating at $(trunc_val)/$(size(data,1)), as low-rank data detected"
+                end
             end
+            
+            push!(S, svdA.S[1:trunc_val])
+            push!(Vt, svdA.Vt[1:trunc_val,:])
+            
         else
-            # check V or Vt
-            Utmp,Stmp,Vtmp = psvd(decorrelation_map; psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
-
-            if length(Stmp) < size(data, 1)
-                @info "    truncating at $(length(Stmp))/$(size(data,1)), as low-rank data detected"
+            if ret_var < 1.0
+                # tsvd option
+                # approximate Frobenius norm of the map
+                norm_approx = zeros(10)
+                for i = 1:10
+                    samples = randn(size(decorrelation_map,1), n_totvar_samples)
+                    norm_approx[i] = 1/n_totvar_samples * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
+                end
+                @info "relative error of total variance $(std(norm_approx)/mean(norm_approx))"
+                retain_var_max = 1 - std(norm_approx) / mean(norm_approx)
+                
+                ret_var_tmp = min(ret_var, retain_var_max)
+                
+                for rk in 1:max_rank                
+                    _,Stmp,Vtmp = tsvd(decorrelation_map, rk)
+                    retain_var_current = sum(Stmp.^2) / (retain_var_max * mean(norm_approx))
+                    if retain_var_current > ret_var_tmp
+                        push!(S,Stmp)
+                        push!(Vt,Vtmp')
+                        @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_approx)/mean(norm_approx)))% of the variance of the structure matrix"
+                    break
+                    end
+                    if rk == max_rank
+                        @warn "Maximum tolerance of SVD truncation hit ($(rank_max)), consider increasing `rank_max` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
+                        push!(S,Stmp)
+                        push!(Vt,Vtmp')
+                        
+                    end
+                    
+                end
+            else
+                # psvd option
+                # check V or Vt
+                _,Stmp,Vtmp = psvd(decorrelation_map; psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
+                
+                if length(Stmp) < size(data, 1)
+                    @info "    truncating at $(length(Stmp))/$(size(data,1)), as low-rank data detected"
+                end
+                push!(S,Stmp)
+                push!(Vt,Vtmp')
+                
             end
-            push!(U,Utmp)
-            push!(S,Stmp)
-            push!(Vt,Vtmp')
-            
         end
 
+
+        
         # Enforce a sign convention for the singular vectors (rows Vt have positive first entry)
         for (j,row) in enumerate(eachrow(Vt[1]))
             if row[1] < 0
                 Vt[1][j,:] *= -1
             end
         end
-
+            
         # we explicitly make the encoder/decoder maps 
         encoder_map =  LinearMap(
             x -> Diagonal(1.0 ./ sqrt.(S[1])) * Vt[1] * x, # Ax

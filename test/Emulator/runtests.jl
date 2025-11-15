@@ -10,7 +10,7 @@ using LinearAlgebra
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
-
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 #build an unknown type
 struct MLTester <: Emulators.MachineLearningTool end
 
@@ -24,7 +24,7 @@ struct MLTester <: Emulators.MachineLearningTool end
 
     # "noise"
     μ = zeros(d)
-    Σ = rand(d, d)
+    Σ = rand(d,d)
     Σ = Σ' * Σ
     noise_samples = rand(MvNormal(μ, Σ), m)
     y += noise_samples
@@ -45,12 +45,11 @@ struct MLTester <: Emulators.MachineLearningTool end
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
     enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs; obs_noise_cov = 1.0 * I)
-    @test get_encoder_schedule(em)[1][1] == enc_sch[1][1] # inputs: proc
-    @test get_encoder_schedule(em)[1][2] == enc_sch[1][2] # inputs: apply_to
-    @test get_encoder_schedule(em)[2][1] == enc_sch[2][1] # outputs...
-    @test get_encoder_schedule(em)[2][2] == enc_sch[2][2]
-    @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
-    @test get_data(get_encoded_io_pairs(em)) == get_data(enc_io_pairs)
+    # NB this gives encoder up to sign
+    tol = 1e-12
+    @test get_encoder_schedule(em) == enc_sch # inputs: proc
+    @test all(isapprox.(get_inputs(get_encoded_io_pairs(em)), get_inputs(enc_io_pairs), atol=tol))
+    @test all(isapprox.(get_outputs(get_encoded_io_pairs(em)), get_outputs(enc_io_pairs), atol=tol))
     @test isempty(enc_I_in)
 
     #NB - encoders all tested in Utilities here just testing some API
@@ -70,8 +69,8 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test isapprox(norm(decoded_I - 1.0 * I), 0, atol = tol * d * d)
 
     # test obs_noise_cov   (check the warning at the start)
-    @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov = Σ)
-    @test_logs (:warn,) (:info,) (:info,) (:warn,) Emulator(
+    @test_logs (:warn,) (:info,) (:warn,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov = Σ)
+    @test_logs (:warn,) (:info,) (:warn,) (:info,) (:warn,) Emulator(
         gp,
         io_pairs;
         encoder_kwargs = (; prior_cov = 4.0 * I, obs_noise_cov = 2.0 * I),
