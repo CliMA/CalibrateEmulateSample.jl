@@ -548,12 +548,16 @@ function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation::AMorAV,
     prior::ParameterDistribution,
-    em::Emulator,
-    init_params::AV;
+    em::Emulator;
+    init_params::AV=[],
     burnin::Int = 0,
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
+    if length(init_params)==0
+        init_params = mean(prior)
+    end
+    
     # make into iterable over vectors
     obs_slice = if observation isa AbstractVector{<:AbstractVector}
         observation
@@ -591,23 +595,21 @@ function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation::OB,
     prior::PD,
-    em::EM,
-    init_params::AV;
+    em::EM;
     kwargs...,
 ) where {AV <: AbstractVector, OB <: Observation, PD <: ParameterDistribution, EM <: Emulator}
-    return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em, init_params; kwargs)
+    return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em; kwargs...)
 end
 
 function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation_series::OS,
     prior::PD,
-    em::EM,
-    init_params::AV;
+    em::EM;
     kwargs...,
 ) where {AV <: AbstractVector, OS <: ObservationSeries, PD <: ParameterDistribution, EM <: Emulator}
     observations = [get_obs(ob) for ob in get_observations(observation_series)]
-    return MCMCWrapper(mcmc_alg, observations, prior, em, init_params; kwargs)
+    return MCMCWrapper(mcmc_alg, observations, prior, em; kwargs...)
 end
 """
    $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
