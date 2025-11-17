@@ -33,6 +33,8 @@ export EmulatorPosteriorModel,
     accept_ratio,
     optimize_stepsize,
     get_posterior,
+    get_sample_kwargs,
+    get_init_params,
     sample,
     esjd
 
@@ -517,6 +519,13 @@ struct MCMCWrapper{AVV <: AbstractVector, AV <: AbstractVector}
     "NamedTuple of other arguments to be passed to `AbstractMCMC.sample()`."
     sample_kwargs::NamedTuple
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+gets the NameTuple of keywords that are passed into the Sampler algorithm
+"""
+get_sample_kwargs(mcmc::MCMCWrapper) = mcmc.sample_kwargs
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)

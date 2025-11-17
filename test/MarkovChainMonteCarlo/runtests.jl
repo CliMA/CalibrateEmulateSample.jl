@@ -4,6 +4,7 @@ using Distributions
 using GaussianProcesses
 using Test
 
+using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
@@ -242,6 +243,7 @@ function mcmc_test_template(
     prior::ParameterDistribution,
     σ2_y,
     em::Emulator;
+    extra_tests = false,
     exp_name = "test",
     mcmc_alg = RWMHSampling(),
     obs_sample = [1.0],
@@ -251,10 +253,16 @@ function mcmc_test_template(
     target_acc = 0.25,
     return_samples = false,
 )
-    if !isa(obs_sample, AbstractVecOrMat)
+    if isa(obs_sample, Real)
         obs_sample = reshape(collect(obs_sample), 1) # scalar -> Vector 
     end
     init_params = vec(collect(init_params)) # scalar or Vector -> Vector
+
+    if extra_tests
+        mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
+
+        @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :init_params), mean(prior)))
+    end
 
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
     # First let's run a short chain to determine a good step size
@@ -301,7 +309,7 @@ end
     # mcmc setup
     mcmc_params = Dict(
         :mcmc_alg => RWMHSampling(),
-        :obs_sample => obs_sample,
+        :obs_sample => Observation(Dict("samples" => obs_sample, "covariances" => 1.0 * I, "names" => "test")),
         :init_params => transform_constrained_to_unconstrained(prior, [2.0]),
         :step => 0.25,
         :rng => rng,
@@ -373,7 +381,7 @@ end
 
         # test various MCMC methods
         new_step_1, posterior_mean_1, chain_1 =
-            mcmc_test_template(prior, σ2_y, em_1; exp_name = "gpjl_1d", mcmc_params...)
+            mcmc_test_template(prior, σ2_y, em_1; extra_tests = true, exp_name = "gpjl_1d", mcmc_params...)
         esjd1 = esjd(chain_1)
         @info "ESJD [GPJL,RW] = $esjd1"
         @test isapprox(new_step_1, 0.125; atol = 0.125)
@@ -415,30 +423,44 @@ end
         @info "Posterior mean: $(posterior_mean_2) ≈ $(mle)"
 
         # test with many slightly different samples
-        # as vec of vec
+        obs_sample_vecs = []
+        exp_vec_names = []
+
+        # as a vec of vec
         obs_sample2 = [obs_sample + 0.01 * randn(length(obs_sample)) for i in 1:100]
-        mcmc_params2 = deepcopy(mcmc_params)
-        mcmc_params2[:obs_sample] = obs_sample2
-        mcmc_params2[:step] = 0.025 # less uncertainty -> smaller step
-        new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; exp_name = "gpjl-samples", mcmc_params2...)
-        @test isapprox(new_step, 0.025; atol = 0.025)
-        # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
-        esjd2 = esjd(chain_2)
-        @info "ESJD (-many-samples)= $esjd2"
-        @info "Posterior mean: $(posterior_mean_1) ≈ $(mle)"
-        @test isapprox(posterior_mean_1, mle; atol = 2e-1)
+        push!(exp_vec_names, "gpjl-samples-mat")
+        push!(obs_sample_vecs, obs_sample2)
 
-
-        # as column matrix
+        # as a column mat
         obs_sample2mat = reduce(hcat, obs_sample2)
-        mcmc_params2mat = deepcopy(mcmc_params)
-        mcmc_params2mat[:obs_sample] = obs_sample2mat
-        new_step, posterior_mean_1 =
-            mcmc_test_template(prior, σ2_y, em_1; exp_name = "gpjl-samples-mat", mcmc_params2mat...)
-        @test isapprox(new_step, 0.025; atol = 0.025)
-        # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
-        @info "Posterior mean: $(posterior_mean_1) ≈ $(mle)"
-        @test isapprox(posterior_mean_1, mle; atol = 2e-1)
+        push!(obs_sample_vecs, obs_sample2mat)
+        push!(exp_vec_names, "gpjl-samples")
+
+        # as an observation series
+        obs_vec = []
+        for i in 1:100
+            ob = Observation(
+                Dict("samples" => obs_sample + 0.01 * randn(length(obs_sample)), "covariances" => I, "names" => "test"),
+            )
+            push!(obs_vec, ob)
+        end
+        obs_series = ObservationSeries(obs_vec)
+        push!(obs_sample_vecs, obs_series)
+        push!(exp_vec_names, "gpjl-samples-series")
+
+        # run tests...
+        for (os, exp_name) in zip(obs_sample_vecs, exp_vec_names)
+            mcmc_params2 = deepcopy(mcmc_params)
+            mcmc_params2[:obs_sample] = os
+            mcmc_params2[:step] = 0.025 # less uncertainty -> smaller step
+            new_step, posterior_mean_1 = mcmc_test_template(prior, σ2_y, em_1; exp_name = exp_name, mcmc_params2...)
+            @test isapprox(new_step, 0.025; atol = 0.025)
+            # difference between mean_1 and ground truth comes from MCMC convergence and GP sampling
+            esjd2 = esjd(chain_2)
+            @info "ESJD (vec:$(exp_name))= $esjd2"
+            @info "Posterior mean: $(posterior_mean_1) ≈ $(mle)"
+            @test isapprox(posterior_mean_1, mle; atol = 2e-1)
+        end
 
         # test with integer data
         obs_sample3 = [4]
