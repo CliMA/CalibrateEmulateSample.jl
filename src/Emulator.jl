@@ -193,11 +193,7 @@ $(TYPEDSIGNATURES)
 
 Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function encode_structure_matrix(
-    emulator::Emulator,
-    structure_mat,
-    in_or_out::AS,
-) where {AS <: AbstractString}
+function encode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -224,11 +220,7 @@ $(TYPEDSIGNATURES)
 
 Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function decode_structure_matrix(
-    emulator::Emulator,
-    structure_mat,
-    in_or_out::AS,
-) where {AS <: AbstractString}
+function decode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 

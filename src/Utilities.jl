@@ -72,7 +72,7 @@ end
 # Using Observation Objects:
 
 function encoder_kwargs_from(obs::OB) where {OB <: Observation}
-    return (obs_noise_cov = get_covs(obs, build=false), observation = get_obs(obs))
+    return (obs_noise_cov = get_covs(obs, build = false), observation = get_obs(obs))
 end
 
 function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
@@ -80,7 +80,7 @@ function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
     return [encoder_kwargs_from(obs) for obs in obs_vec]
 end
 
-function encoder_kwargs_from(prior::PD; rng=Random.default_rng(), n_samples = 100) where {PD <: ParameterDistribution}
+function encoder_kwargs_from(prior::PD; rng = Random.default_rng(), n_samples = 100) where {PD <: ParameterDistribution}
     return (prior_cov = cov(prior), prior_samples_in = sample(rng, prior, n_samples))
 end
 
@@ -94,7 +94,7 @@ This is useful when A is high dimensional and provided as an `SVD` or `SumOfCova
 """
 function lmul_compact(A, X::AVorM) where {AVorM <: AbstractVecOrMat}
     # A is presumed a vector, of (compact) matrix types.
-    return isa(A, AbstractVector) ? EKP.lmul_without_build(A,X) : EKP.lmul_without_build([A],X)
+    return isa(A, AbstractVector) ? EKP.lmul_without_build(A, X) : EKP.lmul_without_build([A], X)
 end
 
 """
@@ -114,45 +114,49 @@ When computing the svd internally from an abstract matrix
 - `tsvd_rank=50`: when using tsvd, what rank to truncate at.
 
 """
-function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
-    Avec = isa(A, AbstractVector) ? A  : [A]
+function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank = 50)
+    Avec = isa(A, AbstractVector) ? A : [A]
 
     # explicitly write the loop here:
     Us = []
     Ss = []
     VTs = []
     ds = []
-    batches=[]
+    batches = []
     shift = 0
     for a in Avec
-        bsize=[0]
+        bsize = [0]
         if isa(a, UniformScaling)
-            throw(ArgumentError("Detected `UniformScaling` (i.e. \"λI\") StructureMatrix, and unable to infer dimensionality. \n Please recast this as a diagonal matrix, defining \"λI(d)\" for dimension d"))
+            throw(
+                ArgumentError(
+                    "Detected `UniformScaling` (i.e. \"λI\") StructureMatrix, and unable to infer dimensionality. \n Please recast this as a diagonal matrix, defining \"λI(d)\" for dimension d",
+                ),
+            )
         end
         if isa(a, AbstractMatrix)
-            if size(a,1) <= svd_dim_max
+            if size(a, 1) <= svd_dim_max
                 svda = svd(a)
                 push!(Us, svda.U)
                 push!(Ss, svda.S)
                 push!(VTs, svda.Vt)
-                push!(ds, zeros(size(a,1)))
-                bsize[1] = size(a,1)
+                push!(ds, zeros(size(a, 1)))
+                bsize[1] = size(a, 1)
             else
-                svda = EKP.tsvd_mat(a, min(tsvd_rank, size(a,1)-1)) # swap to tsvd for performance
+                svda = EKP.tsvd_mat(a, min(tsvd_rank, size(a, 1) - 1)) # swap to tsvd for performance
                 push!(Us, svda.U)
                 push!(Ss, svda.S)
                 push!(VTs, svda.Vt)
-                push!(ds, zeros(size(a,1)))
-                bsize[1] = size(a,1)
-            end                
+                push!(ds, zeros(size(a, 1)))
+                bsize[1] = size(a, 1)
+            end
         elseif isa(a, SVD)
             svda = a
             push!(Us, svda.U)
             push!(Ss, svda.S)
             push!(VTs, svda.Vt)
-            push!(ds, zeros(size(a.U,1)))
-            bsize[1] = size(a.U,1)
-        elseif isa(a, SVDplusD)  
+            push!(ds, zeros(size(a.U, 1)))
+            bsize[1] = size(a.U, 1)
+        elseif isa(a, SVDplusD)
             svda = a.svd_cov
             diaga = (a.diag_cov).diag
             push!(Us, svda.U)
@@ -161,8 +165,8 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
             push!(ds, diaga)
             bsize[1] = length(diaga)
         end
-        
-        batch = shift+1:shift+bsize[1]
+
+        batch = (shift + 1):(shift + bsize[1])
         push!(batches, batch)
         shift = batch[end]
     end
@@ -171,14 +175,20 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank=50)
     # LinearMaps can only be applied to vectors in general, so we only provide this argumentation
 
     Amap = LinearMap(
-    x -> reduce(vcat, [U * (S .* (Vt * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]), 
-    x -> reduce(vcat, [Vt' * (S .* (U' * x[batch])) + d .* x[batch] for (U,S,Vt,d, batch) in zip(Us,Ss,VTs,ds,batches)]),        
+        x -> reduce(
+            vcat,
+            [U * (S .* (Vt * x[batch])) + d .* x[batch] for (U, S, Vt, d, batch) in zip(Us, Ss, VTs, ds, batches)],
+        ),
+        x -> reduce(
+            vcat,
+            [Vt' * (S .* (U' * x[batch])) + d .* x[batch] for (U, S, Vt, d, batch) in zip(Us, Ss, VTs, ds, batches)],
+        ),
         sum(size(U, 1) for U in Us),
         sum(size(Vt, 2) for Vt in VTs),
     )
 
     return Amap
-    
+
 end
 
 
@@ -191,7 +201,7 @@ svd of a sum of two matrices `A` and `B` in svd form without building A+B direct
 This is useful when A and B are low rank, but high dimensional and provided as SVD types. (e.g. from `EKP.tsvd_cov_from_samples`)
 """
 function svd_of_sum(svdA::SS1,svdB::SS2) where { SS1 <: SVD, SS2 <: SVD}
-    
+
     # treat A + B as just "low rank"
     # can write A+B = L * R = [Ua Ub] * [ Sa * Va'; Sb * Vb']
     L = [svdA.U svdB.U] # N x (r1+r2)
@@ -202,9 +212,9 @@ function svd_of_sum(svdA::SS1,svdB::SS2) where { SS1 <: SVD, SS2 <: SVD}
     ss = svd(qrl.R*qrr.R') 
 
     return SVD(qrl.Q*ss.U, ss.S, ss.Vt*qrr.Q') # build the new svd
-    
+
 end
-        
+
 function inv_sqrt_of_svdplusd(a)
     D = a.diag_cov
     D += sqrt(eps())*I # minimum tolerance for some operations below
@@ -213,7 +223,7 @@ function inv_sqrt_of_svdplusd(a)
     ss = a.svd_cov
     U = ss.U
     S = Diagonal(ss.S)
-    
+
     # begin computing the whitening transform
     M = inv(S) + U'*iD*U
     riM = sqrt(inv(M))
@@ -227,7 +237,7 @@ function inv_sqrt_of_svdplusd(a)
     # LHS evals sqrt(1-σ_i^2), rhs evals 1 - chat * σ_i^2
     #     => chat = (1 - sqrt(1-σ_i^2))/(σ_i^2) # where σ_i is eval of A = sqrt(ev.values)
     ev_correction = Diagonal((1.0 .-sqrt.(1.0 .- ev.values)) ./ ev.values)
-    
+
     # Then,  (I - BM^{-1}B')^{1/2} = I - B M^{-1/2} V sv V' M^{-1/2} B'
     rt_ImBiMB = I - B * riM * V * ev_correction * V' * riM * B'
     # Idea is that woodbury: Σ^{-1} = D^{-1/2} * ImBiMB * D^{-1/2}
@@ -259,15 +269,22 @@ Kwargs:
 - rng (=default_rng()): When provided, and `n_eval < size(A,1)`; a random subset of the basis is compared, using this `rng`.
 - up_to_sign(=false): Only assess equality up to a sign-error (sufficient for e.g. encoder/decoder matrices)
 """
-function isequal_linear(A::LM1, B::LM2; tol=2*eps(), n_eval=nothing, rng = Random.default_rng(), up_to_sign=false) where {LM1 <: LinearMap, LM2 <: LinearMap}
+function isequal_linear(
+    A::LM1,
+    B::LM2;
+    tol = 2 * eps(),
+    n_eval = nothing,
+    rng = Random.default_rng(),
+    up_to_sign = false,
+) where {LM1 <: LinearMap, LM2 <: LinearMap}
     m, n = size(A)
     if !(n == size(B, 2))
         return false
     end
-    if  !(m == size(B, 1))
+    if !(m == size(B, 1))
         return false
     end
-    
+
     # test on standard basis (up to n_eval tests)
     basis_id = isa(n_eval, Nothing) ? collect(1:n) : randperm(rng, n)[1:n_eval]
 
@@ -282,7 +299,7 @@ function isequal_linear(A::LM1, B::LM2; tol=2*eps(), n_eval=nothing, rng = Rando
         if !(norm(AmB) <= n * tol)
             return false
         end
-        e[j] -= 1        
+        e[j] -= 1
     end
     return true
 end
@@ -291,26 +308,26 @@ function isequal_linear(A::AMorV1, B::AMorV2; kwargs...) where {AMorV1 <: Abstra
     if !(size(A) == size(B))
         return false
     end
-    
-    return all(isequal_linear(a,b; kwargs...) for (a,b) in zip(A[:],B[:]))
+
+    return all(isequal_linear(a, b; kwargs...) for (a, b) in zip(A[:], B[:]))
 end
 
 function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
-    n=size(a,2)    
+    n = size(a, 2)
     if n < 1e4 # gets expensive
-        return isequal_linear(a,b; tol=1e-12)
+        return isequal_linear(a, b; tol = 1e-12)
     else
-        return isequal_linear(a,b; n_eval=Int(floor(sqrt(n))), tol=1e-12) # 1e4 compares ~ 100 evals, 1e7 compares ~ 3000 evals
+        return isequal_linear(a, b; n_eval = Int(floor(sqrt(n))), tol = 1e-12) # 1e4 compares ~ 100 evals, 1e7 compares ~ 3000 evals
     end
 end
 
 Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor} =
-    all(getfield(a,f) == getfield(b,f) for f in fieldnames(DCP1))
+    all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP1))
 
 Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} =
-    all(getfield(a,f) == getfield(b,f) for f in fieldnames(PDCP1))
+    all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
 
-function norm_linear_map(A::LM, p::Real=2; n_eval=nothing) where {LM <: LinearMap}
+function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing) where {LM <: LinearMap}
     m, n = size(A)
     # test on standard basis (up to n_eval tests)
     basis_id = isa(n_eval, Nothing) ? collect(1:n) : randperm(rng, n)[1:n_eval]
@@ -320,7 +337,7 @@ function norm_linear_map(A::LM, p::Real=2; n_eval=nothing) where {LM <: LinearMa
     for j in basis_id
         e[j] += 1
         norm_val[1] += 1.0 / n * norm(A * e, p)
-        e[j] -= 1        
+        e[j] -= 1
     end
     return norm_val[1]
 end
@@ -504,28 +521,28 @@ function initialize_and_encode_with_schedule!(
     if !isnothing(prior_cov)
         (input_structure_mats[:prior_cov] = prior_cov)
     end
-    for (key,val) in input_structure_mats
+    for (key, val) in input_structure_mats
         if isa(val, UniformScaling) # remove this annoying case immediately
-            input_dim = size(get_inputs(io_pairs),1)
+            input_dim = size(get_inputs(io_pairs), 1)
             input_structure_mats[key] = create_compact_linear_map(val(input_dim))
         else
             input_structure_mats[key] = create_compact_linear_map(val)
         end
     end
-    
+
     output_structure_mats = deepcopy(output_structure_mats)
     if !isnothing(obs_noise_cov)
         (output_structure_mats[:obs_noise_cov] = obs_noise_cov)
     end
-    for (key,val) in output_structure_mats
+    for (key, val) in output_structure_mats
         if isa(val, UniformScaling) # remove this annoying case immediately
-            output_dim = size(get_outputs(io_pairs),1)            
+            output_dim = size(get_outputs(io_pairs), 1)
             output_structure_mats[key] = create_compact_linear_map(val(output_dim))
         else
             output_structure_mats[key] = create_compact_linear_map(val)
         end
     end
-    
+
     input_structure_vecs = deepcopy(input_structure_vecs)
     if !isnothing(prior_samples_in)
         (input_structure_vecs[:prior_samples_in] = prior_samples_in)
@@ -636,12 +653,7 @@ function decode_with_schedule(
     io_pairs::PDC,
     input_structure_mat::SM1,
     output_structure_mat::SM2,
-) where {
-    VV <: AbstractVector,
-    SM1 <: StructureMatrix,
-    SM2 <: StructureMatrix,
-    PDC <: PairedDataContainer,
-}
+) where {VV <: AbstractVector, SM1 <: StructureMatrix, SM2 <: StructureMatrix, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
     processed_input_structure_mat = deepcopy(input_structure_mat)
     processed_output_structure_mat = deepcopy(output_structure_mat)

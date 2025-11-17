@@ -549,15 +549,15 @@ function MCMCWrapper(
     observation::AMorAV,
     prior::ParameterDistribution,
     em::Emulator;
-    init_params::AV=[],
+    init_params::AV = [],
     burnin::Int = 0,
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
 
-    if length(init_params)==0
+    if length(init_params) == 0
         init_params = mean(prior)
     end
-    
+
     # make into iterable over vectors
     obs_slice = if observation isa AbstractVector{<:AbstractVector}
         observation

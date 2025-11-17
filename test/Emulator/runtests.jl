@@ -24,7 +24,7 @@ struct MLTester <: Emulators.MachineLearningTool end
 
     # "noise"
     μ = zeros(d)
-    Σ = rand(d,d)
+    Σ = rand(d, d)
     Σ = Σ' * Σ
     noise_samples = rand(MvNormal(μ, Σ), m)
     y += noise_samples
@@ -48,8 +48,8 @@ struct MLTester <: Emulators.MachineLearningTool end
     # NB this gives encoder up to sign
     tol = 1e-12
     @test get_encoder_schedule(em) == enc_sch # inputs: proc
-    @test all(isapprox.(get_inputs(get_encoded_io_pairs(em)), get_inputs(enc_io_pairs), atol=tol))
-    @test all(isapprox.(get_outputs(get_encoded_io_pairs(em)), get_outputs(enc_io_pairs), atol=tol))
+    @test all(isapprox.(get_inputs(get_encoded_io_pairs(em)), get_inputs(enc_io_pairs), atol = tol))
+    @test all(isapprox.(get_outputs(get_encoded_io_pairs(em)), get_outputs(enc_io_pairs), atol = tol))
     @test isempty(enc_I_in)
 
     #NB - encoders all tested in Utilities here just testing some API

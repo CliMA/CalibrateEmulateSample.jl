@@ -72,7 +72,7 @@ end
     zs = zscore_scale()
     mm = minmax_scale()
     qq = quartile_scale()
-    QQ = ElementwiseScaler{QuartileScaling, Vector{Int},Vector,Vector, Vector, Vector}([1], [2],[3],[4], [5], [6])
+    QQ = ElementwiseScaler{QuartileScaling, Vector{Int}, Vector, Vector, Vector, Vector}([1], [2], [3], [4], [5], [6])
     @test isa(zs, ElementwiseScaler)
     @test get_type(zs) == ZScoreScaling
     @test isa(mm, ElementwiseScaler)
@@ -94,13 +94,13 @@ end
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
     @test get_retain_var(dd3) == 0.7
     @test get_decorrelate_with(dd3) == "structure_mat"
-    DD = Decorrelator([1], [2], [3], 1.0, 4, 5, (; test=6), "test", nothing)
+    DD = Decorrelator([1], [2], [3], 1.0, 4, 5, (; test = 6), "test", nothing)
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
     @test get_n_totvar_samples(DD) == 4
     @test get_max_rank(DD) == 5
-    @test get_psvd_kwargs(DD) == (;test=6)
+    @test get_psvd_kwargs(DD) == (; test = 6)
 
 
     cc = canonical_correlation()
@@ -164,7 +164,7 @@ end
 
     # functional test pipeline
     tol = 1e-12
-    
+
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
@@ -408,41 +408,44 @@ end
         p = 10
         x = rand(p, m) #R^3
         y = rand(d, m) #R^6
-        
+
         # "noise"
         μ = zeros(d)
-        sam = rand(d,30)
-        Σ = tsvd_cov_from_samples(sam) 
+        sam = rand(d, 30)
+        Σ = tsvd_cov_from_samples(sam)
         noise_samples = Σ.U * (sqrt.(Σ.S) .* Σ.Vt) * rand(MvNormal(μ, I), m)
         y += noise_samples
-        
+
         io_pairs = PairedDataContainer(x, y, data_are_columns = true)
 
         dt = @elapsed begin
             enc1 = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
-                
+
             enc_sch1 = create_encoder_schedule(enc1)
-            enc_io_pairs, enc_in, enc_out = initialize_and_encode_with_schedule!(enc_sch1, io_pairs; obs_noise_cov = [Σ]) 
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch1, io_pairs; obs_noise_cov = [Σ])
         end
         push!(dts_samp, dt)
-       
+
         dt = @elapsed begin
-            enc2 = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(retain_var=0.95), "out")] # for these inputs this is the default
+            enc2 = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(retain_var = 0.95), "out")] # for these inputs this is the default
             enc_sch2 = create_encoder_schedule(enc2)
-            enc_io_pairs, enc_in, enc_out = initialize_and_encode_with_schedule!(enc_sch2, io_pairs; obs_noise_cov = [Σ])
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch2, io_pairs; obs_noise_cov = [Σ])
         end
         push!(dts_struct, dt)
 
         dt = @elapsed begin
-            enc3 = [(decorrelate_sample_cov(), "in"), (decorrelate(retain_var=0.95), "out")] # for these inputs this is the default
+            enc3 = [(decorrelate_sample_cov(), "in"), (decorrelate(retain_var = 0.95), "out")] # for these inputs this is the default
             enc_sch3 = create_encoder_schedule(enc3)
-            enc_io_pairs, enc_in, enc_out = initialize_and_encode_with_schedule!(enc_sch3, io_pairs; obs_noise_cov = [Σ])
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch3, io_pairs; obs_noise_cov = [Σ])
         end
         push!(dts_comb, dt)
-        
+
     end
 
-    dts_tols = 2*[dts_samp[2], dts_struct[2], dts_comb[2]] # baseline value
+    dts_tols = 2 * [dts_samp[2], dts_struct[2], dts_comb[2]] # baseline value
     for i in 1:length(ds)
 
         if i == 1
@@ -450,15 +453,14 @@ end
         else
 
             # increate the tolerances by the factor
-            tols = 5 * ds[i]/ds[2] * dts_tols # should be < 5  x scaling
+            tols = 5 * ds[i] / ds[2] * dts_tols # should be < 5  x scaling
             println("$(ds[i]), $(dts_samp[i]), $(dts_struct[i]), $(dts_comb[i])")
             if any([dts_samp[i], dts_struct[i], dts_comb[i]] .> tols)
                 @error("∟ timings have exceeded linear scaling")
             end
-            
+
         end
     end
     # @tests?
 
 end
-
