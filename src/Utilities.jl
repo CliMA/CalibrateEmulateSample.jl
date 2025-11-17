@@ -27,7 +27,8 @@ export create_encoder_schedule,
     encode_structure_matrix,
     decode_data,
     decode_structure_matrix,
-    norm
+    norm,
+    encoder_kwargs_from
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -71,32 +72,42 @@ end
 
 # Using Observation Objects:
 
-function encoder_kwargs_from(obs::OB) where {OB <: Observation}
-    return (obs_noise_cov = get_covs(obs, build = false), observation = get_obs(obs))
-end
-
-function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
-    obs_vec = get_observations(os)
-    return [encoder_kwargs_from(obs) for obs in obs_vec]
-end
-
-function encoder_kwargs_from(prior::PD; rng = Random.default_rng(), n_samples = 100) where {PD <: ParameterDistribution}
-    return (prior_cov = cov(prior), prior_samples_in = sample(rng, prior, n_samples))
-end
-
-##  multiplication with observation covariance objects without building
 """
 $(TYPEDSIGNATURES)
 
-Left-multiply `X` by structure matrix `A` without building it (if provided in a compact form).
-
-This is useful when A is high dimensional and provided as an `SVD` or `SumOfCovariances` etc. object from EnsembleKalmanProcesses. 
+Extracts the relevant encoder kwargs from the observation as a NamedTuple. Contains,
+- `:obs_noise_cov` as (unbuilt) noise covariance
+- `:observation` as obs vector
 """
-function lmul_compact(A, X::AVorM) where {AVorM <: AbstractVecOrMat}
-    # A is presumed a vector, of (compact) matrix types.
-    return isa(A, AbstractVector) ? EKP.lmul_without_build(A, X) : EKP.lmul_without_build([A], X)
+function encoder_kwargs_from(obs::OB) where {OB <: Observation}
+    return (; obs_noise_cov = get_obs_noise_cov(obs, build = false), observation = get_obs(obs))
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Extracts the relevant encoder kwargs from the ObservationSeries as a NamedTuple. Assumes the same noise covariance for all observation vectors. Contains,
+- `:obs_noise_cov` as (unbuilt) noise covariance of FIRST observation
+- `:observation` as obs vector from all observations
+"""
+function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
+    observations = get_observations(os)
+    obs_vec = [get_obs(obs) for obs in observations]
+    obs_noise_cov = get_obs_noise_cov(observations[1], build = false)
+    return (; obs_noise_cov = obs_noise_cov, observation = obs_vec)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Extracts the relevant encoder kwargs from the ParameterDistribution prior. Contains,
+- `:prior_cov` as prior covariance
+"""
+function encoder_kwargs_from(prior::PD) where {PD <: ParameterDistribution}
+    return (; prior_cov = cov(prior))
+end
+
+##  multiplication with observation covariance objects without building
 """
 $(TYPEDSIGNATURES)
 
@@ -105,7 +116,7 @@ Produces a linear map of type `LinearMap` that can evaluates the stacked actions
 This compact map constructs the following form of the Linear map f:
 
 1. get compact form svd-plus-d form "USVt + D" of the `blocks`
-2. create the f via stacking `A.U * A.S * A.Vt * x[block] + A.D * x[block] for (A,block) in blocks`
+2. create the f via stacking `A.U * A.S * A.Vt * xblock + A.D * xblock for (A,xblock) in  (As, x)`
 
 kwargs:
 ------

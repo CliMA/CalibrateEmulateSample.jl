@@ -606,7 +606,7 @@ function MCMCWrapper(
     prior::PD,
     em::EM;
     kwargs...,
-) where {AV <: AbstractVector, OB <: Observation, PD <: ParameterDistribution, EM <: Emulator}
+) where {OB <: Observation, PD <: ParameterDistribution, EM <: Emulator}
     return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em; kwargs...)
 end
 
@@ -616,7 +616,7 @@ function MCMCWrapper(
     prior::PD,
     em::EM;
     kwargs...,
-) where {AV <: AbstractVector, OS <: ObservationSeries, PD <: ParameterDistribution, EM <: Emulator}
+) where {OS <: ObservationSeries, PD <: ParameterDistribution, EM <: Emulator}
     observations = [get_obs(ob) for ob in get_observations(observation_series)]
     return MCMCWrapper(mcmc_alg, observations, prior, em; kwargs...)
 end

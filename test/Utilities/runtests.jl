@@ -7,6 +7,7 @@ using LinearAlgebra
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.ParameterDistributions
 
 @testset "Utilities" begin
 
@@ -48,6 +49,29 @@ end
 
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(4154)
+
+    # test getting encoder kwargs from observations and series
+    # from prior
+    pd = constrained_gaussian("name", 0.0, 2.0, -10, Inf, repeat = 5)
+    encoder_kwargs = encoder_kwargs_from(pd)
+    @test isapprox(norm(encoder_kwargs.prior_cov - cov(pd)), 0, atol = 1e-12)
+
+    # from observation
+    osample = [1.0, 2.0]
+    ocov = 4.0 * I(2)
+    obs = Observation(Dict("samples" => osample, "covariances" => ocov, "names" => "test"))
+    encoder_kwargs = encoder_kwargs_from(obs)
+    @test all(isapprox.(norm.(encoder_kwargs.obs_noise_cov - get_obs_noise_cov(obs, build = false)), 0.0, atol = 1e-12))
+    @test all(isapprox.(encoder_kwargs.observation - get_obs(obs), 0.0, atol = 1e-12))
+
+    # from observation series
+    obs2 = Observation(Dict("samples" => osample .+ 1.0, "covariances" => 2.0 .* ocov, "names" => "test"))
+    obs_series = ObservationSeries([obs, obs2])
+    encoder_kwargs = encoder_kwargs_from(obs_series)
+    @test all(isapprox.(norm.(encoder_kwargs.obs_noise_cov - get_obs_noise_cov(obs, build = false)), 0, atol = 1e-12))
+    diff = encoder_kwargs.observation - [get_obs(obs), get_obs(obs2)]
+    @test all([all(isapprox.(dd, 0.0, atol = 1e-12)) for dd in diff])
+
 
     # Tests for get_structure_vec and get_structure_mat
     structure_vecs = Dict("a" => [1, 2, 3], "b" => [4, 5, 6])
