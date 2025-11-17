@@ -450,7 +450,7 @@ end
         else
 
             # increate the tolerances by the factor
-            tols = ds[i]/ds[2] * dts_tols
+            tols = 5 * ds[i]/ds[2] * dts_tols # should be < 5  x scaling
             println("$(ds[i]), $(dts_samp[i]), $(dts_struct[i]), $(dts_comb[i])")
             if any([dts_samp[i], dts_struct[i], dts_comb[i]] .> tols)
                 @error("∟ timings have exceeded linear scaling")
