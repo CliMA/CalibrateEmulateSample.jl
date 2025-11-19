@@ -121,11 +121,22 @@ This compact map constructs the following form of the Linear map f:
 kwargs:
 ------
 When computing the svd internally from an abstract matrix
-- `svd_dim_max=4000`: this switches to an approximate tsvd approach when applying to covariance matrices above dimension 4000 
-- `tsvd_rank=50`: when using tsvd, what rank to truncate at.
+- `svd_dim_max=3000`: this switches to an approximate svd approach when applying to covariance matrices above dimension 3000
+- `psvd_or_tsvd="psvd"`: use psvd or tsvd for approximating svd for large matrices
+- `tsvd_max_rank=50`: when using tsvd, what max rank to use. high rank = higher accuracy
+- `psvd_kwargs=(; rtol=1e-2)`: when using psvd, what kwargs to pass. lower rtol = higher accuracy
 
+Recommended: quick & inaccurate -> slow and more accurate
+- very large matrices - start with tsvd with very low rank, and increase
+- mid-size matrices - psvd with very high rtol, and decrease
 """
-function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank = 50)
+function create_compact_linear_map(
+    A;
+    svd_dim_max = 3000,
+    psvd_or_tsvd = "psvd",
+    tsvd_max_rank = 50,
+    psvd_kwargs = (; rtol = 1e-1),
+)
     Avec = isa(A, AbstractVector) ? A : [A]
 
     # explicitly write the loop here:
@@ -153,10 +164,17 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank = 50)
                 push!(ds, zeros(size(a, 1)))
                 bsize[1] = size(a, 1)
             else
-                svda = EKP.tsvd_mat(a, min(tsvd_rank, size(a, 1) - 1)) # swap to tsvd for performance
-                push!(Us, svda.U)
-                push!(Ss, svda.S)
-                push!(VTs, svda.Vt)
+                if psvd_or_tsvd == "psvd"
+                    svda = psvd(a; psvd_kwargs...)
+                    push!(Us, svda[1])
+                    push!(Ss, svda[2])
+                    push!(VTs, svda[3]')
+                else
+                    svda = tsvd_mat(a, min(tsvd_max_rank, size(a, 1) - 1))
+                    push!(Us, svda.U)
+                    push!(Ss, svda.S)
+                    push!(VTs, svda.Vt)
+                end
                 push!(ds, zeros(size(a, 1)))
                 bsize[1] = size(a, 1)
             end
@@ -201,63 +219,6 @@ function create_compact_linear_map(A; svd_dim_max = 4000, tsvd_rank = 50)
     return Amap
 
 end
-
-
-#=
-"""
-$(TYPEDSIGNATURES)
-
-svd of a sum of two matrices `A` and `B` in svd form without building A+B directly. 
-
-This is useful when A and B are low rank, but high dimensional and provided as SVD types. (e.g. from `EKP.tsvd_cov_from_samples`)
-"""
-function svd_of_sum(svdA::SS1,svdB::SS2) where { SS1 <: SVD, SS2 <: SVD}
-
-    # treat A + B as just "low rank"
-    # can write A+B = L * R = [Ua Ub] * [ Sa * Va'; Sb * Vb']
-    L = [svdA.U svdB.U] # N x (r1+r2)
-    R = [Diagonal(svdA.S) * svdA.Vt ; Diagonal(svdB.S) * svdB.Vt] # (r1+r2) x N
-    qrl = qr(L) # Q1 R1
-    qrr = qr(R') # Q2 R2
-    # A+B = Q_1 * R_1 * R_2' * Q_2' = Q1 * (ss.U * ss.S * ss.V' * Q2' = (Q1 ss.U) * ss.S * (Q2 ss.V)'
-    ss = svd(qrl.R*qrr.R') 
-
-    return SVD(qrl.Q*ss.U, ss.S, ss.Vt*qrr.Q') # build the new svd
-
-end
-
-function inv_sqrt_of_svdplusd(a)
-    D = a.diag_cov
-    D += sqrt(eps())*I # minimum tolerance for some operations below
-    iD = inv(D) # 
-    irD = sqrt.(iD)
-    ss = a.svd_cov
-    U = ss.U
-    S = Diagonal(ss.S)
-
-    # begin computing the whitening transform
-    M = inv(S) + U'*iD*U
-    riM = sqrt(inv(M))
-    B = irD*U
-    C = riM*B'*B*riM 
-    ev = eigen(C)
-    V = ev.vectors
-    # if A = B*riM => 
-    #    (I-AA')^{1/2} = I - A * Chat * A'
-    #                  = I - A * V * Diag(chat) * V' * A'
-    # LHS evals sqrt(1-σ_i^2), rhs evals 1 - chat * σ_i^2
-    #     => chat = (1 - sqrt(1-σ_i^2))/(σ_i^2) # where σ_i is eval of A = sqrt(ev.values)
-    ev_correction = Diagonal((1.0 .-sqrt.(1.0 .- ev.values)) ./ ev.values)
-
-    # Then,  (I - BM^{-1}B')^{1/2} = I - B M^{-1/2} V sv V' M^{-1/2} B'
-    rt_ImBiMB = I - B * riM * V * ev_correction * V' * riM * B'
-    # Idea is that woodbury: Σ^{-1} = D^{-1/2} * ImBiMB * D^{-1/2}
-    # Then W = rt_ImBiMB * D^{-1/2} satisfies W Σ W' = I 
-    W = rt_ImBiMB * irD # perhaps keep this in a compact form until use:
-    return W
-end
-=#
-
 
 
 # Data processing tooling:

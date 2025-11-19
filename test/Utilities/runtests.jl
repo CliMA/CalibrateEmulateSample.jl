@@ -72,6 +72,64 @@ end
     diff = encoder_kwargs.observation - [get_obs(obs), get_obs(obs2)]
     @test all([all(isapprox.(dd, 0.0, atol = 1e-12)) for dd in diff])
 
+    # Building a blocked noise covariance with different types to test creating linear maps 
+    # Abstract mats (small and large (> svd_dim_max)), SVD, SVDplusD
+    d = 1000
+    A = []
+    svd_dim_max = 999 # defaul 4000, reduce here for speed/memory
+    X = randn(100, d)
+    X = X' * X # make posdef
+    push!(A, X[1:50, 1:50])
+    push!(A, X)
+
+    μ = zeros(d)
+    sam = rand(d, 30)
+    Σ = tsvd_cov_from_samples(sam)
+    push!(A, Σ)
+
+    D = Diagonal(0.001 * sqrt.(collect(1:d)))
+    ΣpD = SVDplusD(Σ, D)
+    push!(A, ΣpD)
+
+
+    as = [50, d, d, d]
+    cas = cumsum(as)
+    block_id = [1:cas[1], (cas[1] + 1):cas[2], (cas[2] + 1):cas[3], (cas[3] + 1):cas[4]]
+    Afull = zeros(sum(as), sum(as))
+
+    Afull[1:cas[1], 1:cas[1]] = A[1]
+    Afull[(cas[1] + 1):cas[2], (cas[1] + 1):cas[2]] = A[2]
+    Afull[(cas[2] + 1):cas[3], (cas[2] + 1):cas[3]] = A[3].U * Diagonal(A[3].S) * A[3].Vt
+    Afull[(cas[3] + 1):cas[4], (cas[3] + 1):cas[4]] =
+        A[4].svd_cov.U * Diagonal(A[4].svd_cov.S) * A[4].svd_cov.Vt + A[4].diag_cov
+
+
+    for svd_type in ["psvd", "tsvd"]
+        psvd_kwargs = (; rtol = 1e-3) # make very small for testing
+        tsvd_max_rank = 30 # often only stable small ranks
+        Amap = create_compact_linear_map(
+            A;
+            svd_dim_max = svd_dim_max,
+            psvd_or_tsvd = svd_type,
+            psvd_kwargs = psvd_kwargs,
+            tsvd_max_rank = tsvd_max_rank,
+        )
+        Amat_from_map = Matrix(Amap)
+
+        for (i, ids) in enumerate(block_id)
+            if i == 2 # the case where we do psvd on a full matrix - can be very high error expected (particularly tsvd
+                if svd_type == "psvd"
+                    @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-14 * length(ids)^2
+                else
+                    @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-2 * length(ids)^2 # bad!
+                end
+
+            else
+                @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-14 * length(ids)^2
+            end
+        end
+    end
+
 
     # Tests for get_structure_vec and get_structure_mat
     structure_vecs = Dict("a" => [1, 2, 3], "b" => [4, 5, 6])
@@ -437,7 +495,9 @@ end
         μ = zeros(d)
         sam = rand(d, 30)
         Σ = tsvd_cov_from_samples(sam)
+        D = Diagonal(0.001 * sqrt.(collect(1:d)))
         noise_samples = Σ.U * (sqrt.(Σ.S) .* Σ.Vt) * rand(MvNormal(μ, I), m)
+
         y += noise_samples
 
         io_pairs = PairedDataContainer(x, y, data_are_columns = true)
