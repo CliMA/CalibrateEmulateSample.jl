@@ -28,6 +28,7 @@ export create_encoder_schedule,
     decode_data,
     decode_structure_matrix,
     norm,
+    isequal_linear,
     encoder_kwargs_from
 
 
@@ -274,14 +275,6 @@ function isequal_linear(
         e[j] -= 1
     end
     return true
-end
-
-function isequal_linear(A::AMorV1, B::AMorV2; kwargs...) where {AMorV1 <: AbstractVecOrMat, AMorV2 <: AbstractVecOrMat}
-    if !(size(A) == size(B))
-        return false
-    end
-
-    return all(isequal_linear(a, b; kwargs...) for (a, b) in zip(A[:], B[:]))
 end
 
 function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}

@@ -104,6 +104,8 @@ end
         A[4].svd_cov.U * Diagonal(A[4].svd_cov.S) * A[4].svd_cov.Vt + A[4].diag_cov
 
 
+    @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing
         tsvd_max_rank = 30 # often only stable small ranks
@@ -115,6 +117,11 @@ end
             tsvd_max_rank = tsvd_max_rank,
         )
         Amat_from_map = Matrix(Amap)
+
+        # some extra tests for the ==/is_equal overrides
+        @test Amap == Amap
+        Amap2 = create_compact_linear_map([A[1]])
+        @test !(Amap == Amap2)
 
         for (i, ids) in enumerate(block_id)
             if i == 2 # the case where we do psvd on a full matrix - can be very high error expected (particularly tsvd
