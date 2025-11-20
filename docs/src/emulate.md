@@ -46,7 +46,7 @@ Developers may contribute new tools by performing the following
 ```
 build_models!(mlt::MyMLTool, iopairs::PairedDataContainer, input_structure_mats::Dict{Symbol, <:StructureMatrix}, output_structure_mats::Dict{Symbol, <:StructureMatrix}) -> Nothing
 optimize_hyperparameters!(mlt::MyMLTool, args...; kwargs...) -> Nothing
-function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{Matrix, Array{,3}
+function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{Matrix, Array{,3}}
 ```
 !!! note "on dimensions of the predict inputs and outputs"
     The `predict` method takes as input, an `input_dim`-by-`N_new` matrix. It return both a predicted mean and a predicted (co)variance at new inputs.
