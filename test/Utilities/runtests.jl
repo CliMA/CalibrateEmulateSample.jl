@@ -175,13 +175,13 @@ end
     @test get_struct_encoder_mat(QQ) == [5]
     @test get_struct_decoder_mat(QQ) == [6]
     dd = decorrelate()
-    @test get_retain_var(dd) == 1.0
+    @test get_dim_criterion(dd) == (:retain_var, 1.0)
     @test get_decorrelate_with(dd) == "combined"
     dd2 = decorrelate_sample_cov(retain_var = 0.7)
-    @test get_retain_var(dd2) == 0.7
+    @test get_dim_criterion(dd2) == (:retain_var, 0.7)
     @test get_decorrelate_with(dd2) == "sample_cov"
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
-    @test get_retain_var(dd3) == 0.7
+    @test get_dim_criterion(dd3) == (:retain_var, 0.7)
     @test get_decorrelate_with(dd3) == "structure_mat"
     DD = Decorrelator([1], [2], [3], 1.0, 4, 5, (; test = 6), "test", nothing)
     @test get_data_mean(DD) == [1]

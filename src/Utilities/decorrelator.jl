@@ -173,9 +173,9 @@ get_decoder_mat(dd::Decorrelator) = dd.decoder_mat
 """
 $(TYPEDSIGNATURES)
 
-returns the `retain_var` field of the `Decorrelator`.
+returns the `dim_criterion` field of the `Decorrelator`.
 """
-get_retain_var(dd::Decorrelator) = dd.retain_var
+get_dim_criterion(dd::Decorrelator) = dd.dim_criterion
 
 """
 $(TYPEDSIGNATURES)
@@ -208,8 +208,12 @@ get_decorrelate_with(dd::Decorrelator) = dd.decorrelate_with
 function Base.show(io::IO, dd::Decorrelator)
     out = "Decorrelator"
     out *= ": decorrelate_with=$(get_decorrelate_with(dd))"
-    if get_retain_var(dd) < 1.0
-        out *= ", retain_var=$(get_retain_var(dd))"
+
+    crit, number = get_dim_criterion(dd)
+    if crit == :retain_var && number < 1.0
+        out *= ", retain_var=$number"
+    elseif crit == :dimension
+        out *= ", reduced_dimension=$number"
     end
     print(io, out)
 end
@@ -329,6 +333,11 @@ function initialize_processor!(
                 push!(Vt, Vtmp')
 
             end
+        else
+            @assert crit == :dimension
+            sv_cumsum = cumsum(svdA.S) / sum(svdA.S)
+            @info "    truncating at $number/$(size(data, 1)) retaining $(100.0*sv_cumsum[number])% of the variance of the structure matrix"
+            number
         end
 
         # Enforce a sign convention for the singular vectors (rows Vt have positive first entry)
