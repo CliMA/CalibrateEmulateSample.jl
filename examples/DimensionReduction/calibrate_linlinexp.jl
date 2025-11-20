@@ -9,15 +9,16 @@ include("./models.jl")
 ## Define custom learning-rate scheduler for better control over timepoints reached
 mutable struct CheckpointScheduler <: EnsembleKalmanProcesses.LearningRateScheduler
     αs::Vector{Float64}
-    scheduler
+    scheduler::Any
 
-    current_index
+    current_index::Any
 
     CheckpointScheduler(αs, scheduler) = new(αs, scheduler, 2)
 end
 function EnsembleKalmanProcesses.calculate_timestep!(ekp, g, Δt_new, scheduler::CheckpointScheduler)
     EnsembleKalmanProcesses.calculate_timestep!(ekp, g, Δt_new, scheduler.scheduler)
-    if scheduler.current_index <= length(scheduler.αs) && get_algorithm_time(ekp)[end] > scheduler.αs[scheduler.current_index]
+    if scheduler.current_index <= length(scheduler.αs) &&
+       get_algorithm_time(ekp)[end] > scheduler.αs[scheduler.current_index]
         ekp.Δt[end] -= get_algorithm_time(ekp)[end] - scheduler.αs[scheduler.current_index]
         scheduler.current_index += 1
     end
@@ -39,7 +40,9 @@ for trial in 1:num_trials
 
     prior_cov, y, obs_noise_cov, model, true_parameter = linlinexp(input_dim, output_dim, rng)
     prior_obj = ParameterDistribution(
-        Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)), fill(no_constraint(), size(prior_cov, 1)), "linlinexp_prior",
+        Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)),
+        fill(no_constraint(), size(prior_cov, 1)),
+        "linlinexp_prior",
     )
 
     n_ensemble = 400
@@ -72,7 +75,11 @@ for trial in 1:num_trials
         closest_iter = argmin(0:n_iters) do i
             abs(α - (i == 0 ? 0.0 : get_algorithm_time(ekp)[i]))
         end + 1
-        ekp_samples[α] = (get_u(ekp, closest_iter), closest_iter == n_iters + 1 ? hcat([forward_map(u, model) for u in eachcol(get_u(ekp, closest_iter))]...) : get_g(ekp, closest_iter))
+        ekp_samples[α] = (
+            get_u(ekp, closest_iter),
+            closest_iter == n_iters + 1 ?
+            hcat([forward_map(u, model) for u in eachcol(get_u(ekp, closest_iter))]...) : get_g(ekp, closest_iter),
+        )
     end
 
 

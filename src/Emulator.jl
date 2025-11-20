@@ -145,15 +145,23 @@ function Emulator(
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) = initialize_and_encode_with_schedule!(
-        encoder_schedule,
-        input_output_pairs;
-        obs_noise_cov = obs_noise_cov,
-        encoder_kwargs...,
-    )
+    (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
+        initialize_and_encode_with_schedule!(
+            encoder_schedule,
+            input_output_pairs;
+            obs_noise_cov = obs_noise_cov,
+            encoder_kwargs...,
+        )
 
     # build the machine learning tool in the encoded space
-    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats; encoder_schedule = encoder_schedule, mlt_kwargs...)
+    build_models!(
+        machine_learning_tool,
+        encoded_io_pairs,
+        encoded_input_structure_mats,
+        encoded_output_structure_mats;
+        encoder_schedule = encoder_schedule,
+        mlt_kwargs...,
+    )
     return Emulator{FT, typeof(encoder_schedule)}(
         machine_learning_tool,
         input_output_pairs,
@@ -262,7 +270,12 @@ function predict(
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; encoder_schedule = emulator.encoder_schedule, mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(
+        get_machine_learning_tool(emulator),
+        encoded_inputs;
+        encoder_schedule = emulator.encoder_schedule,
+        mlt_kwargs...,
+    )
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 

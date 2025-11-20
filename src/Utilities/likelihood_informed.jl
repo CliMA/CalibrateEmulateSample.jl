@@ -77,7 +77,7 @@ function initialize_processor!(
         if obs_noise_cov ≈ I
             obs_noise_cov = I(output_dim)
         else
-            @warn "Consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed" 
+            @warn "Consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
         end
         noise_cov_inv = inv(obs_noise_cov)
 
@@ -93,7 +93,7 @@ function initialize_processor!(
                 # TODO: It might be interesting to introduce a parameter to weight this distance with.
                 #       This can be a scalar or a matrix; in the latter case, we can even use the covariance
                 #       of the samples (or the prior covariance).
-                weights = exp.(-1/2 * norm.(eachcol(u .- samples_in)).^2)
+                weights = exp.(-1 / 2 * norm.(eachcol(u .- samples_in)) .^ 2)
                 weights ./= sum(weights)
                 D = Diagonal(sqrt.(weights))
                 uw = (samples_in .- sum(samples_in * Diagonal(weights); dims = 2)) * D
@@ -104,10 +104,24 @@ function initialize_processor!(
 
         li.encoder_mat = if apply_to == "in" || α ≈ 0
             decomp = if apply_to == "in"
-                eigen(hermitianpart(mean(grad' * noise_cov_inv * ((1-α)obs_noise_cov + α^2 * (y - g) * (y - g)') * noise_cov_inv * grad for (g, grad) in zip(eachcol(samples_out), grads))), sortby = (-))
+                eigen(
+                    hermitianpart(
+                        mean(
+                            grad' *
+                            noise_cov_inv *
+                            ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)') *
+                            noise_cov_inv *
+                            grad for (g, grad) in zip(eachcol(samples_out), grads)
+                        ),
+                    ),
+                    sortby = (-),
+                )
             else
                 @assert apply_to == "out"
-                eigen(hermitianpart(sqrt(noise_cov_inv) * mean(grad * grad' for grad in grads) * sqrt(noise_cov_inv)), sortby = (-))
+                eigen(
+                    hermitianpart(sqrt(noise_cov_inv) * mean(grad * grad' for grad in grads) * sqrt(noise_cov_inv)),
+                    sortby = (-),
+                )
             end
 
             sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
@@ -135,25 +149,33 @@ function initialize_processor!(
             while true
                 M = Grassmann(output_dim, k)
 
-                f = (_, Vs) -> begin
-                    prec = noise_cov_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
-                    tr(mean(
-                        grad' * prec * ((1-α)obs_noise_cov + α^2 * (y - g)*(y - g)') * prec * grad
-                        for (g, grad) in zip(eachcol(out_data), grads)
-                    ))
-                end
-                egrad = (_, Vs) -> begin
-                    B = Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
-                    prec = noise_cov_inv - B
+                f =
+                    (_, Vs) -> begin
+                        prec = noise_cov_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                        tr(
+                            mean(
+                                grad' * prec * ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)') * prec * grad
+                                for (g, grad) in zip(eachcol(out_data), grads)
+                            ),
+                        )
+                    end
+                egrad =
+                    (_, Vs) -> begin
+                        B = Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                        prec = noise_cov_inv - B
 
-                    -2mean(begin
-                        A = ((1-α)I + α^2 * (y - g)*(y - g)')
-                        S = grad * grad'
-                        (I - obs_noise_cov * B) * (S * prec * A + A * prec * S)
-                    end for (g, grad) in zip(eachcol(out_data), grads)) * B * Vs
-                end
+                        -2mean(
+                            begin
+                                A = ((1 - α)I + α^2 * (y - g) * (y - g)')
+                                S = grad * grad'
+                                (I - obs_noise_cov * B) * (S * prec * A + A * prec * S)
+                            end for (g, grad) in zip(eachcol(out_data), grads)
+                        ) *
+                        B *
+                        Vs
+                    end
                 rgrad = (M, Vs) -> begin
-                    (I - Vs*Vs') * egrad(M, Vs)
+                    (I - Vs * Vs') * egrad(M, Vs)
                 end
 
                 Vs = Matrix(qr(randn(output_dim, k)).Q)
@@ -211,10 +233,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `LikelihoodInformed` encoder to a provided structure matrix
 """
-function encode_structure_matrix(
-    li::LikelihoodInformed,
-    structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function encode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(li)
     return encoder_mat * structure_matrix * encoder_mat'
 end
@@ -224,10 +243,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `LikelihoodInformed` decoder to a provided structure matrix
 """
-function decode_structure_matrix(
-    li::LikelihoodInformed,
-    structure_matrix::SM,
-) where {SM <: StructureMatrix}
+function decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(li)
     return decoder_mat * structure_matrix * decoder_mat'
 end

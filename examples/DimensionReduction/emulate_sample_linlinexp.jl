@@ -15,8 +15,8 @@ include("./models.jl")
 
 
 mutable struct NoEmulation <: Emulators.MachineLearningTool
-    f
-    output_structure_mats
+    f::Any
+    output_structure_mats::Any
 
     NoEmulation(f) = new(f, nothing)
 end
@@ -28,8 +28,10 @@ function Emulators.predict(ne::NoEmulation, new_inputs; mlt_kwargs...)
 
     decoded_inputs = decode_with_schedule(encoder_schedule, EnsembleKalmanProcesses.DataContainer(new_inputs), "in")
     decoded_outputs = hcat(map(ne.f, eachcol(decoded_inputs.data))...)
-    encoded_outputs = encode_with_schedule(encoder_schedule, EnsembleKalmanProcesses.DataContainer(decoded_outputs), "out").data
-    encoded_outputs, cat([Utilities.get_structure_mat(ne.output_structure_mats) for _ in eachcol(new_inputs)]...; dims = 3)
+    encoded_outputs =
+        encode_with_schedule(encoder_schedule, EnsembleKalmanProcesses.DataContainer(decoded_outputs), "out").data
+    encoded_outputs,
+    cat([Utilities.get_structure_mat(ne.output_structure_mats) for _ in eachcol(new_inputs)]...; dims = 3)
 end
 
 
@@ -58,9 +60,15 @@ for trial in 1:num_trials
     dims = [2, 4, 6, 8, 10]
     all_errs = zeros(length(dims), 1 + length(αs))
     for (dim_i, dim) in enumerate(dims)
-        encoder_schedule_decorrelate = [(Decorrelator([], [], [], (:dimension, dim), "structure_mat", nothing), "in"), (decorrelate_structure_mat(; retain_var = 1.0), "out")]
+        encoder_schedule_decorrelate = [
+            (Decorrelator([], [], [], (:dimension, dim), "structure_mat", nothing), "in"),
+            (decorrelate_structure_mat(; retain_var = 1.0), "out"),
+        ]
         encoder_schedules_li = [
-            [(decorrelate_structure_mat(; retain_var = 1.0), "in_and_out"), (LikelihoodInformed(nothing, nothing, nothing, (:dimension, dim), α, :linreg, false), "in")] for α in αs
+            [
+                (decorrelate_structure_mat(; retain_var = 1.0), "in_and_out"),
+                (LikelihoodInformed(nothing, nothing, nothing, (:dimension, dim), α, :linreg, false), "in"),
+            ] for α in αs
         ]
 
         em_ref = Emulator(
@@ -82,9 +90,14 @@ for trial in 1:num_trials
                 NoEmulation(param -> forward_map(param, model)),
                 Utilities.get_training_points(ekpobj, min_iter:max_iter);
                 encoder_schedule = encoder_schedule,
-                encoder_kwargs = (; prior_cov = cov(prior_obj), obs_noise_cov = obs_noise_cov, samples_in = ekp_samp[α][1], samples_out = ekp_samp[α][2], observation = y),
-            )
-            for (encoder_schedule, α) in zip(encoder_schedules_li, αs)
+                encoder_kwargs = (;
+                    prior_cov = cov(prior_obj),
+                    obs_noise_cov = obs_noise_cov,
+                    samples_in = ekp_samp[α][1],
+                    samples_out = ekp_samp[α][2],
+                    observation = y,
+                ),
+            ) for (encoder_schedule, α) in zip(encoder_schedules_li, αs)
         ]
 
         post_means = reshape(true_parameter, input_dim, 1)
@@ -97,7 +110,15 @@ for trial in 1:num_trials
             println("Begin MCMC - with step size ", new_step)
             num_chains = 16
             mcmc = MCMCWrapper(RWMHSampling(), y, prior_obj, em; init_params = [u0 for _ in 1:num_chains])
-            chain = MarkovChainMonteCarlo.sample(mcmc, MCMCThreads(), 40_000, num_chains; chain_type = Chains, stepsize = new_step, discard_initial = 5_000)
+            chain = MarkovChainMonteCarlo.sample(
+                mcmc,
+                MCMCThreads(),
+                40_000,
+                num_chains;
+                chain_type = Chains,
+                stepsize = new_step,
+                discard_initial = 5_000,
+            )
 
             posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 
@@ -108,7 +129,8 @@ for trial in 1:num_trials
             push!(post_covs, post_cov)
         end
 
-        all_errs[dim_i, :] = [norm(post_means[:,2] - v)/norm(post_means[:,2]) for v in eachcol(post_means[:,3:end])]'
+        all_errs[dim_i, :] =
+            [norm(post_means[:, 2] - v) / norm(post_means[:, 2]) for v in eachcol(post_means[:, 3:end])]'
     end
 
     display(all_errs)

@@ -263,11 +263,11 @@ end
     ]
 
     lossless = [
-        fill(true, 6);
-        fill(false, 3);
-        true;
-        true;
-        false;
+        fill(true, 6)
+        fill(false, 3)
+        true
+        true
+        false
     ] # are these lossy approximations? 
 
     # functional test pipeline
@@ -276,7 +276,13 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov, observation = randn(out_dim))
+            initialize_and_encode_with_schedule!(
+                encoder_schedule,
+                io_pairs;
+                prior_cov,
+                obs_noise_cov,
+                observation = randn(out_dim),
+            )
 
         (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
             encoder_schedule,
@@ -419,18 +425,24 @@ end
 
     # test that likelihood_informed throws on lack of an observation when α != 0.5
     @test_throws ArgumentError initialize_and_encode_with_schedule!(
-        create_encoder_schedule([(likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true), "in_and_out")]),
+        create_encoder_schedule([(
+            likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true),
+            "in_and_out",
+        )]),
         io_pairs;
         prior_cov = prior_cov,
         obs_noise_cov = obs_noise_cov,
     )
     # it doesn't throw when we pass an observation
     initialize_and_encode_with_schedule!(
-        create_encoder_schedule([(likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true), "in_and_out")]),
+        create_encoder_schedule([(
+            likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true),
+            "in_and_out",
+        )]),
         io_pairs;
         prior_cov = prior_cov,
         obs_noise_cov = obs_noise_cov,
-        observation = randn(out_dim)
+        observation = randn(out_dim),
     )
 
     # test that likelihood_informed throws on lack of samples when use_data_as_samples == false

@@ -284,8 +284,11 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Predict means and covariances in decorrelated output space using Gaussian process models.
 """
-predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; encoder_schedule = nothing) where {FT <: AbstractFloat} =
-    predict(gp, new_inputs, gp.prediction_type)
+predict(
+    gp::GaussianProcess{GPJL},
+    new_inputs::AbstractMatrix{FT};
+    encoder_schedule = nothing,
+) where {FT <: AbstractFloat} = predict(gp, new_inputs, gp.prediction_type)
 
 
 #now we build the SKLJL implementation
@@ -370,7 +373,11 @@ function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{F
     μ, σ = gp_model.predict(new_inputs', return_std = true)
     return μ, (σ .* σ)
 end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}; encoder_schedule = nothing) where {FT <: AbstractFloat}
+function predict(
+    gp::GaussianProcess{SKLJL},
+    new_inputs::AbstractMatrix{FT};
+    encoder_schedule = nothing,
+) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
 
     # for SKLJL does not return the observational noise (even if return_std = true)
