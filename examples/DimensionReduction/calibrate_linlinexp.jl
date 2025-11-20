@@ -18,7 +18,7 @@ end
 function EnsembleKalmanProcesses.calculate_timestep!(ekp, g, Δt_new, scheduler::CheckpointScheduler)
     EnsembleKalmanProcesses.calculate_timestep!(ekp, g, Δt_new, scheduler.scheduler)
     if scheduler.current_index <= length(scheduler.αs) && get_algorithm_time(ekp)[end] > scheduler.αs[scheduler.current_index]
-        get_algorithm_time(ekp)[end] = scheduler.αs[scheduler.current_index]
+        ekp.Δt[end] -= get_algorithm_time(ekp)[end] - scheduler.αs[scheduler.current_index]
         scheduler.current_index += 1
     end
 
@@ -28,9 +28,9 @@ function get_algorithm_time(ekp::EnsembleKalmanProcess) # This is not defined in
     return accumulate(+, ekp.Δt)
 end
 
-rng = Random.MersenneTwister(123)
+rng = Random.MersenneTwister(41)
 input_dim = 100
-output_dim = 50
+output_dim = 100
 αs = [0.0, 0.25, 0.5, 0.75, 1.0]
 
 num_trials = 1
@@ -42,7 +42,7 @@ for trial in 1:num_trials
         Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)), fill(no_constraint(), size(prior_cov, 1)), "linlinexp_prior",
     )
 
-    n_ensemble = 200
+    n_ensemble = 400
     initial_ensemble = construct_initial_ensemble(rng, prior_obj, n_ensemble)
     ekp = EnsembleKalmanProcess(
         initial_ensemble,
@@ -64,6 +64,8 @@ for trial in 1:num_trials
     end
     @info "EKP iterations: $n_iters"
     @info "Loss over iterations: $(get_error(ekp))"
+    @info "Timesteps: $(ekp.Δt)"
+    @info "Checkpoints: $(cumsum(ekp.Δt))"
 
     ekp_samples = Dict()
     for α in αs

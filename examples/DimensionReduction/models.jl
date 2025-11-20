@@ -26,7 +26,7 @@ function linlinexp(input_dim, output_dim, rng)
     obs_noise_cov = Diagonal([Float64(j)^(-1 / 2) for j in 1:output_dim])
     noise = rand(rng, MvNormal(zeros(output_dim), obs_noise_cov))
     # true_parameter = reshape(ones(input_dim), :, 1)
-    true_parameter = rand(MvNormal(zeros(input_dim), Γ))
+    true_parameter = rand(rng, MvNormal(zeros(input_dim), Γ))
     y = vec(forward_map(true_parameter, model) + noise)
     return Γ, y, obs_noise_cov, model, true_parameter
 end
