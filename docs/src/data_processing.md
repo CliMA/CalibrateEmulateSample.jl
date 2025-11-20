@@ -144,7 +144,7 @@ The `DataContainerProcessor` encodes "input" data agnostic of the "output" data,
 
 The `PairedDataContainerProcessor` encodes inputs (or outputs) using information of the both inputs and outputs in pairs
 - `CanonicalCorrelation` - constructed with `canonical_correlation()`, which performs [canonical correlation analysis](https://en.wikipedia.org/wiki/Canonical_correlation) to process the pairs. In effect this performs PCA on the cross-correlation from input and output samples.
-- [Coming soon] `LikelihoodInformed` - this will use the data or likelihood from the inverse problem at hand to build diagnostic matrices that are used to find informative directions for dimension reduction. In particular we build generalizations of current frameworks (e.g., [Cui, Zahm 2021](http://doi.org/10.1088/1361-6420/abeafb), [Baptista, Marzouk, Zahm 2022](https://arxiv.org/abs/2207.08670)) to use the latest EKP iterations.
+- `LikelihoodInformed` - constructed with `likelihood_informed()`, which uses the data or likelihood from the inverse problem at hand to build diagnostic matrices that are used to find informative directions for dimension reduction (e.g., [Cui, Zahm 2021](http://doi.org/10.1088/1361-6420/abeafb), [Baptista, Marzouk, Zahm 2022](https://arxiv.org/abs/2207.08670))
 
 This is an extensible framework, and so new data processors can be added to this library.
 

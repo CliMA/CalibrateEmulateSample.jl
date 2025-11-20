@@ -4,6 +4,16 @@ using Manifolds, Manopt
 
 export LikelihoodInformed, likelihood_informed
 
+"""
+$(TYPEDEF)
+
+Uses both input and output data to learn a subspace that allows for a reduced posterior which is close to the full posterior.
+
+Preferred construction is with the [`likelihood_informed`](@ref) method.
+
+# Fields
+$(TYPEDFIELDS)
+"""
 mutable struct LikelihoodInformed{FT <: Real} <: PairedDataContainerProcessor
     encoder_mat::Union{Nothing, AbstractMatrix}
     decoder_mat::Union{Nothing, AbstractMatrix}
@@ -14,6 +24,15 @@ mutable struct LikelihoodInformed{FT <: Real} <: PairedDataContainerProcessor
     use_data_as_samples::Bool
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `LikelihoodInformed` struct. Keywords:
+- `retain_KL`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - retain_KL). Choose `retain_KL` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
+- `alpha`[=0.0]: the likelihood-informed data processor requires samples from the distribution ∝ π_prior(x) π_likelihood(y | x)^α with α ∈ [0, 1]. A larger α should lead to a better subspace. The parameter `alpha` selects α; for how to pass in these samples, see the `use_data_as_samples` parameter.
+- `grad_type`[=:localsl]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
+- `use_data_as_samples`[=false]: if this parameter is `true`, then the data being processed (the training data for the emulator) will be used as the samples mentioned earlier. This means that they must be from the correct distribution corresponding to the chosen `alpha`. If this parameter is `false`, then the method expects `:samples_in` and `:samples_out` structure vectors that contain the samples instead.
+"""
 function likelihood_informed(; retain_KL, alpha = 0.0, grad_type = :localsl, use_data_as_samples = false)
     if grad_type ∉ [:linreg, :localsl]
         @error "Unknown grad_type=$grad_type"
@@ -55,6 +74,11 @@ function initialize_processor!(
             )
         end
         obs_noise_cov = get_structure_mat(output_structure_matrices, :obs_noise_cov)
+        if obs_noise_cov ≈ I
+            obs_noise_cov = I(output_dim)
+        else
+            @warn "Consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed" 
+        end
         noise_cov_inv = inv(obs_noise_cov)
 
         li.apply_to = apply_to
