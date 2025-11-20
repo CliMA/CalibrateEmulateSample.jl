@@ -35,6 +35,7 @@ function initialize_processor!(
     output_structure_vectors::Dict{Symbol, <:StructureVector},
     apply_to::AbstractString,
 ) where {MM <: AbstractMatrix}
+    input_dim = size(in_data, 1)
     output_dim = size(out_data, 1)
 
     if isnothing(get_encoder_mat(li))
@@ -69,9 +70,10 @@ function initialize_processor!(
                 #       This can be a scalar or a matrix; in the latter case, we can even use the covariance
                 #       of the samples (or the prior covariance).
                 weights = exp.(-1/2 * norm.(eachcol(u .- samples_in)).^2)
+                weights ./= sum(weights)
                 D = Diagonal(sqrt.(weights))
-                uw = (samples_in .- mean(samples_in * Diagonal(weights); dims = 2)) * D
-                gw = (samples_out .- mean(samples_out * Diagonal(weights); dims = 2)) * D
+                uw = (samples_in .- sum(samples_in * Diagonal(weights); dims = 2)) * D
+                gw = (samples_out .- sum(samples_out * Diagonal(weights); dims = 2)) * D
                 gw / uw
             end
         end
@@ -84,16 +86,17 @@ function initialize_processor!(
                 eigen(hermitianpart(mean(grad * grad' for grad in grads)), obs_noise_cov, sortby = (-))
             end
 
-            if li.dim_criterion[1] == :retain_KL
+            sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
+            trunc_val = if li.dim_criterion[1] == :retain_KL
                 retain_KL = li.dim_criterion[2]
-                sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
                 trunc_val = findfirst(x -> (x ≥ retain_KL), sv_cumsum)
+                isnothing(trunc_val) ? (apply_to == "in" ? input_dim : output_dim) : trunc_val
             else
                 @assert li.dim_criterion[1] == :dimension
-                trunc_val = li.dim_criterion[2]
+                li.dim_criterion[2]
             end
             @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the KL divergence reduction"
-            li.encoder_mat = decomp.vectors[:, 1:trunc_val]'
+            decomp.vectors[:, 1:trunc_val]'
         else
             @assert apply_to == "out"
             @warn "Using LikelihoodInformed on output data with α≠0 triggers a manifold optimization process that may take some time."
@@ -111,7 +114,7 @@ function initialize_processor!(
                 f = (_, Vs) -> begin
                     prec = noise_cov_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
                     tr(mean(
-                        grad' * prec * ((1-α)I + α^2 * (y - g)*(y - g)') * prec * grad
+                        grad' * prec * ((1-α)I + α^2 * (y - g)*(y - g)') * prec * grad # TODO: Γ instead of I?
                         for (g, grad) in zip(eachcol(out_data), grads)
                     ))
                 end
@@ -140,7 +143,7 @@ function initialize_processor!(
                         @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                         break # TODO: Start bisecting?
                     else
-                        k *= 2
+                        k = min(2k, output_dim)
                     end
                 else
                     @assert li.dim_criterion[1] == :dimension
