@@ -284,7 +284,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Predict means and covariances in decorrelated output space using Gaussian process models.
 """
-predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat} =
+predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; encoder_schedule = nothing) where {FT <: AbstractFloat} =
     predict(gp, new_inputs, gp.prediction_type)
 
 
@@ -293,7 +293,8 @@ function build_models!(
     gp::GaussianProcess{SKLJL},
     input_output_pairs::PairedDataContainer{FT},
     input_structure_mats,
-    output_structure_mats,
+    output_structure_mats;
+    encoder_schedule = nothing,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs 
     input_values = permutedims(get_inputs(input_output_pairs), (2, 1))
@@ -369,7 +370,7 @@ function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{F
     μ, σ = gp_model.predict(new_inputs', return_std = true)
     return μ, (σ .* σ)
 end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}; encoder_schedule = nothing) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
 
     # for SKLJL does not return the observational noise (even if return_std = true)
@@ -389,6 +390,7 @@ function build_models!(
     input_structure_mats,
     output_structure_mats;
     kernel_params = nothing,
+    encoder_schedule = nothing,
 ) where {FT <: AbstractFloat}
     # get inputs and outputs
     input_values = permutedims(get_inputs(input_output_pairs), (2, 1))
@@ -482,7 +484,7 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: AbstractMatrix}
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; encoder_schedule = nothing) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)

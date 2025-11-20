@@ -338,7 +338,8 @@ function build_models!(
     srfi::ScalarRandomFeatureInterface,
     input_output_pairs::PairedDataContainer{FT},
     input_structure_mats,
-    output_structure_mats,
+    output_structure_mats;
+    encoder_schedule = nothing,
 ) where {FT <: AbstractFloat}
 
     # get inputs and outputs 
@@ -631,6 +632,7 @@ function predict(
     srfi::ScalarRandomFeatureInterface,
     new_inputs::MM;
     multithread = "ensemble",
+    encoder_schedule = nothing,
 ) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))
     N_samples = size(new_inputs, 2)
