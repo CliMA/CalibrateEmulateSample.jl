@@ -258,12 +258,14 @@ end
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
         (likelihood_informed(; retain_KL = 1.0, use_data_as_samples = true), "in_and_out"),
+        (likelihood_informed(; retain_KL = 1.0, use_data_as_samples = true, alpha = 0.4), "in_and_out"),
         (likelihood_informed(; retain_KL = 0.8, use_data_as_samples = true), "in_and_out"),
     ]
 
     lossless = [
         fill(true, 6);
         fill(false, 3);
+        true;
         true;
         false;
     ] # are these lossy approximations? 
@@ -274,7 +276,7 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov, observation = randn(out_dim))
 
         (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
             encoder_schedule,

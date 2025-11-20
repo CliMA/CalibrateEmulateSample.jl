@@ -107,7 +107,7 @@ function initialize_processor!(
                 eigen(hermitianpart(mean(grad' * noise_cov_inv * ((1-α)obs_noise_cov + α^2 * (y - g) * (y - g)') * noise_cov_inv * grad for (g, grad) in zip(eachcol(samples_out), grads))), sortby = (-))
             else
                 @assert apply_to == "out"
-                eigen(hermitianpart(mean(grad * grad' for grad in grads)), obs_noise_cov, sortby = (-))
+                eigen(hermitianpart(sqrt(noise_cov_inv) * mean(grad * grad' for grad in grads) * sqrt(noise_cov_inv)), sortby = (-))
             end
 
             sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
@@ -156,8 +156,8 @@ function initialize_processor!(
                     (I - Vs*Vs') * egrad(M, Vs)
                 end
 
-                Vs = Matrix(qr(randn(output_dim, k)))
-                quasi_Newton!(M, f, rgrad, Vs; stopping_criterion = StopWhenGradientNormLess(3.0))
+                Vs = Matrix(qr(randn(output_dim, k)).Q)
+                quasi_Newton!(M, f, rgrad, Vs; stopping_criterion = StopWhenCostChangeLess(0.1))
 
                 if li.dim_criterion[1] == :retain_KL
                     retain_KL = li.dim_criterion[2]
@@ -167,7 +167,9 @@ function initialize_processor!(
                         @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                         break # TODO: Start bisecting?
                     else
-                        k = min(2k, output_dim)
+                        newk = min(2k, output_dim)
+                        @info "      increasing k from $k to $newk"
+                        k = newk
                     end
                 else
                     @assert li.dim_criterion[1] == :dimension
