@@ -125,9 +125,9 @@ function Emulator(
 
     if !isnothing(obs_noise_cov)
         if haskey(encoder_kwargs, :obs_noise_cov)
-            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs=(obs_noise_cov=...)`."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated and will be ignored in favor of `encoder_kwargs[:obs_noise_cov]`."
         else
-            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs=(obs_noise_cov=...)` instead."
+            @warn "Keyword argument `obs_noise_cov=` is deprecated. Please use `encoder_kwargs[:obs_noise_cov]` instead."
         end
     end
 
@@ -145,7 +145,7 @@ function Emulator(
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) = initialize_and_encode_with_schedule!(
+    (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) = initialize_and_encode_with_schedule!(
         encoder_schedule,
         input_output_pairs;
         obs_noise_cov = obs_noise_cov,
@@ -153,7 +153,7 @@ function Emulator(
     )
 
     # build the machine learning tool in the encoded space
-    build_models!(machine_learning_tool, encoded_io_pairs, input_structure_mats, output_structure_mats; mlt_kwargs...)
+    build_models!(machine_learning_tool, encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats; encoder_schedule = encoder_schedule, mlt_kwargs...)
     return Emulator{FT, typeof(encoder_schedule)}(
         machine_learning_tool,
         input_output_pairs,
