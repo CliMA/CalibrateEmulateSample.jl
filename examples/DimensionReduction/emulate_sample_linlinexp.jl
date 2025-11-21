@@ -30,8 +30,13 @@ function Emulators.predict(ne::NoEmulation, new_inputs; mlt_kwargs...)
     decoded_outputs = hcat(map(ne.f, eachcol(decoded_inputs.data))...)
     encoded_outputs =
         encode_with_schedule(encoder_schedule, EnsembleKalmanProcesses.DataContainer(decoded_outputs), "out").data
-    encoded_outputs,
-    cat([Utilities.get_structure_mat(ne.output_structure_mats) for _ in eachcol(new_inputs)]...; dims = 3)
+
+    cov = Utilities.get_structure_mat(ne.output_structure_mats)
+    @assert cov ≈ cov'
+    (
+        encoded_outputs,
+        cat([Hermitian(cov) for _ in eachcol(new_inputs)]...; dims = 3),
+    )
 end
 
 

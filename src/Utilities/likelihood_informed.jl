@@ -197,7 +197,7 @@ function initialize_processor!(
                     @assert li.dim_criterion[1] == :dimension
                     ref = f(M, zeros(output_dim, 0))
                     val = f(M, Vs)
-                    @info "    truncating at $(li.dim_criterion[2])/$output_dim retaining $(100.0*val/ref)% of the KL divergence reduction"
+                    @info "    truncating at $(li.dim_criterion[2])/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                     break
                 end
             end
