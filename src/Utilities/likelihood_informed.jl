@@ -74,10 +74,12 @@ function initialize_processor!(
             )
         end
         obs_noise_cov = get_structure_mat(output_structure_matrices, :obs_noise_cov)
-        if obs_noise_cov ≈ I
+        obs_whitened = if obs_noise_cov ≈ I
             obs_noise_cov = I(output_dim)
+            true
         else
             @warn "Consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
+            false
         end
         noise_cov_inv = inv(obs_noise_cov)
 
@@ -102,7 +104,7 @@ function initialize_processor!(
             end
         end
 
-        li.encoder_mat = if apply_to == "in" || α ≈ 0
+        li.encoder_mat = if apply_to == "in" || (α ≈ 0 && obs_whitened)
             decomp = if apply_to == "in"
                 eigen(
                     hermitianpart(
@@ -117,9 +119,9 @@ function initialize_processor!(
                     sortby = (-),
                 )
             else
-                @assert apply_to == "out"
+                @assert apply_to == "out" && α ≈ 0 && obs_whitened
                 eigen(
-                    hermitianpart(sqrt(noise_cov_inv) * mean(grad * grad' for grad in grads) * sqrt(noise_cov_inv)),
+                    hermitianpart(mean(grad * grad' for grad in grads)),
                     sortby = (-),
                 )
             end
@@ -137,7 +139,7 @@ function initialize_processor!(
             decomp.vectors[:, 1:trunc_val]'
         else
             @assert apply_to == "out"
-            @warn "Using LikelihoodInformed on output data with α≠0 triggers a manifold optimization process that may take some time."
+            @warn "Using LikelihoodInformed on output data with α≠0 or with obs_noise_cov≠I triggers a manifold optimization process that may take some time. If α=0, consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
 
             k = if li.dim_criterion[1] == :retain_KL
                 1
