@@ -379,6 +379,10 @@ function AbstractMCMC.step(
     new_params = AdvancedMH.propose(rng, sampler, model, current_state; stepsize = stepsize)
     # Calculate the log acceptance probability and the log density of the candidate.
     new_log_density = AdvancedMH.logdensity(model, new_params)
+
+    # Just to initialize: if you pass state, it just reads the old log_density (initialized as false). in this case, compute it by passing the actual parameter values
+    current_log_density = isa(AdvancedMH.logdensity(model, current_state), Bool) ? AdvancedMH.logdensity(model, current_state.params) : AdvancedMH.logdensity(model, current_state)
+
     log_α =
         new_log_density - AdvancedMH.logdensity(model, current_state) +
         AdvancedMH.logratio_proposal_density(sampler, current_state, new_params)
@@ -573,7 +577,7 @@ function MCMCWrapper(
     end
 
     sample_kwargs = (; # set defaults here
-        :init_params => deepcopy(init_params),
+        :initial_params => deepcopy(init_params),
         :param_names => param_names,
         :discard_initial => burnin,
         :chain_type => MCMCChains.Chains,
@@ -641,7 +645,7 @@ end
 
 function _find_mcmc_step_log(mcmc::MCMCWrapper)
     str_ = @sprintf "%d starting params:" 0
-    for p in zip(mcmc.sample_kwargs.param_names, mcmc.sample_kwargs.init_params)
+    for p in zip(mcmc.sample_kwargs.param_names, mcmc.sample_kwargs.initial_params)
         str_ *= @sprintf " %s: %.3g" p[1] p[2]
     end
     println(str_)
