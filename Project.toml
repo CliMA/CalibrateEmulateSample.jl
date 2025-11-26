@@ -52,6 +52,8 @@ MCMCChains = "7"
 Plots = "1.41.1"
 Manifolds = "0.10.23"
 Manopt = "0.5.20"
+MCMCChains = "7"
+8))
 Printf = "1"
 ProgressBars = "1"
 PyCall = "1.93"
