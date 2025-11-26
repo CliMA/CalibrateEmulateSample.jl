@@ -381,7 +381,9 @@ function AbstractMCMC.step(
     new_log_density = AdvancedMH.logdensity(model, new_params)
 
     # Just to initialize: if you pass state, it just reads the old log_density (initialized as false). in this case, compute it by passing the actual parameter values
-    current_log_density = isa(AdvancedMH.logdensity(model, current_state), Bool) ? AdvancedMH.logdensity(model, current_state.params) : AdvancedMH.logdensity(model, current_state)
+    current_log_density =
+        isa(AdvancedMH.logdensity(model, current_state), Bool) ? AdvancedMH.logdensity(model, current_state.params) :
+        AdvancedMH.logdensity(model, current_state)
 
     log_α =
         new_log_density - AdvancedMH.logdensity(model, current_state) +
