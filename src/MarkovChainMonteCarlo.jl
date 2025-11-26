@@ -386,8 +386,7 @@ function AbstractMCMC.step(
         AdvancedMH.logdensity(model, current_state)
 
     log_α =
-        new_log_density - AdvancedMH.logdensity(model, current_state) +
-        AdvancedMH.logratio_proposal_density(sampler, current_state, new_params)
+        new_log_density - current_log_density + AdvancedMH.logratio_proposal_density(sampler, current_state, new_params)
 
     # Decide whether to return the previous params or the new one.
     new_state = if -Random.randexp(rng) < log_α
