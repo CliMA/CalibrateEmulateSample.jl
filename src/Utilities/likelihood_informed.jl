@@ -166,11 +166,11 @@ function initialize_processor!(
                         B = Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
                         prec = noise_cov_inv - B
 
-                        -2mean(
+                        -2obs_noise_cov * prec * mean(
                             begin
-                                A = ((1 - α)I + α^2 * (y - g) * (y - g)')
+                                A = ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)')
                                 S = grad * grad'
-                                (I - obs_noise_cov * B) * (S * prec * A + A * prec * S)
+                                (S * prec * A + A * prec * S)
                             end for (g, grad) in zip(eachcol(out_data), grads)
                         ) *
                         B *
