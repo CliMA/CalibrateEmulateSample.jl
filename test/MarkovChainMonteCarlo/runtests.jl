@@ -261,7 +261,7 @@ function mcmc_test_template(
     if extra_tests
         mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
 
-        @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :init_params), mean(prior)))
+        @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), mean(prior)))
     end
 
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
