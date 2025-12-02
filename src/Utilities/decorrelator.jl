@@ -258,7 +258,7 @@ function initialize_processor!(
         # psvd: approximates SVD to a given error tolerance (can truncate too) [good for full svd approx]
         # tsvd: truncates to dimension where resulting SVD has the same s.vals as the true [good of low rank approx]
         max_svd_size = 3000
-        if max(size(decorrelation_map)...) < max_svd_size
+        if maximum(size(decorrelation_map)) < max_svd_size
             # svd options
             svdA = svd(Matrix(decorrelation_map))
             rk = rank(Matrix(decorrelation_map))

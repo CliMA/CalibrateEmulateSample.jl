@@ -247,7 +247,6 @@ Apply the `ElementwiseScaler` encoder to a provided structure matrix. If the str
 function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_struct_encoder_mat(es)[1]
     return encoder_mat * structure_matrix * encoder_mat'
-    #return Diagonal(1 ./ get_scale(es)) * structure_matrix * Diagonal(1 ./ get_scale(es))
 end
 
 """
@@ -258,5 +257,4 @@ Apply the `ElementwiseScaler` decoder to a provided structure matrix. If the str
 function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_struct_decoder_mat(es)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
-    #    return Diagonal(get_scale(es)) * enc_structure_matrix * Diagonal(get_scale(es))
 end

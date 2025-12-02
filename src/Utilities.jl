@@ -252,9 +252,11 @@ function isequal_linear(
 ) where {LM1 <: LinearMap, LM2 <: LinearMap}
     m, n = size(A)
     if !(n == size(B, 2))
+        @warn "Comparing equality of linear maps with size ($(m), $(n)) and ($(size(B,1)), $(size(B,2))). Was this intended?"
         return false
     end
     if !(m == size(B, 1))
+        @warn "Comparing equality of linear maps with size ($(m), $(n)) and ($(size(B,1)),$(size(B,2))). Was this intended?"
         return false
     end
 
@@ -269,7 +271,7 @@ function isequal_linear(
         else
             AmB = A * e - B * e
         end
-        if !(norm(AmB) <= n * tol)
+        if !(norm(AmB) <= sqrt(n) * tol)
             return false
         end
         e[j] -= 1
@@ -481,7 +483,7 @@ function initialize_and_encode_with_schedule!(
 ) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
 
-    # We additionally convert to `mats` into a linear-maps for flexible handling of massive covariances. In a matrix-free manner
+    # We additionally convert the `mats` into a linear-maps for flexible handling of massive covariances. In a matrix-free manner
     input_structure_mats = deepcopy(input_structure_mats)
     if !isnothing(prior_cov)
         (input_structure_mats[:prior_cov] = prior_cov)

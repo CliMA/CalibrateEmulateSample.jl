@@ -34,7 +34,6 @@ export EmulatorPosteriorModel,
     optimize_stepsize,
     get_posterior,
     get_sample_kwargs,
-    get_init_params,
     sample,
     esjd
 
