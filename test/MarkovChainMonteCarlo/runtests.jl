@@ -260,7 +260,7 @@ function mcmc_test_template(
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
 
     @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), mean(prior)))
-    
+
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
     # First let's run a short chain to determine a good step size
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
