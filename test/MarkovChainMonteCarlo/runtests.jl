@@ -243,7 +243,6 @@ function mcmc_test_template(
     prior::ParameterDistribution,
     σ2_y,
     em::Emulator;
-    extra_tests = false,
     exp_name = "test",
     mcmc_alg = RWMHSampling(),
     obs_sample = [1.0],
@@ -258,12 +257,10 @@ function mcmc_test_template(
     end
     init_params = vec(collect(init_params)) # scalar or Vector -> Vector
 
-    if extra_tests
-        mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
+    mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
 
-        @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), mean(prior)))
-    end
-
+    @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), mean(prior)))
+    
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
     # First let's run a short chain to determine a good step size
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
@@ -381,7 +378,7 @@ end
 
         # test various MCMC methods
         new_step_1, posterior_mean_1, chain_1 =
-            mcmc_test_template(prior, σ2_y, em_1; extra_tests = true, exp_name = "gpjl_1d", mcmc_params...)
+            mcmc_test_template(prior, σ2_y, em_1; exp_name = "gpjl_1d", mcmc_params...)
         esjd1 = esjd(chain_1)
         @info "ESJD [GPJL,RW] = $esjd1"
         @test isapprox(new_step_1, 0.125; atol = 0.125)
