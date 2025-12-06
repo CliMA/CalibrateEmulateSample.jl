@@ -92,7 +92,7 @@ function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
     observations = get_observations(os)
     obs_vec = [get_obs(obs) for obs in observations]
     obs_noise_cov = get_obs_noise_cov(observations[1], build = false)
-    if !all([get_obs_noise_cov(observations[i], build = false) == obs_noise_vec for i in length(observations)])
+    if !all([get_obs_noise_cov(observations[i], build = false) == obs_noise_cov for i in length(observations)])
         @warn("""
  Detected that observation covariances vary for different observations.
  Encoder kwarg `:obs_noise_cov` will be set to the FIRST of these covariances for the purpose of data processing.

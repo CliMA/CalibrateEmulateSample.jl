@@ -208,6 +208,7 @@ $(TYPEDSIGNATURES)
 Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
 """
 function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+    out = zeros(size(data))
     enc = get_data_encoder_mat(es)[1]
     mul!(out, enc, data)  # must use this form to get matrix output of enc*out
     return out
@@ -219,6 +220,7 @@ $(TYPEDSIGNATURES)
 Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
 """
 function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+    out = zeros(size(data))
     dec = get_data_decoder_mat(es)[1]
     mul!(out, dec, data)  # must use this form to get matrix output of dec*out
     return out
