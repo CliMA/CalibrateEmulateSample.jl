@@ -14,8 +14,6 @@ using ..DataContainers
 using LowRankApprox
 using TSVD
 
-import LinearAlgebra: norm
-
 export get_training_points
 export create_compact_linear_map
 export PairedDataContainerProcessor, DataContainerProcessor
@@ -27,7 +25,6 @@ export create_encoder_schedule,
     encode_structure_matrix,
     decode_data,
     decode_structure_matrix,
-    norm,
     isequal_linear,
     encoder_kwargs_from
 
@@ -95,6 +92,12 @@ function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
     observations = get_observations(os)
     obs_vec = [get_obs(obs) for obs in observations]
     obs_noise_cov = get_obs_noise_cov(observations[1], build = false)
+    if !all([get_obs_noise_cov(observations[i], build = false) == obs_noise_vec for i in length(observations)])
+        @warn("""
+ Detected that observation covariances vary for different observations.
+ Encoder kwarg `:obs_noise_cov` will be set to the FIRST of these covariances for the purpose of data processing.
+ """)
+    end
     return (; obs_noise_cov = obs_noise_cov, observation = obs_vec)
 end
 
@@ -148,7 +151,7 @@ function create_compact_linear_map(
     batches = []
     shift = 0
     for a in Avec
-        bsize = [0]
+        bsize = 0
         if isa(a, UniformScaling)
             throw(
                 ArgumentError(
@@ -163,7 +166,7 @@ function create_compact_linear_map(
                 push!(Ss, svda.S)
                 push!(VTs, svda.Vt)
                 push!(ds, zeros(size(a, 1)))
-                bsize[1] = size(a, 1)
+                bsize = size(a, 1)
             else
                 if psvd_or_tsvd == "psvd"
                     svda = psvd(a; psvd_kwargs...)
@@ -177,7 +180,7 @@ function create_compact_linear_map(
                     push!(VTs, svda.Vt)
                 end
                 push!(ds, zeros(size(a, 1)))
-                bsize[1] = size(a, 1)
+                bsize = size(a, 1)
             end
         elseif isa(a, SVD)
             svda = a
@@ -185,7 +188,7 @@ function create_compact_linear_map(
             push!(Ss, svda.S)
             push!(VTs, svda.Vt)
             push!(ds, zeros(size(a.U, 1)))
-            bsize[1] = size(a.U, 1)
+            bsize = size(a.U, 1)
         elseif isa(a, SVDplusD)
             svda = a.svd_cov
             diaga = (a.diag_cov).diag
@@ -193,10 +196,10 @@ function create_compact_linear_map(
             push!(Ss, svda.S)
             push!(VTs, svda.Vt)
             push!(ds, diaga)
-            bsize[1] = length(diaga)
+            bsize = length(diaga)
         end
 
-        batch = (shift + 1):(shift + bsize[1])
+        batch = (shift + 1):(shift + bsize)
         push!(batches, batch)
         shift = batch[end]
     end
@@ -293,24 +296,6 @@ Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: Data
 
 Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} =
     all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
-
-function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing) where {LM <: LinearMap}
-    m, n = size(A)
-    # test on standard basis (up to n_eval tests)
-    basis_id = isa(n_eval, Nothing) ? collect(1:n) : randperm(rng, n)[1:n_eval]
-
-    e = vec(zeros(eltype(A), n))
-    norm_val = [0.0]
-    for j in basis_id
-        e[j] += 1
-        norm_val[1] += 1.0 / n * norm(A * e, p)
-        e[j] -= 1
-    end
-    return norm_val[1]
-end
-
-LinearAlgebra.norm(A::LM, p::Real = 2; lm_kwargs...) where {LM <: LinearMap} = norm_linear_map(A, p; lm_kwargs...)
-
 ####
 
 function get_structure_vec(structure_vecs, name = nothing)

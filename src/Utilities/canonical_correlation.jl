@@ -187,7 +187,7 @@ function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMa
     data_mean = get_data_mean(cc)[1]
     encoder_mat = get_encoder_mat(cc)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
-    mul!(out, encoder_mat, deepcopy(data) .- data_mean)
+    mul!(out, encoder_mat, data .- data_mean)
     return out
 end
 
@@ -200,7 +200,7 @@ function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMa
     data_mean = get_data_mean(cc)[1]
     decoder_mat = get_decoder_mat(cc)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))
-    mul!(out, decoder_mat, deepcopy(data))
+    mul!(out, decoder_mat, data)
     return out .+ data_mean
 end
 

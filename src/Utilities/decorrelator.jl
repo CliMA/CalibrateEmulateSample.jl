@@ -250,6 +250,8 @@ function initialize_processor!(
         psvd_kwargs = get_psvd_kwargs(dd)
         ret_var = get_retain_var(dd)
 
+        max_svd_size = 3000 # max size to perform true SVD
+        n_norm_compute = 10 # number of repeated norm computations to estimate total variance (if ret_var < 1)
         S = []
         Vt = []
 
@@ -257,7 +259,7 @@ function initialize_processor!(
         # svd: convert to matrix and perform actual SVD. [good for small matrix (d < ~3000)]
         # psvd: approximates SVD to a given error tolerance (can truncate too) [good for full svd approx]
         # tsvd: truncates to dimension where resulting SVD has the same s.vals as the true [good of low rank approx]
-        max_svd_size = 3000
+
         if maximum(size(decorrelation_map)) < max_svd_size
             # svd options
             svdA = svd(Matrix(decorrelation_map))
@@ -282,8 +284,9 @@ function initialize_processor!(
             if ret_var < 1.0
                 # tsvd option
                 # approximate Frobenius norm of the map
-                norm_approx = zeros(10)
-                for i in 1:10
+
+                norm_approx = zeros(n_norm_compute)
+                for i in 1:n_norm_compute
                     samples = randn(size(decorrelation_map, 1), n_totvar_samples)
                     norm_approx[i] =
                         1 / n_totvar_samples * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
@@ -306,14 +309,11 @@ function initialize_processor!(
                         @warn "Maximum tolerance of SVD truncation hit ($(rank_max)), consider increasing `rank_max` in decorrelator, this may also result from `retain_var` being close to 1, while `n_totvar_samples` is low. Proceeding with final iterant."
                         push!(S, Stmp)
                         push!(Vt, Vtmp')
-
                     end
-
                 end
             else
                 # psvd option
-                # check V or Vt
-                _, Stmp, Vtmp = psvd(decorrelation_map; psvd_kwargs...) # randomized algorithm to avoid building the matrix, but this will be big.
+                _, Stmp, Vtmp = psvd(decorrelation_map; psvd_kwargs...) # randomized algorithm to avoid building the matrix.
 
                 if length(Stmp) < size(data, 1)
                     @info "    truncating at $(length(Stmp))/$(size(data,1)), as low-rank data detected"
@@ -323,8 +323,6 @@ function initialize_processor!(
 
             end
         end
-
-
 
         # Enforce a sign convention for the singular vectors (rows Vt have positive first entry)
         for (j, row) in enumerate(eachrow(Vt[1]))
@@ -363,7 +361,7 @@ function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
-    mul!(out, encoder_mat, deepcopy(data) .- data_mean)
+    mul!(out, encoder_mat, data .- data_mean)
     return out
 end
 
@@ -376,7 +374,7 @@ function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))
-    mul!(out, decoder_mat, deepcopy(data))
+    mul!(out, decoder_mat, data)
     return out .+ data_mean
 end
 
