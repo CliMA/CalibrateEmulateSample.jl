@@ -287,7 +287,7 @@ function initialize_processor!(
                 norm_sq_approx = zeros(n_norm_compute)
                 for i in 1:n_norm_compute
                     # approximate frobenius norm^2 (= sum of s.v.^2 = total variance)
-                    norm_sq_approx[i] = norm_linear_map(decorrelation_map, n_eval=n_totvar_samples)^2
+                    norm_sq_approx[i] = norm_linear_map(decorrelation_map, n_eval = n_totvar_samples)^2
                 end
                 @info "relative error of total variance $(std(norm_sq_approx)/mean(norm_sq_approx))"
                 retain_var_max = 1 - std(norm_sq_approx) / mean(norm_sq_approx)

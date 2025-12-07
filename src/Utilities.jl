@@ -228,19 +228,30 @@ function create_compact_linear_map(
 
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Approximately computes the norm of a `LinearMap` object. For `Amap` associated with matrix `A`, `norm_linear_map(Amap,p)≈norm(A,p)`. Can be aliased as `norm()`
+
+kwargs
+------
+- n_eval(=nothing): number of mat-vec products to apply in the approximation (larger is more accurate). default performs `size(map,2)` products
+- rng(=Random.default_rng()): random number generator
+
+"""
 function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.default_rng()) where {LM <: LinearMap}
     m, n = size(A)
 
     # use unit-normalized gaussian vectors
     n_basis = isa(n_eval, Nothing) ? n : n_eval
     samples = randn(n, n_basis)
-    for i in 1:size(samples,2)
-        samples[:,i] /= norm(samples[:,i])
+    for i in 1:size(samples, 2)
+        samples[:, i] /= norm(samples[:, i])
     end
-    out = zeros(m,n_basis) 
-    mul!(out,A,samples)# must use mul! for multiply with lin map to return a matrix)
-    norm_val = (n/n_basis)^(1/p) * norm(out,p) 
-   
+    out = zeros(m, n_basis)
+    mul!(out, A, samples)# must use mul! for multiply with lin map to return a matrix)
+    norm_val = (n / n_basis)^(1 / p) * norm(out, p)
+
     return norm_val
 end
 
