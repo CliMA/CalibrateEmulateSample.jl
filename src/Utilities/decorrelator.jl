@@ -283,26 +283,24 @@ function initialize_processor!(
         else
             if ret_var < 1.0
                 # tsvd option
-                # approximate Frobenius norm of the map
 
-                norm_approx = zeros(n_norm_compute)
+                norm_sq_approx = zeros(n_norm_compute)
                 for i in 1:n_norm_compute
-                    samples = randn(size(decorrelation_map, 1), n_totvar_samples)
-                    norm_approx[i] =
-                        1 / n_totvar_samples * sum([sum(abs2, (decorrelation_map * x)) for x in eachcol(samples)])
+                    # approximate frobenius norm^2 (= sum of s.v.^2 = total variance)
+                    norm_sq_approx[i] = norm_linear_map(decorrelation_map, n_eval=n_totvar_samples)^2
                 end
-                @info "relative error of total variance $(std(norm_approx)/mean(norm_approx))"
-                retain_var_max = 1 - std(norm_approx) / mean(norm_approx)
+                @info "relative error of total variance $(std(norm_sq_approx)/mean(norm_sq_approx))"
+                retain_var_max = 1 - std(norm_sq_approx) / mean(norm_sq_approx)
 
                 ret_var_tmp = min(ret_var, retain_var_max)
 
                 for rk in 1:max_rank
                     _, Stmp, Vtmp = tsvd(decorrelation_map, rk)
-                    retain_var_current = sum(Stmp .^ 2) / (retain_var_max * mean(norm_approx))
+                    retain_var_current = sum(Stmp .^ 2) / (retain_var_max * mean(norm_sq_approx))
                     if retain_var_current > ret_var_tmp
                         push!(S, Stmp)
                         push!(Vt, Vtmp')
-                        @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_approx)/mean(norm_approx)))% of the variance of the structure matrix"
+                        @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_sq_approx)/mean(norm_sq_approx)))% of the variance of the structure matrix"
                         break
                     end
                     if rk == max_rank

@@ -14,6 +14,8 @@ using ..DataContainers
 using LowRankApprox
 using TSVD
 
+import LinearAlgebra: norm
+
 export get_training_points
 export create_compact_linear_map
 export PairedDataContainerProcessor, DataContainerProcessor
@@ -25,6 +27,8 @@ export create_encoder_schedule,
     encode_structure_matrix,
     decode_data,
     decode_structure_matrix,
+    norm,
+    norm_linear_map,
     isequal_linear,
     encoder_kwargs_from
 
@@ -224,6 +228,23 @@ function create_compact_linear_map(
 
 end
 
+function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.default_rng()) where {LM <: LinearMap}
+    m, n = size(A)
+
+    # use unit-normalized gaussian vectors
+    n_basis = isa(n_eval, Nothing) ? n : n_eval
+    samples = randn(n, n_basis)
+    for i in 1:size(samples,2)
+        samples[:,i] /= norm(samples[:,i])
+    end
+    out = zeros(m,n_basis) 
+    mul!(out,A,samples)# must use mul! for multiply with lin map to return a matrix)
+    norm_val = (n/n_basis)^(1/p) * norm(out,p) 
+   
+    return norm_val
+end
+
+LinearAlgebra.norm(A::LM, p::Real = 2; lm_kwargs...) where {LM <: LinearMap} = norm_linear_map(A, p; lm_kwargs...)
 
 # Data processing tooling:
 
