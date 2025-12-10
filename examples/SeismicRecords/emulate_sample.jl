@@ -30,8 +30,8 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 6 # trains on data 1:skip:skip*N_train
-skip = 1
+N_train = 10 # trains on data 1:skip:skip*N_train
+skip = 2
 N_iterations_max = length(get_u(eki))
 train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
 train_pairs = get_training_points(eki, train_iterations)
@@ -62,8 +62,8 @@ emulator = Emulator(mlt, train_pairs; encoder_schedule = deepcopy(encoder_schedu
 
 # some bounds on the hyperparameters [works for GPJL()] 
 n_hparams=length(get_params(mlt)[1])
-low = repeat([log(1e-3)], n_hparams) # in log space
-high = repeat([log(1000.0)], n_hparams)
+low = repeat([log(1e-5)], n_hparams) # in log space
+high = repeat([log(1e5)], n_hparams)
 
 optimize_hyperparameters!(emulator; kernbounds=[low, high]) 
 
