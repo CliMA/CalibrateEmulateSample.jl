@@ -32,8 +32,8 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 10 # trains on data 1:skip:skip*N_train
-skip = 1
+N_train = 8 # trains on data 1:skip:skip*N_train
+skip = 2
 N_iterations_max = length(get_u(eki))
 train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
 train_pairs = get_training_points(eki, train_iterations)
@@ -95,7 +95,7 @@ constrained_posterior =
     Emulators.transform_unconstrained_to_constrained(prior, MarkovChainMonteCarlo.get_distribution(posterior))
 constrained_eki_optimal = transform_unconstrained_to_constrained(prior, init_sample)
 
-save("posterior.jld2", "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "params_true_constrained", params_true_constrained)
+save("posterior.jld2", "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "param_true_constrained", param_true_constrained)
 
 
 p = plot(prior, fill = :lightgray)
