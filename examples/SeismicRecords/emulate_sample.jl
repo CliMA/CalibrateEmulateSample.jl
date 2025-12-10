@@ -30,8 +30,8 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 7 # trains on data 1:skip:skip*N_train
-skip = 2
+N_train = 6 # trains on data 1:skip:skip*N_train
+skip = 1
 N_iterations_max = length(get_u(eki))
 train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
 train_pairs = get_training_points(eki, train_iterations)
@@ -59,7 +59,13 @@ encoder_schedule = [(decorrelate_sample_cov(retain_var=retain_var), "in") ,(deco
 
 # Build the emulator
 emulator = Emulator(mlt, train_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = (; obs_noise_cov = Γ), verbose=true)
-optimize_hyperparameters!(emulator)
+
+# some bounds on the hyperparameters [works for GPJL()] 
+n_hparams=length(get_params(mlt)[1])
+low = repeat([log(1e-3)], n_hparams) # in log space
+high = repeat([log(1000.0)], n_hparams)
+
+optimize_hyperparameters!(emulator; kernbounds=[low, high]) 
 
 
 # Validation on test data:
@@ -68,7 +74,7 @@ optimize_hyperparameters!(emulator)
 # Then perform the sampling - here use pCN for 17d problem
 chain_length = 100_000
 
-init_sample = get_u_mean_final(eki)
+init_sample = get_u_mean(eki, maximum(train_iterations))
 
 mcmc = MCMCWrapper(pCNMHSampling(), y, prior, emulator; init_params = init_sample)
 @info "Finding reasonable stepsize..."
