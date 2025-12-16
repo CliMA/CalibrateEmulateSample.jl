@@ -32,13 +32,16 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 8 # trains on data 1:skip:skip*N_train
+N_train = 12 # trains on data 1:skip:skip*N_train
 skip = 2
 N_iterations_max = length(get_u(eki))
 train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
+@info "Using train_iterations $(train_iterations)"
 train_pairs = get_training_points(eki, train_iterations)
 
-test_iterations = train_iterations[end]+1:N_iterations_max-1
+
+test_iterations = setdiff(1:N_iterations_max-1, train_iterations)
+@info test_iterations
 test_pairs = get_training_points(eki, test_iterations)
 
 # prune NaNs (mainly in first few iterations)
@@ -69,7 +72,7 @@ high = repeat([log(1e5)], n_hparams)
 
 optimize_hyperparameters!(emulator; kernbounds=[low, high]) 
 
-save("emulator.jld2", "emulator", emulator)
+save("emulator_$(train_iterations).jld2", "emulator", emulator)
 # Validation on test data:
 
 
@@ -88,14 +91,14 @@ chain = MarkovChainMonteCarlo.sample(mcmc, chain_length; rng = rng, stepsize = n
 display(chain)
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
-save("mcmc_and_chain.jld2", "mcmc", mcmc, "chain", chain)
+save("mcmc_and_chain_$(train_iterations).jld2", "mcmc", mcmc, "chain", chain)
 
 # Back to constrained coordinates
 constrained_posterior =
     Emulators.transform_unconstrained_to_constrained(prior, MarkovChainMonteCarlo.get_distribution(posterior))
 constrained_eki_optimal = transform_unconstrained_to_constrained(prior, init_sample)
 
-save("posterior.jld2", "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "param_true_constrained", param_true_constrained)
+save("posterior_$(train_iterations).jld2", "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "param_true_constrained", param_true_constrained)
 
 
 p = plot(prior, fill = :lightgray)
@@ -104,7 +107,7 @@ for (i,sp) in enumerate(p.subplots)
     vline!(sp, [constrained_eki_optimal[i]], lc="red", ls=:dash, lw=4) # eki at final iteration
     vline!(sp, [param_true_constrained[i]], lc="black", lw=4)
 end
-savefig(p, joinpath(@__DIR__, "posterior_marginals.png"))
+savefig(p, joinpath(@__DIR__, "posterior_marginals_$(train_iterations).png"))
 
 
 
