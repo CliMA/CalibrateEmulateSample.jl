@@ -461,7 +461,7 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * I
     else
-        output_structure_mat = get_structure_mat(output_structure_mats)
+        output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
         if !isposdef(output_structure_mat)
             println("RF output structure matrix is not positive definite, correcting for use as a regularizer")
             posdef_correct(output_structure_mat)

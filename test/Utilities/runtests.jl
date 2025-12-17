@@ -7,6 +7,7 @@ using LinearAlgebra
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.DataContainers
+using CalibrateEmulateSample.ParameterDistributions
 
 @testset "Utilities" begin
 
@@ -49,6 +50,94 @@ end
     # Seed for pseudo-random number generator
     rng = Random.MersenneTwister(4154)
 
+    # test getting encoder kwargs from observations and series
+    # from prior
+    pd = constrained_gaussian("name", 0.0, 2.0, -10, Inf, repeat = 5)
+    encoder_kwargs = encoder_kwargs_from(pd)
+    @test isapprox(norm(encoder_kwargs.prior_cov - cov(pd)), 0, atol = 1e-12)
+
+    # from observation
+    osample = [1.0, 2.0]
+    ocov = 4.0 * I(2)
+    obs = Observation(Dict("samples" => osample, "covariances" => ocov, "names" => "test"))
+    encoder_kwargs = encoder_kwargs_from(obs)
+    @test all(isapprox.(norm.(encoder_kwargs.obs_noise_cov - get_obs_noise_cov(obs, build = false)), 0.0, atol = 1e-12))
+    @test all(isapprox.(encoder_kwargs.observation - get_obs(obs), 0.0, atol = 1e-12))
+
+    # from observation series
+    obs2 = Observation(Dict("samples" => osample .+ 1.0, "covariances" => 2.0 .* ocov, "names" => "test"))
+    obs_series = ObservationSeries([obs, obs2])
+    encoder_kwargs = encoder_kwargs_from(obs_series)
+    @test all(isapprox.(norm.(encoder_kwargs.obs_noise_cov - get_obs_noise_cov(obs, build = false)), 0, atol = 1e-12))
+    diff = encoder_kwargs.observation - [get_obs(obs), get_obs(obs2)]
+    @test all([all(isapprox.(dd, 0.0, atol = 1e-12)) for dd in diff])
+
+    # Building a blocked noise covariance with different types to test creating linear maps 
+    # Abstract mats (small and large (> svd_dim_max)), SVD, SVDplusD
+    d = 1000
+    A = []
+    svd_dim_max = 999 # defaul 4000, reduce here for speed/memory
+    X = randn(100, d)
+    X = X' * X # make posdef
+    push!(A, X[1:50, 1:50])
+    push!(A, X)
+
+    μ = zeros(d)
+    sam = rand(d, 30)
+    Σ = tsvd_cov_from_samples(sam)
+    push!(A, Σ)
+
+    D = Diagonal(0.001 * sqrt.(collect(1:d)))
+    ΣpD = SVDplusD(Σ, D)
+    push!(A, ΣpD)
+
+
+    as = [50, d, d, d]
+    cas = cumsum(as)
+    block_id = [1:cas[1], (cas[1] + 1):cas[2], (cas[2] + 1):cas[3], (cas[3] + 1):cas[4]]
+    Afull = zeros(sum(as), sum(as))
+
+    Afull[1:cas[1], 1:cas[1]] = A[1]
+    Afull[(cas[1] + 1):cas[2], (cas[1] + 1):cas[2]] = A[2]
+    Afull[(cas[2] + 1):cas[3], (cas[2] + 1):cas[3]] = A[3].U * Diagonal(A[3].S) * A[3].Vt
+    Afull[(cas[3] + 1):cas[4], (cas[3] + 1):cas[4]] =
+        A[4].svd_cov.U * Diagonal(A[4].svd_cov.S) * A[4].svd_cov.Vt + A[4].diag_cov
+
+
+    @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+
+    for svd_type in ["psvd", "tsvd"]
+        psvd_kwargs = (; rtol = 1e-3) # make very small for testing
+        tsvd_max_rank = 30 # often only stable small ranks
+        Amap = create_compact_linear_map(
+            A;
+            svd_dim_max = svd_dim_max,
+            psvd_or_tsvd = svd_type,
+            psvd_kwargs = psvd_kwargs,
+            tsvd_max_rank = tsvd_max_rank,
+        )
+        Amat_from_map = Matrix(Amap)
+
+        # some extra tests for the ==/is_equal overrides
+        @test Amap == Amap
+        Amap2 = create_compact_linear_map([A[1]])
+        @test !(Amap == Amap2)
+
+        for (i, ids) in enumerate(block_id)
+            if i == 2 # the case where we do psvd on a full matrix - can be very high error expected (particularly tsvd
+                if svd_type == "psvd"
+                    @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-14 * length(ids)^2
+                else
+                    @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-2 * length(ids)^2 # bad!
+                end
+
+            else
+                @test norm(Afull[ids, ids] - Amat_from_map[ids, ids]) < 1e-14 * length(ids)^2
+            end
+        end
+    end
+
+
     # Tests for get_structure_vec and get_structure_mat
     structure_vecs = Dict("a" => [1, 2, 3], "b" => [4, 5, 6])
     structure_mats = Dict("c" => [1 2; 3 4], "d" => [5 6; 7 8])
@@ -72,7 +161,7 @@ end
     zs = zscore_scale()
     mm = minmax_scale()
     qq = quartile_scale()
-    QQ = ElementwiseScaler{QuartileScaling, Vector{Int}}([1], [2])
+    QQ = ElementwiseScaler{QuartileScaling, Vector{Int}, Vector, Vector, Vector, Vector}([1], [2], [3], [4], [5], [6])
     @test isa(zs, ElementwiseScaler)
     @test get_type(zs) == ZScoreScaling
     @test isa(mm, ElementwiseScaler)
@@ -81,7 +170,10 @@ end
     @test get_type(qq) == QuartileScaling
     @test get_shift(QQ) == [1]
     @test get_scale(QQ) == [2]
-
+    @test get_data_encoder_mat(QQ) == [3]
+    @test get_data_decoder_mat(QQ) == [4]
+    @test get_struct_encoder_mat(QQ) == [5]
+    @test get_struct_decoder_mat(QQ) == [6]
     dd = decorrelate()
     @test get_retain_var(dd) == 1.0
     @test get_decorrelate_with(dd) == "combined"
@@ -91,10 +183,13 @@ end
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
     @test get_retain_var(dd3) == 0.7
     @test get_decorrelate_with(dd3) == "structure_mat"
-    DD = Decorrelator([1], [2], [3], 1.0, "test", nothing)
+    DD = Decorrelator([1], [2], [3], 1.0, 4, 5, (; test = 6), "test", nothing)
     @test get_data_mean(DD) == [1]
     @test get_encoder_mat(DD) == [2]
     @test get_decoder_mat(DD) == [3]
+    @test get_n_totvar_samples(DD) == 4
+    @test get_max_rank(DD) == 5
+    @test get_psvd_kwargs(DD) == (; test = 6)
 
 
     cc = canonical_correlation()
@@ -154,7 +249,7 @@ end
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
     ]
 
-    lossless = [fill(true, 6); fill(false, 4)] # are these lossy approximations? 
+    lossless = [fill(true, 6); fill(false, 4)] # are these lossless approximations? 
 
     # functional test pipeline
     tol = 1e-12
@@ -381,7 +476,82 @@ end
     @test_throws ArgumentError encode_with_schedule(encoder_schedule, prior_cov, "bad")
     @test_throws ArgumentError decode_with_schedule(encoder_schedule, encoded_pc, "bad")
 
+end
 
 
+
+
+@testset "Decorrelator: Large observational covariance" begin
+
+    # loop over output dim
+    ds = [10, 10, 100, 1_000, 10_000, 100_000] # 1_000_000
+    dts_struct = []
+    dts_comb = []
+    dts_samp = []
+    for (d_idx, d) in enumerate(ds)
+        @info " "
+        @info "Testing decorrelating dimension: $d"
+        @info " "
+        #build some quick data + noise
+        m = 50
+        p = 10
+        x = rand(p, m) #R^3
+        y = rand(d, m) #R^6
+
+        # "noise"
+        μ = zeros(d)
+        sam = rand(d, 30)
+        Σ = tsvd_cov_from_samples(sam)
+        D = Diagonal(0.001 * sqrt.(collect(1:d)))
+        noise_samples = Σ.U * (sqrt.(Σ.S) .* Σ.Vt) * rand(MvNormal(μ, I), m)
+
+        y += noise_samples
+
+        io_pairs = PairedDataContainer(x, y, data_are_columns = true)
+
+        dt = @elapsed begin
+            enc1 = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
+
+            enc_sch1 = create_encoder_schedule(enc1)
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch1, io_pairs; obs_noise_cov = [Σ])
+        end
+        push!(dts_samp, dt)
+
+        dt = @elapsed begin
+            enc2 = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(retain_var = 0.95), "out")] # for these inputs this is the default
+            enc_sch2 = create_encoder_schedule(enc2)
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch2, io_pairs; obs_noise_cov = [Σ])
+        end
+        push!(dts_struct, dt)
+
+        dt = @elapsed begin
+            enc3 = [(decorrelate_sample_cov(), "in"), (decorrelate(retain_var = 0.95), "out")] # for these inputs this is the default
+            enc_sch3 = create_encoder_schedule(enc3)
+            enc_io_pairs, enc_in, enc_out =
+                initialize_and_encode_with_schedule!(enc_sch3, io_pairs; obs_noise_cov = [Σ])
+        end
+        push!(dts_comb, dt)
+
+    end
+
+    dts_tols = 2 * [dts_samp[2], dts_struct[2], dts_comb[2]] # baseline value
+    for i in 1:length(ds)
+
+        if i == 1
+            println("dimension decorr-sample decorr-structure decorr-combined")
+        else
+
+            # increate the tolerances by the factor
+            tols = 5 * ds[i] / ds[2] * dts_tols # should be < 5  x scaling
+            println("$(ds[i]), $(dts_samp[i]), $(dts_struct[i]), $(dts_comb[i])")
+            if any([dts_samp[i], dts_struct[i], dts_comb[i]] .> tols)
+                @error("∟ timings have exceeded linear scaling")
+            end
+
+        end
+    end
+    # @tests?
 
 end

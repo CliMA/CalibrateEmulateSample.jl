@@ -404,12 +404,7 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * I(n_rfms)
     else
-        output_structure_mat = get_structure_mat(output_structure_mats)
-        if isa(output_structure_mat, UniformScaling)
-            output_structure_mat
-        else
-            Diagonal(output_structure_mat)
-        end
+        output_structure_mat = Diagonal(Matrix(get_structure_mat(output_structure_mats)))
     end
 
     @info (

@@ -340,14 +340,14 @@ rng = Random.MersenneTwister(seed)
         @test_throws ArgumentError Emulator(srfi_bad, iopairs)
 
         # test under repeats
-        @test_logs (:info,) (:info,) (:warn,) Emulator(
+        @test_logs (:info,) (:warn,) (:info,) (:warn,) Emulator(
             srfi,
             iopairs;
             encoder_kwargs = (; obs_noise_cov = obs_noise_cov),
         )
         Emulator(srfi, iopairs; encoder_kwargs = (; obs_noise_cov = obs_noise_cov))
         @test length(get_rfms(srfi)) == n_srfi
-        @test_logs (:info,) (:info,) (:warn,) Emulator(
+        @test_logs (:info,) (:warn,) (:info,) (:warn,) Emulator(
             vrfi,
             iopairs;
             encoder_kwargs = (; obs_noise_cov = obs_noise_cov),

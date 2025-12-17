@@ -194,13 +194,7 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
     else
-        output_structure_mat = get_structure_mat(output_structure_mats)
-        if isa(output_structure_mat, UniformScaling)
-            output_structure_mat.λ * ones(N_models)
-        else
-            diag(output_structure_mat)
-        end
-
+        output_structure_mat = diag(Matrix(get_structure_mat(output_structure_mats)))
     end
     regularization_noise = regularization .* gp.alg_reg_noise
     logstd_regularization_noise = log.(sqrt.(regularization_noise))
@@ -329,7 +323,7 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
     else
-        output_structure_mat = get_structure_mat(output_structure_mats)
+        output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
         if isa(output_structure_mat, UniformScaling)
             output_structure_mat.λ * ones(N_models)
         else
@@ -435,7 +429,7 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
     regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
     else
-        output_structure_mat = get_structure_mat(output_structure_mats)
+        output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
         if isa(output_structure_mat, UniformScaling)
             output_structure_mat.λ * ones(N_models)
         else

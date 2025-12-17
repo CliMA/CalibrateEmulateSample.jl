@@ -33,6 +33,7 @@ export EmulatorPosteriorModel,
     accept_ratio,
     optimize_stepsize,
     get_posterior,
+    get_sample_kwargs,
     sample,
     esjd
 
@@ -519,6 +520,13 @@ struct MCMCWrapper{AVV <: AbstractVector, AV <: AbstractVector}
 end
 
 """
+$(TYPEDSIGNATURES)
+
+gets the NameTuple of keywords that are passed into the Sampler algorithm
+"""
+get_sample_kwargs(mcmc::MCMCWrapper) = mcmc.sample_kwargs
+
+"""
 $(DocStringExtensions.TYPEDSIGNATURES)
 
 Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD 
@@ -549,10 +557,14 @@ function MCMCWrapper(
     observation::AMorAV,
     prior::ParameterDistribution,
     em::Emulator;
-    init_params::AV,
+    init_params::AV = [],
     burnin::Int = 0,
     kwargs...,
 ) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
+
+    if length(init_params) == 0
+        init_params = mean(prior)
+    end
 
     # make into iterable over vectors
     obs_slice = if observation isa AbstractVector{<:AbstractVector}
@@ -587,6 +599,26 @@ function MCMCWrapper(
     return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
 end
 
+function MCMCWrapper(
+    mcmc_alg::MCMCProtocol,
+    observation::OB,
+    prior::PD,
+    em::EM;
+    kwargs...,
+) where {OB <: Observation, PD <: ParameterDistribution, EM <: Emulator}
+    return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em; kwargs...)
+end
+
+function MCMCWrapper(
+    mcmc_alg::MCMCProtocol,
+    observation_series::OS,
+    prior::PD,
+    em::EM;
+    kwargs...,
+) where {OS <: ObservationSeries, PD <: ParameterDistribution, EM <: Emulator}
+    observations = [get_obs(ob) for ob in get_observations(observation_series)]
+    return MCMCWrapper(mcmc_alg, observations, prior, em; kwargs...)
+end
 """
    $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
 

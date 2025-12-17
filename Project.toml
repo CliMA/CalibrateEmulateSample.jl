@@ -1,7 +1,7 @@
 name = "CalibrateEmulateSample"
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
-authors = ["CLIMA contributors <clima-software@caltech.edu>"]
 version = "0.7.0"
+authors = ["CLIMA contributors <clima-software@caltech.edu>"]
 
 [deps]
 AbstractGPs = "99985d1d-32ba-4be9-9821-2ec096f28918"
@@ -16,6 +16,8 @@ ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 GaussianProcesses = "891a1506-143c-57d2-908e-e1f8e92e6de9"
 KernelFunctions = "ec8451be-7e33-11e9-00cf-bbf324bd1392"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
+LowRankApprox = "898213cb-b102-5a47-900c-97e73b919f73"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
@@ -28,6 +30,7 @@ ScikitLearn = "3646fa90-6ef7-5e7e-9f22-8aca16db6324"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 
 [compat]
 AbstractGPs = "0.5.21"
@@ -41,7 +44,10 @@ EnsembleKalmanProcesses = "2"
 ForwardDiff = "1"
 GaussianProcesses = "0.12"
 KernelFunctions = "0.10.64"
+LinearMaps = "3.11.4"
+LowRankApprox = "0.5.5"
 MCMCChains = "7"
+Plots = "1.41.1"
 Printf = "1"
 ProgressBars = "1"
 PyCall = "1.93"
@@ -52,6 +58,7 @@ ScikitLearn = "0.6, 0.7"
 StableRNGs = "1"
 Statistics = "1"
 StatsBase = "0.33, 0.34"
+TSVD = "0.4.4"
 julia = "1.6, 1.7, 1.8, 1.9, 1.10, 1.11"
 
 [extras]

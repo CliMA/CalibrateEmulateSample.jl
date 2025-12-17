@@ -193,11 +193,7 @@ $(TYPEDSIGNATURES)
 
 Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function encode_structure_matrix(
-    emulator::Emulator,
-    structure_mat::USorM,
-    in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function encode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
     return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -224,11 +220,7 @@ $(TYPEDSIGNATURES)
 
 Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function decode_structure_matrix(
-    emulator::Emulator,
-    structure_mat::USorM,
-    in_or_out::AS,
-) where {AS <: AbstractString, USorM <: Union{UniformScaling, AbstractMatrix}}
+function decode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
     return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
 end
 
@@ -281,11 +273,11 @@ function predict(
         decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
         if var_or_cov == "var"
             for (i, col) in enumerate(eachcol(encoded_uncertainties))
-                decoded_covariances[:, :, i] .= decode_structure_matrix(emulator, Diagonal(col), "out")
+                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, Diagonal(col), "out"))
             end
         else # == "cov"
             for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
-                decoded_covariances[:, :, i] .= decode_structure_matrix(emulator, mat, "out")
+                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, mat, "out"))
             end
         end
 
