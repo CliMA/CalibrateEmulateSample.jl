@@ -22,7 +22,7 @@ eki_filename = "eki.jld2"
 @load eki_filename eki
 
 # output file dir:
-case = "95_perc_in"
+case = "99_perc_in_95_perc_out"
 out_dir= joinpath(@__DIR__,"output_$(case)")
 if !isdir(out_dir)
     mkdir(out_dir)
@@ -41,7 +41,7 @@ prior = combine_distributions(prior_vec)
 
 
 # get the training data
-N_train = 12 # trains on data 1:skip:skip*N_train
+N_train = 7 # trains on data 1:skip:skip*N_train
 skip = 2
 N_iterations_max = length(get_u(eki))
 train_iterations = 1:skip:min(skip*N_train, N_iterations_max - 2)
@@ -50,7 +50,6 @@ train_pairs = get_training_points(eki, train_iterations)
 
 
 test_iterations = setdiff(1:N_iterations_max-1, train_iterations)
-@info test_iterations
 test_pairs = get_training_points(eki, test_iterations)
 
 # prune NaNs (mainly in first few iterations)
@@ -68,8 +67,9 @@ gppackage = GPJL()
 mlt = GaussianProcess(gppackage, noise_learn = false)
 
 # data processing & dim reduction
-retain_var = 0.95 # decorrelate, and reduce, retaining X fraction of variance
-encoder_schedule = [(decorrelate_sample_cov(retain_var=retain_var), "in") ,(decorrelate_structure_mat(retain_var=retain_var), "out")]
+retain_var_in = 0.99 # decorrelate, and reduce, retaining X fraction of variance
+retain_var_out = 0.95
+encoder_schedule = [(decorrelate_sample_cov(retain_var=retain_var_in), "in") ,(decorrelate_structure_mat(retain_var=retain_var_out), "out")]
 
 # Build the emulator
 emulator = Emulator(mlt, train_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = (; obs_noise_cov = Γ), verbose=true)
