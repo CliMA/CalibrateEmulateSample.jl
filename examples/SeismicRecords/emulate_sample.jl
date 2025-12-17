@@ -21,6 +21,12 @@ exp_data_filename = "5500Experiment3.jld2"
 eki_filename = "eki.jld2"
 @load eki_filename eki
 
+# output file dir:
+case = "95_perc_in"
+out_dir= joinpath(@__DIR__,"output_$(case)")
+if !isdir(out_dir)
+    mkdir(out_dir)
+end
 
 # get the priors
 priors_filename = "priors_experiment3_0.toml"
@@ -72,7 +78,7 @@ high = repeat([log(1e5)], n_hparams)
 
 optimize_hyperparameters!(emulator; kernbounds=[low, high]) 
 
-save("emulator_$(train_iterations).jld2", "emulator", emulator)
+save(joinpath(out_dir,"emulator_$(train_iterations).jld2"), "emulator", emulator)
 # Validation on test data:
 
 
@@ -91,14 +97,14 @@ chain = MarkovChainMonteCarlo.sample(mcmc, chain_length; rng = rng, stepsize = n
 display(chain)
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
-save("mcmc_and_chain_$(train_iterations).jld2", "mcmc", mcmc, "chain", chain)
+save(joinpath(out_dir,"mcmc_and_chain_$(train_iterations).jld2"), "mcmc", mcmc, "chain", chain)
 
 # Back to constrained coordinates
 constrained_posterior =
     Emulators.transform_unconstrained_to_constrained(prior, MarkovChainMonteCarlo.get_distribution(posterior))
 constrained_eki_optimal = transform_unconstrained_to_constrained(prior, init_sample)
 
-save("posterior_$(train_iterations).jld2", "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "param_true_constrained", param_true_constrained)
+save(joinpath(out_dir,"posterior_$(train_iterations).jld2"), "posterior", posterior, "constrained_eki_optimal", constrained_eki_optimal, "param_true_constrained", param_true_constrained)
 
 
 p = plot(prior, fill = :lightgray)
@@ -107,7 +113,7 @@ for (i,sp) in enumerate(p.subplots)
     vline!(sp, [constrained_eki_optimal[i]], lc="red", ls=:dash, lw=4) # eki at final iteration
     vline!(sp, [param_true_constrained[i]], lc="black", lw=4)
 end
-savefig(p, joinpath(@__DIR__, "posterior_marginals_$(train_iterations).png"))
+savefig(p, joinpath(out_dir, "posterior_marginals_$(train_iterations).png"))
 
 
 
