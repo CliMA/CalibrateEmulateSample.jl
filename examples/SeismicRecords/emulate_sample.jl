@@ -27,7 +27,7 @@ out_dir= joinpath(@__DIR__,"output_$(case)")
 if !isdir(out_dir)
     mkdir(out_dir)
 end
-
+@info "Running case $case, \n outputs will be stored in $out_dir"
 # get the priors
 priors_filename = "priors_experiment3_0.toml"
 param_dict = TOML.parsefile(priors_filename)
