@@ -65,17 +65,20 @@ unconstrained_inputs = CES.Utilities.get_inputs(input_output_pairs)
 inputs = Emulators.transform_unconstrained_to_constrained(prior, unconstrained_inputs)
 outputs = CES.Utilities.get_outputs(input_output_pairs)
 
+# Create a data encoding to be performed on the input-output pairs
+encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
+encoder_kwargs = (; obs_noise_cov = Γ,)
+
+
 # Gaussian process
 # We will set up a basic Gaussian process emulator using either ScikitLearn.jl or GaussianProcesses.jl.
 # See the Gaussian process page for more information and details about kernel choices.
 gppackage = Emulators.GPJL()
 gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
-# Create a data encoding to be performed on the input-output pairs
-encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
 
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs, (obs_cov_noise = Γ,); encoder_schedule = encoder_schedule)
+emulator_gp = Emulator(gauss_proc, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule),  encoder_kwargs = deepcopy(encoder_kwargs))
 optimize_hyperparameters!(emulator_gp)
 
 # We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator 
@@ -111,9 +114,9 @@ random_features = VectorRandomFeatureInterface(
     kernel_structure = kernel_structure,
     optimizer_options = optimizer_options,
 )
-encoder_schedule_rf = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
+
 emulator_random_features =
-    Emulator(random_features, input_output_pairs, (obs_cov_noise = Γ,); encoder_schedule = encoder_schedule_rf)
+    Emulator(random_features, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs=deepcopy(encoder_kwargs))
 optimize_hyperparameters!(emulator_random_features)
 
 
@@ -123,8 +126,8 @@ optimize_hyperparameters!(emulator_random_features)
 # In more complex systems, we would have limited data to validate emulator performance with.
 # Set up mesh to cover parameter space
 N_grid = 50
-amp_range = range(0.6, 4, length = N_grid)
-vshift_range = range(-6, 10, length = N_grid)
+amp_range = range(0.5, 6, length = N_grid)
+vshift_range = range(-15, 15, length = N_grid)
 
 function meshgrid(vx::AbstractVector{T}, vy::AbstractVector{T}) where {T}
     m, n = length(vy), length(vx)
@@ -160,8 +163,8 @@ rf_std_grid = reshape(permutedims(reduce(vcat, [x' for x in rf_std]), (2, 1)), (
 ## Plot
 # First, we will plot the ground truth. We have 2 parameters and 2 outputs, so we will create a contour plot 
 # for each output to show how they vary against the two inputs. 
-range_clims = (0, 8)
-mean_clims = (-6, 10)
+range_clims = (0, 12)
+mean_clims = (-15, 15)
 
 p1 = contour(
     amp_range,
@@ -271,7 +274,7 @@ savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_contours.png"))
 
 # Next, we plot uncertainty estimates from the GP and RF emulators
 # Plot GP std estimates
-range_std_clims = (0, 2)
+range_std_clims = (0, 1)
 mean_std_clims = (0, 1)
 
 p1 = contour(
@@ -341,8 +344,8 @@ savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_std_contours.png"
 # Finally, we should validate how accurate the emulators are by looking at the absolute difference between emulator
 # predictions and the ground truth. 
 gp_diff_grid = abs.(gp_grid - g_true_grid)
-range_diff_clims = (0, 1)
-mean_diff_clims = (0, 1)
+range_diff_clims = (0, 2)
+mean_diff_clims = (0, 2)
 p1 = contour(
     amp_range,
     vshift_range,

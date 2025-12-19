@@ -68,8 +68,8 @@ data_save_directory = joinpath(example_directory, "output")
 # we define a prior with mean 2 and standard deviation 1. It is
 # additionally constrained to be nonnegative. For the vertical shift we define
 # a Gaussian prior with mean 0 and standard deviation 5.
-prior_u1 = PD.constrained_gaussian("amplitude", 2, 1, 0, Inf)
-prior_u2 = PD.constrained_gaussian("vert_shift", 0, 5, -Inf, Inf)
+prior_u1 = PD.constrained_gaussian("amplitude", 4, 2, 0, Inf)
+prior_u2 = PD.constrained_gaussian("vert_shift", 0, 8, -Inf, Inf)
 prior = PD.combine_distributions([prior_u1, prior_u2])
 # Plot priors
 p = plot(prior, fill = :lightgray, rng = rng)

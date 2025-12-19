@@ -101,7 +101,7 @@ white_noise = MvNormal(zeros(dim_output), Γ)
 y_obs = [y1_true, y2_true] .+ rand(white_noise)
 println("Observations:", y_obs)
 ```
-This gives $y_{obs}=(6.15, 6.42)$.
+This gives $y_{obs}=(6.01, 7.11)$.
 We can plot the true signal in black, the true observables in red and the noisy observables in blue.
 ![signal](../assets/sinusoid_true_vs_observed_signal.png)
 
@@ -141,11 +141,11 @@ const PD = EKP.ParameterDistributions
 ```
  
 We define prior distributions on the two parameters. For the amplitude,
-we define a prior with mean 2 and standard deviation 1. It is
+we define a prior with mean 4 and standard deviation 2. It is
 additionally constrained to be nonnegative. For the vertical shift we define
-a Gaussian prior with mean 0 and standard deviation 5.
+a Gaussian prior with mean 0 and standard deviation 8.
 ```julia
-prior_u1 = PD.constrained_gaussian("amplitude", 2, 1, 0, Inf)
+prior_u1 = PD.constrained_gaussian("amplitude", 4, 2, 0, Inf)
 prior_u2 = PD.constrained_gaussian("vert_shift", 0, 5, -Inf, Inf)
 prior = PD.combine_distributions([prior_u1, prior_u2])
 # Plot priors
@@ -153,7 +153,7 @@ p = plot(prior, fill = :lightgray)
 ```
 ![prior](../assets/sinusoid_prior.png)
 
-We now generate the initial ensemble and set up the EKI.
+We now generate the initial ensemble and set up the EKI. We draw around 50 evaluations for illustration
 ```julia
 N_ensemble = 10
 N_iterations = 5
@@ -181,14 +181,14 @@ Finally, we get the ensemble after the last iteration. This provides our estimat
 final_ensemble = EKP.get_ϕ_final(prior, ensemble_kalman_process)
 
 # Check that the ensemble mean is close to the theta_true
-println("Ensemble mean: ", mean(final_ensemble, dims=2))   # [3.05, 6.37]
+println("Ensemble mean: ", mean(final_ensemble, dims=2))   # [2.94, 7.08]
 println("True parameters: ", theta_true)   # [3.0, 7.0]
 ```
 
 | Parameter         | Truth    | EKI mean |
 | :---------------- | :------: | :----: |
-| Amplitude         |   3.0    | 3.05  |
-| Vertical shift    |   7.0    | 6.37  |
+| Amplitude         |   3.0    | 2.94  |
+| Vertical shift    |   7.0    | 7.08  |
 
 The EKI ensemble mean at the final iteration is close to the true parameters, which is good.
 We can also see how the ensembles evolve at each iteration in the plot below.
@@ -248,8 +248,12 @@ See the [Gaussian process page](https://clima.github.io/CalibrateEmulateSample.j
 gppackage = Emulators.GPJL()
 gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
+# Create a data encoding to be performed on the input-output pairs
+encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
+encoder_kwargs = (; obs_noise_cov = Γ,)
+
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs, normalize_inputs = true,  obs_noise_cov = Γ)
+emulator_gp = Emulator(gauss_proc, input_output_pairs; encoder_schedule = encoder_schedule, encoder_kwargs = encoder_kwargs)
 optimize_hyperparameters!(emulator_gp)
 ```
 For this simple example, we already know the observational noise `Γ=0.2*I`, so we set `noise_learn = false`. 
@@ -286,8 +290,9 @@ random_features = VectorRandomFeatureInterface(
     kernel_structure = kernel_structure,
     optimizer_options = optimizer_options,
 )
+
 emulator_random_features =
-    Emulator(random_features, input_output_pairs, normalize_inputs = true, obs_noise_cov = Γ, decorrelate = false)
+    Emulator(random_features, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs=deepcopy(encoder_kwargs))
 optimize_hyperparameters!(emulator_random_features)
 ```
 ### Emulator Validation
@@ -362,7 +367,7 @@ We will provide the API with the observations, priors and our cheap emulator fro
 example we use the GP emulator. First, we need to find a suitable starting point, ideally one that is near the posterior distribution. We will use the final ensemble mean from EKI as this will increase the chance of acceptance near the start of the chain, and reduce burn-in time.
 ```julia
 init_sample = EKP.get_u_mean_final(ensemble_kalman_process)
-println("initial parameters: ", init_sample)    # (1.11, 6.37)
+println("initial parameters: ", init_sample)    # (1.07, 7.32)
 ```
 
 Now, we can set up and carry out the MCMC starting from this point. 
@@ -379,10 +384,10 @@ chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard
 display(chain)
 ```
 
-| parameters         | mean    | std |
-| :---------------- | :------: | :----: |
-| amplitude         |   1.1068 | 0.0943  |
-| vert_shift        |   6.3897 | 0.4601  |
+| parameters        | mean   | std   |
+| :---------------- | :----: | :---: |
+| amplitude         |   1.10 | 0.073 |
+| vert_shift        |   7.07 | 0.46  |
 
 Note that these values are provided in the unconstrained space. The vertical shift
 seems reasonable, but the amplitude is not. This is because the amplitude is constrained to be
@@ -394,7 +399,7 @@ constrained space and re-calculate these values.
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 # Back to constrained coordinates
 constrained_posterior = Emulators.transform_unconstrained_to_constrained(
-    prior, MarkovChainMonteCarlo.get_distribution(posterior)
+    posterior, MarkovChainMonteCarlo.get_distribution(posterior)
 )
 println("Amplitude mean: ", mean(constrained_posterior["amplitude"]), ", std: ", std(constrained_posterior["amplitude"]))
 println("Vertical shift mean: ", mean(constrained_posterior["vert_shift"]), ", std: ", std(constrained_posterior["vert_shift"]))
@@ -402,10 +407,10 @@ println("Vertical shift mean: ", mean(constrained_posterior["vert_shift"]), ", s
 This gives:
 
 
-| parameters        | mean     | std     |
-| :---------------- | :------: | :----:  |
-| amplitude         |   3.0382 | 0.2880  |
-| vert_shift        |   6.3774 | 0.4586  |
+| parameters        | mean   | std  |
+| :---------------- | :----: | :--: |
+| amplitude         |   3.01 | 0.21 |
+| vert_shift        |   7.07 | 0.46 |
 
 This is in agreement with the true $\theta=(3.0, 7.0)$ and with the observational covariance matrix we provided $\Gamma=0.2 * I$ (i.e., a standard deviation of approx. $0.45$). `CalibrateEmulateSample.jl` has built-in plotting
 recipes to help us visualize the prior and posterior distributions.  Note that these are the
@@ -433,10 +438,10 @@ $\theta_2$ below, with the marginal distributions on each axis.
 We can repeat the sampling method using the random features emulator instead of the Gaussian
 process and we find similar results: 
 
-| parameters        | mean     | std    |
-| :---------------- | :------: | :----: |
-| amplitude         |   3.3210 | 0.7216 |
-| vert_shift        |   6.3986 | 0.5098 |
+| parameters        | mean   | std  |
+| :---------------- | :----: | :--: |
+| amplitude         |   2.99 | 0.21 |
+| vert_shift        |   7.06 | 4.89 |
 
 ![RF_2d_posterior](../assets/sinusoid_MCMC_hist_RF.png)
 
