@@ -103,6 +103,43 @@ gauss_proc = GaussianProcess(
 ```
 You can also combine multiple ScikitLearn kernels via linear operations in the same way as above.
 
+## [AGPJL](@id agpjl)
+
+Autodifferentiable emulators are used by our differentiable samplers. Currently the only support for autodifferentiable Gaussian process emulators in Julia (within the `predict()` method, not hyperparameter optimization) is to use `AbstractGPs.jl`. As `AbstractGPs.jl` has no optimization routines for kernels, we instead apply the following (temporary) recipe:
+1. Create and optimize a `GPJL` emulator and default kernel. (here called gp_jl)
+```julia
+gauss_proc = GaussianProcess(GPJL(); noise_learn=true, gpjl_kwargs...) # must! use default kernel
+em = Emulator(gauss_proc, iopairs)
+optimize_hyperparmaeters!(em)
+```
+2. Create the Kernel parameters as a vect-of-dict with
+```julia
+opt_params = Emulators.get_params(gauss_proc)
+kernel_params = [
+   Dict(
+       "log_rbf_len" => model_params[1:end-2] # input-dim Vector,
+       "log_std_sqexp" => model_params[end-1] # Float,
+       "log_std_noise" => model_params[end],# Float,
+   )
+for model_params in get_params(gp_jl)]
+```
+    Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
+    - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim] Vector
+    - b is the `log_std_sqexp` of the SQexp kernel Float
+    - c is the `log_std_noise` of the noise kernel Float
+3. Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()`
+```julia
+gauss_proc = GaussianProcess(AGPJL(); noise_learn=true, gpjl_kwargs...)
+```
+4. Build a new Emulator with kwarg: `kernel_params=kernel_params`
+
+!!! note "Other options"
+    1. As stated, this only works for the default kernel option.
+    2. If `noise_learn=false` then `log_std_noise` does not appear, the `model_params` indexing to the other hyperparameters should be adjusted
+    2. For one-dimensional output, use `opt_params = Emulators.get_params(gauss_proc)[1]` to get the parameters
+
+We would be keen to see contributions to our codebase to improve this interface (or to perform hyperparameter optimization with AGP directly). 
+
 # Learning additional white noise
 
 Often it is useful to learn the discrepancy between the Gaussian process prediction and the data, by learning additional white noise. Though one often knows, and provides, the discrepancy between the true model and data with an observational noise covariance; the additional white kernel can help account for approximation error from the selected Gaussian process kernel and the true model. This is added with the Boolean keyword `noise_learn` when initializing the Gaussian process. The default is true. 

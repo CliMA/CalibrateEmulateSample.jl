@@ -87,8 +87,8 @@ For more details on the currently available protocols:
 - `pCNMHSampling()`: preconditioned Crank Nicholsen (dimensionally-robust) For example, see [Cotter, Roberts, Stuart, White (2013)](https://www.jstor.org/stable/43288425)
 - `BarkerSampling()` Barker proposal (derivative-based) For example, see [Livingstone, Zanella (2022)](https://doi.org/10.1111/rssb.12482). We currently have this working with two autodifferentiation packages, [`ForwardDiff.jl`](https://juliadiff.org/ForwardDiff.jl/stable/)(default) and [`ReverseDiff.jl`](https://juliadiff.org/ReverseDiff.jl/stable/). One can set the autodifferentiation protocols explicitly as `BarkerSampling{ReverseDiffProtocol}()`. `ReverseDiffProtocol` is typically slower for low dimensional problems, but scales better that `ForwardDiffProtocol` for higher dimensional settings.
 
-!!! warning "Differentiable samplers"
-    One caveat for differentiable samplers, is the lack of Julia emulator packages that support it for the `predict()` map, therefore one can only use e.g. `BarkerSampling` with `AGPJL()`-type  emulators.
+!!! warning "Differentiable samplers require differentiable emulators"
+    One caveat for differentiable samplers, is the lack of Julia emulator packages that support it for the `predict()` map, therefore one can only use e.g. `BarkerSampling` with [`AGPJL()`](@ref agpjl)-type  emulators which currently only have limited support.
 
 # [Further details on the implementation](@id AbstractMCMC sampling API)
 
