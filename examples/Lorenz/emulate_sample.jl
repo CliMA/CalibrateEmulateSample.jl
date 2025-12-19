@@ -133,7 +133,6 @@ function main()
             )
         end
 
-        # Standardize the output data
 
         # Get training points from the EKP iteration number in the second input term  
         N_iter = min(max_iter, length(get_u(ekiobj)) - 1) # number of paired iterations taken from EKP
