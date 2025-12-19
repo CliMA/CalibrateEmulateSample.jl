@@ -39,7 +39,7 @@ schedule = [
 !!! note "Switch encoding off"
     To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
 
-### Recommended schedule for PCA dimension reduction
+### Recommended: schedule for PCA dimension reduction
 
 Our recommendeded family to balance efficiency and reduce dimension is to use the `retain_var` kwargs.
 ```julia
@@ -58,9 +58,9 @@ emulator = Emulator(
     encoder_kwargs = encoder_kwargs,
 )
 ```
-## Getting `encoder_kwargs` from `EnsembleKalmanProcesses` objects
+## Recommended: Get `encoder_kwargs` from `ObservationSeries` etc.
 
-To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can also get the kwargs needed from [`Observation` and `ObservationSeries`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/) objects, as well as [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) objects used in the `EnsembleKalmanProcesses.jl` package.
+To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can also get the kwargs in the desired format from any [`Observation` and `ObservationSeries`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/) objects, as well as [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) objects used in the `EnsembleKalmanProcesses.jl` package.
 ```julia
 # `prior::ParameterDistribution`
 input_kwargs = get_kwargs_from(prior)
@@ -70,6 +70,10 @@ output_kwargs = get_kwargs_from(observation_series)
 
 encoder_kwargs = merge(input_kwargs, output_kwargs)
 ```
+!!! note "Observational noise notes"
+    1. The `obs_noise_cov` object does not need to be a constructed `AbstractMatrix`, rather it can be any type of compactly stored matrix compatible with `EnsembleKalmanProcesses` (e.g., [here](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)).
+    2. When `ObservationSeries` contains multiple observations, it is assumed that the covariance of the noise of all observations are the same. (If they are not, only the first will be taken by default in `get_kwargs_from(...)`
+    
 
 ## Building and interpreting encoder schedules
 
@@ -97,8 +101,6 @@ In this (rather unrealistic) chain;
 !!! note "Default Encoder schedule"
     The current default encoder schedule applies `decorrelate_structure_mat()` if a structure matrix (input or output) is provided, else it applies `decorrelate_sample_cov()`.
 
-
-
 ## Creating an emulator with a schedule
 
 The schedule is then passed into the Emulator, along with the data and desired structure matrices
@@ -111,6 +113,26 @@ emulator = Emulator(
 )
 ```
 Note that due to the item `(decorrelate_structure_mat(retain_var=0.95), "out")` in the schedule, we must provide an output structure matrix. In this case, we provide `obs_noise_cov`.
+
+### Additional API
+Once created, the user does not need to worry about encoding/decoding. However, we do provide an external API that can be used to encode both new data vectors (or matrix-of-columns, and matrices,
+```julia
+# encoding new data: Vector, `DataContainer`, or Matrix viewed as columns
+enc_in_data = encode_data(emulator, new_input_data, "in")
+enc_out_data = encode_data(emulator, new_output_data, "out")
+
+# decoding it
+dec_in_data = decode_data(emulator, enc_in_data, "in")
+dec_out_data = decode_data(emulator, enc_out_data, "out")
+
+# new structure matrix: Matrix (typically acting as a covariance)
+enc_in_cov = encode_structure_matrix(emulator, new_input_covariance, "in")
+enc_out_cov = encode_structure_matrix(emulator, new_output_covariance, "out")
+
+dec_in_cov = decode_structure_matrix(emulator, enc_in_cov, "in")
+dec_out_cov = decode_structure_matrix(emulator, enc_out_cov, "out")
+```
+
 
 # Types of data processors
 
@@ -128,3 +150,11 @@ This is an extensible framework, and so new data processors can be added to this
 
 !!! note "Some experiments"
     Some effects of the data processing (with older API) are outlined in a practical setting in the results and appendices of [Howland, Dunbar, Schneider, (2022)](https://doi.org/10.1029/2021MS002735).
+
+## A note on `LinearMaps` and the internals for encoding large observations
+
+To handle the heterogeneity and possible massive size of matrices involved with encoding observations, all `obs_noise_cov` and encoder-decoder objects are converted into linear maps, using [`LinearMaps.jl`](https://julialinearalgebra.github.io/LinearMaps.jl/stable/). For high-dimensional inputs or outputs (>3000), these are used in within iterative or (stochastically) approximate matrix-free methods, thus giving some possible additional error to gain better scaling in dimension. Such balances are controllable by the user with keywords that can be passed to certain encoders in the schedule.
+
+
+
+
