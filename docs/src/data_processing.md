@@ -1,12 +1,67 @@
 # [Data Processing and Dimension Reduction](@id data-proc)
 
 ## Overview 
-When working with high-dimensional problems with modest training data pairs, the bottleneck of CES procedure is the training of a competent emulator. It is often necessary to process and dimensionally-reduce the data to ease the learning task of the emulator. We provide a flexible (and extensible!) framework to create encoders and decoders for this purpose. The framework works as follows
+When working with high-dimensional problems with modest training data pairs, the bottleneck of CES procedure is the training of a competent emulator. It is often necessary to process and dimensionally-reduce the data to ease the learning task of the emulator. To make results as transparent and reproducible as possible we provide a flexible (and extensible!) framework to create encoders and decoders for this purpose. The framework works as follows
 - An `encoder_schedule` defines the type of processing to be applied to input and/or output spaces
-- The `encoder_schedule` is passed into the `Emulator` where it is initialized and stored. 
-- The encoder will be used automatically to encode training data and predictions within the Emulate and Sample routines.
+- The `encoder_schedule` is passed into the `Emulator` where it is initialized and stored. Sometimes it will require additional information, passed in as `encoder_kwargs`. 
+- The encoder will be used automatically to encode training data, covariance matrices, and predictions within the Emulate and Sample routines.
 
 An external API is also available using the `encode_data`, and `encode_structure_matrix` methods if needed.
+
+## Defaults and recommendations
+### Default schedule (no explicit dimension reduction)
+When no schedule is provided, i.e. 
+```julia
+emulator = Emulator(
+    machine_learning_tool,       
+    input_output_pairs
+)
+```
+The default schedule under-the-hood, is given by
+```julia
+# No encoder_kwargs provided
+schedule = (decorrelate_sample_cov(), "in_and_out")
+```
+If the user only provides the observational noise covariance, 
+```julia
+emulator = Emulator(
+    machine_learning_tool,       
+    input_output_pairs;
+    encoder_kwargs = (; obs_noise_cov = obs_noise_cov),
+)
+```
+The default schedule under-the-hood, is given by
+```
+schedule = [
+    (decorrelate_sample_cov(), "in"),
+    (decorrelate_structure_mat(), "in"),
+]
+```
+
+### Recommended schedule for PCA dimension reduction
+
+Our recommendeded family to balance efficiency and reduce dimension is to use the retain_var kwargs.
+```julia
+retain_var_in = 0.99 # reduce dimension retaining 99% of input variance
+retain_var_out = 0.95 # reduce dimension retaining 95% of output variance
+encoder_schedule = [
+    (decorrelate_sample_cov(retain_var = retain_var_in), "in"),
+    (decorrelate_structure_mat(retain_var = retain_var_out), "out"),
+]
+encoder_kwargs = (; obs_noise_cov = obs_noise_cov)
+```
+## Getting `encoder_kwargs` directly from `EnsembleKalmanProcesses` objects
+
+To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can also get the kwargs needed from [`Observation` and `ObservationSeries`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/) objects, as well as [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) objects used in the `EnsembleKalmanProcesses.jl` package.
+```julia
+# `prior::ParameterDistribution`
+input_kwargs = get_kwargs_from(prior)
+
+# `observation_series::ObservationSeries`
+output_kwargs = get_kwargs_from(observation_series)
+
+encoder_kwargs = merge(input_kwargs, output_kwargs)
+```
 
 ## Define an encoder schedule
 
@@ -35,7 +90,7 @@ In this (rather unrealistic) chain;
     The current default encoder schedule applies `decorrelate_structure_mat()` if a structure matrix (input or output) is provided, else it applies `decorrelate_sample_cov()`.
 
 !!! note "Switch encoding off"
-   To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
+    To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
 
 
 ## Creating an emulator with a schedule
@@ -61,7 +116,7 @@ The `DataContainerProcessor` encodes "input" data agnostic of the "output" data,
 
 The `PairedDataContainerProcessor` encodes inputs (or outputs) using information of the both inputs and outputs in pairs
 - `CanonicalCorrelation` - constructed with `canonical_correlation()`, which performs [canonical correlation analysis](https://en.wikipedia.org/wiki/Canonical_correlation) to process the pairs. In effect this performs PCA on the cross-correlation from input and output samples.
-- [Coming soon] `LikelihoodInformed` - this will use the data or likelihood from the inverse problem at hand to build diagnostic matrices that are used to find informative directions for dimension reduction (e.g., [Cui, Zahm 2021](http://doi.org/10.1088/1361-6420/abeafb), [Baptista, Marzouk, Zahm 2022](https://arxiv.org/abs/2207.08670))
+- [Coming soon] `LikelihoodInformed` - this will use the data or likelihood from the inverse problem at hand to build diagnostic matrices that are used to find informative directions for dimension reduction. In particular we build generalizations of current frameworks (e.g., [Cui, Zahm 2021](http://doi.org/10.1088/1361-6420/abeafb), [Baptista, Marzouk, Zahm 2022](https://arxiv.org/abs/2207.08670)) to use the latest EKP iterations.
 
 This is an extensible framework, and so new data processors can be added to this library.
 
