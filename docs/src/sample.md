@@ -85,6 +85,13 @@ posterior_posterior_samples_array = reduce(vcat, [posterior_samples_dict[n] for 
 constrained_posterior_samples_array  = reduce(vcat, [constrained_posterior_samples_dict[n] for n in get_name(posterior)])
 ```
 
+## The Protocols
+
+For more details on the currently available protocols:
+- `RWMHSampling()`: Random Walk Metropolis (standard). For example, see [Roberts, Gelman, Gilks (1997)](https://doi.org/10.1214/aoap/1034625254)
+- `pCNMHSampling()`: preconditioned Crank Nicholsen (dimensionally-robust) For example, see [Cotter, Roberts, Stuart, White (2013)](https://www.jstor.org/stable/43288425)
+- `BarkerSampling()` Barker proposal (derivative-based) For example, see [Livingstone, Zanella (2022)]https://doi.org/10.1111/rssb.12482). We currently have this working with two autodifferentiation packages, `ForwardDiff.jl`(default) and `ReverseDiff.jl`. One can set the autodifferentiation protocols explicitly as `BarkerSampling{ReverseDiffProtocol}()`. `ReverseDiff` is typically slower for low dimensional problems, but scales better that `ForwardDiff` for higher dimensional settings. One caveat for autodifferentiation, is the lack of Julia GP packages that support it for the `predict()` map, therefore one can only use Barker with `AGPJL()` emulators.
+
 # [Further details on the implementation](@id AbstractMCMC sampling API)
 
 This page provides a summary of AbstractMCMC which augments the existing documentation
