@@ -35,7 +35,7 @@ The input to the CES algorithm consists of data ``y``, the observational covaria
 CES to learn model parameters.
 
 
-### Running the example
+# Running the example
 
 `Cloudy_calibrate.jl` performs the calibration using ensemble Kalman
 inversion; `Cloudy_emulate_sample.jl` fits an emulator and uses it to sample the
@@ -46,11 +46,11 @@ include("Cloudy_calibrate.jl")
 include("Cloudy_emulate_sample.jl")
 ```
 
-### Walkthrough of the code: `Cloudy_calibrate.jl`
+# Walkthrough of the code: `Cloudy_calibrate.jl`
 
 This file performs the calibration stage of CES.
 
-#### Import packagages and modules
+## Import packagages and modules
 
 First we load standard packages,
 
@@ -92,7 +92,7 @@ that runs Cloudy with a given instance of the parameter vector we want to learn.
 include("DynamicalModel.jl")
 ```
 
-#### Define the true parameters
+### Define the true parameters
 
 We define the true parameters---they are known here because this is a known
 truth example. Knowing the true parameters will allow us to assess how well
@@ -113,7 +113,7 @@ k_true = 0.0817  # shape parameter of Gamma distribution
 dist_true = ParticleDistributions.GammaPrimitiveParticleDistribution(ϕ_true...)
 ```
 
-#### Define priors for the parameters
+### Define priors for the parameters
 
 As we are working with Bayesian methods, we treat the parameters we want to
 learn as random variables whose prior distributions we specify here. The prior
@@ -141,7 +141,7 @@ p = plot(priors, constrained=false)
 
 ![priors](../assets/cloudy_priors.png)
 
-#### Generate (synthetic) observations
+### Generate (synthetic) observations
 We generate synthetic observations by running Cloudy 100 times with the true
 parameters (i.e., with the true initial Gamma distribution of droplet masses) and then adding noise to simulate measurement error.
 
@@ -175,7 +175,7 @@ truth = Observation(
 )
 ```
 
-#### Perform ensemble Kalman inversion
+### Perform ensemble Kalman inversion
 
 We sample the initial ensemble from the prior and create the
 `EnsembleKalmanProcess` object as an ensemble Kalman inversion (EKI) algorithm
@@ -216,7 +216,7 @@ for n in 1:N_iter
 end
 ```
 
-#### Visualize and store the results of the calibration
+### Visualize and store the results of the calibration
 
 The optimal parameter vector determined by the ensemble Kalman inversion is the
 ensemble mean of the particles after the last iteration, which is printed to
@@ -233,12 +233,12 @@ computational (unconstrained) and physical (constrained) spaces.
 ![eki_iterations_animation](../assets/cloudy_eki.gif)
 
 
-### Walkthrough of the code: `Cloudy_emulate_sample.jl`
+## Walkthrough of the code: `Cloudy_emulate_sample.jl`
 
 This file performs the emulation and sampling stages of the CES algorithm.
 
 
-#### Import packages and modules
+### Import packages and modules
 
 First, we import some standard packages
 ```julia
@@ -264,7 +264,7 @@ using EnsembleKalmanProcesses.ParameterDistributions
 using EnsembleKalmanProcesses.DataContainers
 ```
 
-#### Load the calibration results
+### Load the calibration results
 
 We will train the emulator on the input-output pairs we obtained during the
 calibration. They are stored within the `EnsembleKalmanProcess` object
@@ -381,34 +381,25 @@ standardize_outputs = false
 We construct the emulator using the input-output pairs obtained in the
 calibration stage (note that we're not using all available input-output
 pairs---using all of them may not give the best results, especially if the EKI
-parameter converges rapidly and then "stays in the same place" during the remaining iterations). For the `gp-gpjl` and `rf-scalar` cases, we want the output
-data to be decorrelated with information from Γy, but for the vector RF case
-decorrelation is not required.
+parameter converges rapidly and then "stays in the same place" during the remaining iterations). For the `gp-gpjl` and `rf-scalar` cases, create the data processor and build the emulator as follows
 
 ```
 input_output_pairs = get_training_points(ekiobj,
                                           length(get_u(ekiobj))-2)
 
-# Use the medians of the outputs as standardizing factors
-norm_factors = get_standardizing_factors(
-    get_outputs(input_output_pairs)
-)
+# The data processing decorrelates inputs and outputs using the prior and noise covariances respectively
+encoder_schedule = (decorrelate_structure_mat(), "in_and_out")
+encoder_kwargs = (; prior_cov = cov(priors), obs_noise_cov = Γy)
 
-# The data processing normalizes input data, and decorrelates
-# output data with information from Γy, if required
-# Note: The `standardize_outputs_factors` are only used under the
-# condition that `standardize_outputs` is true.
 emulator = Emulator(
     mlt,
-    input_output_pairs,
-    decorrelate = decorrelate,
-    obs_noise_cov = Γy,
-    standardize_outputs = true,
-    standardize_outputs_factors = vcat(norm_factors...),
+    input_output_pairs;
+    encoder_schedule = encoder_schedule,
+    encoder_kwargs = encoder_kwargs,
 )
 ```
 
-#### Train the emulator
+## Train the emulator
 
 The emulator is trained when we combine the machine learning tool and the data
 into the `Emulator` above. We must also optimize the hyperparameters:
@@ -438,7 +429,7 @@ println(truth_sample) # what was used as truth
 
 The emulator predicts both a mean value and a covariance.
 
-### Sample the posterior distributions of the parameters
+## Sample the posterior distributions of the parameters
 
 The last step is to plug the emulator into an MCMC algorithm, which is then used to produce samples from the posterior distribution of the parameters. Essentially, the emulator acts as a stand-in for the original forward model (which in most cases of interest is computationally expensive to run) during the MCMC sampling process.
 
@@ -495,7 +486,7 @@ the peak of the posterior distribution should be located near the true values,
 indicating a high-quality estimation. Additionally, visualizing the prior
 distributions alongside the posteriors shows the distributional change effected by the Bayesian learning process.
 
-### Results
+## Results
 
 We first produce pair plots (also known as corner plots or scatter plot matrices) to visualize the posterior parameter distributions as a grid of histograms. Recall that the task was to solve the inverse problem of finding the parameters ``N_{0, 0}``, ``k_0``, and ``\theta_0``, which define a gamma distribution of droplet masses in Cloudy at time ``t = 0``.
 
