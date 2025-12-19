@@ -29,7 +29,7 @@ emulator = Emulator(
 )
 ```
 The default schedule under-the-hood, is given by
-```
+```julia
 schedule = [
     (decorrelate_sample_cov(), "in"),
     (decorrelate_structure_mat(), "out"), # uses obs_noise_cov
@@ -41,7 +41,7 @@ schedule = [
 
 ### Recommended schedule for PCA dimension reduction
 
-Our recommendeded family to balance efficiency and reduce dimension is to use the retain_var kwargs.
+Our recommendeded family to balance efficiency and reduce dimension is to use the `retain_var` kwargs.
 ```julia
 retain_var_in = 0.99 # reduce dimension retaining 99% of input variance
 retain_var_out = 0.95 # reduce dimension retaining 95% of output variance
