@@ -106,13 +106,13 @@ You can also combine multiple ScikitLearn kernels via linear operations in the s
 ## [AGPJL](@id agpjl)
 
 Autodifferentiable emulators are used by our differentiable samplers. Currently the only support for autodifferentiable Gaussian process emulators in Julia (within the `predict()` method, not hyperparameter optimization) is to use `AbstractGPs.jl`. As `AbstractGPs.jl` has no optimization routines for kernels, we instead apply the following (temporary) recipe:
-1. Create and optimize a `GPJL` emulator and default kernel. (here called gp_jl)
+- Create and optimize a `GPJL` emulator and default kernel. (here called gp_jl)
 ```julia
 gauss_proc = GaussianProcess(GPJL(); noise_learn=true, gpjl_kwargs...) # must! use default kernel
 em = Emulator(gauss_proc, iopairs)
 optimize_hyperparmaeters!(em)
 ```
-2. Create the Kernel parameters as a vect-of-dict with
+- Create the Kernel parameters as a vect-of-dict with
 ```julia
 opt_params = Emulators.get_params(gauss_proc)
 kernel_params = [
@@ -123,22 +123,24 @@ kernel_params = [
    )
 for model_params in get_params(gp_jl)]
 ```
-    Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
-    - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim] Vector
-    - b is the `log_std_sqexp` of the SQexp kernel Float
-    - c is the `log_std_noise` of the noise kernel Float
-3. Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()`
+- Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
+  - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim] Vector
+  - b is the `log_std_sqexp` of the SQexp kernel Float
+  - c is the `log_std_noise` of the noise kernel Float
+- Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()`
 ```julia
 gauss_proc = GaussianProcess(AGPJL(); noise_learn=true, gpjl_kwargs...)
 ```
-4. Build a new Emulator with kwarg: `kernel_params=kernel_params`
+- Build a new Emulator with kwarg: `kernel_params=kernel_params`
 
-!!! note "Other options"
+We would be keen to see contributions to our codebase to improve this interface (or to perform hyperparameter optimization with AGP directly).
+
+!!! note "Other notes about the recipe"
     1. As stated, this only works for the default kernel option.
     2. If `noise_learn=false` then `log_std_noise` does not appear, the `model_params` indexing to the other hyperparameters should be adjusted
     2. For one-dimensional output, use `opt_params = Emulators.get_params(gauss_proc)[1]` to get the parameters
 
-We would be keen to see contributions to our codebase to improve this interface (or to perform hyperparameter optimization with AGP directly). 
+
 
 # Learning additional white noise
 
