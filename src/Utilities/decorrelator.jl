@@ -56,7 +56,7 @@ struct Decorrelator{VV1, VV2, VV3, FT, NT <: NamedTuple, AS <: AbstractString} <
     n_totvar_samples::Int
     "maximum dimension of subspace for `retain_var < 1`. The search may become expensive at large ranks, and therefore can be cut-off in this way"
     max_rank::Int
-    "when `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. here, kwargs can be passed in as a NamedTuple"
+    "when `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. here, kwargs can be passed in as a `NamedTuple`"
     psvd_kwargs::NT
     "Switch to choose what form of matrix to use to decorrelate the data"
     decorrelate_with::AS
@@ -75,7 +75,7 @@ Constructs the `Decorrelator` struct. Users can add optional keyword arguments:
   - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 - `n_totvar_samples`[=`500`]: when retain_var < 1, number of samples to estimate the total variance for performing truncation.
 - `max_rank`[=`100`]: for `retain_var < 1`, the maximum dimension of subspace when using an the `tsvd` algorithm from `TSVD.jl`.
-- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a NamedTuple"
+- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
 """
 decorrelate(;
     retain_var::FT = Float64(1.0),
@@ -103,7 +103,8 @@ Constructs the `Decorrelator` struct, setting decorrelate_with = "sample_cov". E
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 - `n_totvar_samples`[=`500`]: when retain_var < 1, number of samples to estimate the total variance for performing truncation.
 - `max_rank`[=`100`]: for `retain_var < 1`, the maximum dimension of subspace when using an the `tsvd` algorithm from `TSVD.jl`.
-- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a NamedTuple""""
+- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
+"""
 decorrelate_sample_cov(;
     retain_var::FT = Float64(1.0),
     n_totvar_samples::Int = 500,
@@ -128,7 +129,7 @@ Constructs the `Decorrelator` struct, setting decorrelate_with = "structure_mat"
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 - `n_totvar_samples`[=`500`]: when retain_var < 1, number of samples to estimate the total variance for performing truncation.
 - `max_rank`[=`100`]: for `retain_var < 1`, the maximum dimension of subspace when using an the `tsvd` algorithm from `TSVD.jl`.
-- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a NamedTuple"
+- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
 """
 decorrelate_structure_mat(;
     retain_var::FT = Float64(1.0),
