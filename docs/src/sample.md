@@ -11,14 +11,11 @@ Carlo algorithm](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC).
 ## User interface
 
 We briefly outline an instance of how one sets up and uses MCMC within the CES package. The user first loads the MCMC module, and provides one of the Protocols (i.e. how one wishes to generate sampling proposals)
-
 ```julia
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 protocol = RWMHSampling() # Random-Walk algorithm
-protocol = pCNMHSampling() # preconditioned-Crank-Nicholson algorithm
-protocol = BarkerSampling() # Barker proposal algorithm (requires `AGPJL()` - the only autodifferentiable-ready emulator)
 ```
-Then one builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the calibrate stage, alongside the trained statistical emulator from the emulate stage:
+More are listed below. One builds the MCMC by providing the standard Bayesian ingredients (prior and data) from the calibrate stage, alongside the trained statistical emulator from the emulate stage:
 ```julia
 mcmc = MCMCWrapper(
     protocol,
