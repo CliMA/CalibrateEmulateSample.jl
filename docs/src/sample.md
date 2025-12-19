@@ -26,9 +26,9 @@ mcmc = MCMCWrapper(
     burnin=10_000,
 )
 ```
-The keyword arguments `init_params` give a starting step of the chain (often taken to be the mean of the final iteration of calibrate stage (or the final iteration used for emulator training)), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the sampling method.
+The keyword arguments `init_params` give a starting step of the chain (we recommend using the mean of the final iteration of calibrate stage), and a `burnin` gives a number of initial steps to be discarded when drawing statistics from the sampling method.
 
-!!! note "Observations"
+!!! note "Observations types"
     If one has an `EnsembleKalmanProcesses` object (such as an `Observation` or `ObservationSeries`) simply pass this in as the second argument. If one has instead a sample of data simply pass this in, meanwhile a set of data samples can be passed in as a vector of vectors or matrix with these samples as columns. When multiple data is passed in (as an `ObservationSeries` or otherwise) the resulting sampler will assume the data is conditionally-independent (that is, ``p({y_1,\dots,y_n}\mid\theta)`` is a product of ``\prod_i p(y_i\mid\theta)``) and evaluate the likelihood at all `y_i` for every sample step. 
 
 For good efficiency, one often needs to run MCMC with a problem-dependent step size. We provide a simple utility to help choose this. Here the optimizer runs short chains (of length `N`), and adjusts the step-size until the MCMC acceptance rate falls within an acceptable range, returning this step size.
@@ -44,15 +44,16 @@ To generate ``10^5`` samples with a given step size (and optional random number 
 chain = sample(rng, mcmc, 100_000; stepsize = new_step)
 display(chain) # gives diagnostics
 ```
+One can see our [examples](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) for other configurations!
 
 ## Interpretation and handling of the posterior samples
 
-There are several wrappers in the return argument.
-1. The highest level (`Chains`) can display MCMC diagnostics.
-2. The second-level (`Samples <: ParameterDistribution`) used for easy plotting of histograms, and applying constraints.
-3. The third-level (`Dict` or `Array`) is the cleanest level of samples, and will be good for saving or applying other functions to without wrapping.
+The posterior samples are under several wrappers when returned:
+1. The first level (`MCMCChains.Chains`) is used to display e.g., MCMC diagnostics. 
+2. The second level (`Samples <: ParameterDistribution`) is used for easy plotting of histograms, and applying constraints.
+3. The third level (`Dict` or `Array`) is the cleanest level of samples, and will be good for saving or applying other functions to without wrappers.
 
-As mentioned the return argument is stored in an `MCMCChains.Chains` object. To convert this back into a `ParameterDistribution` type (which contains e.g. the transformation maps) one can call
+To retrieve the `ParameterDistribution` object from the `MCMCChains.Chains` one can call
 ```julia
 posterior = get_posterior(mcmc, chain)
 constrained_posterior = transform_unconstrained_to_constrained(posterior, get_distribution(posterior))
@@ -68,17 +69,14 @@ or extract statistics of the (unconstrained) distribution with
 mean_posterior = mean(posterior)
 cov_posterior = cov(posterior)
 ```
-If one seeks to work with the parameters samples themselves as a Julia   outside of any wrappers, call
+To convert the `ParameterDistribution` to `Dict` or `Array` types, in order to work with the parameters samples outside of any wrappers, call
 ```julia
 # Dictionary-based: `Dict("param_name" => array_with_columns_as_samples)`
 posterior_samples_dict = get_distribution(posterior)
-constrained_posterior_samples_dict = transform_unconstrained_to_constrained(
-   posterior,         # could be `prior` too here, (just used to get the constraints)
-   posterior_samples_dict, 
-)
+constrained_posterior_samples_dict = transform_unconstrained_to_constrained(posterior, posterior_samples_dict)
 
 # Array-based (columns are samples)
-posterior_posterior_samples_array = reduce(vcat, [posterior_samples_dict[n] for n in get_name(posterior)])
+posterior_samples_array = reduce(vcat, [posterior_samples_dict[n] for n in get_name(posterior)])
 constrained_posterior_samples_array  = reduce(vcat, [constrained_posterior_samples_dict[n] for n in get_name(posterior)])
 ```
 
@@ -87,7 +85,10 @@ constrained_posterior_samples_array  = reduce(vcat, [constrained_posterior_sampl
 For more details on the currently available protocols:
 - `RWMHSampling()`: Random Walk Metropolis (standard). For example, see [Roberts, Gelman, Gilks (1997)](https://doi.org/10.1214/aoap/1034625254)
 - `pCNMHSampling()`: preconditioned Crank Nicholsen (dimensionally-robust) For example, see [Cotter, Roberts, Stuart, White (2013)](https://www.jstor.org/stable/43288425)
-- `BarkerSampling()` Barker proposal (derivative-based) For example, see [Livingstone, Zanella (2022)]https://doi.org/10.1111/rssb.12482). We currently have this working with two autodifferentiation packages, `ForwardDiff.jl`(default) and `ReverseDiff.jl`. One can set the autodifferentiation protocols explicitly as `BarkerSampling{ReverseDiffProtocol}()`. `ReverseDiff` is typically slower for low dimensional problems, but scales better that `ForwardDiff` for higher dimensional settings. One caveat for autodifferentiation, is the lack of Julia GP packages that support it for the `predict()` map, therefore one can only use Barker with `AGPJL()` emulators.
+- `BarkerSampling()` Barker proposal (derivative-based) For example, see [Livingstone, Zanella (2022)](https://doi.org/10.1111/rssb.12482). We currently have this working with two autodifferentiation packages, [`ForwardDiff.jl`](https://juliadiff.org/ForwardDiff.jl/stable/)(default) and [`ReverseDiff.jl`](https://juliadiff.org/ReverseDiff.jl/stable/). One can set the autodifferentiation protocols explicitly as `BarkerSampling{ReverseDiffProtocol}()`. `ReverseDiffProtocol` is typically slower for low dimensional problems, but scales better that `ForwardDiffProtocol` for higher dimensional settings.
+
+!!! warning "Differentiable samplers"
+    One caveat for differentiable samplers, is the lack of Julia emulator packages that support it for the `predict()` map, therefore one can only use e.g. `BarkerSampling` with `AGPJL()`-type  emulators.
 
 # [Further details on the implementation](@id AbstractMCMC sampling API)
 

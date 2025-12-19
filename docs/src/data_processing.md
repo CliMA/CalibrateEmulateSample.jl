@@ -1,7 +1,9 @@
 # [Data Processing and Dimension Reduction](@id data-proc)
 
 ## Overview 
-When working with high-dimensional problems with modest training data pairs, the bottleneck of CES procedure is the training of a competent emulator. It is often necessary to process and dimensionally-reduce the data to ease the learning task of the emulator. To make results as transparent and reproducible as possible we provide a flexible (and extensible!) framework to create encoders and decoders for this purpose. The framework works as follows
+When working with high-dimensional problems with modest training data pairs, the bottleneck of CES procedure is the training of a competent emulator. It is often necessary to process and dimensionally-reduce the data to ease the learning task of the emulator. To make results as transparent and reproducible as possible we provide a flexible (and extensible!) framework to create encoders and decoders for this purpose.
+
+The framework works as follows
 - An `encoder_schedule` defines the type of processing to be applied to input and/or output spaces
 - The `encoder_schedule` is passed into the `Emulator` where it is initialized and stored. Sometimes it will require additional information, passed in as `encoder_kwargs`. 
 - The encoder will be used automatically to encode training data, covariance matrices, and predictions within the Emulate and Sample routines.
@@ -12,14 +14,10 @@ An external API is also available using the `encode_data`, and `encode_structure
 ### Default schedule (no explicit dimension reduction)
 When no schedule is provided, i.e. 
 ```julia
-emulator = Emulator(
-    machine_learning_tool,       
-    input_output_pairs
-)
+emulator = Emulator(machine_learning_tool, input_output_pairs)
 ```
 The default schedule under-the-hood, is given by
 ```julia
-# No encoder_kwargs provided
 schedule = (decorrelate_sample_cov(), "in_and_out")
 ```
 If the user only provides the observational noise covariance, 
@@ -34,9 +32,12 @@ The default schedule under-the-hood, is given by
 ```
 schedule = [
     (decorrelate_sample_cov(), "in"),
-    (decorrelate_structure_mat(), "in"),
+    (decorrelate_structure_mat(), "out"), # uses obs_noise_cov
 ]
 ```
+
+!!! note "Switch encoding off"
+    To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
 
 ### Recommended schedule for PCA dimension reduction
 
@@ -49,8 +50,15 @@ encoder_schedule = [
     (decorrelate_structure_mat(retain_var = retain_var_out), "out"),
 ]
 encoder_kwargs = (; obs_noise_cov = obs_noise_cov)
+
+emulator = Emulator(
+    machine_learning_tool,       
+    input_output_pairs;
+    encoder_schedule = encoder_schedule,
+    encoder_kwargs = encoder_kwargs,
+)
 ```
-## Getting `encoder_kwargs` directly from `EnsembleKalmanProcesses` objects
+## Getting `encoder_kwargs` from `EnsembleKalmanProcesses` objects
 
 To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can also get the kwargs needed from [`Observation` and `ObservationSeries`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/) objects, as well as [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) objects used in the `EnsembleKalmanProcesses.jl` package.
 ```julia
@@ -63,7 +71,7 @@ output_kwargs = get_kwargs_from(observation_series)
 encoder_kwargs = merge(input_kwargs, output_kwargs)
 ```
 
-## Define an encoder schedule
+## Building and interpreting encoder schedules
 
 The user may provide an encoder schedule to transform data in a useful way. For example, mapping all output data each dimension to be bounded in [0,1]
 ```julia
@@ -89,8 +97,6 @@ In this (rather unrealistic) chain;
 !!! note "Default Encoder schedule"
     The current default encoder schedule applies `decorrelate_structure_mat()` if a structure matrix (input or output) is provided, else it applies `decorrelate_sample_cov()`.
 
-!!! note "Switch encoding off"
-    To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
 
 
 ## Creating an emulator with a schedule
