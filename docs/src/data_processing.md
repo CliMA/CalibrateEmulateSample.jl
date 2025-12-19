@@ -115,7 +115,7 @@ emulator = Emulator(
 Note that due to the item `(decorrelate_structure_mat(retain_var=0.95), "out")` in the schedule, we must provide an output structure matrix. In this case, we provide `obs_noise_cov`.
 
 ### Additional API
-Once created, the user does not need to worry about encoding/decoding. However, we do provide an external API that can be used to encode both new data vectors (or matrix-of-columns, and matrices,
+Once created, the user does not need to worry about encoding/decoding. However, we do provide an external API that can be used to encode both new data vectors (or matrix-of-columns), and structure matrices (i.e. covariances) for validation or error diagnosis.
 ```julia
 # encoding new data: Vector, `DataContainer`, or Matrix viewed as columns
 enc_in_data = encode_data(emulator, new_input_data, "in")
