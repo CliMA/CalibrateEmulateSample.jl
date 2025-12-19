@@ -106,15 +106,14 @@ You can also combine multiple ScikitLearn kernels via linear operations in the s
 ## [AGPJL](@id agpjl)
 
 Autodifferentiable emulators are used by our differentiable samplers. Currently the only support for autodifferentiable Gaussian process emulators in Julia (within the `predict()` method, not hyperparameter optimization) is to use `AbstractGPs.jl`. As `AbstractGPs.jl` has no optimization routines for kernels, we instead apply the following (temporary) recipe:
-- Create and optimize a `GPJL` emulator and default kernel. (here called gp_jl)
+- Create and optimize a `GPJL` emulator and default kernel.
 ```julia
-gauss_proc = GaussianProcess(GPJL(); noise_learn=true, gpjl_kwargs...) # must! use default kernel
-em = Emulator(gauss_proc, iopairs)
-optimize_hyperparmaeters!(em)
+gp_jl = GaussianProcess(GPJL(); noise_learn=true, gpjl_kwargs...) # must! use default kernel
+em = Emulator(gp_jl, iopairs)
+optimize_hyperparameters!(em) # updates gp_jl
 ```
 - Create the Kernel parameters as a vect-of-dict with
 ```julia
-opt_params = Emulators.get_params(gauss_proc)
 kernel_params = [
    Dict(
        "log_rbf_len" => model_params[1:end-2] # input-dim Vector,
@@ -123,8 +122,8 @@ kernel_params = [
    )
 for model_params in get_params(gp_jl)]
 ```
-- Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
-  - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim] Vector
+- Note: `get_params(gp_jl)` returns `output_dim`-vector where each entry is [a, b, c] with:
+  - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim]- length Vector
   - b is the `log_std_sqexp` of the SQexp kernel Float
   - c is the `log_std_noise` of the noise kernel Float
 - Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()`
