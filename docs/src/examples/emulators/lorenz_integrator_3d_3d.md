@@ -129,9 +129,17 @@ mlt = VectorRandomFeatureInterface(
 ```
 With machine learning tools specified, we build the emulator object
 ```julia
-# decorrelate = true for `GP`
-# decorrelate = false for `RF-nosvd-nonsep`
-emulator = Emulator(mlt, iopairs; obs_noise_cov = Γy, decorrelate = decorrelate) 
+# e.g., for GP we decorrelate
+encoder_schedule = (decorrelate_structure_mat(), "out")
+encoder_kwargs = (; obs_noise_cov = Γy)
+
+emulator = Emulator(
+    mlt,
+    iopairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs = encoder_kwargs,
+)              
+
 optimize_hyperparameters!(emulator) # some GP packages require this additional call 
 ```
 
