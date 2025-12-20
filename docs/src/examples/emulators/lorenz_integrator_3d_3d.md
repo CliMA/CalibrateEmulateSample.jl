@@ -90,10 +90,10 @@ end
 iopairs = PairedDataContainer(input, output)
 ```
 We have several cases the user can play with,
-```julia
-cases = ["GP", "RF-scalar", "RF-scalar-diagin", "RF-svd-nonsep", "RF-nosvd-nonsep", "RF-nosvd-sep"]
+```juliac
+cases = ["GP", "RF-prior", "RF-lr-scalar", "rf-diag-scalar", "RF-lr-lr", "RF-nonsep"]
 ```
-Then, looping over the repeats, we first define some common hyperparamter optimization options for the `"RF-"` cases. In this case, the options are used primarily for diagnostics and acceleration (not required in general to solve this problem) 
+Then, looping over the repeats, we first define some common hyperparameter optimization options for the `"RF-"` cases. In this case, the options are used primarily for diagnostics and acceleration (not required in general to solve this problem) 
 ```julia
 rf_optimizer_overrides = Dict(
     "verbose" => true, # output diagnostics from the hyperparameter optimizer
@@ -113,7 +113,7 @@ mlt = GaussianProcess(
     noise_learn = false, # do not additionally learn a white kernel
 )
 ```
-we also highlight the Vector Random Feature with nonseparable kernel (`RF-nosvd-nonsep`), this can natively handle multiple outputs without decorrelation of the output space. This kernel is a rank-3 representation with small nugget term.
+we also highlight the Vector Random Feature with nonseparable kernel (`RF-nonsep`), this can natively handle multiple outputs without decorrelation of the output space. This kernel is a rank-3 representation with small nugget term.
 ```julia
 nugget = 1e-12
 kernel_structure = NonseparableKernel(LowRankFactor(3, nugget))
@@ -164,7 +164,7 @@ For one example fit
 <img src="../../../assets/GP_l63_attr.png" width="300"><img src="../../../assets/GP_l63_pdf.png" width="300">
 ```
 
-### Random Feature Emulator (`RF-nosvd-nonsep`)
+### Random Feature Emulator (`RF-nonsep`)
 For one example fit
 ```@raw html
 <img src="../../../assets/RF-nosvd-nonsep_l63_test.png" width="600">
