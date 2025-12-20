@@ -67,7 +67,7 @@ outputs = CES.Utilities.get_outputs(input_output_pairs)
 
 # Create a data encoding to be performed on the input-output pairs
 encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]
-encoder_kwargs = (; obs_noise_cov = Γ,)
+encoder_kwargs = (; obs_noise_cov = Γ)
 
 
 # Gaussian process
@@ -78,7 +78,12 @@ gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
 
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule),  encoder_kwargs = deepcopy(encoder_kwargs))
+emulator_gp = Emulator(
+    gauss_proc,
+    input_output_pairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs = deepcopy(encoder_kwargs),
+)
 optimize_hyperparameters!(emulator_gp)
 
 # We have built the Gaussian process emulator and we can now use it for prediction. We will validate the emulator 
@@ -115,8 +120,12 @@ random_features = VectorRandomFeatureInterface(
     optimizer_options = optimizer_options,
 )
 
-emulator_random_features =
-    Emulator(random_features, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs=deepcopy(encoder_kwargs))
+emulator_random_features = Emulator(
+    random_features,
+    input_output_pairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs = deepcopy(encoder_kwargs),
+)
 optimize_hyperparameters!(emulator_random_features)
 
 
