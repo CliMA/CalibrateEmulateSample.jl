@@ -167,12 +167,12 @@ For one example fit
 ### Random Feature Emulator (`RF-nonsep`)
 For one example fit
 ```@raw html
-<img src="../../../assets/RF-nosvd-nonsep_l63_test.png" width="600">
-<img src="../../../assets/RF-nosvd-nonsep_l63_attr.png" width="300"><img src="../../../assets/RF-nosvd-nonsep_l63_pdf.png" width="300">
+<img src="../../../assets/RF-nonsep_l63_test.png" width="600">
+<img src="../../../assets/RF-nonsep_l63_attr.png" width="300"><img src="../../../assets/RF-nonsep_l63_pdf.png" width="300">
 ```
 
 and here are CDFs over 20 randomized trials of the random feature hyperparameter optimization
 ```@raw html
-<img src="../../../assets/RF-nosvd-nonsep_l63_cdfs.png" width="600">
+<img src="../../../assets/RF-nonsep_l63_cdfs.png" width="600">
 ```
 
