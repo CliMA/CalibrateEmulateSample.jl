@@ -1,10 +1,6 @@
 # CalibrateEmulateSample.jl
 
-`CalibrateEmulateSample.jl` solves parameter estimation problems using accelerated (and approximate) Bayesian inversion.
-
-The framework can be applied currently to learn:
-- the joint distribution for a moderate numbers of parameters (<40),
-- it is not inherently restricted to unimodal distributions.
+`CalibrateEmulateSample.jl` solves parameter estimation problems using accelerated (and approximate) Bayesian inversion. The framework can be applied currently to learn the joint distribution for flexible numbers of parameters, it is not inherently restricted to unimodal distributions. Please see the [example below!](@ref inv-prob-front).
 
 It can be used with computer models that:
 - can be noisy or chaotic,
@@ -19,8 +15,17 @@ y = \mathcal{G}(\theta) + \eta,
 ```
 where the noise ``\eta`` is drawn from a $d$-dimensional Gaussian with distribution ``\mathcal{N}(0, \Gamma_y)``.
 
+### Quick links
 
-### The inverse problem
+- [How do I build prior distributions?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
+- [How do I build good observational noise covariances](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)
+- [What ensemble size should I take? Which process should I use? What is the recommended configuration?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/defaults/)
+- [Where can I walk through the simple example?](@ref sinusoid-example)
+- [What is the `EnsembleKalmanProcesses.jl` package?](@ref calibrate)
+- [What are the recommendations/defaults for dimension reduction?](@ref data-proc)
+- [How to I plot or interpret the posterior distribution?](@ref get-posterior)
+
+### [The inverse problem](@id inv-prob-front)
 
 Given an observation ``y``, the computer model ``\mathcal{G}``, the observational noise ``\Gamma_y``, and some broad prior information on ``\theta``, we return the joint distribution of a data-informed distribution for "``\theta`` given ``y``".
  

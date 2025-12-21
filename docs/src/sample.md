@@ -8,7 +8,7 @@ The "sample" part of CES refers to exact sampling from the emulated posterior, i
 Carlo algorithm](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) (MCMC). Within this paradigm, we want to provide the flexibility to use multiple sampling algorithms; the approach we take is to use the general-purpose [AbstractMCMC.jl](https://turing.ml/dev/docs/for-developers/interface) API, provided by the [Turing.jl](https://turing.ml/dev/) probabilistic programming framework.
 
 
-## User interface
+## [User interface](@id sample-ui)
 
 We briefly outline an instance of how one sets up and uses MCMC within the CES package. The user first loads the MCMC module, and provides one of the Protocols (i.e. how one wishes to generate sampling proposals)
 ```julia
@@ -46,7 +46,7 @@ display(chain) # gives diagnostics
 ```
 One can see our [examples](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) for other configurations!
 
-## Interpretation and handling of the posterior samples
+## [Interpretation and handling of the posterior samples](@id get-posterior)
 
 The posterior samples are under several wrappers when returned:
 1. The first level (`MCMCChains.Chains`) is used to display e.g., MCMC diagnostics. 

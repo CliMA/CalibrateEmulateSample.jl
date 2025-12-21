@@ -1,4 +1,4 @@
-# Sinusoid Example
+# [Sinusoid Example](@id sinusoid-example)
 
 !!! info "How do I run this code?"
     The full code is found in the [`examples/`](https://github.com/CliMA/CalibrateEmulateSample.jl/tree/main/examples) directory of the github repository
