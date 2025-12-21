@@ -233,12 +233,22 @@ Optimize Gaussian process hyperparameters using in-build package method.
 Warning: if one uses `GPJL()` and wishes to modify positional arguments. The first positional argument must be the `Optim` method (default `LBGFS()`).
 """
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL}, args...; kwargs...)
+
+    if !(haskey(kwargs, :kernbounds)) # if no bounds defined
+        n_hparams=length(get_params(gp)[1])
+        low = repeat([log(1e-5)], n_hparams) # bounds provided in log space
+        high = repeat([log(1e5)], n_hparams)
+        extended_kwargs = merge((; kwargs...), (; kernbounds=(low,high), ))
+    else
+        ext_kwargs = (; kwargs...)
+    end
     N_models = length(gp.models)
+        
     for i in 1:N_models
         # always regress with noise_learn=false; if gp was created with noise_learn=true
         # we've already explicitly added noise to the kernel
 
-        optimize!(gp.models[i], args...; noise = false, kwargs...)
+        optimize!(gp.models[i], args...; noise = false, ext_kwargs...)
         println("optimized hyperparameters of GP: ", i)
         println(gp.models[i].kernel)
     end
@@ -304,7 +314,7 @@ function build_models!(
         const_value = 1.0
         var_kern = pykernels.ConstantKernel(constant_value = const_value, constant_value_bounds = (1e-5, 1e4))
         rbf_len = ones(size(input_values, 2))
-        rbf = pykernels.RBF(length_scale = rbf_len, length_scale_bounds = (1e-5, 1e4))
+        rbf = pykernels.RBF(length_scale = rbf_len, length_scale_bounds = (1e-5, 1e5))
         kern = var_kern * rbf
         println("Using default squared exponential kernel:", kern)
     else
