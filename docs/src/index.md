@@ -31,7 +31,7 @@ Given an observation ``y``, the computer model ``\mathcal{G}``, the observationa
  
 As the name suggests, `CalibrateEmulateSample.jl` breaks this problem into a sequence of three steps: calibration, emulation, and sampling. A comprehensive treatment of the calibrate-emulate-sample approach to Bayesian inverse problems can be found in [Cleary et al. (2020)](https://arxiv.org/pdf/2001.03689.pdf).
 
-### The three steps of the algorithm: see our walkthrough of the [Sinusoid Example](@ref)
+### The three steps of the algorithm: see our walkthrough of the [Sinusoid Example](@ref sinusoid-example)
 
 **Learn the vertical shift and amplitude of the signal given the noisy observation**
 ```@raw html
