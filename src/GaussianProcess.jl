@@ -238,7 +238,7 @@ function optimize_hyperparameters!(gp::GaussianProcess{GPJL}, args...; kwargs...
         n_hparams=length(get_params(gp)[1])
         low = repeat([log(1e-5)], n_hparams) # bounds provided in log space
         high = repeat([log(1e5)], n_hparams)
-        extended_kwargs = merge((; kwargs...), (; kernbounds=(low,high), ))
+        ext_kwargs = merge((; kwargs...), (; kernbounds=(low,high), ))
     else
         ext_kwargs = (; kwargs...)
     end
