@@ -111,7 +111,7 @@ using CalibrateEmulateSample.Utilities
     gp2 = GaussianProcess(gppackage; kernel = GPkernel, noise_learn = true, prediction_type = pred_type)
 
     em2 = Emulator(gp2, iopairs, encoder_schedule = [])
-    
+
     Emulators.optimize_hyperparameters!(em2)
 
     μ2, σ2² = Emulators.predict(em2, new_inputs)
@@ -195,9 +195,9 @@ using CalibrateEmulateSample.Utilities
     low2 = repeat([log(1e-4)], n_hparams2) # bounds provided in log space
     high2 = repeat([log(1e4)], n_hparams2)
     kernbounds2 = (low2, high2)
-    
-    Emulators.optimize_hyperparameters!(em4_noise_from_Σ; kernbounds=kernbounds)
-    Emulators.optimize_hyperparameters!(em4_noise_learnt; kernbounds=kernbounds2)
+
+    Emulators.optimize_hyperparameters!(em4_noise_from_Σ; kernbounds = kernbounds)
+    Emulators.optimize_hyperparameters!(em4_noise_learnt; kernbounds = kernbounds2)
 
     new_inputs = zeros(2, 4)
     new_inputs[:, 2] = [π / 2, π]
