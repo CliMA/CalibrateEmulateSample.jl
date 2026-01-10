@@ -83,6 +83,18 @@ gauss_proc = GaussianProcess(
     kernel = my_kernel )
 ```
 
+!!! note "Kernel hyperparameter bounds, and optimizer kwargs (GPJL)"
+    `Optim.jl` is used to perform optimization, and keywords are passed in to `optimize_hyperparameters!`.
+    Kernel bounds are provided by default, but can be adjusted by providing the `kernbounds` keyword. This should be formatted in accordance with `GaussianProcesses.jl` formats, for example, by using the snippet:
+    ```julia
+    using Emulators
+    n_hparams = length(Emulators.get_params(gauss_proc)[1])
+    low = repeat([log(low_bound)], n_hparams) # bounds provided in log space
+    high = repeat([log(up_bound)], n_hparams)
+    # then, having built emulator  with `gauss_proc`
+    optimize_hyperparameters!(emulator; kernbounds=(low,high))
+    ```
+
 ## SKLJL
 Alternatively if you are using the `ScikitLearn.jl` package, you can [find the list of kernels here](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process). 
 These need this preamble:
@@ -102,6 +114,13 @@ gauss_proc = GaussianProcess(
     kernel = my_kernel )
 ```
 You can also combine multiple ScikitLearn kernels via linear operations in the same way as above.
+
+!!! note "Kernel hyperparameter bounds (SKLJL)"
+    Default bounds are provided, however, bounds are adjusted by providing new kernels, for example,
+    ```julia
+    my_kernel = pykernels.RBF(length_scale = 1, length_scale_bounds=(low_bound, up_bound))
+    ```
+    
 
 ## [AGPJL](@id agpjl)
 
