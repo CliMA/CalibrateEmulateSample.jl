@@ -22,7 +22,7 @@ where the noise ``\eta`` is drawn from a $d$-dimensional Gaussian with distribut
 - [What ensemble size should I take? Which process should I use? What is the recommended configuration?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/defaults/)
 - [Where can I walk through the simple example?](@ref sinusoid-example)
 - [What is the `EnsembleKalmanProcesses.jl` package?](@ref calibrate)
-- [What are the recommendations/defaults for dimension reduction?](@ref data-proc)
+- [What are the recommendations/defaults for dimension reduction or data processing?](@ref data-proc)
 - [How to I plot or interpret the posterior distribution?](@ref get-posterior)
 
 ### [The inverse problem](@id inv-prob-front)
