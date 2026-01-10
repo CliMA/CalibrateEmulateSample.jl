@@ -126,11 +126,12 @@ for model_params in get_params(gp_jl)]
   - a is the `rbf_len`: lengthscale parameters for SEArd kernel [input_dim]- length Vector
   - b is the `log_std_sqexp` of the SQexp kernel Float
   - c is the `log_std_noise` of the noise kernel Float
-- Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()`
+- Build a new gaussian process with `AGPJL`, use same keyword arguments as with `GPJL()` and add the kernel_params kwarg into the emulator
 ```julia
-gauss_proc = GaussianProcess(AGPJL(); noise_learn=true, gpjl_kwargs...)
+agp_jl = GaussianProcess(AGPJL(); noise_learn=true, gpjl_kwargs...)
+em = Emulator(agp_jl, iopairs; kernel_params=kernel_params)
+# no call to optimize_hyperparameters
 ```
-- Build a new Emulator with kwarg: `kernel_params=kernel_params`
 
 We would be keen to see contributions to our codebase to improve this interface (or to perform hyperparameter optimization with AGP directly).
 
