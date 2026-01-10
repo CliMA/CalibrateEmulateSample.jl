@@ -235,15 +235,15 @@ Warning: if one uses `GPJL()` and wishes to modify positional arguments. The fir
 function optimize_hyperparameters!(gp::GaussianProcess{GPJL}, args...; kwargs...)
 
     if !(haskey(kwargs, :kernbounds)) # if no bounds defined
-        n_hparams=length(get_params(gp)[1])
+        n_hparams = length(get_params(gp)[1])
         low = repeat([log(1e-5)], n_hparams) # bounds provided in log space
         high = repeat([log(1e5)], n_hparams)
-        ext_kwargs = merge((; kwargs...), (; kernbounds=(low,high), ))
+        ext_kwargs = merge((; kwargs...), (; kernbounds = (low, high)))
     else
         ext_kwargs = (; kwargs...)
     end
     N_models = length(gp.models)
-        
+
     for i in 1:N_models
         # always regress with noise_learn=false; if gp was created with noise_learn=true
         # we've already explicitly added noise to the kernel
