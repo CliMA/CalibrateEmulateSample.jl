@@ -34,21 +34,30 @@ To play with the hyperparameter optimization of RF, the optimizer options someti
 ```julia
 using CalibrateEmulateSample.EnsembleKalmanProcesses # Contains `DataMisfitController`
 ```
-We have 9 cases that the user can toggle or customize
+We have several cases ofr (1) the machine learning tool, and (2) the type of data processing
 ```julia
 cases = [
     "gp-skljl",
     "gp-gpjl", # Very slow prediction...
-    "rf-scalar",
-    "rf-svd-diag",
-    "rf-svd-nondiag",
-    "rf-nosvd-diag",
-    "rf-nosvd-nondiag",
-    "rf-svd-nonsep",
-    "rf-nosvd-nonsep",
+    "rf-lr-scalar",
+    "rf-lr-lr",
+    "rf-nonsep",
 ]
+
+encoder_names = [
+    "no-proc",
+    "sample-struct-proc", # default processing
+    "sample-proc",
+    "struct-mat-proc",
+    "combined-proc",
+    "cca-proc",
+    "minmax",
+]
+# User chooses the mask vector 
+case_mask = [1, 3, 5]
+encoder_mask = [1:7] 
 ```
-The first two are for GP with either `ScikitLearn.jl` or `GaussianProcesses.jl` interface. The third is for the scalar RF interface, which most closely follows exactly replacing a GP. The rest are examples of vector RF with different types of data processing, (svd = same processing as scalar RF, nosvd = unprocessed) and different RF kernel structures in the output space of increasing complexity/flexibility (diag = Separable diagonal, nondiag = Separable nondiagonal, nonsep = nonseparable nondiagonal).
+The first two are for GP with either `ScikitLearn.jl` or `GaussianProcesses.jl` interface. The third is for the scalar RF interface, which most closely follows exactly replacing a GP. The rest are examples of vector RF with different kernels. The different encodings use different matrices to do PCA, as well as a CCA option or a simple max-scaling option.
 
 We set up the learning problem specification, defining input and output dimensions, and number of data to train on, and the function `g` and the perturbed samples `y` with correlated additive noise
 ```julia
@@ -89,8 +98,8 @@ We then build the emulators. An example for GP (`gp-skljl`)
 gppackage = SKLJL()
 # build a GP that learns an additional white noise kernel (along with the default RBF kernel)
 gaussian_process = GaussianProcess(gppackage, noise_learn = true)
-# the data processing normalizes input data, and decorrelates output data with information from Σ
-emulator = Emulator(gaussian_process, iopairs, obs_noise_cov = Σ, normalize_inputs = true) 
+encoder_kwargs = (; prior_cov = prior_cov, obs_noise_cov = Σ), 
+emulator = Emulator(gaussian_process, iopairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = encoder_kwargs) 
 ```
 An example for scalar RF (`rf-scalar`)
 ```julia
@@ -101,8 +110,7 @@ srfi = ScalarRandomFeatureInterface(
     kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor()), 
     optimizer_options = optimizer_options,
 )
-# the data processing normalizes input data, and decorrelates output data with information from Σ
-emulator = Emulator(srfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true)
+emulator = Emulator(srfi, iopairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = encoder_kwargs) 
 ```
 An example for vector RF (`rf-nosvd-nonsep`)
 ```julia
@@ -114,8 +122,8 @@ vrfi = VectorRandomFeatureInterface(
     kernel_structure = NonseparableKernel(LowRankFactor(4, nugget)),
     optimizer_options = optimizer_options,
 )
-# the data processing normalizes input data, and does not decorrelate outputs
-emulator = Emulator(vrfi, iopairs, obs_noise_cov = Σ, normalize_inputs = true, decorrelate = false)
+encoder_kwargs = (; prior_cov = prior_cov, obs_noise_cov = Σ),
+emulator = Emulator(vrfi, iopairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs = encoder_kwargs) 
 ```
 For RF and some GP packages, the training occurs during construction of the `Emulator`, however sometimes one must call an optimize step afterwards
 ```

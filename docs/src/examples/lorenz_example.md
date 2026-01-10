@@ -139,20 +139,16 @@ The calibration stage must be run before the emulate-sample stages. The calibrat
 
 ## Emulate
 
-Having run the `calibrate.jl` code to generate input-output pairs from parameters to data using `EnsembleKalmanProcesses.jl`, we will now run the Emulate and Sample stages (`emulate_sample.jl`). First, we need to define which machine learning model we will use for the emulation. We have 8 cases that the user can toggle or customize
+Having run the `calibrate.jl` code to generate input-output pairs from parameters to data using `EnsembleKalmanProcesses.jl`, we will now run the Emulate and Sample stages (`emulate_sample.jl`). First, we need to define which machine learning model we will use for the emulation. We have a few cases that the user can toggle or customize
 ```julia
 cases = [
-        "GP", # diagonalize, train scalar GP, assume diag inputs
-        "RF-scalar-diagin", # diagonalize, train scalar RF, assume diag inputs (most comparable to GP)
-        "RF-scalar", # diagonalize, train scalar RF, do not asume diag inputs
-        "RF-vector-svd-diag",
-        "RF-vector-svd-nondiag",
-        "RF-vector-nosvd-diag",
-        "RF-vector-nosvd-nondiag",
-        "RF-vector-svd-nonsep",
+    "gp-gpjl", # whiten and train scalar GP
+    "rf-lr-scalar", # whiten and train scalar-RF
+    "rf-lr-lr", # train vector-RF (separable kernel)
+    "rf-nonsep", # train vector-RF (nonseparable kernel)
 ]
 ```
-The first is for GP with `GaussianProcesses.jl` interface. The next two are for the scalar RF interface, which most closely follows exactly replacing a GP. The rest are examples of vector RF with different types of data processing, (svd = same processing as scalar RF, nosvd = unprocessed) and different RF kernel structures in the output space of increasing complexity/flexibility (diag = Separable diagonal, nondiag = Separable nondiagonal, nonsep = nonseparable nondiagonal).
+The first is for GP with `GaussianProcesses.jl` interface. The next is for the scalar RF interface, which most closely follows exactly replacing a GP. The rest are examples of vector RF with different types of RF kernel structures in the output space of increasing complexity/flexibility.
 
 The example then loads the relevant training data that was constructed in the `calibrate.jl` call. 
 ```julia 
@@ -184,10 +180,10 @@ mlt = GaussianProcess(
 ```
 which calls `GaussianProcess.jl`. In this L96 example, since we focus on learning $F_s$ and $A$, we do not need to explicitly learn the noise, so `noise_learn = false`.
 
-An example for scalar RF (`RF-scalar`)
+An example for scalar RF (`rf-lr-scalar`)
 ```julia
 n_features = 100
-kernel_structure = SeparableKernel(LowRankFactor(2, nugget), OneDimFactor())
+kernel_structure = SeparableKernel(LowRankFactor(1, nugget), OneDimFactor())
 mlt = ScalarRandomFeatureInterface(
     n_features,
     n_params,
@@ -196,7 +192,7 @@ mlt = ScalarRandomFeatureInterface(
     optimizer_options = overrides,
 )
 ```
-Optimizer options for `ScalarRandomFeature.jl` are provided throough `overrides`
+Optimizer options for `ScalarRandomFeature.jl` are provided through `overrides`
 ```julia
 overrides = Dict(
             "verbose" => true,
@@ -206,22 +202,26 @@ overrides = Dict(
         )
 # we do not want termination, as our priors have relatively little interpretation
 ```
+We define the data processing. We scale the inputs with a robust scaling in each dimension. We the whiten the output space with `Γy`, and use a truncated PCA to retain 95% of the total variance):
+```julia
+retain_var = 0.95
+encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
+encoder_kwargs = (; obs_noise_cov = Γy)
+```
 
 We then build the emulator with the parameters as defined above
 ```julia
+retain_var = 0.95
+encoder_schedule = [(quartile_scale(), "in"), (decorrelate_structure_mat(retain_var = retain_var), "out")]
 emulator = Emulator(
             mlt,
             input_output_pairs;
-            obs_noise_cov = Γy,
-            normalize_inputs = normalized,
-            standardize_outputs = standardize,
-            standardize_outputs_factors = norm_factor,
-            retained_svd_frac = retained_svd_frac,
-            decorrelate = decorrelate,
+            encoder_schedule=encoder_schedule,
+            encoder_kwargs=encoder_kwargs,
         )
 ```
 
-For RF and some GP packages, the training occurs during construction of the Emulator, however sometimes one must call an optimize step afterwards
+For RF and some GP packages, the training occurs during construction of the Emulator, however others require call an optimize step afterwards
 ```julia
 optimize_hyperparameters!(emulator)
 ```

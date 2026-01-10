@@ -36,3 +36,12 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 [dlt-url]: https://juliapkgstats.com/pkg/CalibrateEmulateSample.c
 
 
+### Quick links
+
+- [How do I build prior distributions?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
+- [How do I build good observational noise covariances](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)
+- [What ensemble size should I take? Which process should I use? What is the recommended configuration?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/defaults/)
+- [Where can I walk through the simple example?](https://clima.github.io/CalibrateEmulateSample.jl/dev/examples/sinusoid_example/)
+- [What is the `EnsembleKalmanProcesses.jl` package?](https://clima.github.io/CalibrateEmulateSample.jl/dev/calibrate/)
+- [What are the recommendations/defaults for dimension reduction or data processing?](https://clima.github.io/CalibrateEmulateSample.jl/dev/data_processing/)
+- [How to I plot or interpret the posterior distribution?](https://clima.github.io/CalibrateEmulateSample.jl/dev/sample/)

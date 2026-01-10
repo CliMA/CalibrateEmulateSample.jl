@@ -1,4 +1,4 @@
-# The Calibrate stage
+# [The Calibrate stage](@id calibrate)
 
 Calibration of the computer model entails finding an optimal parameter ``\theta^*`` that maximizes the posterior probability
 
