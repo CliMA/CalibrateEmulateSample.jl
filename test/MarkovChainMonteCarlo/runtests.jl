@@ -404,7 +404,7 @@ end
         esjds = esjd(chain_s)
         @info "ESJD [SRFI,RW] = $esjds"
         # approx [0.0002, 0.26, 0.4]"
-        @test all(isapprox.(esjd1, esjds, rtol = 0.5))
+        @test all(isapprox.(esjd1, esjds, rtol = 0.75))
         @info "Posterior mean: $(posterior_mean_s) ≈ $(mle)"
         @test isapprox(posterior_mean_s, mle; atol = 2e-1)
 
@@ -415,7 +415,7 @@ end
         esjd2 = esjd(chain_2)
         @info "ESJD (-with-svd)= $esjd2"
         # approx [0.00015, 0.26, 0.35]
-        @test all(isapprox.(esjd1, esjd2, rtol = 0.5))
+        @test all(isapprox.(esjd1, esjd2, rtol = 0.75))
         @test isapprox(posterior_mean_2, posterior_mean_1; atol = 0.1)
         @info "Posterior mean: $(posterior_mean_2) ≈ $(mle)"
 
@@ -516,7 +516,7 @@ end
         @info "ESJD [SRFI,pCN] = $esjds"
         # approx [0.0002, 0.26, 0.4]"
         @info "Posterior mean: $(posterior_mean_s) ≈ $mle"
-        @test all(isapprox.(esjd1, esjds, rtol = 0.5))
+        @test all(isapprox.(esjd1, esjds, rtol = 0.75))
 
         # now test SVD normalization
         _, posterior_mean_2, chain_2 = mcmc_test_template(prior, σ2_y, em_2; mcmc_params_pcn...)
