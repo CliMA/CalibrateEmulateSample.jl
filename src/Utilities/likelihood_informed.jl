@@ -1,0 +1,285 @@
+# included in Utilities.jl
+
+using Manifolds, Manopt
+
+export LikelihoodInformed, likelihood_informed
+
+"""
+$(TYPEDEF)
+
+Uses both input and output data to learn a subspace that allows for a reduced posterior which is close to the full posterior.
+
+Preferred construction is with the [`likelihood_informed`](@ref) method.
+
+# Fields
+$(TYPEDFIELDS)
+"""
+mutable struct LikelihoodInformed{VV1, VV2, FT <: Real} <: PairedDataContainerProcessor
+    encoder_mat::VV1
+    decoder_mat::VV2
+    apply_to::Union{Nothing, AbstractString}
+    dim_criterion::Tuple{Symbol, <:Number}
+    α::FT
+    grad_type::Symbol
+    use_data_as_samples::Bool
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Constructs the `LikelihoodInformed` struct. Keywords:
+- `retain_KL`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - retain_KL). Choose `retain_KL` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
+- `alpha`[=0.0]: the likelihood-informed data processor requires samples from the distribution ∝ π_prior(x) π_likelihood(y | x)^α with α ∈ [0, 1]. A larger α should lead to a better subspace. The parameter `alpha` selects α; for how to pass in these samples, see the `use_data_as_samples` parameter.
+- `grad_type`[=:localsl]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
+- `use_data_as_samples`[=false]: if this parameter is `true`, then the data being processed (the training data for the emulator) will be used as the samples mentioned earlier. This means that they must be from the correct distribution corresponding to the chosen `alpha`. If this parameter is `false`, then the method expects `:samples_in` and `:samples_out` structure vectors that contain the samples instead.
+"""
+function likelihood_informed(; retain_KL, alpha = 0.0, grad_type = :localsl, use_data_as_samples = false)
+    if grad_type ∉ [:linreg, :localsl]
+        @error "Unknown grad_type=$grad_type"
+    end
+
+    LikelihoodInformed([], [], nothing, (:retain_KL, retain_KL), alpha, grad_type, use_data_as_samples)
+end
+
+get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
+get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
+
+function initialize_processor!(
+    li::LikelihoodInformed,
+    in_data::MM,
+    out_data::MM,
+    ::Dict{Symbol, <:StructureMatrix},
+    output_structure_matrices::Dict{Symbol, <:StructureMatrix},
+    input_structure_vectors::Dict{Symbol, <:StructureVector},
+    output_structure_vectors::Dict{Symbol, <:StructureVector},
+    apply_to::AbstractString,
+) where {MM <: AbstractMatrix}
+    input_dim = size(in_data, 1)
+    output_dim = size(out_data, 1)
+
+    if length(get_encoder_mat(li))==0
+        α = li.α
+        y = if α ≈ 0.0
+            # For α=0, it doesn't matter what this value is, so we avoid requiring its presence
+            zeros(size(out_data, 1))
+        else
+            get_structure_vec(output_structure_vectors, :observation)
+        end
+        samples_in, samples_out = if li.use_data_as_samples
+            (in_data, out_data)
+        else
+            (
+                get_structure_vec(input_structure_vectors, :samples_in),
+                get_structure_vec(output_structure_vectors, :samples_out),
+            )
+        end
+        obs_noise_cov = Matrix(get_structure_mat(output_structure_matrices, :obs_noise_cov))
+        # We convert this to a matrix here to avoid dealing with LinearMaps.jl 
+        obs_whitened = if obs_noise_cov ≈ I
+            obs_noise_cov = I(output_dim)
+            true
+        else
+            @warn "Consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
+            false
+        end
+        noise_cov_inv = inv(obs_noise_cov)
+
+        li.apply_to = apply_to
+
+        grads = if li.grad_type == :linreg
+            grad = (samples_out .- mean(samples_out; dims = 2)) / (samples_in .- mean(samples_in; dims = 2))
+            fill(grad, size(samples_in, 2))
+        else
+            @assert li.grad_type == :localsl
+
+            map(eachcol(samples_in)) do u
+                # TODO: It might be interesting to introduce a parameter to weight this distance with.
+                #       This can be a scalar or a matrix; in the latter case, we can even use the covariance
+                #       of the samples (or the prior covariance).
+                weights = exp.(-1 / 2 * norm.(eachcol(u .- samples_in)) .^ 2)
+                weights ./= sum(weights)
+                D = Diagonal(sqrt.(weights))
+                uw = (samples_in .- sum(samples_in * Diagonal(weights); dims = 2)) * D
+                gw = (samples_out .- sum(samples_out * Diagonal(weights); dims = 2)) * D
+                gw / uw
+            end
+        end
+
+        encoder_mat = if apply_to == "in" || (α ≈ 0 && obs_whitened)
+            decomp = if apply_to == "in"
+                eigen(
+                    hermitianpart(
+                        mean(
+                            grad' *
+                            noise_cov_inv *
+                            ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)') *
+                            noise_cov_inv *
+                            grad for (g, grad) in zip(eachcol(samples_out), grads)
+                        ),
+                    ),
+                    sortby = (-),
+                )
+            else
+                @assert apply_to == "out" && α ≈ 0 && obs_whitened
+                eigen(
+                    hermitianpart(mean(grad * grad' for grad in grads)),
+                    sortby = (-),
+                )
+            end
+
+            sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
+            trunc_val = if li.dim_criterion[1] == :retain_KL
+                retain_KL = li.dim_criterion[2]
+                trunc_val = findfirst(x -> (x ≥ retain_KL), sv_cumsum)
+                isnothing(trunc_val) ? (apply_to == "in" ? input_dim : output_dim) : trunc_val
+            else
+                @assert li.dim_criterion[1] == :dimension
+                li.dim_criterion[2]
+            end
+            @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the KL divergence reduction"
+            decomp.vectors[:, 1:trunc_val]' # setting encoder mat to this (
+        else
+            @assert apply_to == "out"
+            @warn "Using LikelihoodInformed on output data with α≠0 or with obs_noise_cov≠I triggers a manifold optimization process that may take some time. If α=0, consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
+
+            k = if li.dim_criterion[1] == :retain_KL
+                1
+            else
+                @assert li.dim_criterion[1] == :dimension
+                li.dim_criterion[2]
+            end
+            Vs = nothing
+            while true
+                M = Grassmann(output_dim, k)
+
+                f =
+                    (_, Vs) -> begin
+                        prec = noise_cov_inv - Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                        tr(
+                            mean(
+                                grad' * prec * ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)') * prec * grad
+                                for (g, grad) in zip(eachcol(out_data), grads)
+                            ),
+                        )
+                    end
+                egrad =
+                    (_, Vs) -> begin
+                        B = Vs * inv(Vs' * obs_noise_cov * Vs) * Vs'
+                        prec = noise_cov_inv - B
+
+                        -2obs_noise_cov * prec * mean(
+                            begin
+                                A = ((1 - α)obs_noise_cov + α^2 * (y - g) * (y - g)')
+                                S = grad * grad'
+                                (S * prec * A + A * prec * S)
+                            end for (g, grad) in zip(eachcol(out_data), grads)
+                        ) *
+                        B *
+                        Vs
+                    end
+                rgrad = (M, Vs) -> begin
+                    (I - Vs * Vs') * egrad(M, Vs)
+                end
+
+                Vs = Matrix(qr(randn(output_dim, k)).Q)
+                quasi_Newton!(M, f, rgrad, Vs; stopping_criterion = StopWhenCostChangeLess(0.1))
+
+                if li.dim_criterion[1] == :retain_KL
+                    retain_KL = li.dim_criterion[2]
+                    ref = f(M, zeros(output_dim, 0))
+                    val = f(M, Vs)
+                    if val / ref ≤ 1 - retain_KL
+                        @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
+                        break # TODO: Start bisecting?
+                    else
+                        newk = min(2k, output_dim)
+                        @info "      increasing k from $k to $newk"
+                        k = newk
+                    end
+                else
+                    @assert li.dim_criterion[1] == :dimension
+                    ref = f(M, zeros(output_dim, 0))
+                    val = f(M, Vs)
+                    @info "    truncating at $(li.dim_criterion[2])/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
+                    break
+                end
+            end
+
+            Vs' # setting encoder mat
+        end
+        decoder_mat = encoder_mat'
+
+        # creat the linear maps:
+        # we explicitly make the encoder/decoder maps 
+        encoder_map = LinearMap(
+            x -> encoder_mat x, # Ax
+            x -> encoder_mat' * x, # A'x
+            size(encoder_mat, 1), # size(A,1)
+            size(encoder_mat, 2), # size(A,2)
+        )
+
+        decoder_map = LinearMap(
+            x -> decoder_mat * x, # Ax
+            x -> decoder_mat' * x, # A'x
+            size(decoder_mat, 1), # size(A,1)
+            size(decoder_mat', 2), # size(A,2)
+        )
+
+        push!(get_encoder_mat(dd), encoder_map)
+        push!(get_decoder_mat(dd), decoder_map)
+        
+    end
+    
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `LikelihoodInformed` encoder, on a columns-are-data matrix or a data vector
+"""
+function encode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix,AbstractVector}}
+    enc = get_encoder_mat(li)[1]
+    if isa(data, AbstractVector) 
+        return enc * data
+    else #if matrix must use mul!
+        out = zeros(size(enc, 1), size(data, 2))
+        mul!(out, enc, data)  
+        return out
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix or a data vector
+"""
+function decode_data(li::LikelihoodInformed, data::MorV) {MorV <: Union{AbstractMatrix,AbstractVector}}
+    dec = get_decoder_mat(li)[1]
+    if isa(data, AbstractVector) 
+        return dec * data
+    else #if matrix must use mul!
+        out = zeros(size(dec, 1), size(data, 2))    
+        mul!(out, dec, data)  # must use this form to get matrix output of dec*out
+        return out
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `LikelihoodInformed` encoder to a provided structure matrix
+"""
+function encode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
+    encoder_mat = get_encoder_mat(li)[1]
+    return encoder_mat * structure_matrix * encoder_mat'
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `LikelihoodInformed` decoder to a provided structure matrix
+"""
+function decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
+    decoder_mat = get_decoder_mat(li)[1]
+    return decoder_mat * structure_matrix * decoder_mat'
+end

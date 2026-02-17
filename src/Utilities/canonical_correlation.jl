@@ -181,9 +181,9 @@ initialize_processor!(
 """
 $(TYPEDSIGNATURES)
 
-Apply the `CanonicalCorrelation` encoder, on a columns-are-data matrix
+Apply the `CanonicalCorrelation` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
+function encode_data(cc::CanonicalCorrelation, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     data_mean = get_data_mean(cc)[1]
     encoder_mat = get_encoder_mat(cc)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
@@ -194,9 +194,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `CanonicalCorrelation` decoder, on a columns-are-data matrix
+Apply the `CanonicalCorrelation` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(cc::CanonicalCorrelation, data::MM) where {MM <: AbstractMatrix}
+function decode_data(cc::CanonicalCorrelation, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
     data_mean = get_data_mean(cc)[1]
     decoder_mat = get_decoder_mat(cc)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))

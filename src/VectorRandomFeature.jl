@@ -363,7 +363,8 @@ function build_models!(
     vrfi::VectorRandomFeatureInterface,
     input_output_pairs::PairedDataContainer{FT},
     input_structure_mats,
-    output_structure_mats,
+    output_structure_mats;
+    encoder_schedule = nothing,
 ) where {FT <: AbstractFloat}
 
     # get inputs and outputs 
@@ -656,7 +657,11 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
 """
-function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M) where {M <: AbstractMatrix}
+function predict(
+    vrfi::VectorRandomFeatureInterface,
+    new_inputs::M;
+    encoder_schedule = nothing,
+) where {M <: AbstractMatrix}
     input_dim = get_input_dim(vrfi)
     output_dim = get_output_dim(vrfi)
     rfm = get_rfms(vrfi)[1]

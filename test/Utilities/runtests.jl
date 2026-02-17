@@ -175,13 +175,13 @@ end
     @test get_struct_encoder_mat(QQ) == [5]
     @test get_struct_decoder_mat(QQ) == [6]
     dd = decorrelate()
-    @test get_retain_var(dd) == 1.0
+    @test get_dim_criterion(dd) == (:retain_var, 1.0)
     @test get_decorrelate_with(dd) == "combined"
     dd2 = decorrelate_sample_cov(retain_var = 0.7)
-    @test get_retain_var(dd2) == 0.7
+    @test get_dim_criterion(dd2) == (:retain_var, 0.7)
     @test get_decorrelate_with(dd2) == "sample_cov"
     dd3 = decorrelate_structure_mat(retain_var = 0.7)
-    @test get_retain_var(dd3) == 0.7
+    @test get_dim_criterion(dd3) == (:retain_var, 0.7)
     @test get_decorrelate_with(dd3) == "structure_mat"
     DD = Decorrelator([1], [2], [3], 1.0, 4, 5, (; test = 6), "test", nothing)
     @test get_data_mean(DD) == [1]
@@ -202,14 +202,22 @@ end
     @test get_decoder_mat(cc3) == [3]
     @test get_apply_to(cc3) == "test"
 
+    retain_KL = 0.87
+    li = likelihood_informed(; retain_KL)
+    @test li.dim_criterion == (:retain_KL, retain_KL)
+    @test li.α == 0
+    @test !li.use_data_as_samples
 
     # test equalities
     cc = canonical_correlation()
     cc_copy = canonical_correlation()
     dd = decorrelate()
     dd_copy = decorrelate()
+    li = likelihood_informed(; retain_KL)
+    li_copy = likelihood_informed(; retain_KL)
     @test cc == cc_copy
     @test dd == dd_copy
+    @test li == li_copy
 
     # get some data as IO pairs for functional tests
 
@@ -234,6 +242,8 @@ end
         "canonical-correlation",
         "decorrelate-structure-mat-retain-0.95-var",
         "canonical-correlation-0.95-var",
+        "likelihood-informed-lossless",
+        "likelihood-informed-lossy",
     ]
 
     # Test encodings-decodings individually
@@ -247,9 +257,18 @@ end
         (canonical_correlation(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
+        (likelihood_informed(; retain_KL = 1.0, use_data_as_samples = true), "in_and_out"),
+        (likelihood_informed(; retain_KL = 1.0, use_data_as_samples = true, alpha = 0.4), "in_and_out"),
+        (likelihood_informed(; retain_KL = 0.8, use_data_as_samples = true), "in_and_out"),
     ]
 
-    lossless = [fill(true, 6); fill(false, 4)] # are these lossless approximations? 
+    lossless = [
+        fill(true, 6)
+        fill(false, 3)
+        true
+        true
+        false
+    ] # are these lossy approximations? 
 
     # functional test pipeline
     tol = 1e-12
@@ -257,7 +276,13 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(
+                encoder_schedule,
+                io_pairs;
+                prior_cov,
+                obs_noise_cov,
+                observation = randn(out_dim),
+            )
 
         (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
             encoder_schedule,
@@ -398,7 +423,35 @@ end
     schedule2b = create_encoder_schedule(sch2b)
     @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs; prior_cov = prior_cov)
 
+    # test that likelihood_informed throws on lack of an observation when α != 0.5
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(
+        create_encoder_schedule([(
+            likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true),
+            "in_and_out",
+        )]),
+        io_pairs;
+        prior_cov = prior_cov,
+        obs_noise_cov = obs_noise_cov,
+    )
+    # it doesn't throw when we pass an observation
+    initialize_and_encode_with_schedule!(
+        create_encoder_schedule([(
+            likelihood_informed(; retain_KL = 0.9, alpha = 0.5, use_data_as_samples = true),
+            "in_and_out",
+        )]),
+        io_pairs;
+        prior_cov = prior_cov,
+        obs_noise_cov = obs_noise_cov,
+        observation = randn(out_dim),
+    )
 
+    # test that likelihood_informed throws on lack of samples when use_data_as_samples == false
+    @test_throws ArgumentError initialize_and_encode_with_schedule!(
+        create_encoder_schedule([(likelihood_informed(; retain_KL = 0.9), "in_and_out")]),
+        io_pairs;
+        prior_cov = prior_cov,
+        obs_noise_cov = obs_noise_cov,
+    )
 
     # combine a few lossless encoding schedules (lossless requires samples>dims)
     samples = 150 # for full test coverage have samples in_dim < samples < out_dim
