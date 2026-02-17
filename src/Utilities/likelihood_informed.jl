@@ -14,9 +14,9 @@ Preferred construction is with the [`likelihood_informed`](@ref) method.
 # Fields
 $(TYPEDFIELDS)
 """
-mutable struct LikelihoodInformed{FT <: Real} <: PairedDataContainerProcessor
-    encoder_mat::Union{Nothing, AbstractMatrix}
-    decoder_mat::Union{Nothing, AbstractMatrix}
+mutable struct LikelihoodInformed{VV1, VV2, FT <: Real} <: PairedDataContainerProcessor
+    encoder_mat::VV1
+    decoder_mat::VV2
     apply_to::Union{Nothing, AbstractString}
     dim_criterion::Tuple{Symbol, <:Number}
     α::FT
@@ -38,7 +38,7 @@ function likelihood_informed(; retain_KL, alpha = 0.0, grad_type = :localsl, use
         @error "Unknown grad_type=$grad_type"
     end
 
-    LikelihoodInformed(nothing, nothing, nothing, (:retain_KL, retain_KL), alpha, grad_type, use_data_as_samples)
+    LikelihoodInformed([], [], nothing, (:retain_KL, retain_KL), alpha, grad_type, use_data_as_samples)
 end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
@@ -57,7 +57,7 @@ function initialize_processor!(
     input_dim = size(in_data, 1)
     output_dim = size(out_data, 1)
 
-    if isnothing(get_encoder_mat(li))
+    if length(get_encoder_mat(li))==0
         α = li.α
         y = if α ≈ 0.0
             # For α=0, it doesn't matter what this value is, so we avoid requiring its presence
@@ -73,7 +73,8 @@ function initialize_processor!(
                 get_structure_vec(output_structure_vectors, :samples_out),
             )
         end
-        obs_noise_cov = get_structure_mat(output_structure_matrices, :obs_noise_cov)
+        obs_noise_cov = Matrix(get_structure_mat(output_structure_matrices, :obs_noise_cov))
+        # We convert this to a matrix here to avoid dealing with LinearMaps.jl 
         obs_whitened = if obs_noise_cov ≈ I
             obs_noise_cov = I(output_dim)
             true
@@ -104,7 +105,7 @@ function initialize_processor!(
             end
         end
 
-        li.encoder_mat = if apply_to == "in" || (α ≈ 0 && obs_whitened)
+        encoder_mat = if apply_to == "in" || (α ≈ 0 && obs_whitened)
             decomp = if apply_to == "in"
                 eigen(
                     hermitianpart(
@@ -136,7 +137,7 @@ function initialize_processor!(
                 li.dim_criterion[2]
             end
             @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the KL divergence reduction"
-            decomp.vectors[:, 1:trunc_val]'
+            decomp.vectors[:, 1:trunc_val]' # setting encoder mat to this (
         else
             @assert apply_to == "out"
             @warn "Using LikelihoodInformed on output data with α≠0 or with obs_noise_cov≠I triggers a manifold optimization process that may take some time. If α=0, consider using decorrelate_structure_mat to gain obs_noise_cov = I before calling likelihood_informed"
@@ -204,10 +205,31 @@ function initialize_processor!(
                 end
             end
 
-            Vs'
+            Vs' # setting encoder mat
         end
-        li.decoder_mat = li.encoder_mat'
+        decoder_mat = encoder_mat'
+
+        # creat the linear maps:
+        # we explicitly make the encoder/decoder maps 
+        encoder_map = LinearMap(
+            x -> encoder_mat x, # Ax
+            x -> encoder_mat' * x, # A'x
+            size(encoder_mat, 1), # size(A,1)
+            size(encoder_mat, 2), # size(A,2)
+        )
+
+        decoder_map = LinearMap(
+            x -> decoder_mat * x, # Ax
+            x -> decoder_mat' * x, # A'x
+            size(decoder_mat, 1), # size(A,1)
+            size(decoder_mat', 2), # size(A,2)
+        )
+
+        push!(get_encoder_mat(dd), encoder_map)
+        push!(get_decoder_mat(dd), decoder_map)
+        
     end
+    
 end
 
 """
@@ -215,9 +237,15 @@ $(TYPEDSIGNATURES)
 
 Apply the `LikelihoodInformed` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
-    encoder_mat = get_encoder_mat(li)
-    return encoder_mat * data
+function encode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix,AbstractVector}}
+    enc = get_encoder_mat(li)[1]
+    if isa(data, AbstractVector) 
+        return enc * data
+    else #if matrix must use mul!
+        out = zeros(size(enc, 1), size(data, 2))
+        mul!(out, enc, data)  
+        return out
+    end
 end
 
 """
@@ -225,9 +253,15 @@ $(TYPEDSIGNATURES)
 
 Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(li::LikelihoodInformed, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
-    decoder_mat = get_decoder_mat(li)
-    return decoder_mat * data
+function decode_data(li::LikelihoodInformed, data::MorV) {MorV <: Union{AbstractMatrix,AbstractVector}}
+    dec = get_decoder_mat(li)[1]
+    if isa(data, AbstractVector) 
+        return dec * data
+    else #if matrix must use mul!
+        out = zeros(size(dec, 1), size(data, 2))    
+        mul!(out, dec, data)  # must use this form to get matrix output of dec*out
+        return out
+    end
 end
 
 """
@@ -236,7 +270,7 @@ $(TYPEDSIGNATURES)
 Apply the `LikelihoodInformed` encoder to a provided structure matrix
 """
 function encode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
-    encoder_mat = get_encoder_mat(li)
+    encoder_mat = get_encoder_mat(li)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
@@ -246,6 +280,6 @@ $(TYPEDSIGNATURES)
 Apply the `LikelihoodInformed` decoder to a provided structure matrix
 """
 function decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
-    decoder_mat = get_decoder_mat(li)
+    decoder_mat = get_decoder_mat(li)[1]
     return decoder_mat * structure_matrix * decoder_mat'
 end

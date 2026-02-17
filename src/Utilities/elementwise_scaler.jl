@@ -205,30 +205,6 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix or a data vector
-"""
-function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
-    out = zeros(size(data))
-    enc = get_data_encoder_mat(es)[1]
-    mul!(out, enc, data)  # must use this form to get matrix output of enc*out
-    return out
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix or a data vector
-"""
-function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
-    out = zeros(size(data))
-    dec = get_data_decoder_mat(es)[1]
-    mul!(out, dec, data)  # must use this form to get matrix output of dec*out
-    return out
-end
-
-"""
-$(TYPEDSIGNATURES)
-
 Computes and populates the `shift` and `scale` fields for the `ElementwiseScaler`
 """
 initialize_processor!(
@@ -237,6 +213,39 @@ initialize_processor!(
     structure_matrices,
     structure_vectors,
 ) where {MM <: AbstractMatrix} = initialize_processor!(es, data)
+
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix or a data vector
+"""
+function encode_data(es::ElementwiseScaler, data::MorV) where {MorV <: Union{AbstractMatrix,AbstractVector}}
+    enc = get_data_encoder_mat(es)[1]
+    if isa(data, AbstractVector) 
+        return enc * data
+    else #if matrix must use mul!
+        out = zeros(size(data))
+        mul!(out, enc, data) 
+        return out
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix or a data vector
+"""
+function decode_data(es::ElementwiseScaler, data::MorV) where {MorV <: Union{AbstractMatrix,AbstractVector}}
+    dec = get_data_decoder_mat(es)[1]
+    if isa(data, AbstractVector) 
+        return dec * data
+    else #if matrix must use mul!
+        out = zeros(size(data))
+        mul!(out, dec, data)  
+        return out
+    end
+end
 
 
 """

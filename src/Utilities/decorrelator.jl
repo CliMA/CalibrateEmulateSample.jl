@@ -227,8 +227,7 @@ function initialize_processor!(
     dd::Decorrelator,
     data::MM,
     structure_matrices::Dict{Symbol, SM},
-    ::Dict{Symbol, SV},
-) where {MM <: AbstractMatrix, SM <: StructureMatrix, SV <: StructureVector}
+) where {MM <: AbstractMatrix, SM <: StructureMatrix}
     if length(get_data_mean(dd)) == 0
         push!(get_data_mean(dd), vec(mean(data, dims = 2)))
     end
@@ -367,13 +366,21 @@ function initialize_processor!(
     end
 end
 
+function initialize_processor!(
+    dd::Decorrelator,
+    data::MM,
+    structure_matrices::Dict{Symbol, SM},
+    structure_vectors,
+) where {MM <: AbstractMatrix, SM <: StructureMatrix} = intialize_processor!(dd, data, structure_matrices)
+
+
 
 """
 $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` encoder, on a columns-are-data matrix or a data vector
 """
-function encode_data(dd::Decorrelator, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
+function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
@@ -386,7 +393,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `Decorrelator` decoder, on a columns-are-data matrix or a data vector
 """
-function decode_data(dd::Decorrelator, data::MorV) where {MorV <: Union{AbstractMatrix, AbstractVector}}
+function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))
