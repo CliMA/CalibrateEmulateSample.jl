@@ -246,16 +246,16 @@ Inputs:
 function emulator_log_density_model(
     θ,
     prior::ParameterDistribution,
-    em::Emulator{FT},
+    em_or_fmw::EorFMW,
     obs_vec::AV,
-) where {FT <: AbstractFloat, AV <: AbstractVector}
+) where {AV <: AbstractVector, EorFMW <: Union{Emulator, ForwardMapWrapper}}
 
     # 
     # transform_to_real = false means g, g_cov, obs_sample are in encoded coords.
 
     # predict is written to apply to columns.
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
-    g, g_cov = Emulators.predict(em, reshape(θ, :, 1), transform_to_real = false)
+    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), transform_to_real = false)
 
     if isa(g_cov[1], Real)
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -275,11 +275,11 @@ with the MCMC, which is the role of the `DensityModel` class in the `AbstractMCM
 """
 function EmulatorPosteriorModel(
     prior::ParameterDistribution,
-    em::Emulator{FT},
+    em_or_fmw::EorFMW,
     obs_vec::AV,
-) where {FT <: AbstractFloat, AV <: AbstractVector}
+) where {AV <: AbstractVector, EorFMW <: Union{Emulator, ForwardMapWrapper}}
 
-    return AdvancedMH.DensityModel(x -> emulator_log_density_model(x, prior, em, obs_vec))
+    return AdvancedMH.DensityModel(x -> emulator_log_density_model(x, prior, em_or_fmw, obs_vec))
 end
 
 # ------------------------------------------------------------------------------------------
@@ -556,11 +556,11 @@ function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation::AMorAV,
     prior::ParameterDistribution,
-    em::Emulator;
+    em_or_fmw::EorFMW;
     init_params::AV = [],
     burnin::Int = 0,
     kwargs...,
-) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
+) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}, EorFMW <: Union{Emulator, ForwardMapWrapper}}
 
     if length(init_params) == 0
         init_params = mean(prior)
@@ -574,9 +574,9 @@ function MCMCWrapper(
     end
 
     # encoding works on columns but mcmc wants vec-of-vec
-    encoded_obs = [vec(encode_data(em, reshape(obs, :, 1), "out")) for obs in obs_slice]
+    encoded_obs = [vec(encode_data(em_or_fmw, reshape(obs, :, 1), "out")) for obs in obs_slice]
 
-    log_posterior_map = EmulatorPosteriorModel(prior, em, encoded_obs)
+    log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
@@ -603,21 +603,21 @@ function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation::OB,
     prior::PD,
-    em::EM;
+    em_or_fmw::EorFMW;
     kwargs...,
-) where {OB <: Observation, PD <: ParameterDistribution, EM <: Emulator}
-    return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em; kwargs...)
+) where {OB <: Observation, PD <: ParameterDistribution, EorFMW <: Union{Emulator,ForwardMapWrapper}}
+    return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em_or_fmw; kwargs...)
 end
 
 function MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation_series::OS,
     prior::PD,
-    em::EM;
+    em_or_fmw::EorFMW;
     kwargs...,
-) where {OS <: ObservationSeries, PD <: ParameterDistribution, EM <: Emulator}
+) where {OS <: ObservationSeries, PD <: ParameterDistribution, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     observations = [get_obs(ob) for ob in get_observations(observation_series)]
-    return MCMCWrapper(mcmc_alg, observations, prior, em; kwargs...)
+    return MCMCWrapper(mcmc_alg, observations, prior, em_or_fmw; kwargs...)
 end
 """
    $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
