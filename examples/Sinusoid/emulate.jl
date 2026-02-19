@@ -133,7 +133,7 @@ optimize_hyperparameters!(emulator_rf)
 # We also create a forward map wrapper instead of using an emulator.
 # In this way we can test our encoded sampling pipeline with the exact model.
 emulator_fm = forward_map_wrapper(
-    x -> G(x),
+    G,
     prior,
     input_output_pairs;
     encoder_schedule = deepcopy(encoder_schedule),

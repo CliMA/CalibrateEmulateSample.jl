@@ -21,6 +21,8 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
+include("sinusoid_setup.jl") # Need g to load the JLD2 file (due to the forward map saving)
+
 # Next, we need to load the emulator we built in the previous step (emulate.jl must be run before this script
 # We will start with the Gaussian process emulator.
 example_directory = @__DIR__
