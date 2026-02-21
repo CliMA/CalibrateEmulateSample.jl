@@ -37,8 +37,8 @@ Then install the dependencies by having the project use its own [Conda](https://
 This call should build Conda and Pycall. The `scikit-learn` package (along with `scipy`) then has to be installed if using a Julia project-specific Conda environment:
 
 ```
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.14.1", channel="conda-forge")'
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.5.1")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.17.0", channel="conda-forge")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
 
 ```
 !!! info "Pycall can't find the packages!?"
