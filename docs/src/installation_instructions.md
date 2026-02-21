@@ -42,7 +42,7 @@ This call should build Conda and Pycall. The `scikit-learn` package (along with 
 
 ```
 !!! info "Pycall can't find the packages!?"
-    Sometimes `Conda.jl` builds the python packages, in julia-based python repo but Pycall resorts to a different python path. (This for example happens if you update the python version with `Conda.jl`. This throws an error like:
+    Sometimes `Conda.jl` builds the python packages, in julia-based python repo but Pycall resorts to a different python path (This for example happens if you update the python version with `Conda.jl`). This throws an error like:
     ```
         ERROR: InitError: PyError (PyImport_ImportModule
 
