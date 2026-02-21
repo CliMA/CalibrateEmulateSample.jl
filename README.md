@@ -38,7 +38,7 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 
 ### Quick links
 
-- [I'm getting errors about the python dependency](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/installation_instructions/)
+- [I'm getting errors about the python dependency](https://clima.github.io/CalibrateEmulateSample.jl/dev/installation_instructions/)
 - [How do I build prior distributions?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
 - [How do I build good observational noise covariances](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)
 - [What ensemble size should I take? Which process should I use? What is the recommended configuration?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/defaults/)
