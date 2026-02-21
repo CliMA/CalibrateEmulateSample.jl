@@ -14,7 +14,6 @@ steps:
       - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
       - "julia --project -e 'using Conda; Conda.add(\"scipy=1.17.0\", channel=\"conda-forge\")'"
       - "julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.8.0\")'"
-      - "julia --project -e 'using Pkg; Pkg.build(\"PyCall\")'"
     env:
       PYTHON: ""
       
@@ -36,6 +35,7 @@ steps:
       julia --color=yes --project=examples/Lorenz -e '
         println("--- Developing Project")
         using Pkg;
+        Pkg.build("PyCall")
         Pkg.develop(path=".")
         Pkg.update()
         println("--- Instantiating Project")
@@ -61,6 +61,7 @@ steps:
         println("--- Developing Project")
         using Pkg;
         Pkg.develop(path=".")
+        Pkg.build("PyCall")
         Pkg.update()
         println("--- Instantiating Project")
         Pkg.instantiate()
