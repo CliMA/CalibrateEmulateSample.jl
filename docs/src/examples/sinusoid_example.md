@@ -31,7 +31,6 @@ y_{obs} = G(\theta) + \gamma, \qquad \gamma \sim \mathcal{N}(0, \Gamma)
 where $\Gamma$ is the observational covariance matrix. We will assume the noise to be independent for each observable, giving us a diagonal covariance matrix.
 
 
-
 # Walkthrough of code
 
 You can find the full scripts to reproduce this tutorial in `examples/Sinusoid/`. The code is split into four sections:
@@ -253,7 +252,11 @@ encoder_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat
 encoder_kwargs = (; obs_noise_cov = Γ,)
 
 # Build emulator with data
-emulator_gp = Emulator(gauss_proc, input_output_pairs; encoder_schedule = encoder_schedule, encoder_kwargs = encoder_kwargs)
+emulator_gp = Emulator(gauss_proc,
+    input_output_pairs;
+    encoder_schedule = encoder_schedule,
+    encoder_kwargs = encoder_kwargs,
+)
 optimize_hyperparameters!(emulator_gp)
 ```
 For this simple example, we already know the observational noise `Γ=0.2*I`, so we set `noise_learn = false`. 
@@ -291,8 +294,12 @@ random_features = VectorRandomFeatureInterface(
     optimizer_options = optimizer_options,
 )
 
-emulator_random_features =
-    Emulator(random_features, input_output_pairs; encoder_schedule = deepcopy(encoder_schedule), encoder_kwargs=deepcopy(encoder_kwargs))
+emulator_random_features = Emulator(
+    random_features,
+    input_output_pairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs=deepcopy(encoder_kwargs),
+)
 optimize_hyperparameters!(emulator_random_features)
 ```
 ### Emulator Validation
@@ -342,7 +349,22 @@ and the random features absolute errors are here:
 Both these error maps look similar. Importantly, we want the emulator to show the low errors in the region around the true parameter values near $\theta=(3, 6)$ (i.e, near where the EKI points converge, shown by the scatter points in
 the previous plot). This the region that we will be sampling in the next step. 
 We see low errors near here for both outputs and for both emulators. Now we have validated these emulators, 
-we will proceed the last step of CES: Sampling of the posterior distribution. 
+we will proceed the last step of CES: Sampling of the posterior distribution.
+
+## An aside, Forward map wrappre
+
+What if we run a simple case, and wish to see the emulator performance against the actual forward map sampling in the pipeline? We allow for an exact substitution by using our `ForwardMapWrapper`
+
+```julia
+emulator_fm = forward_map_wrapper(
+    G,
+    prior,
+    input_output_pairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs = deepcopy(encoder_kwargs),
+)
+```
+In this way we can test against the posterior found with the true model, which in this setting is cheap enough to run.
 
 ## Sample
 
@@ -441,9 +463,20 @@ process and we find similar results:
 | parameters        | mean   | std  |
 | :---------------- | :----: | :--: |
 | amplitude         |   2.99 | 0.21 |
-| vert_shift        |   7.06 | 4.89 |
+| vert_shift        |   7.06 | 0.48 |
 
 ![RF_2d_posterior](../assets/sinusoid_MCMC_hist_RF.png)
+
+
+### Sample with the true forward map
+
+| parameters        | mean   | std  |
+| :---------------- | :----: | :--: |
+| amplitude         |   3.00 | 0.22 |
+| vert_shift        |   7.08 | 0.44 |
+
+![FM_2d_posterior](../assets/sinusoid_MCMC_hist_FM.png)
+
 
 It is reassuring to see that our uncertainty quantification methods are robust to the different emulator
 choices here. This is because our particular GP and RF emulators showed similar accuracy during validation. 
@@ -452,3 +485,4 @@ different posterior distributions for different emulators, it is likely that the
 The kernel choices must be flexible enough to accurately capture the relationships between the inputs and outputs. 
 We recommend trying a variety of different emulator configurations and carefully considering emulator validation 
 on samples that the emulator has not been trained on. 
+
