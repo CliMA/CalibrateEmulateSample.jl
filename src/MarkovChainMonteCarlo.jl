@@ -560,7 +560,11 @@ function MCMCWrapper(
     init_params::AV = [],
     burnin::Int = 0,
     kwargs...,
-) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+) where {
+    AV <: AbstractVector,
+    AMorAV <: Union{AbstractVector, AbstractMatrix},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
 
     if length(init_params) == 0
         init_params = mean(prior)
