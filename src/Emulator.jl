@@ -33,8 +33,8 @@ abstract type MachineLearningTool end
 
 # include the different <: ML models
 
-include(joinpath("MachineLearningTools","GaussianProcess.jl")) #for GaussianProcess
-include(joinpath("MachineLearningTools","RandomFeature.jl")) # Random Freatures
+include(joinpath("MachineLearningTools", "GaussianProcess.jl")) #for GaussianProcess
+include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
 # include(joinpath("MachineLearningTools","NeuralNetwork.jl"))
 # etc.
 
@@ -116,7 +116,7 @@ $(TYPEDFIELDS)
 # Constructors:
 - `forward_map_wrapper(forward_map, prior, input_output_pairs; encoder_schedule=nothing, encoder_kwargs=NamedTuple())`
 """
-struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution} 
+struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution}
     "function that represents the forward map"
     forward_map::Function
     "a parameter distribution, containing transformations to constrain the forward map inputs"
@@ -245,7 +245,11 @@ function encode_data(
     em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+) where {
+    AS <: AbstractString,
+    MorDC <: Union{AbstractMatrix, DataContainer},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
     if isa(data, AbstractMatrix)
         return get_data(encode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
     else
@@ -258,7 +262,11 @@ $(TYPEDSIGNATURES)
 
 Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function encode_structure_matrix(em_or_fmw::EorFMW, structure_mat, in_or_out::AS) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+function encode_structure_matrix(
+    em_or_fmw::EorFMW,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return encode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
@@ -272,7 +280,11 @@ function decode_data(
     em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+) where {
+    AS <: AbstractString,
+    MorDC <: Union{AbstractMatrix, DataContainer},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
     if isa(data, AbstractMatrix)
         return get_data(decode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
     else
@@ -285,7 +297,11 @@ $(TYPEDSIGNATURES)
 
 Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function decode_structure_matrix(em_or_fmw::EorFMW, structure_mat, in_or_out::AS) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+function decode_structure_matrix(
+    em_or_fmw::EorFMW,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return decode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
@@ -372,7 +388,7 @@ function predict(
             return encoded_outputs, encoded_covariances_mat[1, :, :]
         end
     end
-    
+
 end
 
 ### Forward Map constructor and methods
@@ -383,7 +399,7 @@ function forward_map_wrapper(
     input_output_pairs::PairedDataContainer{FT};
     encoder_schedule = nothing,
     encoder_kwargs = NamedTuple(),
-    ) where {FT <: Real, PD <: ParameterDistribution}
+) where {FT <: Real, PD <: ParameterDistribution}
 
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
     if isnothing(encoder_schedule)
@@ -398,12 +414,9 @@ function forward_map_wrapper(
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)
-    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) = initialize_and_encode_with_schedule!(
-        encoder_schedule,
-        input_output_pairs;
-        encoder_kwargs...,
-    )
-    
+    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
+        initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; encoder_kwargs...)
+
     return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior)}(
         forward_map,
         prior,
@@ -440,20 +453,20 @@ function predict(
     # unlike the emulator, the forward map runs in the physical, decoded space. and must be encoded where necessary 
     prior = get_prior(fmw)
     forward_map = get_forward_map(fmw)
-    fm_unc= x-> forward_map(transform_unconstrained_to_constrained(prior, x)) 
+    fm_unc = x -> forward_map(transform_unconstrained_to_constrained(prior, x))
 
     decoded_outputs = reduce(hcat, map(fm_unc, eachcol(new_inputs))) # apply map and return: [out_dim x n_samples]
-    
+
     var_or_cov = (output_dim == 1) ? "var" : "cov"
     if transform_to_real
         # uncertainty returned is just `I` in encoded space
         decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
-        
-        decoded_covariances = zeros(eltype(decoded_outputs), output_dim, output_dim, size(decoded_outputs,2))
-        for i in 1:size(decoded_covariances,3)
+
+        decoded_covariances = zeros(eltype(decoded_outputs), output_dim, output_dim, size(decoded_outputs, 2))
+        for i in 1:size(decoded_covariances, 3)
             decoded_covariances[:, :, i] .= decoded_cov
         end
-        
+
         if output_dim > 1
             return decoded_outputs, eachslice(decoded_covariances, dims = 3)
         else
@@ -462,16 +475,16 @@ function predict(
         end
 
     else # We encode
-        encoded_outputs = Matrix(encode_data(fmw, decoded_outputs ,"out"))
-        encoded_output_dim = size(encoded_outputs,1)
+        encoded_outputs = Matrix(encode_data(fmw, decoded_outputs, "out"))
+        encoded_output_dim = size(encoded_outputs, 1)
         encoded_cov = I(encoded_output_dim)
 
         encoded_covariances_mat =
-            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_outputs,2))
-        for i in 1:size(encoded_covariances_mat,3)
+            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_outputs, 2))
+        for i in 1:size(encoded_covariances_mat, 3)
             encoded_covariances_mat[:, :, i] = encoded_cov
         end
-        
+
         if encoded_output_dim > 1
             return encoded_outputs, eachslice(encoded_covariances_mat, dims = 3)
         else
@@ -481,4 +494,4 @@ function predict(
     end
 end
 
-end 
+end

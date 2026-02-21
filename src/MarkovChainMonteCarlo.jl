@@ -560,7 +560,11 @@ function MCMCWrapper(
     init_params::AV = [],
     burnin::Int = 0,
     kwargs...,
-) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+) where {
+    AV <: AbstractVector,
+    AMorAV <: Union{AbstractVector, AbstractMatrix},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
 
     if length(init_params) == 0
         init_params = mean(prior)
@@ -605,7 +609,7 @@ function MCMCWrapper(
     prior::PD,
     em_or_fmw::EorFMW;
     kwargs...,
-) where {OB <: Observation, PD <: ParameterDistribution, EorFMW <: Union{Emulator,ForwardMapWrapper}}
+) where {OB <: Observation, PD <: ParameterDistribution, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return MCMCWrapper(mcmc_alg, get_obs(observation), prior, em_or_fmw; kwargs...)
 end
 
