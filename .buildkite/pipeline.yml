@@ -5,7 +5,7 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
-  JULIA_DEPOT_PATH: "$$BUILDKITE_BUILD_CHECKOUT_PATH/.julia"
+  JULIA_DEPOT_PATH: ".julia"
 
 steps:
 
