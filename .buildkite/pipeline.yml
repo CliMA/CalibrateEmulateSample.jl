@@ -5,7 +5,7 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
-  JULIA_DEPOT_PATH: ".julia"
+  JULIA_DEPOT_PATH: "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
   PYTHON: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
   PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin" 
   CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64"
