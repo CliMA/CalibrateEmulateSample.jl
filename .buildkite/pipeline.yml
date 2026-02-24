@@ -12,12 +12,12 @@ steps:
     command:
       - "echo $$JULIA_DEPOT_PATH"
       - "julia --project -e '
-      using Pkg
-      Pkg.instantiate(; verbose=true)
-      using Conda
-      Conda.add(\"scipy=1.17.0\", channel=\"conda-forge\")
-      Conda.add(\"scikit-learn=1.8.0\")
-      Pkg.add(\"PyCall\")
+      using Pkg;
+      Pkg.instantiate(; verbose=true);
+      using Conda;
+      Conda.add(\"scipy=1.17.0\", channel=\"conda-forge\");
+      Conda.add(\"scikit-learn=1.8.0\");
+      Pkg.add(\"PyCall\");
       Pkg.build(\"PyCall\")'"
 
     env:
