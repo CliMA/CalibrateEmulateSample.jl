@@ -6,6 +6,9 @@ env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
   JULIA_DEPOT_PATH: ".julia"
+  PYTHON: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+  PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin" 
+  CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64"
 
 steps:
 
@@ -29,7 +32,6 @@ steps:
         Pkg.add("PyCall")
 
         # Force PyCall to use Conda.jl python
-        ENV["PYTHON"] = ""
         Pkg.build("PyCall")
 
         using PyCall
@@ -59,7 +61,7 @@ steps:
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
     command: |
-      julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '
+      julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
         using Pkg
 
         println("--- Developing Project")
