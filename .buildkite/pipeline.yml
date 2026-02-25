@@ -6,17 +6,14 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
-  JULIA_DEPOT_PATH: "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default"
+  
   
 
 steps:
   - label: "Init Julia + Conda + PyCall"
     key: "init"
     command: |
-      
-      mkdir -p "$JULIA_DEPOT_PATH"
-      echo "Using depot: $JULIA_DEPOT_PATH"
-      
+      echo $$JULIA_DEPOT_PATH
       julia --project -e '
         using Pkg
 
@@ -44,6 +41,8 @@ steps:
   - label: "CES - Lorenz"
     key: "lorenz"
     command: |
+      mkdir examples/Lorenz/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
       
       julia --color=yes --project=examples/Lorenz -e '
         using Pkg
@@ -63,7 +62,9 @@ steps:
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
     command: |
-     
+      mkdir examples/Emulator/Regression_2d_2d/depot
+      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/Regression_2d_2d/depot:$JULIA_DEPOT_PATH"
+
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
         using Pkg
 
