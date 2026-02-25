@@ -5,6 +5,7 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
+  
 
 steps:
   - label: "Init Julia + Conda + PyCall"
@@ -26,7 +27,6 @@ steps:
         Conda.add("scikit-learn=1.8.0")
 
         println("---- Installing PyCall")
-        println("ENV JULIA_DEPOT_PATH = ", ENV["JULIA_DEPOT_PATH"])
         ENV["PYTHON"] = ""
         Pkg.add("PyCall")
 
