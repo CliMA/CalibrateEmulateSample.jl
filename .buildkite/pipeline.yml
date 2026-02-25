@@ -10,9 +10,9 @@ steps:
   - label: "Init Julia + Conda + PyCall"
     key: "init"
     command: |
-       export JULIA_DEPOT_PATH="${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
+      export JULIA_DEPOT_PATH="${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
   
-       echo "Using depot: $JULIA_DEPOT_PATH"
+      echo "Using depot: $JULIA_DEPOT_PATH"
 
       julia --project -e '
         using Pkg
