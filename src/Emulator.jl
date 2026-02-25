@@ -106,7 +106,7 @@ get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
 """
 $(TYPEDEF)
-This can replace an `Emulator`, but stores the original forward map. The forward map must be definable as a function `f`. To apply `f` properly this object also builds and stores an encoder `E`  and a parameter distribution (i.e. the prior) containing physical constraints `c` .
+This can replace an `Emulator`, but stores the original forward map. The forward map must be definable as a function `f`. To apply `f` properly this object also builds and stores an encoder `E`  and a parameter distribution (i.e. the prior) containing physical constraints `c`.
 
 When predict() is called this map will call `E_{out}∘f∘c(x)`
 
