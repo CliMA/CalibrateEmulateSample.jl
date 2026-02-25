@@ -5,17 +5,15 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
-  JULIA_DEPOT_PATH: "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
-  PYTHON: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
-  PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64/bin" 
-  CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3/x86_64"
 
 steps:
 
   - label: "Init Julia + Conda + PyCall"
     key: "init"
     command: |
-      echo "Using depot: $JULIA_DEPOT_PATH"
+       export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
+  
+       echo "Using depot: $JULIA_DEPOT_PATH"
 
       julia --project -e '
         using Pkg
@@ -29,6 +27,8 @@ steps:
         Conda.add("scikit-learn=1.8.0")
 
         println("---- Installing PyCall")
+        println("ENV JULIA_DEPOT_PATH = ", ENV["JULIA_DEPOT_PATH"])
+        ENV["PYTHON"] = ""
         Pkg.add("PyCall")
 
         # Force PyCall to use Conda.jl python
@@ -44,6 +44,8 @@ steps:
     key: "lorenz"
     command: |
       julia --color=yes --project=examples/Lorenz -e '
+        export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" 
+
         using Pkg
 
         println("--- Developing Project")
@@ -62,7 +64,8 @@ steps:
     key: "emulator_compare"
     command: |
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
-        using Pkg
+      export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" 
+using Pkg
 
         println("--- Developing Project")
         Pkg.develop(path=".")
