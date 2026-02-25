@@ -351,7 +351,7 @@ the previous plot). This the region that we will be sampling in the next step.
 We see low errors near here for both outputs and for both emulators. Now we have validated these emulators, 
 we will proceed the last step of CES: Sampling of the posterior distribution.
 
-## An aside, Forward map wrappre
+## An aside, Forward map wrapper
 
 What if we run a simple case, and wish to see the emulator performance against the actual forward map sampling in the pipeline? We allow for an exact substitution by using our `ForwardMapWrapper`
 
