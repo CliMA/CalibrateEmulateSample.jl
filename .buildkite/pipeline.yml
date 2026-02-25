@@ -47,6 +47,7 @@ steps:
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
       echo "PYTHON: $$PYTHON"
+      echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
       julia --color=yes --project=examples/Lorenz -e '
         using Pkg
