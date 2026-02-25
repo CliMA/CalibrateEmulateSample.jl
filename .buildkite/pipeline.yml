@@ -42,6 +42,7 @@ steps:
     key: "lorenz"
     command: |
       export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
+      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
 
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
@@ -49,9 +50,6 @@ steps:
       echo "JULIA: $$JULIA_DEPOT_PATH"
       julia --color=yes --project=examples/Lorenz -e '
         using Pkg
-        Pkg.add("PyCall")
-        Pkg.build("PyCall")
-
 
         println("--- Developing Project")
         Pkg.develop(path=".")
