@@ -7,7 +7,6 @@ env:
   GKSwstype: nul
 
 steps:
-
   - label: "Init Julia + Conda + PyCall"
     key: "init"
     command: |
