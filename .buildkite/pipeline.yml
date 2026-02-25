@@ -43,9 +43,9 @@ steps:
   - label: "CES - Lorenz"
     key: "lorenz"
     command: |
-      julia --color=yes --project=examples/Lorenz -e '
-        export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" 
+      export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" 
 
+      julia --color=yes --project=examples/Lorenz -e '
         using Pkg
 
         println("--- Developing Project")
@@ -63,9 +63,10 @@ steps:
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
     command: |
+      export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default"
+      
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
-      export JULIA_DEPOT_PATH = "${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" 
-using Pkg
+        using Pkg
 
         println("--- Developing Project")
         Pkg.develop(path=".")
