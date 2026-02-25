@@ -11,9 +11,9 @@ steps:
     key: "init"
     command: |
       export JULIA_DEPOT_PATH="${BUILDKITE_BUILD_PATH}/${BUILDKITE_PIPELINE_SLUG}/depot/default" # from ClimaAtmos
-  
+      mkdir -p "$JULIA_DEPOT_PATH"
       echo "Using depot: $JULIA_DEPOT_PATH"
-
+      
       julia --project -e '
         using Pkg
 
