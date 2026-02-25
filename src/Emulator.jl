@@ -411,6 +411,8 @@ function forward_map_wrapper(
         else
             push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
         end
+    else
+        @warn "Please note that only the output encoder is used in this implementation. \nThe input encoder will be initialized if provided, but not used during sampling, which is completed in the full parameter space."
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)
