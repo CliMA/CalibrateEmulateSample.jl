@@ -56,6 +56,9 @@ steps:
         Pkg.develop(path=".")
         Pkg.instantiate()
 
+        Pkg.add("PyCall")
+        Pkg.build("PyCall")
+        
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
@@ -83,6 +86,9 @@ steps:
         Pkg.develop(path=".")
         Pkg.instantiate()
 
+        Pkg.add("PyCall")
+        Pkg.build("PyCall")
+        
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
