@@ -14,7 +14,7 @@ using ScikitLearn
 const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
-    @info "Requirement of MachineLearningTool: scikit-learn=1.8.0, see src/GaussianProcesses.jl to change"
+    @info "Requirement of src/: scikit-learn=1.8.0, see src/GaussianProcesses.jl to change"
     copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.8.0")) 
     copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.8.0"))
 end

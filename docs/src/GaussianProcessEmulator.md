@@ -97,13 +97,13 @@ gauss_proc = GaussianProcess(
 
 ## SKLJL
 Alternatively if you are using the `ScikitLearn.jl` package, you can [find the list of kernels here](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process). 
-These need this preamble:
+These need this preamble, with the latest version of supported scikit-learn:
 ```julia
 using PyCall
 using ScikitLearn
 const pykernels = PyNULL()
 function __init__()
-    copy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.8.0")) 
 end
 ```
 Then they are accessible, for example, as
@@ -120,7 +120,9 @@ You can also combine multiple ScikitLearn kernels via linear operations in the s
     ```julia
     my_kernel = pykernels.RBF(length_scale = 1, length_scale_bounds=(low_bound, up_bound))
     ```
-    
+
+!!! note "Scikit-Learn versions"
+    Though our code is able to handle different Scikit Learn versions, it is a little cumbersome to update, and therefore we recommend you use the versions specified on the [installation instructions page](@ref install)
 
 ## [AGPJL](@id agpjl)
 

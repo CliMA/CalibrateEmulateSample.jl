@@ -1,4 +1,4 @@
-# Installation Instructions
+# [Installation Instructions](@id install)
 
 ### Installing CalibrateEmulateSample.jl
 
@@ -9,7 +9,9 @@ Currently CalibrateEmulateSample (CES) depends on some external python dependenc
     - For Python `3.11 - 3.12`: `scipy` = `1.14.1`, `scikit-learn` = `1.5.1`.
     - For Python `3.8 - 3.11`: `scipy` = `1.8.1`, `scikit-learn` = `1.1.1`.
     Please create an issue if you have had success with more up-to-date versions, and we can update this page!
-    
+
+!!! warning "To currently swap python versioning"
+    Currently, one must set `conda_pyimport` version in `src/GaussianProcess.jl`, this means that swapping packages will require a dev of our packages. 
 If you have dependencies installed already, then the code can be used by simply entering
 
 ```
