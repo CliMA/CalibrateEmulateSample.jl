@@ -1,4 +1,9 @@
 # Requirements of the script
+Versioning (of when files were saved):
+- Julia:
+- JLD2:
+- EnsembleKalmanProcesses:
+
 Files:
 - A JLD2 file containing the EKP object saved "ekp.jld2"
 - A TOML file containing the prior "priors.toml"
