@@ -41,9 +41,6 @@ steps:
   - label: "CES - Lorenz"
     key: "lorenz"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
-
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
       echo "PYTHON: $$PYTHON"
@@ -55,14 +52,15 @@ steps:
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
-
-        Pkg.add("PyCall")
-        Pkg.build("PyCall")
+        println(ENV["PYTHON"])
         
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
       '
+    env:
+      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
@@ -70,9 +68,6 @@ steps:
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
-
       mkdir examples/Emulator/Regression_2d_2d/depot
       export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/Regression_2d_2d/depot:$JULIA_DEPOT_PATH"
       echo "PYTHON: $$PYTHON"
@@ -85,13 +80,14 @@ steps:
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
+        println(ENV["PYTHON"])
 
-        Pkg.add("PyCall")
-        Pkg.build("PyCall")
-        
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
+    env:
+      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
+      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
 
     artifact_paths:
       - "examples/Emulator/Regression_2d_2d/output/*.png"
