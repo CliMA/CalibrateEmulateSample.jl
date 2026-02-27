@@ -22,8 +22,9 @@ steps:
 
         println("---- Setting up Conda")
         using Conda
-        Conda.add("scipy=1.17.0", channel="conda-forge")
-        Conda.add("scikit-learn=1.8.0")
+        Conda.add("python=3.11")
+        Conda.add("scipy=1.14.1", channel="conda-forge")
+        Conda.add("scikit-learn=1.5.1")
 
         println("---- Installing PyCall")
         ENV["PYTHON"] = ""
