@@ -6,8 +6,7 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
-  
-  
+ 
 
 steps:
   - label: "Init Julia + Conda + PyCall"
@@ -22,7 +21,7 @@ steps:
 
         println("---- Setting up Conda")
         using Conda
-        Conda.add("python=3.13")
+        Conda.add("python=3.11")
         Conda.add("scipy=1.17.1", channel="conda-forge")
         Conda.add("scikit-learn=1.8.0")
 

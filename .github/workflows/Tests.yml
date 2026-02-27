@@ -35,7 +35,7 @@ jobs:
       env:
         PYTHON: ""
       run: |
-        julia --project -e 'using Conda; Conda.add("python=3.13")'
+        julia --project -e 'using Conda; Conda.add("python=3.11")'
         julia --project -e 'using Conda; Conda.add("scipy=1.17.1")'
         julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
 
