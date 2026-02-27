@@ -1,7 +1,7 @@
 
 agents:
   queue: central
-  modules: climacommon/2024_03_18
+  modules: climacommon/2025_03_18
 
 env:
   OPENBLAS_NUM_THREADS: 1
@@ -22,9 +22,9 @@ steps:
 
         println("---- Setting up Conda")
         using Conda
-        Conda.add("python=3.11")
-        Conda.add("scipy=1.14.1", channel="conda-forge")
-        Conda.add("scikit-learn=1.5.1")
+        Conda.add("python=3.13")
+        Conda.add("scipy=1.17.1", channel="conda-forge")
+        Conda.add("scikit-learn=1.8.0")
 
         println("---- Installing PyCall")
         ENV["PYTHON"] = ""
