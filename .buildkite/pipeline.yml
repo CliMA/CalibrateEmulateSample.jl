@@ -42,7 +42,7 @@ steps:
     key: "lorenz"
     command: |
       mkdir examples/Lorenz/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$(pwd)/examples/Lorenz/depot:${JULIA_DEPOT_PATH}"
       echo "PYTHON: $$PYTHON"
       echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
@@ -59,8 +59,8 @@ steps:
         include("examples/Lorenz/emulate_sample.jl")
       '
     env:
-      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
-      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3"
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
@@ -69,7 +69,7 @@ steps:
     key: "emulator_compare"
     command: |
       mkdir examples/Emulator/Regression_2d_2d/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/Regression_2d_2d/depot:$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$(pwd)/examples/Emulator/Regression_2d_2d/depot:${JULIA_DEPOT_PATH}"
       echo "PYTHON: $$PYTHON"
       echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
@@ -86,8 +86,8 @@ steps:
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
     env:
-      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
-      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3"
 
     artifact_paths:
       - "examples/Emulator/Regression_2d_2d/output/*.png"
