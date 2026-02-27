@@ -59,8 +59,8 @@ steps:
         include("examples/Lorenz/emulate_sample.jl")
       '
     env:
-      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86-64/bin/python"
-      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86-64/"
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
@@ -86,8 +86,8 @@ steps:
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
     env:
-      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86-64/bin/python"
-      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86-64/"
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
 
     artifact_paths:
       - "examples/Emulator/Regression_2d_2d/output/*.png"
