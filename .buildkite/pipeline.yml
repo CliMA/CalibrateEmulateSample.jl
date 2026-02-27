@@ -53,7 +53,10 @@ steps:
         Pkg.develop(path=".")
         Pkg.instantiate()
         println(ENV["PYTHON"])
-        
+
+        Pkg.add("PyCall")
+        using PyCall
+        println("PyCall python = ", PyCall.python)        
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
