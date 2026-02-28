@@ -23,7 +23,7 @@ steps:
         using Conda
         Conda.add("python=3.11")
         Conda.add("scipy=1.17.1", channel="conda-forge")
-        Conda.add("scikit-learn=1.8.0")
+        Conda.add("scikit-learn=1.7.0")
 
         println("---- Installing PyCall")
         ENV["PYTHON"] = ""
@@ -46,6 +46,30 @@ steps:
       echo "PYTHON: $$PYTHON"
       echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
+
+      echo "=== GCC version ==="
+      gcc --version || true
+
+      echo "=== Julia version ==="
+      julia --version
+
+      echo "=== Julia libstdc++ CXXABI versions ==="
+      JULIA_STDCXX="$(julia -e 'print(joinpath(Sys.BINDIR,"..","lib","julia","libstdc++.so.6"))')"
+      echo "Julia libstdc++ path: $JULIA_STDCXX"
+      strings "$JULIA_STDCXX" | grep CXXABI | tail -n 5 || true
+
+      echo "=== System libstdc++ CXXABI versions ==="
+      strings /usr/lib64/libstdc++.so.6 | grep CXXABI | tail -n 5 || true
+
+      echo "=== Loaded stdc++ from inside Julia ==="
+      julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
+
+      export LD_PRELOAD=$(gcc -print-file-name=libstdc++.so.6)
+      echo "Using libstdc++ from $LD_PRELOAD"
+      
+      echo "=== Loaded stdc++ from inside Julia ==="
+      julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
+
       julia --color=yes --project=examples/Lorenz -e '
         using Pkg
 
