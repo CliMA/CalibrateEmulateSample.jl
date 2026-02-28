@@ -78,7 +78,7 @@ struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTo
     noise_learn::Bool
     "Additional observational or regularization noise in used in GP algorithms"
     alg_reg_noise::FT
-    "Prediction type (`y` to predict the data, `f` to predict the latent function)."
+    "[Deprecated - use `add_obs_noise_cov` kwarg when calling `predict(`] Prediction type (`y` to predict the data, `f` to predict the latent function)."
     prediction_type::PredictionType
     "Regularization vector for each output dimension (based on alg_reg_noise"
     regularization::VV
@@ -260,7 +260,7 @@ end
 function _predict(
     gp::GaussianProcess,
     new_inputs::AbstractMatrix{FT},
-    predict_method::Function,
+    predict_method::Function;
 ) where {FT <: AbstractFloat}
     M = length(gp.models)
     N_samples = size(new_inputs, 2)
@@ -284,11 +284,12 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) wher
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Predict means and covariances in decorrelated output space using Gaussian process models.
+Predict means and covariances in decorrelated output space using Gaussian process models. The use of stored `FType` and `YType` to control this method is deprecated, the return covariance is now determined by the `predict(` kwarg `add_obs_noise_cov` 
 """
-predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat} =
-    predict(gp, new_inputs, gp.prediction_type)
-
+function predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; add_obs_noise_cov=false, mlt_kwargs...) where {FT <: AbstractFloat}
+    pred_type= add_obs_noise_cov ? YType() : FType()
+    return predict(gp, new_inputs, pred_type)
+end    
 
 #now we build the SKLJL implementation
 function build_models!(
@@ -371,13 +372,15 @@ function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{F
     μ, σ = gp_model.predict(new_inputs', return_std = true)
     return μ, (σ .* σ)
 end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}; add_obs_noise_cov=false, mlt_kwargs...) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
 
     # for SKLJL does not return the observational noise (even if return_std = true)
     # we must add contribution depending on whether we learnt the noise or not.
-    for i in 1:size(σ2, 2)
-        σ2[:, i] = σ2[:, i] + gp.regularization
+    if add_obs_noise_cov
+        for i in 1:size(σ2, 2)
+            σ2[:, i] = σ2[:, i] + gp.regularization
+        end
     end
 
     return μ, σ2
@@ -484,7 +487,7 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: AbstractMatrix}
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; add_obs_noise_cov=false, mlt_kwargs...) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)
@@ -497,8 +500,10 @@ function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM) where {AM <: Abstra
         μ[i, :] = mean(pred)
         σ2[i, :] = var(pred)
     end
-    for i in 1:size(σ2, 2)
-        σ2[:, i] .= σ2[:, i] + gp.regularization
+    if add_obs_noise_cov
+        for i in 1:size(σ2, 2)
+            σ2[:, i] .= σ2[:, i] + gp.regularization
+        end
     end
     return μ, σ2
 end

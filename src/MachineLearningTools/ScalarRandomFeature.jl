@@ -631,6 +631,8 @@ function predict(
     srfi::ScalarRandomFeatureInterface,
     new_inputs::MM;
     multithread = "ensemble",
+    add_obs_noise_cov=false,
+    mlt_kwargs...,
 ) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))
     N_samples = size(new_inputs, 2)
@@ -653,11 +655,13 @@ function predict(
     end
 
     # add the noise contribution stored within the regularization
-    reg = get_regularization(srfi)[1]
-    reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
+    if add_obs_noise_cov
+        reg = get_regularization(srfi)[1]
+        reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
 
-    for i in 1:M
-        σ2[i, :] .+= reg_diag[i]
+        for i in 1:M
+            σ2[i, :] .+= reg_diag[i]
+        end
     end
 
     return μ, σ2

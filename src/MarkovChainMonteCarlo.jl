@@ -255,7 +255,7 @@ function emulator_log_density_model(
 
     # predict is written to apply to columns.
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
-    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), transform_to_real = false)
+    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode="out", add_obs_noise_cov=true)
 
     if isa(g_cov[1], Real)
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -577,8 +577,10 @@ function MCMCWrapper(
         eachcol(observation)
     end
 
-    # encoding works on columns but mcmc wants vec-of-vec
+    # encoding data works on columns but mcmc wants vec-of-vec
     encoded_obs = [vec(encode_data(em_or_fmw, reshape(obs, :, 1), "out")) for obs in obs_slice]
+    # encoding initial condition
+    #encoded_init_params = vec(encode_data(em_or_fmw, reshape(init_params,:,1), "in"))
 
     log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
@@ -594,6 +596,7 @@ function MCMCWrapper(
     end
 
     sample_kwargs = (; # set defaults here
+#        :initial_params => deepcopy(encoded_init_params),
         :initial_params => deepcopy(init_params),
         :param_names => param_names,
         :discard_initial => burnin,

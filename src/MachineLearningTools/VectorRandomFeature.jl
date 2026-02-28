@@ -656,7 +656,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
 """
-function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M) where {M <: AbstractMatrix}
+function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M; add_obs_noise_cov=false, mlt_kwargs...) where {M <: AbstractMatrix}
     input_dim = get_input_dim(vrfi)
     output_dim = get_output_dim(vrfi)
     rfm = get_rfms(vrfi)[1]
@@ -676,12 +676,14 @@ function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M) where {M <: 
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
     # add the noise contribution from the regularization
     # note this is because we are predicting the data here, not the latent function.
-    lambda = get_regularization(vrfi)[1]
-    for i in 1:N_samples
-        σ2[:, :, i] = 0.5 * (σ2[:, :, i] + permutedims(σ2[:, :, i], (2, 1))) + lambda
-
-        if !isposdef(σ2[:, :, i])
-            σ2[:, :, i] = posdef_correct(σ2[:, :, i])
+    if add_obs_noise_cov
+        lambda = get_regularization(vrfi)[1]
+        for i in 1:N_samples
+            σ2[:, :, i] = 0.5 * (σ2[:, :, i] + permutedims(σ2[:, :, i], (2, 1))) + lambda
+            
+            if !isposdef(σ2[:, :, i])
+                σ2[:, :, i] = posdef_correct(σ2[:, :, i])
+            end
         end
     end
     return μ, σ2
