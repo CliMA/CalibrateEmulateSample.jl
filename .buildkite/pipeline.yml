@@ -61,11 +61,14 @@ steps:
       echo "=== System libstdc++ CXXABI versions ==="
       strings /usr/lib64/libstdc++.so.6 | grep CXXABI | tail -n 5 || true
 
+      echo "=== Conda.jl's libstdc++ CXXABI version==="
+      strings ${CONDA_JL_HOME}/lib/libstdc++.so.6 | grep CXXABI
+
       echo "=== Loaded stdc++ from inside Julia ==="
       julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
 
-      export LD_PRELOAD=$(gcc -print-file-name=libstdc++.so.6)
-      echo "Using libstdc++ from $LD_PRELOAD"
+      export JULIA_USE_SYSTEM_LIBSTDCXX=1 # do not use julias libstdc++ which can be very old.
+      
       
       echo "=== Loaded stdc++ from inside Julia ==="
       julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
