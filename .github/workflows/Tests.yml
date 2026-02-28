@@ -35,9 +35,10 @@ jobs:
       env:
         PYTHON: ""
       run: |
-        julia --project -e 'using Conda; Conda.add("python=3.11")'
+        julia --project -e 'using Conda; Conda.add("python=3.13")'
         julia --project -e 'using Conda; Conda.add("scipy=1.17.1")'
         julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
+        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("Pycall")'     
 
     - name: Run Unit Tests
       env:
@@ -93,7 +94,8 @@ jobs:
         julia --project -e 'using Conda; Conda.add("python=3.13")'
         julia --project -e 'using Conda; Conda.add("scipy=1.17.1")'
         julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
-
+        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("Pycall")'
+        
     - name: Run Unit Tests
       env:
         PYTHON: ""
@@ -132,9 +134,10 @@ jobs:
       env:
         PYTHON: ""
       run: |
+        julia --project -e 'using Conda; Conda.add("python=3.13")'
         julia --project -e 'using Conda; Conda.add("scipy=1.17.0")'
         julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
-
+        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("Pycall")'     
     - name: Run Unit Tests
       env:
         PYTHON: ""
