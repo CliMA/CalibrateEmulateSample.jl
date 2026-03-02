@@ -22,8 +22,8 @@ steps:
         println("---- Setting up Conda")
         using Conda
         Conda.add("python=3.11")
-        Conda.add("scipy=1.17.1", channel="conda-forge")
-        Conda.add("scikit-learn=1.7.0")
+        Conda.add("scipy=1.14.1", channel="conda-forge")
+        Conda.add("scikit-learn=1.5.1")
 
         println("---- Installing PyCall")
         ENV["PYTHON"] = ""
@@ -47,43 +47,13 @@ steps:
       echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
 
-      echo "=== GCC version ==="
-      gcc --version || true
-
-      echo "=== Julia version ==="
-      julia --version
-
-      echo "=== Julia libstdc++ CXXABI versions ==="
-      JULIA_STDCXX="$(julia -e 'print(joinpath(Sys.BINDIR,"..","lib","julia","libstdc++.so.6"))')"
-      echo "Julia libstdc++ path: $JULIA_STDCXX"
-      strings "$JULIA_STDCXX" | grep CXXABI | tail -n 5 || true
-
-      echo "=== System libstdc++ CXXABI versions ==="
-      strings /usr/lib64/libstdc++.so.6 | grep CXXABI | tail -n 5 || true
-
-      echo "=== Conda.jl's libstdc++ CXXABI version==="
-      strings ${CONDA_JL_HOME}/lib/libstdc++.so.6 | grep CXXABI
-
-      echo "=== Loaded stdc++ from inside Julia ==="
-      julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
-
-      export JULIA_USE_SYSTEM_LIBSTDCXX=1 # do not use julias libstdc++ which can be very old.
-      
-      
-      echo "=== Loaded stdc++ from inside Julia ==="
-      julia -e 'using Libdl; println(filter(x->occursin("stdc++",x), Libdl.dllist()))'
-
       julia --color=yes --project=examples/Lorenz -e '
         using Pkg
 
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
-        println(ENV["PYTHON"])
 
-        Pkg.add("PyCall")
-        using PyCall
-        println("PyCall python = ", PyCall.python)        
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
@@ -110,8 +80,7 @@ steps:
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
-        println(ENV["PYTHON"])
-
+        
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
