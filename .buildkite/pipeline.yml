@@ -55,7 +55,7 @@ steps:
         Pkg.instantiate()
 
         println("--- Set scikit-learn version before pyimport")
-        ENV["SKLEARN_JL_VERSION"]=1.5.1
+        ENV["SKLEARN_JL_VERSION"]="1.5.1"
         
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
@@ -86,7 +86,7 @@ steps:
         Pkg.instantiate()
         
         println("--- Set scikit-learn version before pyimport")
-        ENV["SKLEARN_JL_VERSION"]=1.5.1
+        ENV["SKLEARN_JL_VERSION"]="1.5.1"
 
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")

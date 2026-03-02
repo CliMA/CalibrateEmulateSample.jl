@@ -15,7 +15,7 @@ const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
     sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.8.0")
-    @info "Default version: scikit-learn=1.8.0, to override set ENV[\"SKLEARN_JL_VERSION\"]=new-version"
+    @info "Default version: scikit-learn=1.8.0, to override with another installed version set ENV[\"SKLEARN_JL_VERSION\"]=\"new-version\"\n   Running with version $(sklearn_jl_version)"    
     copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=$(sklearn_jl_version)")) 
     copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=$(sklearn_jl_version)"))
 end

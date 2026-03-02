@@ -13,7 +13,7 @@ Currently CalibrateEmulateSample (CES) depends on some external python dependenc
 !!! warning "To currently swap python versioning"
     Currently, one must set `conda_pyimport` version for `SciKitLearn.jl` in `src/GaussianProcess.jl`, To override the current default, one should update their python/scipy/sklearn versions and additionally call
     ```
-    ENV["SKLEARN_JL_VERSION"]=X.Y.Z
+    ENV["SKLEARN_JL_VERSION"]="X.Y.Z"
     ```
     before running the script.
 
