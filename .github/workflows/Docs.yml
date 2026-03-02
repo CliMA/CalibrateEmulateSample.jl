@@ -42,6 +42,7 @@ jobs:
           julia --project -e 'using Conda; Conda.add("python=3.13")'
           julia --project -e 'using Conda; Conda.add("scipy=1.17.1")'
           julia --color=yes --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
+          julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall")'    
           julia --color=yes --project=docs/ -e 'using Pkg; Pkg.instantiate()'
           julia --color=yes --project=docs/ -e 'using Pkg; Pkg.precompile()'
       - name: Build and deploy
