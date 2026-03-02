@@ -5,14 +5,17 @@
 Currently CalibrateEmulateSample (CES) depends on some external python dependencies 
 !!! info "Latest python package versions!"
     We have verified that the configurations work:
-    - For Python `3.13`: `scipy` = `1.17.0`, `scikit-learn` = `1.8.0`
-    - For Python `3.11 - 3.12`: `scipy` = `1.14.1`, `scikit-learn` = `1.5.1`.
-    - For Python `3.8 - 3.11`: `scipy` = `1.8.1`, `scikit-learn` = `1.1.1`.
+     - For Python `3.13`: `scipy` = `1.17.0`, `scikit-learn` = `1.8.0`
+     - For Python `3.11 - 3.12`: `scipy` = `1.14.1`, `scikit-learn` = `1.5.1`. [current-default]
+     - For Python `3.8 - 3.11`: `scipy` = `1.8.1`, `scikit-learn` = `1.1.1`.
     Please create an issue if you have had success with more up-to-date versions, and we can update this page!
 
 !!! warning "To currently swap python versioning"
-    Currently, one must set `conda_pyimport` version in `src/GaussianProcess.jl`, this means that swapping packages will require a dev of our packages. 
-If you have dependencies installed already, then the code can be used by simply entering
+    Currently, one must set `conda_pyimport` version for `SciKitLearn.jl` in `src/GaussianProcess.jl`, To override the current default, one should update their python/scipy/sklearn versions and additionally call
+    ```
+    ENV["SKLEARN_JL_VERSION"]=X.Y.Z
+    ```
+    before running the script.
 
 ```
 julia --project

@@ -14,9 +14,10 @@ using ScikitLearn
 const pykernels = PyNULL()
 const pyGP = PyNULL()
 function __init__()
-    @info "Requirement of src/: scikit-learn=1.5.1, see src/GaussianProcesses.jl to change"
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.5.1")) 
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.5.1"))
+    sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.5.1")
+    @info "Default version: scikit-learn=1.5.1, to override set ENV[\"SKLEARN_JL_VERSION\"]=new-version"
+    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=$(sklearn_jl_version)")) 
+    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=$(sklearn_jl_version)"))
 end
 
 # [3] For AbstractGPs

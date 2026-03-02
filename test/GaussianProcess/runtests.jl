@@ -8,8 +8,9 @@ using LinearAlgebra
 using PyCall
 using ScikitLearn
 const pykernels = PyNULL()
-@info "Requirement of test/GaussianProcesses/runtests: scikit-learn=1.5.1, changes to this must be performed here."
-copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.5.1")) 
+sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.5.1")
+@info "Default version: scikit-learn=1.5.1, to override set ENV[\"SKLEARN_JL_VERSION\"]=new-version"
+copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=$(sklearn_jl_version)")) 
 
 
 using CalibrateEmulateSample.Emulators
