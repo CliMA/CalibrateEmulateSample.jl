@@ -54,6 +54,9 @@ steps:
         Pkg.develop(path=".")
         Pkg.instantiate()
 
+        println("--- Set scikit-learn version before pyimport")
+        ENV["SKLEARN_JL_VERSION"]=1.5.1
+        
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
@@ -77,10 +80,14 @@ steps:
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
         using Pkg
 
+
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
         
+        println("--- Set scikit-learn version before pyimport")
+        ENV["SKLEARN_JL_VERSION"]=1.5.1
+
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
