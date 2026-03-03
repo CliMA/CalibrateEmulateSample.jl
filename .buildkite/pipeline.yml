@@ -1,47 +1,69 @@
+
 agents:
   queue: central
-  modules: climacommon/2024_03_18 
-  
+  modules: climacommon/2025_03_18
+
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
+ 
 
 steps:
-  - label: "init project env"
-    key: "init_project_env"
-    command:
-      - "echo $$JULIA_DEPOT_PATH"
-      - "julia --project -e 'using Pkg; Pkg.instantiate(;verbose=true)'"
-      - "julia --project -e 'using Conda; Conda.add(\"scipy=1.14.1\", channel=\"conda-forge\")'"
-      - "julia --project -e 'using Conda; Conda.add(\"scikit-learn=1.5.1\")'"
-    env:
-      PYTHON: ""
+  - label: "Init Julia + Conda + PyCall"
+    key: "init"
+    command: |
+      echo $$JULIA_DEPOT_PATH
+      julia --project -e '
+        using Pkg
+
+        println("---- Instantiating root project")
+        Pkg.instantiate(; verbose=true)
+
+        println("---- Setting up Conda")
+        using Conda
+        Conda.add("python=3.11")
+        Conda.add("scipy=1.14.1", channel="conda-forge")
+        Conda.add("scikit-learn=1.5.1")
+
+        println("---- Installing PyCall")
+        ENV["PYTHON"] = ""
+        Pkg.add("PyCall")
+
+        # Force PyCall to use Conda.jl python
+        Pkg.build("PyCall")
+
+        using PyCall
+        println("PyCall python = ", PyCall.python)
+      '
       
-    artifact_paths: 
-      - "*.toml"
-   
   - wait
 
   - label: "CES - Lorenz"
     key: "lorenz"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
-      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64"
-
       mkdir examples/Lorenz/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Lorenz/depot:$$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$(pwd)/examples/Lorenz/depot:${JULIA_DEPOT_PATH}"
+      echo "PYTHON: $$PYTHON"
+      echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
+      echo "JULIA: $$JULIA_DEPOT_PATH"
 
       julia --color=yes --project=examples/Lorenz -e '
+        using Pkg
+
         println("--- Developing Project")
-        using Pkg;
         Pkg.develop(path=".")
-        Pkg.update()
-        println("--- Instantiating Project")
         Pkg.instantiate()
+
+        println("--- Set scikit-learn version before pyimport")
+        ENV["SKLEARN_JL_VERSION"]="1.5.1"
+        
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
-        include("examples/Lorenz/emulate_sample.jl")'
+        include("examples/Lorenz/emulate_sample.jl")
+      '
+    env:
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
 
     artifact_paths:
       - "examples/Lorenz/output/*.png"
@@ -49,28 +71,29 @@ steps:
   - label: "Emulator - regression 2D"
     key: "emulator_compare"
     command: |
-      export PYTHON="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin/python"
-      export PYTHONHOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/bin"
-      export CONDA_JL_HOME="$$JULIA_DEPOT_PATH/conda/3/x86_64/"
-
       mkdir examples/Emulator/Regression_2d_2d/depot
-      export JULIA_DEPOT_PATH="$$(pwd)/examples/Emulator/Regression_2d_2d/depot:$JULIA_DEPOT_PATH"
+      export JULIA_DEPOT_PATH="$(pwd)/examples/Emulator/Regression_2d_2d/depot:${JULIA_DEPOT_PATH}"
+      echo "PYTHON: $$PYTHON"
+      echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
+      echo "JULIA: $$JULIA_DEPOT_PATH"
+      
+      julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
+        using Pkg
 
-      julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '
+
         println("--- Developing Project")
-        using Pkg;
         Pkg.develop(path=".")
-        Pkg.update()
-        println("--- Instantiating Project")
         Pkg.instantiate()
+        
+        println("--- Set scikit-learn version before pyimport")
+        ENV["SKLEARN_JL_VERSION"]="1.5.1"
+
         println("+++ Running compare_regression")
-        include("examples/Emulator/Regression_2d_2d/compare_regression.jl")'
+        include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
+      '
+    env:
+      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
+      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
+
     artifact_paths:
       - "examples/Emulator/Regression_2d_2d/output/*.png"
-    env:
-      PYTHON: "$$JULIA_DEPOT_PATH/conda/3/bin/python"
-      PYTHONHOME: "$$JULIA_DEPOT_PATH/conda/3/bin"
-      CONDA_JL_HOME: "$$JULIA_DEPOT_PATH/conda/3"
- 
-
-

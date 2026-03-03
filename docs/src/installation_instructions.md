@@ -1,15 +1,21 @@
-# Installation Instructions
+# [Installation Instructions](@id install)
 
 ### Installing CalibrateEmulateSample.jl
 
 Currently CalibrateEmulateSample (CES) depends on some external python dependencies 
 !!! info "Latest python package versions!"
     We have verified that the configurations work:
-    For Python `3.11 - 3.12`: `scipy` = `1.14.1`, `scikit-learn` = `1.5.1`.
-    For Python `3.8 - 3.11`: `scipy` = `1.8.1`, `scikit-learn` = `1.1.1`.
+     - For Python `3.13`: `scipy` = `1.17.0`, `scikit-learn` = `1.8.0` [current-default]
+     - For Python `3.11 - 3.12`: `scipy` = `1.14.1`, `scikit-learn` = `1.5.1`. 
+     - For Python `3.8 - 3.11`: `scipy` = `1.8.1`, `scikit-learn` = `1.1.1`.
     Please create an issue if you have had success with more up-to-date versions, and we can update this page!
-    
-If you have dependencies installed already, then the code can be used by simply entering
+
+!!! warning "To currently swap python versioning"
+    Currently, one must set `conda_pyimport` version for `SciKitLearn.jl` in `src/GaussianProcess.jl`. To override the current default, one should update their python/scipy/sklearn versions and additionally call
+    ```
+    ENV["SKLEARN_JL_VERSION"]="X.Y.Z"
+    ```
+    before running the script.
 
 ```
 julia --project
@@ -36,12 +42,12 @@ Then install the dependencies by having the project use its own [Conda](https://
 This call should build Conda and Pycall. The `scikit-learn` package (along with `scipy`) then has to be installed if using a Julia project-specific Conda environment:
 
 ```
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.14.1", channel="conda-forge")'
-> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.5.1")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scipy=1.17.0", channel="conda-forge")'
+> PYTHON="" julia --project -e 'using Conda; Conda.add("scikit-learn=1.8.0")'
 
 ```
 !!! info "Pycall can't find the packages!?"
-    Sometimes `Conda.jl` builds the python packages, in julia-based python repo but Pycall resorts to a different python path. this throws an error like:
+    Sometimes `Conda.jl` builds the python packages, in julia-based python repo but Pycall resorts to a different python path (This for example happens if you update the python version with `Conda.jl`). This throws an error like:
     ```
         ERROR: InitError: PyError (PyImport_ImportModule
 
@@ -49,6 +55,7 @@ This call should build Conda and Pycall. The `scikit-learn` package (along with 
     ```
     In this case, simply call `julia --project` followed by
     ```julia
+    julia> using Pkg
     julia> ENV["PYTHON"]=""
     julia> Pkg.build("PyCall")
     julia> exit()
