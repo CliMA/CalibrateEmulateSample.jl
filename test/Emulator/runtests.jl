@@ -11,6 +11,7 @@ using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
+using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
 #build an unknown type
 struct MLTester <: Emulators.MachineLearningTool end
 
@@ -19,9 +20,10 @@ struct MLTester <: Emulators.MachineLearningTool end
     m = 50
     d = 6
     p = 10
-    x = rand(p, m) #R^3
-    y = rand(d, m) #R^6
-
+    x = rand(p, m) 
+    g = randn(d, p) 
+    y = g*x
+    
     # "noise"
     μ = zeros(d)
     Σ = rand(d, d)
@@ -88,3 +90,50 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test get_encoder_schedule(em1) == enc_sch1
 
 end
+
+@testset "Emulators" begin
+    #build some quick data + noise
+    m = 50
+    d = 6
+    p = 10
+    prior = constrained_gaussian("10d_pos", 1, 0.5, 0, Inf, repeats=p)  
+    x = sample(prior,m) # p x m (sampled in unconstrained space)
+    g = randn(d, p)
+    G(x) = g*log.(x)  # can only be applied to positive constrained x
+    y = reduce(hcat, G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x)) # d x m
+    
+    # "noise"
+    μ = zeros(d)
+    Σ = rand(d, d)
+    Σ = Σ' * Σ
+    noise_samples = rand(MvNormal(μ, Σ), m)
+    y += noise_samples
+
+    io_pairs = PairedDataContainer(x, y, data_are_columns = true)
+    
+    # Test forward map wrapper with default encoding
+    fmw = forward_map_wrapper(G,prior,io_pairs)
+    @test get_forward_map(fmw) == G
+    @test get_prior(fmw) == prior
+    @test get_io_pairs(fmw) == io_pairs
+    
+    default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
+    enc_sch = create_encoder_schedule(default_encoder)
+    enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs; obs_noise_cov = 1.0 * I)
+    tol = 1e-12
+    @test get_encoder_schedule(fmw) == enc_sch # inputs: proc
+    @test all(isapprox.(get_inputs(get_encoded_io_pairs(fmw)), get_inputs(enc_io_pairs), atol = tol))
+    @test all(isapprox.(get_outputs(get_encoded_io_pairs(fmw)), get_outputs(enc_io_pairs), atol = tol))
+    @test isempty(enc_I_in)
+
+    # test some predictions
+    x_test = sample(prior, m) 
+    y_test = reduce(hcat,G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
+
+    y_pred, y_cov = predict(fmw, x_test; transform_to_real = true) 
+    @test all(isapprox(norm(y_pred-y_test),0; atol=sqrt(d*m)*tol))
+    sample_Σ = decode_structure_matrix(fmw, I, "out")
+    @test all(isapprox(norm(sample_Σ-yc),0; atol=d*tol) for yc in y_cov)
+    
+end
+end 
