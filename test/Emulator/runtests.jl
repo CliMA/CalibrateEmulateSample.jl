@@ -140,6 +140,6 @@ end
     y_pred_enc, y_cov_enc = predict(fmw, x_test; transform_to_real = false) 
     y_test_enc = encode_data(fmw, y_test, "out")
     @test all(isapprox(norm(y_pred_enc-y_test_enc),0; atol=sqrt(d*m)*tol))
-    @test_throws predict(fmw, x_test'; transform_to_real = true) 
+    @test_throws ArgumentError predict(fmw, x_test'; transform_to_real = true) 
     
 end
