@@ -13,7 +13,7 @@ using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
 
-const PD = CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
+const PD = ParameterDistributions
 #build an unknown type
 struct MLTester <: Emulators.MachineLearningTool end
 
@@ -122,7 +122,7 @@ end
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
     enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs; obs_noise_cov = 1.0 * I)
-    tol = 1e-12
+    tol = 1e-14
     @test get_encoder_schedule(fmw) == enc_sch # inputs: proc
     @test all(isapprox.(get_inputs(get_encoded_io_pairs(fmw)), get_inputs(enc_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(get_encoded_io_pairs(fmw)), get_outputs(enc_io_pairs), atol = tol))
@@ -136,5 +136,10 @@ end
     @test all(isapprox(norm(y_pred-y_test),0; atol=sqrt(d*m)*tol))
     sample_Σ = decode_structure_matrix(fmw, I, "out")
     @test all(isapprox(norm(sample_Σ-yc),0; atol=d*tol) for yc in y_cov)
+
+    y_pred_enc, y_cov_enc = predict(fmw, x_test; transform_to_real = false) 
+    y_test_enc = encode_data(fmw, y_test, "out")
+    @test all(isapprox(norm(y_pred_enc-y_test_enc),0; atol=sqrt(d*m)*tol))
+    @test_throws predict(fmw, x_test'; transform_to_real = true) 
     
 end
