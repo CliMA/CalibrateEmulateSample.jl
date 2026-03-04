@@ -12,6 +12,8 @@ using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
+
+const PD = CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
 #build an unknown type
 struct MLTester <: Emulators.MachineLearningTool end
 
@@ -97,7 +99,7 @@ end
     d = 6
     p = 10
     prior = constrained_gaussian("10d_pos", 1, 0.5, 0, Inf, repeats=p)  
-    x = sample(prior,m) # p x m (sampled in unconstrained space)
+    x = PD.sample(prior,m) # p x m (sampled in unconstrained space)
     g = randn(d, p)
     G(x) = g*log.(x)  # can only be applied to positive constrained x
     y = reduce(hcat, G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x)) # d x m
@@ -127,7 +129,7 @@ end
     @test isempty(enc_I_in)
 
     # test some predictions
-    x_test = sample(prior, m) 
+    x_test = PD.sample(prior, m) 
     y_test = reduce(hcat,G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
 
     y_pred, y_cov = predict(fmw, x_test; transform_to_real = true) 
