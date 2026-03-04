@@ -1,3 +1,4 @@
+
 include("MWE.jl")
 
 # Import modules
@@ -14,6 +15,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
 
 const PD = ParameterDistributions
+const EM = Emulators
 #build an unknown type
 struct MLTester <: Emulators.MachineLearningTool end
 
@@ -128,18 +130,18 @@ end
     @test all(isapprox.(get_outputs(get_encoded_io_pairs(fmw)), get_outputs(enc_io_pairs), atol = tol))
     @test isempty(enc_I_in)
 
-    # test some predictions
+    # test some predictons
     x_test = PD.sample(prior, m) 
     y_test = reduce(hcat,G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
 
-    y_pred, y_cov = predict(fmw, x_test; transform_to_real = true) 
+    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true) 
     @test all(isapprox(norm(y_pred-y_test),0; atol=sqrt(d*m)*tol))
     sample_Σ = decode_structure_matrix(fmw, I, "out")
     @test all(isapprox(norm(sample_Σ-yc),0; atol=d*tol) for yc in y_cov)
 
-    y_pred_enc, y_cov_enc = predict(fmw, x_test; transform_to_real = false) 
+    y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; transform_to_real = false) 
     y_test_enc = encode_data(fmw, y_test, "out")
     @test all(isapprox(norm(y_pred_enc-y_test_enc),0; atol=sqrt(d*m)*tol))
-    @test_throws ArgumentError predict(fmw, x_test'; transform_to_real = true) 
+    @test_throws ArgumentError EM.predict(fmw, x_test'; transform_to_real = true) 
     
 end
