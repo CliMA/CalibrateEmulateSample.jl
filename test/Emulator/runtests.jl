@@ -136,4 +136,3 @@ end
     @test all(isapprox(norm(sample_Σ-yc),0; atol=d*tol) for yc in y_cov)
     
 end
-end 
