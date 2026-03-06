@@ -318,9 +318,10 @@ Return type of N inputs: (in the output space)
 function predict(
     emulator::Emulator{FT},
     new_inputs::AM;
-    transform_to_real = false,
+    encode = nothing, # maps decoded inputs to decoded outputs
     mlt_kwargs...,
 ) where {FT <: AbstractFloat, AM <: AbstractMatrix}
+
     # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
@@ -335,8 +336,17 @@ function predict(
         )
     end
 
+    # note the logic below
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∈ ["out", "in_and_out"]
+
+
     # encode the new input data
-    encoded_inputs = encode_data(emulator, new_inputs, "in")
+    if !in_already_encoded
+        encoded_inputs = encode_data(emulator, new_inputs, "in")
+    else
+        encoded_inputs = new_inputs
+    end
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
@@ -346,7 +356,7 @@ function predict(
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
     # return decoded or encoded?
-    if transform_to_real
+    if out_to_be_decoded
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
 
         decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
@@ -433,7 +443,8 @@ end
 function predict(
     fmw::FMW,
     new_inputs::AM;
-    transform_to_real = false,
+    encode = nothing, # maps decoded inputs to decoded outputs
+    add_obs_noise_cov = false,
 ) where {FMW <: ForwardMapWrapper, AM <: AbstractMatrix}
     # Check if the size of new_inputs is consistent with the training input data
     input_dim, output_dim = size(get_io_pairs(fmw), 1)
@@ -449,6 +460,15 @@ function predict(
         )
     end
 
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∈ ["out", "in_and_out"]
+    #need to boost to decoded inputs
+    if in_already_encoded
+        # Sample from the null space
+        decoded_inputs = ...
+    else
+        decoded_inputs = new_inputs
+    end
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
 
@@ -457,10 +477,10 @@ function predict(
     forward_map = get_forward_map(fmw)
     fm_unc = x -> forward_map(transform_unconstrained_to_constrained(prior, x))
 
-    decoded_outputs = reduce(hcat, map(fm_unc, eachcol(new_inputs))) # apply map and return: [out_dim x n_samples]
+    decoded_outputs = reduce(hcat, map(fm_unc, eachcol(decoded_inputs))) # apply map and return: [out_dim x n_samples]
 
     var_or_cov = (output_dim == 1) ? "var" : "cov"
-    if transform_to_real
+    if out_to_be_decoded
         # uncertainty returned is just `I` in encoded space
         decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
 
@@ -494,6 +514,42 @@ function predict(
             return encoded_outputs, encoded_covariances_mat[1, :, :]
         end
     end
+end
+
+
+### Deprecated keywords
+
+function predict(
+    em_or_fmw::EorFMW,
+    new_inputs::AM;
+    transform_to_real = nothing,
+    kwargs...,
+) where {AM <: AbstractMatrix, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+
+    if !isnothing(transform_to_real)
+        Base.depwarn(
+            """`transform_to_real` keyword is deprecated. Please use the `encode` and `add_obs_noise_cov` keywords instead.
+            
+Recommended usage for users is now set by default as:
+ - `encode=nothing`, `add_obs_noise_cov=false`
+This behaviour takes in non-encoded inputs, and returns non-encoded outputs. It gives only the uncertainty from the Machine Learning Tool (not inflated by observational noise)
+
+This simulation will continue with the old behavior:
+ - `transform_to_real=true` replaced with `encode=nothing, add_obs_noise_cov=true`
+ - `transform_to_real=false` replaced with `encode="out", add_obs_noise_cov=true`
+    """,
+            :predict,
+        )
+
+        # modify kwargs
+        kw = Dict(kwargs)
+        kw[:add_obs_noise_cov] = true
+        kw[:encode] = transform_to_real ? nothing : "out"
+        predict(em_or_fmw, new_inputs; kw...)
+    end
+
+    return predict(em_or_fmw, new_inputs; kwargs...)
+
 end
 
 end
