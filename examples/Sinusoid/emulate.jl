@@ -77,6 +77,7 @@ gppackage = Emulators.GPJL()
 gauss_proc = Emulators.GaussianProcess(gppackage, noise_learn = false)
 
 
+
 # Build emulator with data
 emulator_gp = Emulator(
     gauss_proc,
@@ -120,13 +121,24 @@ random_features = VectorRandomFeatureInterface(
     optimizer_options = optimizer_options,
 )
 
-emulator_random_features = Emulator(
+emulator_rf = Emulator(
     random_features,
     input_output_pairs;
     encoder_schedule = deepcopy(encoder_schedule),
     encoder_kwargs = deepcopy(encoder_kwargs),
 )
-optimize_hyperparameters!(emulator_random_features)
+optimize_hyperparameters!(emulator_rf)
+
+
+# We also create a forward map wrapper instead of using an emulator.
+# In this way we can test our encoded sampling pipeline with the exact model.
+emulator_fm = forward_map_wrapper(
+    G,
+    prior,
+    input_output_pairs;
+    encoder_schedule = deepcopy(encoder_schedule),
+    encoder_kwargs = deepcopy(encoder_kwargs),
+)
 
 
 ## Emulator Validation
@@ -155,19 +167,27 @@ g_true_grid = reshape(g_true, (output_dim, N_grid, N_grid))
 
 # Next, predict with emulators. We first need to transform to the unconstrained space.
 input_grid_unconstrained = Emulators.transform_constrained_to_unconstrained(prior, input_grid)
+
 gp_mean, gp_cov = Emulators.predict(emulator_gp, input_grid_unconstrained, transform_to_real = true)
-rf_mean, rf_cov = Emulators.predict(emulator_random_features, input_grid_unconstrained, transform_to_real = true)
+rf_mean, rf_cov = Emulators.predict(emulator_rf, input_grid_unconstrained, transform_to_real = true)
+fm_mean, fm_cov = Emulators.predict(emulator_fm, input_grid_unconstrained; transform_to_real = true)
+
 
 # Reshape into (output_dim x 50 x 50) grid
 output_dim = 2
 gp_grid = reshape(gp_mean, (output_dim, N_grid, N_grid))
 rf_grid = reshape(rf_mean, (output_dim, N_grid, N_grid))
+fm_grid = reshape(fm_mean, (output_dim, N_grid, N_grid))
 
 # Convert cov matrix into std and reshape
 gp_std = [sqrt.(diag(gp_cov[j])) for j in 1:length(gp_cov)]
 gp_std_grid = reshape(permutedims(reduce(vcat, [x' for x in gp_std]), (2, 1)), (output_dim, N_grid, N_grid))
 rf_std = [sqrt.(diag(rf_cov[j])) for j in 1:length(rf_cov)]
 rf_std_grid = reshape(permutedims(reduce(vcat, [x' for x in rf_std]), (2, 1)), (output_dim, N_grid, N_grid))
+
+fm_std = [sqrt.(diag(fm_cov[j])) for j in 1:length(fm_cov)]
+fm_std_grid = reshape(permutedims(reduce(vcat, [x' for x in fm_std]), (2, 1)), (output_dim, N_grid, N_grid))
+
 
 ## Plot
 # First, we will plot the ground truth. We have 2 parameters and 2 outputs, so we will create a contour plot 
@@ -277,6 +297,43 @@ p = plot(
 )
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_contours.png"))
 
+# Plot FM emulator contours
+p1 = contour(
+    amp_range,
+    vshift_range,
+    fm_grid[1, :, :];
+    fill = true,
+    clims = range_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM Sinusoid Range",
+)
+plot!(inputs[1, :], inputs[2, :]; seriestype = :scatter, zcolor = outputs[1, :], label = :false)
+p2 = contour(
+    amp_range,
+    vshift_range,
+    fm_grid[2, :, :];
+    fill = true,
+    clims = mean_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM Sinusoid Mean",
+)
+plot!(inputs[1, :], inputs[2, :]; seriestype = :scatter, zcolor = outputs[2, :], label = :false)
+p = plot(
+    p1,
+    p2,
+    right_margin = 3mm,
+    bottom_margin = 3mm,
+    size = (600, 300),
+    layout = (1, 2),
+    guidefontsize = 12,
+    tickfontsize = 10,
+    legendfontsize = 10,
+)
+savefig(p, joinpath(data_save_directory, "sinusoid_FM_emulator_contours.png"))
+
+
 # Both the GP and RF emulator give similar results to the ground truth G(θ), indicating they are correctly
 # learning the relationships between the parameters and the outputs. We also see the contours agree with the 
 # colors of the training data points. 
@@ -347,6 +404,34 @@ p2 = contour(
 )
 p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfontsize = 10, legendfontsize = 10)
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_emulator_std_contours.png"))
+
+# Plot FM std estimates
+p1 = contour(
+    amp_range,
+    vshift_range,
+    fm_std_grid[1, :, :];
+    c = :cividis,
+    fill = true,
+    clims = range_std_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM 1σ in Sinusoid Range",
+)
+p2 = contour(
+    amp_range,
+    vshift_range,
+    fm_std_grid[2, :, :];
+    c = :cividis,
+    fill = true,
+    clims = mean_std_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM 1σ in Sinusoid Mean",
+)
+p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfontsize = 10, legendfontsize = 10)
+savefig(p, joinpath(data_save_directory, "sinusoid_FM_emulator_std_contours.png"))
+
+
 # The GP and RF uncertainty predictions are similar and show lower uncertainties around the region of interest
 # where we have more training points.
 
@@ -380,6 +465,7 @@ p2 = contour(
 p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfontsize = 10, legendfontsize = 10)
 savefig(p, joinpath(data_save_directory, "sinusoid_GP_errors_contours.png"))
 
+# Now RF
 rf_diff_grid = abs.(rf_grid - g_true_grid)
 p1 = contour(
     amp_range,
@@ -406,6 +492,33 @@ p2 = contour(
 p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfontsize = 10, legendfontsize = 10)
 savefig(p, joinpath(data_save_directory, "sinusoid_RF_errors_contours.png"))
 
+# Now FM
+fm_diff_grid = abs.(fm_grid - g_true_grid)
+p1 = contour(
+    amp_range,
+    vshift_range,
+    fm_diff_grid[1, :, :];
+    c = :cividis,
+    fill = true,
+    clims = range_diff_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM error in Sinusoid Range",
+)
+p2 = contour(
+    amp_range,
+    vshift_range,
+    fm_diff_grid[2, :, :];
+    c = :cividis,
+    fill = true,
+    clims = mean_diff_clims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+    title = "FM error in Sinusoid Mean",
+)
+p = plot(p1, p2, size = (600, 300), layout = (1, 2), guidefontsize = 12, tickfontsize = 10, legendfontsize = 10)
+savefig(p, joinpath(data_save_directory, "sinusoid_FM_errors_contours.png"))
+
 # Here, we want the emulator to show the low errors in the region around the true parameter values near θ = (3, 6),
 # as this is the region that we will be sampling in the next step. This appears to the be case for both 
 # outputs and both emulators. 
@@ -415,12 +528,18 @@ println(mean(gp_diff_grid, dims = (2, 3)))
 println(mean(rf_diff_grid, dims = (2, 3)))
 
 
+
+
+
+
 save(
     joinpath(data_save_directory, "emulators.jld2"),
     "emulator_gp",
     emulator_gp,
-    "emulator_random_features",
-    emulator_random_features,
+    "emulator_rf",
+    emulator_rf,
+    "emulator_fm",
+    emulator_fm,
     "prior",
     prior,
     "rng",

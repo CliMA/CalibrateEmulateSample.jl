@@ -21,6 +21,8 @@ using CalibrateEmulateSample.MarkovChainMonteCarlo
 const CES = CalibrateEmulateSample
 const EKP = CalibrateEmulateSample.EnsembleKalmanProcesses
 
+include("sinusoid_setup.jl") # Need g to load the JLD2 file (due to the forward map saving)
+
 # Next, we need to load the emulator we built in the previous step (emulate.jl must be run before this script
 # We will start with the Gaussian process emulator.
 example_directory = @__DIR__
@@ -186,8 +188,8 @@ savefig(plot_all, joinpath(data_save_directory, "sinusoid_MCMC_hist_GP.png"))
 # emulator. We hope to see similar results, since our RF emulator should be a good approximation
 # to the GP emulator.
 
-emulator_random_features = load(emulator_file)["emulator_random_features"]
-mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator_random_features; init_params = init_sample)
+emulator_rf = load(emulator_file)["emulator_rf"]
+mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator_rf; init_params = init_sample)
 new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
 
 println("Begin MCMC - with step size ", new_step)      # 0.4
@@ -302,3 +304,122 @@ savefig(plot_all, joinpath(data_save_directory, "sinusoid_MCMC_hist_RF.png"))
 
 # It is reassuring to see that this method is robust to the choice of emulator. The MCMC using 
 # both GP and RF emulators give very similar posterior distributions. 
+
+
+### MCMC Sampling using Forward Map Wrapper
+
+# We could repeat the above process with the Forward Map wrapper, which uses the true forward map in place of the GP/RF
+
+emulator_fm = load(emulator_file)["emulator_fm"]
+mcmc = MCMCWrapper(RWMHSampling(), y_obs, prior, emulator_fm; init_params = init_sample)
+new_step = optimize_stepsize(mcmc; init_stepsize = 0.1, N = 2000, discard_initial = 0)
+
+println("Begin MCMC - with step size ", new_step)      # 0.4
+chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)
+
+# We can print summary statistics of the MCMC chain
+display(chain)
+
+# The output of the random features MCMC is almost identical. Again, these are in the unconstrained space
+# so we need to transform to the real (constrained) space and re-calculate these values.
+
+# Extract posterior samples and plot
+posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
+
+# Back to constrained coordinates
+constrained_posterior =
+    Emulators.transform_unconstrained_to_constrained(prior, MarkovChainMonteCarlo.get_distribution(posterior))
+
+constrained_amp = vec(constrained_posterior["amplitude"])
+constrained_vshift = vec(constrained_posterior["vert_shift"])
+
+println("Amplitude mean: ", mean(constrained_amp))
+println("Amplitude std: ", std(constrained_amp))
+println("Vertical shift mean: ", mean(constrained_vshift))
+println("Vertical shift std: ", std(constrained_vshift))
+
+# These numbers are very similar to our GP results. We can also check the posteriors look similar
+# using the same plotting functions as before.
+p = plot(prior, fill = :lightgray, rng = rng)
+plot!(posterior, fill = :darkblue, alpha = 0.5, rng = rng, size = (800, 200))
+savefig(p, joinpath(data_save_directory, "sinusoid_posterior_FM.png"))
+
+# Plot 2D histogram (in constrained space)
+# Using the same set up as before, with the same xlims, ylims.
+hist2d = histogram2d(
+    constrained_amp,
+    constrained_vshift,
+    colorbar = :false,
+    xlims = amp_lims,
+    ylims = vshift_lims,
+    xlabel = "Amplitude",
+    ylabel = "Vertical Shift",
+)
+
+# As before, we will plot the marginal distributions for both prior and posterior
+# We will use the same prior samples generated for the GP histogram.
+tophist = histogram(
+    constrained_prior_samples[1, :],
+    bins = 100,
+    normed = true,
+    fill = :lightgray,
+    legend = :false,
+    lab = "Prior",
+    yaxis = :false,
+    xlims = amp_lims,
+    xlabel = "Amplitude",
+)
+histogram!(
+    tophist,
+    constrained_amp,
+    bins = 50,
+    normed = true,
+    fill = :darkblue,
+    alpha = 0.5,
+    legend = :false,
+    lab = "Posterior",
+)
+righthist = histogram(
+    constrained_prior_samples[2, :],
+    bins = 100,
+    normed = true,
+    fill = :lightgray,
+    orientation = :h,
+    ylim = vshift_lims,
+    xlims = (0, 1.4),
+    xaxis = :false,
+    legend = :false,
+    lab = :false,
+    ylabel = "Vertical Shift",
+)
+
+histogram!(
+    righthist,
+    constrained_vshift,
+    bins = 50,
+    normed = true,
+    fill = :darkblue,
+    alpha = 0.5,
+    legend = :false,
+    lab = :false,
+    orientation = :h,
+)
+
+layout = @layout [
+    tophist{0.8w, 0.2h} _
+    hist2d{0.8w, 0.8h} righthist{0.2w, 0.8h}
+]
+
+plot_all = plot(
+    tophist,
+    hist2d,
+    righthist,
+    layout = layout,
+    size = (600, 600),
+    legend = :true,
+    guidefontsize = 14,
+    tickfontsize = 12,
+    legendfontsize = 12,
+)
+
+savefig(plot_all, joinpath(data_save_directory, "sinusoid_MCMC_hist_FM.png"))

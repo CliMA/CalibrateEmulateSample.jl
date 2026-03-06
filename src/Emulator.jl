@@ -15,12 +15,13 @@ using LinearAlgebra
 using DocStringExtensions
 using Random
 
-export Emulator
+export Emulator, ForwardMapWrapper
 
 export build_models!
 export optimize_hyperparameters!
 export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
+export get_forward_map, get_prior, forward_map_wrapper
 """
 $(TYPEDEF)
 
@@ -31,9 +32,10 @@ Type to dispatch different emulators:
 abstract type MachineLearningTool end
 
 # include the different <: ML models
-include("GaussianProcess.jl") #for GaussianProcess
-include("RandomFeature.jl")
-# include("NeuralNetwork.jl")
+
+include(joinpath("MachineLearningTools", "GaussianProcess.jl")) #for GaussianProcess
+include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
+# include(joinpath("MachineLearningTools","NeuralNetwork.jl"))
 # etc.
 
 # defaults in error, all MachineLearningTools require these functions.
@@ -99,7 +101,70 @@ Gets the `encoder_schedule` field of the `Emulator`
 """
 get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
-# Constructor for the Emulator Object
+
+### Forward Map Wrapper
+
+"""
+$(TYPEDEF)
+This can replace an `Emulator`, but stores the original forward map. The forward map must be definable as a function `f`. To apply `f` properly this object also builds and stores an encoder `E`  and a parameter distribution (i.e. the prior) containing physical constraints `c`.
+
+When predict() is called this map will call `E_{out}∘f∘c(x)`
+
+# Fields
+$(TYPEDFIELDS)
+
+# Constructors:
+- `forward_map_wrapper(forward_map, prior, input_output_pairs; encoder_schedule=nothing, encoder_kwargs=NamedTuple())`
+"""
+struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution}
+    "function that represents the forward map"
+    forward_map::Function
+    "a parameter distribution, containing transformations to constrain the forward map inputs"
+    prior::PD
+    "data used to construct encoder-decoder"
+    io_pairs::PairedDataContainer{FT}
+    "encoded data"
+    encoded_io_pairs::PairedDataContainer{FT}
+    "Store of the pipeline to encode (/decode) the data"
+    encoder_schedule::VV
+end
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `forward_map` field of the `ForwardMapWrapper`
+"""
+get_forward_map(fmw::ForwardMapWrapper) = fmw.forward_map
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `prior` field of the `ForwardMapWrapper`
+"""
+get_prior(fmw::ForwardMapWrapper) = fmw.prior
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `io_pairs` field of the `ForwardMapWrapper`
+"""
+get_io_pairs(fmw::ForwardMapWrapper) = fmw.io_pairs
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `encoded_io_pairs` field of the `ForwardMapWrapper`
+"""
+get_encoded_io_pairs(fmw::ForwardMapWrapper) = fmw.encoded_io_pairs
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `encoder_schedule` field of the `ForwardMapWrapper`
+"""
+get_encoder_schedule(fmw::ForwardMapWrapper) = fmw.encoder_schedule
+
+
+### Emulator constructors and methods
 """
 $(TYPEDSIGNATURES)
 
@@ -177,14 +242,18 @@ $(TYPEDSIGNATURES)
 Encode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
 """
 function encode_data(
-    emulator::Emulator,
+    em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}}
+) where {
+    AS <: AbstractString,
+    MorDC <: Union{AbstractMatrix, DataContainer},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
     if isa(data, AbstractMatrix)
-        return get_data(encode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+        return get_data(encode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
     else
-        return encode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+        return encode_with_schedule(get_encoder_schedule(em_or_fmw), data, in_or_out)
     end
 end
 
@@ -193,8 +262,12 @@ $(TYPEDSIGNATURES)
 
 Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function encode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
-    return encode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
+function encode_structure_matrix(
+    em_or_fmw::EorFMW,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+    return encode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
 
@@ -204,14 +277,18 @@ $(TYPEDSIGNATURES)
 Decode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
 """
 function decode_data(
-    emulator::Emulator,
+    em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}}
+) where {
+    AS <: AbstractString,
+    MorDC <: Union{AbstractMatrix, DataContainer},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
     if isa(data, AbstractMatrix)
-        return get_data(decode_with_schedule(get_encoder_schedule(emulator), DataContainer(data), in_or_out))
+        return get_data(decode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
     else
-        return decode_with_schedule(get_encoder_schedule(emulator), data, in_or_out)
+        return decode_with_schedule(get_encoder_schedule(em_or_fmw), data, in_or_out)
     end
 end
 
@@ -220,8 +297,12 @@ $(TYPEDSIGNATURES)
 
 Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
-function decode_structure_matrix(emulator::Emulator, structure_mat, in_or_out::AS) where {AS <: AbstractString}
-    return decode_with_schedule(get_encoder_schedule(emulator), structure_mat, in_or_out)
+function decode_structure_matrix(
+    em_or_fmw::EorFMW,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
+    return decode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
 """
@@ -240,9 +321,7 @@ function predict(
     transform_to_real = false,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat, AM <: AbstractMatrix}
-    # Check if the size of new_inputs is consistent with the GP model's input
-    # dimension.
-    # un-encoded data to get dimensions
+    # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
 
@@ -251,7 +330,7 @@ function predict(
     if size(new_inputs, 1) != input_dim
         throw(
             ArgumentError(
-                "Emulator object and input observations do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+                "Emulator object `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
             ),
         )
     end
@@ -262,7 +341,7 @@ function predict(
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs, mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; mlt_kwargs...)
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
@@ -310,6 +389,111 @@ function predict(
         end
     end
 
+end
+
+### Forward Map constructor and methods
+
+function forward_map_wrapper(
+    forward_map::Function,
+    prior::PD,
+    input_output_pairs::PairedDataContainer{FT};
+    encoder_schedule = nothing,
+    encoder_kwargs = NamedTuple(),
+) where {FT <: Real, PD <: ParameterDistribution}
+
+    # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
+    if isnothing(encoder_schedule)
+        encoder_schedule = []
+
+        push!(encoder_schedule, (decorrelate_sample_cov(), "in"))
+        if haskey(encoder_kwargs, :obs_noise_cov)
+            push!(encoder_schedule, (decorrelate_structure_mat(), "out"))
+        else
+            push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
+        end
+    else
+        @warn "Please note that only the output encoder is used in this implementation. \nThe input encoder will be initialized if provided, but not used during sampling, which is completed in the full parameter space."
+    end
+
+    encoder_schedule = create_encoder_schedule(encoder_schedule)
+    (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
+        initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; encoder_kwargs...)
+
+    return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior)}(
+        forward_map,
+        prior,
+        input_output_pairs,
+        encoded_io_pairs,
+        encoder_schedule,
+    )
+end
+
+
+
+function predict(
+    fmw::FMW,
+    new_inputs::AM;
+    transform_to_real = false,
+) where {FMW <: ForwardMapWrapper, AM <: AbstractMatrix}
+    # Check if the size of new_inputs is consistent with the training input data
+    input_dim, output_dim = size(get_io_pairs(fmw), 1)
+    encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(fmw), 1)
+
+    N_samples = size(new_inputs, 2)
+
+    if size(new_inputs, 1) != input_dim
+        throw(
+            ArgumentError(
+                "ForwardMapObject `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+            ),
+        )
+    end
+
+    # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
+    # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
+
+    # unlike the emulator, the forward map runs in the physical, decoded space. and must be encoded where necessary 
+    prior = get_prior(fmw)
+    forward_map = get_forward_map(fmw)
+    fm_unc = x -> forward_map(transform_unconstrained_to_constrained(prior, x))
+
+    decoded_outputs = reduce(hcat, map(fm_unc, eachcol(new_inputs))) # apply map and return: [out_dim x n_samples]
+
+    var_or_cov = (output_dim == 1) ? "var" : "cov"
+    if transform_to_real
+        # uncertainty returned is just `I` in encoded space
+        decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
+
+        decoded_covariances = zeros(eltype(decoded_outputs), output_dim, output_dim, size(decoded_outputs, 2))
+        for i in 1:size(decoded_covariances, 3)
+            decoded_covariances[:, :, i] .= decoded_cov
+        end
+
+        if output_dim > 1
+            return decoded_outputs, eachslice(decoded_covariances, dims = 3)
+        else
+            # here the covs are [1 x 1 x samples] just return [1 x samples]
+            return decoded_outputs, decoded_covariances[1, :, :]
+        end
+
+    else # We encode
+        encoded_outputs = Matrix(encode_data(fmw, decoded_outputs, "out"))
+        encoded_output_dim = size(encoded_outputs, 1)
+        encoded_cov = I(encoded_output_dim)
+
+        encoded_covariances_mat =
+            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_outputs, 2))
+        for i in 1:size(encoded_covariances_mat, 3)
+            encoded_covariances_mat[:, :, i] = encoded_cov
+        end
+
+        if encoded_output_dim > 1
+            return encoded_outputs, eachslice(encoded_covariances_mat, dims = 3)
+        else
+            # here the covs are [1 x 1 x samples] just return [1 x samples]
+            return encoded_outputs, encoded_covariances_mat[1, :, :]
+        end
+    end
 end
 
 end
