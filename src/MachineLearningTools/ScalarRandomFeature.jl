@@ -631,7 +631,7 @@ function predict(
     srfi::ScalarRandomFeatureInterface,
     new_inputs::MM;
     multithread = "ensemble",
-    add_obs_noise_cov=false,
+    add_obs_noise_cov = false,
     mlt_kwargs...,
 ) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))

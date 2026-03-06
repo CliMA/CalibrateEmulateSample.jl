@@ -286,10 +286,15 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Predict means and covariances in decorrelated output space using Gaussian process models. The use of stored `FType` and `YType` to control this method is deprecated, the return covariance is now determined by the `predict(` kwarg `add_obs_noise_cov` 
 """
-function predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; add_obs_noise_cov=false, mlt_kwargs...) where {FT <: AbstractFloat}
-    pred_type= add_obs_noise_cov ? YType() : FType()
+function predict(
+    gp::GaussianProcess{GPJL},
+    new_inputs::AbstractMatrix{FT};
+    add_obs_noise_cov = false,
+    mlt_kwargs...,
+) where {FT <: AbstractFloat}
+    pred_type = add_obs_noise_cov ? YType() : FType()
     return predict(gp, new_inputs, pred_type)
-end    
+end
 
 #now we build the SKLJL implementation
 function build_models!(
@@ -372,7 +377,12 @@ function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{F
     μ, σ = gp_model.predict(new_inputs', return_std = true)
     return μ, (σ .* σ)
 end
-function predict(gp::GaussianProcess{SKLJL}, new_inputs::AbstractMatrix{FT}; add_obs_noise_cov=false, mlt_kwargs...) where {FT <: AbstractFloat}
+function predict(
+    gp::GaussianProcess{SKLJL},
+    new_inputs::AbstractMatrix{FT};
+    add_obs_noise_cov = false,
+    mlt_kwargs...,
+) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
 
     # for SKLJL does not return the observational noise (even if return_std = true)
@@ -487,7 +497,12 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; add_obs_noise_cov=false, mlt_kwargs...) where {AM <: AbstractMatrix}
+function predict(
+    gp::GaussianProcess{AGPJL},
+    new_inputs::AM;
+    add_obs_noise_cov = false,
+    mlt_kwargs...,
+) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)
