@@ -24,10 +24,10 @@ struct MLTester <: Emulators.MachineLearningTool end
     m = 50
     d = 6
     p = 10
-    x = rand(p, m) 
-    g = randn(d, p) 
-    y = g*x
-    
+    x = rand(p, m)
+    g = randn(d, p)
+    y = g * x
+
     # "noise"
     μ = zeros(d)
     Σ = rand(d, d)
@@ -100,12 +100,12 @@ end
     m = 50
     d = 6
     p = 10
-    prior = constrained_gaussian("10d_pos", 1, 0.5, 0, Inf, repeats=p)  
-    x = PD.sample(prior,m) # p x m (sampled in unconstrained space)
+    prior = constrained_gaussian("10d_pos", 1, 0.5, 0, Inf, repeats = p)
+    x = PD.sample(prior, m) # p x m (sampled in unconstrained space)
     g = randn(d, p)
-    G(x) = g*log.(x)  # can only be applied to positive constrained x
+    G(x) = g * log.(x)  # can only be applied to positive constrained x
     y = reduce(hcat, G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x)) # d x m
-    
+
     # "noise"
     μ = zeros(d)
     Σ = rand(d, d)
@@ -114,13 +114,13 @@ end
     y += noise_samples
 
     io_pairs = PairedDataContainer(x, y, data_are_columns = true)
-    
+
     # Test forward map wrapper with default encoding
-    fmw = forward_map_wrapper(G,prior,io_pairs)
+    fmw = forward_map_wrapper(G, prior, io_pairs)
     @test get_forward_map(fmw) == G
     @test get_prior(fmw) == prior
     @test get_io_pairs(fmw) == io_pairs
-    
+
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
     enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs; obs_noise_cov = 1.0 * I)
@@ -131,25 +131,25 @@ end
     @test isempty(enc_I_in)
 
     # test some predictons
-    x_test = PD.sample(prior, m) 
-    y_test = reduce(hcat,G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
+    x_test = PD.sample(prior, m)
+    y_test = reduce(hcat, G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
 
-    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true) 
-    @test all(isapprox(norm(y_pred-y_test),0; atol=sqrt(d*m)*tol))
+    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true)
+    @test all(isapprox(norm(y_pred - y_test), 0; atol = sqrt(d * m) * tol))
     sample_Σ = decode_structure_matrix(fmw, I, "out")
-    @test all(isapprox(norm(sample_Σ-yc),0; atol=d*tol) for yc in y_cov)
+    @test all(isapprox(norm(sample_Σ - yc), 0; atol = d * tol) for yc in y_cov)
 
-    y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; transform_to_real = false) 
+    y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; transform_to_real = false)
     y_test_enc = encode_data(fmw, y_test, "out")
-    @test all(isapprox(norm(y_pred_enc-y_test_enc),0; atol=sqrt(d*m)*tol))
+    @test all(isapprox(norm(y_pred_enc - y_test_enc), 0; atol = sqrt(d * m) * tol))
     @test_throws ArgumentError EM.predict(fmw, x_test'; transform_to_real = true)
-    
+
     # with out enc.
-    fmw = forward_map_wrapper(G,prior,io_pairs, encoder_kwargs=(; obs_noise_cov = Σ))
-    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true) 
-    @test all(isapprox(norm(yc - Σ), 0; atol = d*tol) for yc in y_cov)
+    fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))
+    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true)
+    @test all(isapprox(norm(yc - Σ), 0; atol = d * tol) for yc in y_cov)
     # try pass encoder for input
     new_schedule = (decorrelate_sample_cov(), "in") # for these i
-    fmw = forward_map_wrapper(G,prior,io_pairs, encoder_schedule=new_schedule)
-    
+    fmw = forward_map_wrapper(G, prior, io_pairs, encoder_schedule = new_schedule)
+
 end
