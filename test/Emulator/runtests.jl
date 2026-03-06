@@ -142,6 +142,14 @@ end
     y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; transform_to_real = false) 
     y_test_enc = encode_data(fmw, y_test, "out")
     @test all(isapprox(norm(y_pred_enc-y_test_enc),0; atol=sqrt(d*m)*tol))
-    @test_throws ArgumentError EM.predict(fmw, x_test'; transform_to_real = true) 
+    @test_throws ArgumentError EM.predict(fmw, x_test'; transform_to_real = true)
+    
+    # with out enc.
+    fmw = forward_map_wrapper(G,prior,io_pairs, encoder_kwargs=(; obs_noise_cov = Σ))
+    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true) 
+    @test all(isapprox(norm(yc - Σ), 0; atol = d*tol) for yc in y_cov)
+    # try pass encoder for input
+    new_schedule = (decorrelate_sample_cov(), "in") # for these i
+    fmw = forward_map_wrapper(G,prior,io_pairs, encoder_schedule=new_schedule)
     
 end
