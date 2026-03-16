@@ -795,7 +795,17 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
-    p_samples = [Samples(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"), params_are_columns = false) for slice in p_slices]
+    dec_samples = Matrix(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"))
+    # add sample from null space:
+    prior_samples = sample(mcmc.prior, size(decoded_inputs,2))
+    null_samples = prior_samples - Matrix(decode_data(
+        encoder_schedule,
+        encode_data(encoder_schedule, prior_samples, "in"),
+        "in",
+    ))
+    dec_samples .+= null_samples
+    
+    p_samples = [Samples(dec_samples, params_are_columns = false) for slice in p_slices]
 
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested

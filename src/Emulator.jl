@@ -503,10 +503,19 @@ function predict(
 
     in_already_encoded = encode ∈ ["in", "in_and_out"]
     out_to_be_decoded = encode ∈ ["out", "in_and_out"]
+    prior = get_prior(fmw)
     #need to boost to decoded inputs
     if in_already_encoded
-        # Sample from the null space
+        # decode 
         decoded_inputs = Matrix(decode_data(fmw, new_inputs, "in"))
+        # add sample from null space:
+        prior_samples = sample(prior, size(decoded_inputs,2))
+        null_samples = prior_samples - Matrix(decode_data(
+            fmw,
+            encode_data(fmw, prior_samples, "in"),
+            "in",
+        ))
+        decoded_inputs .+= null_samples
     else
         decoded_inputs = new_inputs
     end
@@ -514,7 +523,6 @@ function predict(
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
 
     # unlike the emulator, the forward map runs in the physical, decoded space. and must be encoded where necessary 
-    prior = get_prior(fmw)
     forward_map = get_forward_map(fmw)
     fm_unc = x -> forward_map(transform_unconstrained_to_constrained(prior, x))
 
