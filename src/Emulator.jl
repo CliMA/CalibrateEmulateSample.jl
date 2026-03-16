@@ -245,11 +245,7 @@ function encode_data(
     encoder_schedule::VV,
     data::MorDC,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    MorDC <: Union{AbstractMatrix, DataContainer},
-    VV <: AbstractVector,
-}
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
     if isa(data, AbstractMatrix)
         return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
     else
@@ -268,7 +264,7 @@ function encode_data(
 }
     return encode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
 end
-    
+
 
 """
 $(TYPEDSIGNATURES)
@@ -301,11 +297,7 @@ function decode_data(
     encoder_schedule::VV,
     data::MorDC,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    MorDC <: Union{AbstractMatrix, DataContainer},
-    VV <: AbstractVector,
-}
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
     if isa(data, AbstractMatrix)
         return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
     else
@@ -345,7 +337,7 @@ function decode_structure_matrix(
 ) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return decode_structure_matrix(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
-    
+
 """
 $(TYPEDSIGNATURES)
 
@@ -509,12 +501,8 @@ function predict(
         # decode 
         decoded_inputs = Matrix(decode_data(fmw, new_inputs, "in"))
         # add sample from null space:
-        prior_samples = sample(prior, size(decoded_inputs,2))
-        null_samples = prior_samples - Matrix(decode_data(
-            fmw,
-            encode_data(fmw, prior_samples, "in"),
-            "in",
-        ))
+        prior_samples = sample(prior, size(decoded_inputs, 2))
+        null_samples = prior_samples - Matrix(decode_data(fmw, encode_data(fmw, prior_samples, "in"), "in"))
         decoded_inputs .+= null_samples
     else
         decoded_inputs = new_inputs

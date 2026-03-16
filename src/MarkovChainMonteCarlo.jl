@@ -41,20 +41,20 @@ export EmulatorPosteriorModel,
     esjd,
 
 
-# ------------------------------------------------------------------------------------------
-# Sampler extensions to differentiate vanilla RW and pCN algorithms
-#
-# (Strictly speaking the difference between RW and pCN should be implemented at the level of
-# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
-# only change is made. We do the latter here because doing the former would require more
-# boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
+    # ------------------------------------------------------------------------------------------
+    # Sampler extensions to differentiate vanilla RW and pCN algorithms
+    #
+    # (Strictly speaking the difference between RW and pCN should be implemented at the level of
+    # the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
+    # only change is made. We do the latter here because doing the former would require more
+    # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
-# some possible types of autodiff used
-"""
-$(DocStringExtensions.TYPEDEF)
+    # some possible types of autodiff used
+    """
+    $(DocStringExtensions.TYPEDEF)
 
-Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
-"""
+    Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
+    """
 abstract type AutodiffProtocol end
 
 """
@@ -260,7 +260,7 @@ function emulator_log_density_model(
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
     g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "in_and_out", add_obs_noise_cov = true)
 
-    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ,:,1), "in")) # to compute logpdf(prior, θ) -> in full space
+    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # to compute logpdf(prior, θ) -> in full space
 
     if isa(g_cov[1], Real)
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -509,7 +509,7 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3<: AbstractVector}
+struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
     "[output_dim x N_samples] matrix, of given observation data."
@@ -593,28 +593,35 @@ function MCMCWrapper(
     end
 
     # encoding, saved in MCMCWrapper
-    encoder_schedule= get_encoder_schedule(em_or_fmw)
-    
+    encoder_schedule = get_encoder_schedule(em_or_fmw)
+
     # encoding data works on columns but mcmc wants vec-of-vec
     encoded_obs = [vec(encode_data(encoder_schedule, reshape(obs, :, 1), "out")) for obs in obs_slice]
     # encoding initial condition
-    encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params,:,1), "in"))
-    
+    encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params, :, 1), "in"))
+
     log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
     # naming encoded dimensions
-    param_names = ["encoded_param_$(k)" for k in 1:size(encoded_init_params,1)]
-    
-    sample_kwargs = (
-        ; # set defaults here
+    param_names = ["encoded_param_$(k)" for k in 1:size(encoded_init_params, 1)]
+
+    sample_kwargs = (; # set defaults here
         :initial_params => deepcopy(encoded_init_params),
         :param_names => param_names,
         :discard_initial => burnin,
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs, encoder_schedule)
+    return MCMCWrapper(
+        prior,
+        obs_slice,
+        encoded_obs,
+        log_posterior_map,
+        mh_proposal_sampler,
+        sample_kwargs,
+        encoder_schedule,
+    )
 end
 
 function MCMCWrapper(
@@ -789,7 +796,7 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
 
-    
+
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
@@ -797,14 +804,11 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     encoder_schedule = get_encoder_schedule(mcmc)
     dec_samples = Matrix(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"))
     # add sample from null space:
-    prior_samples = sample(mcmc.prior, size(decoded_inputs,2))
-    null_samples = prior_samples - Matrix(decode_data(
-        encoder_schedule,
-        encode_data(encoder_schedule, prior_samples, "in"),
-        "in",
-    ))
+    prior_samples = sample(mcmc.prior, size(decoded_inputs, 2))
+    null_samples =
+        prior_samples - Matrix(decode_data(encoder_schedule, encode_data(encoder_schedule, prior_samples, "in"), "in"))
     dec_samples .+= null_samples
-    
+
     p_samples = [Samples(dec_samples, params_are_columns = false) for slice in p_slices]
 
     # live in same space as prior
