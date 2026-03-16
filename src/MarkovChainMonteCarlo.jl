@@ -2,6 +2,8 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
+import get_encoder_schedule
+
 using ..ParameterDistributions
 using ..EnsembleKalmanProcesses
 
@@ -34,8 +36,9 @@ export EmulatorPosteriorModel,
     optimize_stepsize,
     get_posterior,
     get_sample_kwargs,
+    get_encoder_schedule,
     sample,
-    esjd
+    esjd,
 
 
 # ------------------------------------------------------------------------------------------
@@ -255,7 +258,9 @@ function emulator_log_density_model(
 
     # predict is written to apply to columns.
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
-    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "out", add_obs_noise_cov = true)
+    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "in_and_out", add_obs_noise_cov = true)
+
+    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ,:,1), "in")) # to compute logpdf(prior, θ) -> in full space
 
     if isa(g_cov[1], Real)
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
@@ -504,19 +509,21 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{AVV <: AbstractVector, AV <: AbstractVector}
+struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3<: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
     "[output_dim x N_samples] matrix, of given observation data."
-    observations::AVV
+    observations::VV1
     "Vector of observations describing the data samples to actually used during MCMC sampling (that have been transformed into a space consistent with emulator outputs)."
-    encoded_observations::AV
+    encoded_observations::VV2
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel
     "Object describing a MCMC sampling algorithm and its settings."
     mh_proposal_sampler::AbstractMCMC.AbstractSampler
     "NamedTuple of other arguments to be passed to `AbstractMCMC.sample()`."
     sample_kwargs::NamedTuple
+    "Vector of encoders dictating how to encode/decode data."
+    encoder_schedule::VV3
 end
 
 """
@@ -525,6 +532,14 @@ $(TYPEDSIGNATURES)
 gets the NameTuple of keywords that are passed into the Sampler algorithm
 """
 get_sample_kwargs(mcmc::MCMCWrapper) = mcmc.sample_kwargs
+
+"""
+$(TYPEDSIGNATURES)
+
+gets the stored `encoder_schedule` from an `MCMCWrapper`
+"""
+get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
+
 
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
@@ -577,33 +592,29 @@ function MCMCWrapper(
         eachcol(observation)
     end
 
+    # encoding, saved in MCMCWrapper
+    encoder_schedule= get_encoder_schedule(em_or_fmw)
+    
     # encoding data works on columns but mcmc wants vec-of-vec
-    encoded_obs = [vec(encode_data(em_or_fmw, reshape(obs, :, 1), "out")) for obs in obs_slice]
+    encoded_obs = [vec(encode_data(encoder_schedule, reshape(obs, :, 1), "out")) for obs in obs_slice]
     # encoding initial condition
-    #encoded_init_params = vec(encode_data(em_or_fmw, reshape(init_params,:,1), "in"))
-
+    encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params,:,1), "in"))
+    
     log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
     mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
 
-    # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
-    # so create the duplicates here
-    dd = get_dimensions(prior)
-    if all(dd .== 1) # i.e if dd == [1, 1, 1, 1, 1], => all params are univariate
-        param_names = get_name(prior)
-    else # else use multiplicity to get still informative parameter names
-        pn = get_name(prior)
-        param_names = reduce(vcat, [(pn[k] * "_") .* map(x -> string(x), 1:dd[k]) for k in 1:length(pn)])
-    end
-
-    sample_kwargs = (; # set defaults here
-        #        :initial_params => deepcopy(encoded_init_params),
-        :initial_params => deepcopy(init_params),
+    # naming encoded dimensions
+    param_names = ["encoded_param_$(k)" for k in 1:size(encoded_init_params,1)]
+    
+    sample_kwargs = (
+        ; # set defaults here
+        :initial_params => deepcopy(encoded_init_params),
         :param_names => param_names,
         :discard_initial => burnin,
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs, encoder_schedule)
 end
 
 function MCMCWrapper(
@@ -778,11 +789,13 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
 
+    
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
-    p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
-
+    # get the encoding schedule for decoding
+    encoder_schedule = get_encoder_schedule(mcmc)
+    p_samples = [Samples(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"), params_are_columns = false) for slice in p_slices]
 
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
