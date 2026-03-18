@@ -560,7 +560,7 @@ end
 ### Deprecated keywords
 function deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
     if !isnothing(transform_to_real)
-        Base.depwarn(
+        @warn(
             """`transform_to_real` keyword is deprecated. Please use the `encode` and `add_obs_noise_cov` keywords instead.
                                              
 Recommended usage for users is now set by default as:
@@ -570,9 +570,7 @@ This behaviour takes in non-encoded inputs, and returns non-encoded outputs. It 
 This simulation will continue with the old behavior:
  - `transform_to_real=true` replaced with `encode=nothing, add_obs_noise_cov=true`
  - `transform_to_real=false` replaced with `encode="out", add_obs_noise_cov=true`
-    """,
-            :deprecate_transform_to_real
-        )
+    """, maxlog=1)
         
         # modify kwargs
         add_onc = true
