@@ -30,7 +30,9 @@ export create_encoder_schedule,
     norm,
     norm_linear_map,
     isequal_linear,
-    encoder_kwargs_from
+    encoder_kwargs_from,
+    get_encoder_from_schedule,
+    get_decoder_from_schedule
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -731,6 +733,48 @@ function bad_in_or_out(in_or_out::AS) where {AS <: AbstractString}
             "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
         ),
     )
+end
+
+# get encoder from schedule
+function get_encoder_from_schedule(encoder_schedule::VV, in_or_out::AS) where {VV <: AbstractVector, AS <: AbstractString}
+    if in_or_out ∉ ["in", "out"]
+        bad_in_or_out(in_or_out)
+    end
+    
+    return prod(
+        get_encoder_mat(processor)[1]
+        for (processor, apply_to) in encoder_schedule if apply_to == in_or_out ) 
+            
+end
+
+function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return [
+    (get_encoder_from_schedule(encoder_schedule, "in"),"in")
+    (get_encoder_from_schedule(encoder_schedule, "out"),"out")
+    ]
+end
+
+
+function get_decoder_from_schedule(encoder_schedule::VV, in_or_out::AS) where {VV <: AbstractVector, AS <: AbstractString}
+    if in_or_out ∉ ["in", "out"]
+        bad_in_or_out(in_or_out)
+    end
+    decoder_mats = []
+    for idx in reverse(eachindex(encoder_schedule))
+        (processor, apply_to) = encoder_schedule[idx]
+        if apply_to == in_or_out
+            push!(decoder_mats, get_decoder_mat(processor)[1])
+        end
+    end
+                  
+    return prod(decoder_mats)
+end
+
+function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return [
+    (get_decoder_from_schedule(encoder_schedule, "in"), "in")
+    (get_decoder_from_schedule(encoder_schedule, "out"), "out")
+    ]
 end
 
 
