@@ -352,8 +352,12 @@ function predict(
     emulator::Emulator{FT},
     new_inputs::AM;
     encode = nothing, # maps decoded inputs to decoded outputs
+    add_obs_noise_cov = false,
+    transform_to_real = nothing,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat, AM <: AbstractMatrix}
+
+    encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
 
     # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
@@ -371,8 +375,7 @@ function predict(
 
     # note the logic below
     in_already_encoded = encode ∈ ["in", "in_and_out"]
-    out_to_be_decoded = encode ∈ ["out", "in_and_out"]
-
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
 
     # encode the new input data
     if !in_already_encoded
@@ -384,7 +387,7 @@ function predict(
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; add_obs_noise_cov=add_obs_noise_cov, mlt_kwargs...)
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
@@ -478,7 +481,11 @@ function predict(
     new_inputs::AM;
     encode = nothing, # maps decoded inputs to decoded outputs
     add_obs_noise_cov = false,
+    transform_to_real=nothing
 ) where {FMW <: ForwardMapWrapper, AM <: AbstractMatrix}
+
+    encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
+
     # Check if the size of new_inputs is consistent with the training input data
     input_dim, output_dim = size(get_io_pairs(fmw), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(fmw), 1)
@@ -494,7 +501,8 @@ function predict(
     end
 
     in_already_encoded = encode ∈ ["in", "in_and_out"]
-    out_to_be_decoded = encode ∈ ["out", "in_and_out"]
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
+
     prior = get_prior(fmw)
     #need to boost to decode inputs
     if in_already_encoded
@@ -550,38 +558,31 @@ end
 
 
 ### Deprecated keywords
-
-function predict(
-    em_or_fmw::EorFMW,
-    new_inputs::AM;
-    transform_to_real = nothing,
-    kwargs...,
-) where {AM <: AbstractMatrix, EorFMW <: Union{Emulator, ForwardMapWrapper}}
-
+function deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
     if !isnothing(transform_to_real)
         Base.depwarn(
             """`transform_to_real` keyword is deprecated. Please use the `encode` and `add_obs_noise_cov` keywords instead.
-            
+                                             
 Recommended usage for users is now set by default as:
  - `encode=nothing`, `add_obs_noise_cov=false`
 This behaviour takes in non-encoded inputs, and returns non-encoded outputs. It gives only the uncertainty from the Machine Learning Tool (not inflated by observational noise)
-
+               
 This simulation will continue with the old behavior:
  - `transform_to_real=true` replaced with `encode=nothing, add_obs_noise_cov=true`
  - `transform_to_real=false` replaced with `encode="out", add_obs_noise_cov=true`
     """,
-            :predict,
+            :deprecate_transform_to_real
         )
-
+        
         # modify kwargs
-        kw = Dict(kwargs)
-        kw[:add_obs_noise_cov] = true
-        kw[:encode] = transform_to_real ? nothing : "out"
-        predict(em_or_fmw, new_inputs; kw...)
+        add_onc = true
+        enc = transform_to_real ? nothing : "out"
+        return enc, add_onc
+    else
+        return encode, add_obs_noise_cov
     end
-
-    return predict(em_or_fmw, new_inputs; kwargs...)
-
 end
+    
+
 
 end
