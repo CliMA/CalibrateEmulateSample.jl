@@ -376,7 +376,7 @@ function predict(
     # note the logic below
     in_already_encoded = encode ∈ ["in", "in_and_out"]
     out_to_be_decoded = encode ∉ ["out", "in_and_out"]
-
+    
     # encode the new input data
     if !in_already_encoded
         encoded_inputs = encode_data(emulator, new_inputs, "in")

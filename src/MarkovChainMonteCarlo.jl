@@ -2,6 +2,8 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
+import ..Emulators: get_encoder_schedule
+using ..Utilities
 
 using ..ParameterDistributions
 using ..EnsembleKalmanProcesses
@@ -259,12 +261,12 @@ function emulator_log_density_model(
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
     g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "in_and_out", add_obs_noise_cov = true)
 
-    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # to compute logpdf(prior, θ) -> in full space
+    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # we still compute logpdf(prior, decoded_θ) in full space
 
     if isa(g_cov[1], Real)
-        return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, decoded_θ)
     else
-        return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, decoded_θ)
     end
 
 end
@@ -802,26 +804,29 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
 
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
-    # [1] sample randomly from the null space of the encoding and add in
-#    dec_samples = Matrix(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"))
-#    prior_samples = sample(mcmc.prior, size(decoded_inputs, 2))
-#    null_samples =
-#        prior_samples - Matrix(decode_data(encoder_schedule, encode_data(encoder_schedule, prior_samples, "in"), "in"))
-#    dec_samples .+= null_samples
-#    p_samples = [Samples(dec_samples, params_are_columns = false) for slice in p_slices]
+    
+    # [for testing - just decode]
+    to_be_dec_samples = reduce(vcat, [p_chain[:, slice, 1]' for slice in p_slices])
+    dec_samples = decode_data(encoder_schedule, to_be_dec_samples, "in")
+    p_samples = [Samples(dec_samples[slice,:], params_are_columns = true) for slice in p_slices]
 
-    # [2] conditionally sample from the null space to preserve correlations with the reduced samples
-    red_samples = p_chain[:, slice, 1]
+    
+    # Conditionally sample from the null space to preserve correlations with the reduced samples
+
+    #=
+    red_samples = reduce(vcat, [p_chain[:, slice, 1]' for slice in p_slices])
     C = cov(mcmc.prior)
-    E = encode_data(encoder_schedule, ones(ndims(prior)), "in")
+    E = Matrix(get_encoder_from_schedule(encoder_schedule, "in"))
+
     ECEt = cholesky(Symmetric(E * C * E'))
-    K = C * E' * inv(ECEt) # Kalman Gain
+    K = C * E' * inv(ECEt) # Kalman Gain    
+    
     # then compute μ + K(z-Eμ) + (I-KE)η
     sn_samples = randn(size(red_samples))
-    full_samples = mean(prior) .+ K*(red_samples .- E*mean(prior)) + (I-K*E)*sn_samples
+    full_samples = mean(mcmc.prior) .+ K*(red_samples .- E*mean(mcmc.prior)) + (I-K*E)*sn_samples
     
-    p_samples = [Samples(full_samples, params_are_columns = false) for slice in p_slices]
-
+    p_samples = [Samples(full_samples[slice,:], params_are_columns = true) for slice in p_slices]
+    =#
      
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
