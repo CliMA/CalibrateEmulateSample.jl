@@ -496,14 +496,9 @@ function predict(
     in_already_encoded = encode ∈ ["in", "in_and_out"]
     out_to_be_decoded = encode ∈ ["out", "in_and_out"]
     prior = get_prior(fmw)
-    #need to boost to decoded inputs
+    #need to boost to decode inputs
     if in_already_encoded
-        # decode 
         decoded_inputs = Matrix(decode_data(fmw, new_inputs, "in"))
-        # add sample from null space:
-        prior_samples = sample(prior, size(decoded_inputs, 2))
-        null_samples = prior_samples - Matrix(decode_data(fmw, encode_data(fmw, prior_samples, "in"), "in"))
-        decoded_inputs .+= null_samples
     else
         decoded_inputs = new_inputs
     end

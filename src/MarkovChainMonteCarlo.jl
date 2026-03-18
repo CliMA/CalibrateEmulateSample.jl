@@ -2,7 +2,6 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
-import get_encoder_schedule
 
 using ..ParameterDistributions
 using ..EnsembleKalmanProcesses
@@ -38,8 +37,7 @@ export EmulatorPosteriorModel,
     get_sample_kwargs,
     get_encoder_schedule,
     sample,
-    esjd,
-
+    esjd
 
     # ------------------------------------------------------------------------------------------
     # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -50,11 +48,12 @@ export EmulatorPosteriorModel,
     # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
     # some possible types of autodiff used
-    """
-    $(DocStringExtensions.TYPEDEF)
 
-    Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
-    """
+"""
+$(DocStringExtensions.TYPEDEF)
+
+Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
+"""
 abstract type AutodiffProtocol end
 
 """
@@ -800,17 +799,30 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
+
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
-    dec_samples = Matrix(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"))
-    # add sample from null space:
-    prior_samples = sample(mcmc.prior, size(decoded_inputs, 2))
-    null_samples =
-        prior_samples - Matrix(decode_data(encoder_schedule, encode_data(encoder_schedule, prior_samples, "in"), "in"))
-    dec_samples .+= null_samples
+    # [1] sample randomly from the null space of the encoding and add in
+#    dec_samples = Matrix(decode_data(encoder_schedule, p_chain[:, slice, 1], "in"))
+#    prior_samples = sample(mcmc.prior, size(decoded_inputs, 2))
+#    null_samples =
+#        prior_samples - Matrix(decode_data(encoder_schedule, encode_data(encoder_schedule, prior_samples, "in"), "in"))
+#    dec_samples .+= null_samples
+#    p_samples = [Samples(dec_samples, params_are_columns = false) for slice in p_slices]
 
-    p_samples = [Samples(dec_samples, params_are_columns = false) for slice in p_slices]
+    # [2] conditionally sample from the null space to preserve correlations with the reduced samples
+    red_samples = p_chain[:, slice, 1]
+    C = cov(mcmc.prior)
+    E = encode_data(encoder_schedule, ones(ndims(prior)), "in")
+    ECEt = cholesky(Symmetric(E * C * E'))
+    K = C * E' * inv(ECEt) # Kalman Gain
+    # then compute μ + K(z-Eμ) + (I-KE)η
+    sn_samples = randn(size(red_samples))
+    full_samples = mean(prior) .+ K*(red_samples .- E*mean(prior)) + (I-K*E)*sn_samples
+    
+    p_samples = [Samples(full_samples, params_are_columns = false) for slice in p_slices]
 
+     
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
     p_constraints = [
