@@ -792,11 +792,10 @@ samples in `chain`.
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
 """
-function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
+function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains, boost_for_loss=0.001)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
-
 
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
@@ -805,28 +804,32 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
     
-    # [for testing - just decode]
-    to_be_dec_samples = reduce(vcat, [p_chain[:, slice, 1]' for slice in p_slices])
-    dec_samples = decode_data(encoder_schedule, to_be_dec_samples, "in")
-    p_samples = [Samples(dec_samples[slice,:], params_are_columns = true) for slice in p_slices]
-
-    
-    # Conditionally sample from the null space to preserve correlations with the reduced samples
-
-    #=
+    # flatten samples from the chain for manipulation
     red_samples = reduce(vcat, [p_chain[:, slice, 1]' for slice in p_slices])
-    C = cov(mcmc.prior)
-    E = Matrix(get_encoder_from_schedule(encoder_schedule, "in"))
-
-    ECEt = cholesky(Symmetric(E * C * E'))
-    K = C * E' * inv(ECEt) # Kalman Gain    
     
-    # then compute μ + K(z-Eμ) + (I-KE)η
-    sn_samples = randn(size(red_samples))
-    full_samples = mean(mcmc.prior) .+ K*(red_samples .- E*mean(mcmc.prior)) + (I-K*E)*sn_samples
+    # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
+    # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
+    C = cov(mcmc.prior)
+    m = reshape(mean(mcmc.prior), : ,1)
+    E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
+    E = Matrix(E)
+    enc_m = (E*m + b)
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12*I))
+    K = C * E' * (ECEt \ I) # Gain
+    # deterministic reconstruction with the Gain (should be similar to decode_data(...))
+    full_samples = m .+ K*(red_samples .- enc_m)
+
+    projection_loss = tr(C-K*E*C) / tr(C)
+    if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
+        @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
+        # Conditionally sample from the null space to preserve correlations with the reduced samples
+        Σ_cond = C - K * E * C
+        L = cholesky(Symmetric(Σ_cond + 1e-12*I)).L
+        null_samples = L * randn(size(C,1), size(red_samples,2))
+        full_samples += null_samples
+    end
     
     p_samples = [Samples(full_samples[slice,:], params_are_columns = true) for slice in p_slices]
-    =#
      
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
