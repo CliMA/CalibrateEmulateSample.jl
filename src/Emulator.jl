@@ -359,23 +359,25 @@ function predict(
 
     encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
 
+    # For the logic below
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
+
     # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
 
+    check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != input_dim
+    if size(new_inputs, 1) != check_dim
         throw(
             ArgumentError(
-                "Emulator object `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+                "Emulator object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
             ),
         )
     end
 
-    # note the logic below
-    in_already_encoded = encode ∈ ["in", "in_and_out"]
-    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
     
     # encode the new input data
     if !in_already_encoded
@@ -486,22 +488,24 @@ function predict(
 
     encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
 
-    # Check if the size of new_inputs is consistent with the training input data
+    # For the logic below
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
+
+    # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(fmw), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(fmw), 1)
 
+    check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != input_dim
+    if size(new_inputs, 1) != check_dim
         throw(
             ArgumentError(
-                "ForwardMapObject `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+                "ForwardMapWrapper object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
             ),
         )
     end
-
-    in_already_encoded = encode ∈ ["in", "in_and_out"]
-    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
 
     prior = get_prior(fmw)
     #need to boost to decode inputs

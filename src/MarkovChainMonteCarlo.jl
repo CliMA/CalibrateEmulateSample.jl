@@ -84,10 +84,14 @@ abstract type ZygoteProtocol <: AutodiffProtocol end
 abstract type EnzymeProtocol <: AutodiffProtocol end
 =#
 
-function _get_proposal(prior::ParameterDistribution)
-    # *only* use covariance of prior, not full distribution
-    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
-    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
+function _get_proposal(prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
+    # We use the prior covariance to shape the proposal (in the encoded space), 
+    # as proposals are based on increments we do not need to shift the mean too
+    E,_ = get_encoder_from_schedule(encoder_schedule, "in")
+    C = cov(prior) 
+    Σ = Matrix(E) * C * Matrix(E)'
+    Σ = cholesky(Symmetric(Σ + 1e-12I))
+    return AdvancedMH.RandomWalkProposal(Σ.L * MvNormal(zeros(size(Σ, 1)), I))
 end
 
 
@@ -134,8 +138,8 @@ Constructor for all `Sampler` objects, with one method for each supported MCMC a
     (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
     inference isn't prior-dominated.
 """
-function MetropolisHastingsSampler(::RWMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(::RWMHSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return RWMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -159,8 +163,8 @@ AdvancedMH.logratio_proposal_density(
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
-function MetropolisHastingsSampler(::pCNMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(::pCNMHSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return pCNMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -185,8 +189,8 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::BarkerSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(::BarkerSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return BarkerMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -602,7 +606,7 @@ function MCMCWrapper(
     encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params, :, 1), "in"))
 
     log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
-    mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
+    mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior, encoder_schedule)
 
     # naming encoded dimensions
     param_names = ["encoded_param_$(k)" for k in 1:size(encoded_init_params, 1)]
@@ -792,7 +796,7 @@ samples in `chain`.
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
 """
-function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains, boost_for_loss=0.001)
+function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_loss=0.001)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
@@ -804,8 +808,8 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains, boost_for_lo
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
     
-    # flatten samples from the chain for manipulation
-    red_samples = reduce(vcat, [p_chain[:, slice, 1]' for slice in p_slices])
+    # flatten samples from the chain for manipulation as an array with columns as samples
+    red_samples = p_chain[:, :, 1]'
     
     # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
     # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
