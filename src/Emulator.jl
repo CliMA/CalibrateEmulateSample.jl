@@ -378,7 +378,7 @@ function predict(
         )
     end
 
-    
+
     # encode the new input data
     if !in_already_encoded
         encoded_inputs = encode_data(emulator, new_inputs, "in")
@@ -389,7 +389,12 @@ function predict(
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; add_obs_noise_cov=add_obs_noise_cov, mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(
+        get_machine_learning_tool(emulator),
+        encoded_inputs;
+        add_obs_noise_cov = add_obs_noise_cov,
+        mlt_kwargs...,
+    )
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
@@ -483,7 +488,7 @@ function predict(
     new_inputs::AM;
     encode = nothing, # maps decoded inputs to decoded outputs
     add_obs_noise_cov = false,
-    transform_to_real=nothing
+    transform_to_real = nothing,
 ) where {FMW <: ForwardMapWrapper, AM <: AbstractMatrix}
 
     encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
@@ -574,8 +579,10 @@ This behaviour takes in non-encoded inputs, and returns non-encoded outputs. It 
 This simulation will continue with the old behavior:
  - `transform_to_real=true` replaced with `encode=nothing, add_obs_noise_cov=true`
  - `transform_to_real=false` replaced with `encode="out", add_obs_noise_cov=true`
-    """, maxlog=1)
-        
+    """,
+            maxlog = 1
+        )
+
         # modify kwargs
         add_onc = true
         enc = transform_to_real ? nothing : "out"
@@ -584,7 +591,7 @@ This simulation will continue with the old behavior:
         return encode, add_obs_noise_cov
     end
 end
-    
+
 
 
 end

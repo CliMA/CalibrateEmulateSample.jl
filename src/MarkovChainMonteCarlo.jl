@@ -41,15 +41,15 @@ export EmulatorPosteriorModel,
     sample,
     esjd
 
-    # ------------------------------------------------------------------------------------------
-    # Sampler extensions to differentiate vanilla RW and pCN algorithms
-    #
-    # (Strictly speaking the difference between RW and pCN should be implemented at the level of
-    # the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
-    # only change is made. We do the latter here because doing the former would require more
-    # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
+# ------------------------------------------------------------------------------------------
+# Sampler extensions to differentiate vanilla RW and pCN algorithms
+#
+# (Strictly speaking the difference between RW and pCN should be implemented at the level of
+# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
+# only change is made. We do the latter here because doing the former would require more
+# boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
-    # some possible types of autodiff used
+# some possible types of autodiff used
 
 """
 $(DocStringExtensions.TYPEDEF)
@@ -87,8 +87,8 @@ abstract type EnzymeProtocol <: AutodiffProtocol end
 function _get_proposal(prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
     # We use the prior covariance to shape the proposal (in the encoded space), 
     # as proposals are based on increments we do not need to shift the mean too
-    E,_ = get_encoder_from_schedule(encoder_schedule, "in")
-    C = cov(prior) 
+    E, _ = get_encoder_from_schedule(encoder_schedule, "in")
+    C = cov(prior)
     Σ = Matrix(E) * C * Matrix(E)'
     Σ = cholesky(Symmetric(Σ + 1e-12I))
     return AdvancedMH.RandomWalkProposal(Σ.L * MvNormal(zeros(size(Σ, 1)), I))
@@ -138,7 +138,11 @@ Constructor for all `Sampler` objects, with one method for each supported MCMC a
     (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
     inference isn't prior-dominated.
 """
-function MetropolisHastingsSampler(::RWMHSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+function MetropolisHastingsSampler(
+    ::RWMHSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
     proposal = _get_proposal(prior, encoder_schedule)
     return RWMetropolisHastings{typeof(proposal), T}(proposal)
 end
@@ -163,7 +167,11 @@ AdvancedMH.logratio_proposal_density(
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
-function MetropolisHastingsSampler(::pCNMHSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+function MetropolisHastingsSampler(
+    ::pCNMHSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
     proposal = _get_proposal(prior, encoder_schedule)
     return pCNMetropolisHastings{typeof(proposal), T}(proposal)
 end
@@ -189,7 +197,11 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::BarkerSampling{T}, prior::ParameterDistribution, encoder_schedule::VV) where {T <: AutodiffProtocol, VV <: AbstractVector}
+function MetropolisHastingsSampler(
+    ::BarkerSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
     proposal = _get_proposal(prior, encoder_schedule)
     return BarkerMetropolisHastings{typeof(proposal), T}(proposal)
 end
@@ -796,7 +808,7 @@ samples in `chain`.
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
 """
-function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_loss=0.001)
+function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_loss = 0.001)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
@@ -807,34 +819,34 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_lo
 
     # get the encoding schedule for decoding
     encoder_schedule = get_encoder_schedule(mcmc)
-    
+
     # flatten samples from the chain for manipulation as an array with columns as samples
     red_samples = p_chain[:, :, 1]'
-    
+
     # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
     # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
     C = cov(mcmc.prior)
-    m = reshape(mean(mcmc.prior), : ,1)
+    m = reshape(mean(mcmc.prior), :, 1)
     E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
     E = Matrix(E)
-    enc_m = (E*m + b)
-    ECEt = cholesky(Symmetric(E * C * E' + 1e-12*I))
+    enc_m = (E * m + b)
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
     K = C * E' * (ECEt \ I) # Gain
     # deterministic reconstruction with the Gain (should be similar to decode_data(...))
-    full_samples = m .+ K*(red_samples .- enc_m)
+    full_samples = m .+ K * (red_samples .- enc_m)
 
-    projection_loss = tr(C-K*E*C) / tr(C)
+    projection_loss = tr(C - K * E * C) / tr(C)
     if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
         @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
         # Conditionally sample from the null space to preserve correlations with the reduced samples
         Σ_cond = C - K * E * C
-        L = cholesky(Symmetric(Σ_cond + 1e-12*I)).L
-        null_samples = L * randn(size(C,1), size(red_samples,2))
+        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+        null_samples = L * randn(size(C, 1), size(red_samples, 2))
         full_samples += null_samples
     end
-    
-    p_samples = [Samples(full_samples[slice,:], params_are_columns = true) for slice in p_slices]
-     
+
+    p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
+
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested
     p_constraints = [
