@@ -87,10 +87,14 @@ abstract type EnzymeProtocol <: AutodiffProtocol end
 function _get_proposal(prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
     # We use the prior covariance to shape the proposal (in the encoded space), 
     # as proposals are based on increments we do not need to shift the mean too
-    E, _ = get_encoder_from_schedule(encoder_schedule, "in")
     C = cov(prior)
-    Σ = Matrix(E) * C * Matrix(E)'
-    Σ = cholesky(Symmetric(Σ + 1e-12I))
+    E, _ = get_encoder_from_schedule(encoder_schedule, "in")
+    if isnothing(E)
+        Σ = cholesky(Symmetric(C + 1e-12I))
+    else
+        Σ = cholesky(Symmetric(Matrix(E) * C * Matrix(E)' + 1e-12 * I))
+    end
+
     return AdvancedMH.RandomWalkProposal(Σ.L * MvNormal(zeros(size(Σ, 1)), I))
 end
 
@@ -599,7 +603,7 @@ function MCMCWrapper(
 }
 
     if length(init_params) == 0
-        init_params = mean(prior)
+        init_params = ndims(prior) > 1 ? mean(prior) : [mean(prior)]
     end
 
     # make into iterable over vectors
@@ -823,26 +827,31 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_lo
     # flatten samples from the chain for manipulation as an array with columns as samples
     red_samples = p_chain[:, :, 1]'
 
-    # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
-    # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
-    C = cov(mcmc.prior)
-    m = reshape(mean(mcmc.prior), :, 1)
     E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
-    E = Matrix(E)
-    enc_m = (E * m + b)
-    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
-    K = C * E' * (ECEt \ I) # Gain
-    # deterministic reconstruction with the Gain (should be similar to decode_data(...))
-    full_samples = m .+ K * (red_samples .- enc_m)
+    if isnothing(E)
+        full_samples = red_samples
+    else
+        # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
+        # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
 
-    projection_loss = tr(C - K * E * C) / tr(C)
-    if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
-        @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
-        # Conditionally sample from the null space to preserve correlations with the reduced samples
-        Σ_cond = C - K * E * C
-        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
-        null_samples = L * randn(size(C, 1), size(red_samples, 2))
-        full_samples += null_samples
+        C = cov(mcmc.prior)
+        m = reshape(mean(mcmc.prior), :, 1)
+        E = Matrix(E)
+        enc_m = (E * m + b)
+        ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
+        K = C * E' * (ECEt \ I) # Gain
+        # deterministic reconstruction with the Gain (should be similar to decode_data(...))
+        full_samples = m .+ K * (red_samples .- enc_m)
+
+        projection_loss = tr(C - K * E * C) / tr(C)
+        if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
+            @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
+            # Conditionally sample from the null space to preserve correlations with the reduced samples
+            Σ_cond = C - K * E * C
+            L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+            null_samples = L * randn(size(C, 1), size(red_samples, 2))
+            full_samples += null_samples
+        end
     end
 
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]

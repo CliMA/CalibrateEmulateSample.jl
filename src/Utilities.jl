@@ -740,18 +740,31 @@ function get_encoder_from_schedule(
     encoder_schedule::VV,
     in_or_out::AS,
 ) where {VV <: AbstractVector, AS <: AbstractString}
-    if in_or_out ∉ ["in", "out"]
-        bad_in_or_out(in_or_out)
+
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+        @info encoder_schedule
+
+        encoder_mats =
+            [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
+        @info encoder_mats
+
+        if length(encoder_mats) == 0
+            return nothing, nothing
+        else
+            linear_part = prod(encoder_mats)
+
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
+
+            return linear_part, constant_part
+        end
     end
-
-    encoder_mats =
-        [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
-    linear_part = prod(encoder_mats)
-
-    # rather than extracting the shifts etc. we can get this by just applying it to zero
-    constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
-
-    return linear_part, constant_part
 end
 
 function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
@@ -766,22 +779,33 @@ function get_decoder_from_schedule(
     encoder_schedule::VV,
     in_or_out::AS,
 ) where {VV <: AbstractVector, AS <: AbstractString}
-    if in_or_out ∉ ["in", "out"]
-        bad_in_or_out(in_or_out)
-    end
-    decoder_mats = []
-    for idx in reverse(eachindex(encoder_schedule))
-        (processor, apply_to) = encoder_schedule[idx]
-        if apply_to == in_or_out
-            push!(decoder_mats, get_decoder_mat(processor)[1])
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+        decoder_mats = []
+        for idx in reverse(eachindex(encoder_schedule))
+            (processor, apply_to) = encoder_schedule[idx]
+            if apply_to == in_or_out
+                push!(decoder_mats, get_decoder_mat(processor)[1])
+            end
+        end
+
+        if length(encoder_mats) == 0
+            return nothing, nothing
+        else
+            linear_part = prod(decoder_mats)
+
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
+
+            return linear_part, constant_part
         end
     end
-    linear_part = prod(decoder_mats)
-
-    # rather than extracting the shifts etc. we can get this by just applying it to zero
-    constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
-
-    return linear_part, constant_part
 end
 
 function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
