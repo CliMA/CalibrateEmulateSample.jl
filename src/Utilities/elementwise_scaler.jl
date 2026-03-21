@@ -122,6 +122,11 @@ returns the `struct_decoder_mat` field of the `ElementwiseScaler`.
 """
 get_struct_decoder_mat(es::ElementwiseScaler) = es.struct_decoder_mat
 
+# for now, we have these getters for consistency with other encoders
+get_encoder_mat(es::ElementwiseScaler) = es.struct_encoder_mat
+get_decoder_mat(es::ElementwiseScaler) = es.struct_decoder_mat
+
+
 function Base.show(io::IO, es::ElementwiseScaler)
     out = "ElementwiseScaler: $(get_type(es))"
     print(io, out)
