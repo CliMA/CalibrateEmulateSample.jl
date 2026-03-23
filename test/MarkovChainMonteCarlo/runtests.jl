@@ -261,7 +261,7 @@ function mcmc_test_template(
 
     enc_sch = get_encoder_schedule(em)
     mp = ndims(prior) > 1 ? mean(prior) : [mean(prior)]
-    encoded_ics = encode_data(enc_sch, reshape(mp, : ,1), "in")
+    encoded_ics = encode_data(enc_sch, reshape(mp, :, 1), "in")
     @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), encoded_ics))
 
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
