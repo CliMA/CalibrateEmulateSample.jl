@@ -269,7 +269,7 @@ function mcmc_test_template(
     new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 2000, target_acc = target_acc)
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
-    chain = MCMC.sample(rng, mcmc, 10_000; stepsize = new_step, discard_initial = 10000)
+    chain = MCMC.sample(rng, mcmc, 20_000; stepsize = new_step, discard_initial = 2_000)
     posterior_distribution = get_posterior(mcmc, chain)
     if TEST_PLOT_OUTPUT
         # plot:
