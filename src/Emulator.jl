@@ -39,17 +39,17 @@ include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
 # etc.
 
 # defaults in error, all MachineLearningTools require these functions.
-function throw_define_mlt()
-    throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
+function throw_define_mlt(mlt)
+    throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation. Please check all methods are defined for the MLT received: \n $mlt"))
 end
 function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 function optimize_hyperparameters!(mlt)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 function predict(mlt, new_inputs; mlt_kwargs...)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 
 # We will define the different emulator types after the general statements
