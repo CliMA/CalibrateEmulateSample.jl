@@ -751,7 +751,6 @@ function get_encoder_from_schedule(
         
         encoder_mats =
             [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
-        @info encoder_mats
 
         if length(encoder_mats) == 0
             return nothing, nothing
@@ -759,7 +758,7 @@ function get_encoder_from_schedule(
             linear_part = prod(encoder_mats)
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
-            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 1), 1), in_or_out)
+            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
 
             return linear_part, constant_part
         end
@@ -795,13 +794,13 @@ function get_decoder_from_schedule(
             end
         end
 
-        if length(encoder_mats) == 0
+        if length(decoder_mats) == 0
             return nothing, nothing
         else
             linear_part = prod(decoder_mats)
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
-            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 1), 1), in_or_out)
+            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
 
             return linear_part, constant_part
         end
