@@ -390,6 +390,49 @@ end
 
     end
 
+    # test retrieval of the affine components from the schedule
+    # nothing option
+    enc1= get_encoder_from_schedule([]) 
+    Ein,ain = enc1["in"]
+    Eout,aout = enc1["out"]
+    @test all(isnothing.(Ein,ain,Eout,aout))
+
+    dec1= get_decoder_from_schedule([]) 
+    Din,bin = dec1["in"]
+    Dout,bout = dec1["out"]
+    @test all(isnothing.(Din,bin,Dout,bout))
+
+    @test_throws get_encoder_from_schedule(schedules[1],"not_in_or_out")
+    @test_throws get_decoder_from_schedule(schedules[1],"not_in_or_out")
+
+    # test for some schedules
+    tol = 1e-12
+    for schedule in schedules[1,4,7]
+        enc2 = get_encoder_from_schedule(schedule)
+        dec2 = get_decoder_from_schedule(schedule)
+
+        in_dat = get_inputs(io_pairs)[:,1]
+        out_dat = get_outputs(io_pairs)[:,1]
+        in_mat = in_dat*in_dat'
+        out_mat = out_dat*out_dat'
+        for (i_o, dat, mat) in (("in" in_dat, in_mat), ("out", out_dat, out_mat))
+            enc_dat = encode_data(schedule, dat, i_o)
+            dec_dat = decode_data(schedule, enc_dat, i_o)
+            enc_mat = encode_structure_matrix(schedule, mat, i_o)
+            dec_mat = decode_structure_matrix(schedule, enc_mat, i_o)
+            
+            # retrieve 
+            E,a = enc2[i_o]
+            D,b = dec2[i_o]
+
+            @test isapprox(norm((E*dat+a) - enc_dat), 0; atol = tol * size(E,1))
+            @test isapprox(norm((D*enc_dat+b) - dec_dat), 0; atol = tol * size(D,1))            
+            @test isapprox(norm(Matrix(E*dat*E') - Matrix(enc_mat)), 0; atol= tol*size(E,1)^2)
+            @test isapprox(norm(Matrix(D*enc_mat*D') - Matrix(dec_mat)), 0; atol= tol*size(D,1)^2)
+            
+        end
+    end
+    
     # test throws on lack of sample_mat
     sch2a = (decorrelate_structure_mat(), "in")
     schedule2a = create_encoder_schedule(sch2a)
@@ -427,8 +470,7 @@ end
         obs_noise_cov,
     )
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-
-
+    
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
     # encode the data using the schedule

@@ -748,8 +748,7 @@ function get_encoder_from_schedule(
         if in_or_out ∉ ["in", "out"]
             bad_in_or_out(in_or_out)
         end
-        @info encoder_schedule
-
+        
         encoder_mats =
             [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
         @info encoder_mats
@@ -760,7 +759,7 @@ function get_encoder_from_schedule(
             linear_part = prod(encoder_mats)
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
-            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
+            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 1), 1), in_or_out)
 
             return linear_part, constant_part
         end
@@ -768,10 +767,11 @@ function get_encoder_from_schedule(
 end
 
 function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
-    return [
-        (get_encoder_from_schedule(encoder_schedule, "in"), "in")
-        (get_encoder_from_schedule(encoder_schedule, "out"), "out")
-    ]
+    return Dict(
+        "in" => get_encoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_encoder_from_schedule(encoder_schedule, "out"),
+    )
+    
 end
 
 
@@ -801,7 +801,7 @@ function get_decoder_from_schedule(
             linear_part = prod(decoder_mats)
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
-            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 1), 1), "in")
+            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 1), 1), in_or_out)
 
             return linear_part, constant_part
         end
@@ -809,10 +809,10 @@ function get_decoder_from_schedule(
 end
 
 function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
-    return [
-        (get_decoder_from_schedule(encoder_schedule, "in"), "in")
-        (get_decoder_from_schedule(encoder_schedule, "out"), "out")
-    ]
+    return Dict(
+        "in" => get_decoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_decoder_from_schedule(encoder_schedule, "out"),
+    )
 end
 
 
