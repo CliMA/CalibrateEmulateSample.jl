@@ -242,6 +242,18 @@ $(TYPEDSIGNATURES)
 Encode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
 """
 function encode_data(
+    encoder_schedule::VV,
+    data::MorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractMatrix)
+        return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return encode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+function encode_data(
     em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
@@ -250,12 +262,9 @@ function encode_data(
     MorDC <: Union{AbstractMatrix, DataContainer},
     EorFMW <: Union{Emulator, ForwardMapWrapper},
 }
-    if isa(data, AbstractMatrix)
-        return get_data(encode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
-    else
-        return encode_with_schedule(get_encoder_schedule(em_or_fmw), data, in_or_out)
-    end
+    return encode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
 end
+
 
 """
 $(TYPEDSIGNATURES)
@@ -263,11 +272,19 @@ $(TYPEDSIGNATURES)
 Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
 function encode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return encode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
+
+function encode_structure_matrix(
     em_or_fmw::EorFMW,
     structure_mat,
     in_or_out::AS,
 ) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
-    return encode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
+    return encode_structure_matrix(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
 
@@ -277,6 +294,18 @@ $(TYPEDSIGNATURES)
 Decode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
 """
 function decode_data(
+    encoder_schedule::VV,
+    data::MorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractMatrix)
+        return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return decode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+function decode_data(
     em_or_fmw::EorFMW,
     data::MorDC,
     in_or_out::AS,
@@ -285,11 +314,7 @@ function decode_data(
     MorDC <: Union{AbstractMatrix, DataContainer},
     EorFMW <: Union{Emulator, ForwardMapWrapper},
 }
-    if isa(data, AbstractMatrix)
-        return get_data(decode_with_schedule(get_encoder_schedule(em_or_fmw), DataContainer(data), in_or_out))
-    else
-        return decode_with_schedule(get_encoder_schedule(em_or_fmw), data, in_or_out)
-    end
+    return decode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
 end
 
 """
@@ -298,18 +323,36 @@ $(TYPEDSIGNATURES)
 Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
 """
 function decode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return decode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
+
+function decode_structure_matrix(
     em_or_fmw::EorFMW,
     structure_mat,
     in_or_out::AS,
 ) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
-    return decode_with_schedule(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
+    return decode_structure_matrix(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
 """
 $(TYPEDSIGNATURES)
 
 Makes a prediction using the emulator on new inputs (each new inputs given as data columns).
-Default is to predict in the decorrelated space.
+
+Keyword args
+- `encode` [=`nothing`]: For the input encoder `Eᵢ`, and output decoder `Dₒ` stored in the emulator, we have learnt a predict method method `G` in the encoded space. Interpret the keyword as follows:
+    - nothing     : applies Dₒ∘G∘Eᵢ(x) (nothing is encoded) - most common for user interaction
+    - "in"        : applies Dₒ∘G(z) (the inputs are provided as encoded (z=Eᵢx))
+    - "out"       : applies G∘Eᵢ(x) (the outputs are returned as encoded)
+    - "in_and_out": applies G(z) (inputs (z=Eᵢx) and outputs are both encoded) - internally called by `Sample` method
+- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
+    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
+    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
+- All other kwargs are passed into the machine learning tool.
 
 Return type of N inputs: (in the output space)
   - 1-D: mean [1 x N], cov [1 x N]
@@ -318,35 +361,55 @@ Return type of N inputs: (in the output space)
 function predict(
     emulator::Emulator{FT},
     new_inputs::AM;
-    transform_to_real = false,
+    encode = nothing, # maps decoded inputs to decoded outputs
+    add_obs_noise_cov = false,
+    transform_to_real = nothing,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat, AM <: AbstractMatrix}
+
+    encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
+
+    # For the logic below
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
+
     # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(emulator), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(emulator), 1)
 
+    check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != input_dim
+    if size(new_inputs, 1) != check_dim
         throw(
             ArgumentError(
-                "Emulator object `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+                "Emulator object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
             ),
         )
     end
 
+
     # encode the new input data
-    encoded_inputs = encode_data(emulator, new_inputs, "in")
+    if !in_already_encoded
+        encoded_inputs = encode_data(emulator, new_inputs, "in")
+    else
+        encoded_inputs = new_inputs
+    end
     # predict in encoding space
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; mlt_kwargs...)
+    encoded_outputs, encoded_uncertainties = predict(
+        get_machine_learning_tool(emulator),
+        encoded_inputs;
+        add_obs_noise_cov = add_obs_noise_cov,
+        mlt_kwargs...,
+    )
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
 
     # return decoded or encoded?
-    if transform_to_real
+    if out_to_be_decoded
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
 
         decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
@@ -392,7 +455,20 @@ function predict(
 end
 
 ### Forward Map constructor and methods
+"""
+$(TYPEDSIGNATURES)
 
+Constructor of the `ForwardMapWrapper` object. Behaves similarly to constructing the `Emulator` but additionally requires the `prior` parameter distribution.
+
+Positional Arguments
+ - `forward_map`: a function that represents the forward map `F(x)` mapping physical parameters (in constrained space) to outputs
+ - `prior`: a `ParameterDistribution` object describing the prior on the physical parameters.
+ - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+
+Keyword Arguments 
+ -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
+ - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
+"""
 function forward_map_wrapper(
     forward_map::Function,
     prior::PD,
@@ -429,38 +505,73 @@ function forward_map_wrapper(
 end
 
 
+"""
+$(TYPEDSIGNATURES)
 
+Makes a prediction using the ForwardMapWrapper on new inputs (each new inputs given as data columns).
+
+Keyword args
+- `encode` [=`nothing`]: For the output encoder `Eₒ`, and input decoder `Dᵢ` stored in the `ForwardMapWrapper`, we have provided the forward map `G` in the decoded space. Interpret the keyword as follows:
+    - nothing     : applies G(x) (nothing is encoded) - most common for user interaction
+    - "in"        : applies G∘Dᵢ(z) (the inputs are provided as encoded (x=Dᵢz))
+    - "out"       : applies Eₒ∘G(x) (the outputs are returned as encoded)
+    - "in_and_out": applies Eₒ∘G∘Dᵢ(z) (inputs (x=Dᵢz) and outputs are both encoded) - internally called by `Sample` method
+- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
+    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
+    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
+- All other kwargs are passed into the machine learning tool.
+
+Return type of N inputs: (in the output space)
+  - 1-D: mean [1 x N], cov [1 x N]
+  - p-D: mean [p x N], cov N x [p x p] 
+"""
 function predict(
     fmw::FMW,
     new_inputs::AM;
-    transform_to_real = false,
+    encode = nothing, # maps decoded inputs to decoded outputs
+    add_obs_noise_cov = false,
+    transform_to_real = nothing,
 ) where {FMW <: ForwardMapWrapper, AM <: AbstractMatrix}
-    # Check if the size of new_inputs is consistent with the training input data
+
+    encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
+
+    # For the logic below
+    in_already_encoded = encode ∈ ["in", "in_and_out"]
+    out_to_be_decoded = encode ∉ ["out", "in_and_out"]
+
+    # Check if the size of new_inputs is consistent with the training data input
     input_dim, output_dim = size(get_io_pairs(fmw), 1)
     encoded_input_dim, encoded_output_dim = size(get_encoded_io_pairs(fmw), 1)
 
+    check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != input_dim
+    if size(new_inputs, 1) != check_dim
         throw(
             ArgumentError(
-                "ForwardMapObject `io_pairs` and new inputs do not have consistent dimensions, expected $(input_dim), received $(size(new_inputs,1))",
+                "ForwardMapWrapper object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
             ),
         )
     end
 
+    prior = get_prior(fmw)
+    #need to boost to decode inputs
+    if in_already_encoded
+        decoded_inputs = Matrix(decode_data(fmw, new_inputs, "in"))
+    else
+        decoded_inputs = new_inputs
+    end
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
 
     # unlike the emulator, the forward map runs in the physical, decoded space. and must be encoded where necessary 
-    prior = get_prior(fmw)
     forward_map = get_forward_map(fmw)
     fm_unc = x -> forward_map(transform_unconstrained_to_constrained(prior, x))
 
-    decoded_outputs = reduce(hcat, map(fm_unc, eachcol(new_inputs))) # apply map and return: [out_dim x n_samples]
+    decoded_outputs = reduce(hcat, map(fm_unc, eachcol(decoded_inputs))) # apply map and return: [out_dim x n_samples]
 
     var_or_cov = (output_dim == 1) ? "var" : "cov"
-    if transform_to_real
+    if out_to_be_decoded
         # uncertainty returned is just `I` in encoded space
         decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
 
@@ -495,5 +606,34 @@ function predict(
         end
     end
 end
+
+
+### Deprecated keywords
+function deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
+    if !isnothing(transform_to_real)
+        @warn(
+            """`transform_to_real` keyword is deprecated. Please use the `encode` and `add_obs_noise_cov` keywords instead.
+                                             
+Recommended usage for users is now set by default as:
+ - `encode=nothing`, `add_obs_noise_cov=false`
+This behaviour takes in non-encoded inputs, and returns non-encoded outputs. It gives only the uncertainty from the Machine Learning Tool (not inflated by observational noise)
+               
+This simulation will continue with the old behavior:
+ - `transform_to_real=true` replaced with `encode=nothing, add_obs_noise_cov=true`
+ - `transform_to_real=false` replaced with `encode="out", add_obs_noise_cov=true`
+    """,
+            maxlog = 1
+        )
+
+        # modify kwargs
+        add_onc = true
+        enc = transform_to_real ? nothing : "out"
+        return enc, add_onc
+    else
+        return encode, add_obs_noise_cov
+    end
+end
+
+
 
 end

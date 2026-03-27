@@ -2,6 +2,9 @@
 module MarkovChainMonteCarlo
 
 using ..Emulators
+import ..Emulators: get_encoder_schedule
+using ..Utilities
+
 using ..ParameterDistributions
 using ..EnsembleKalmanProcesses
 
@@ -34,9 +37,10 @@ export EmulatorPosteriorModel,
     optimize_stepsize,
     get_posterior,
     get_sample_kwargs,
+    get_encoder_schedule,
     sample,
-    esjd
-
+    esjd,
+    decode_and_add_noise
 
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -47,6 +51,7 @@ export EmulatorPosteriorModel,
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
 # some possible types of autodiff used
+
 """
 $(DocStringExtensions.TYPEDEF)
 
@@ -80,10 +85,18 @@ abstract type ZygoteProtocol <: AutodiffProtocol end
 abstract type EnzymeProtocol <: AutodiffProtocol end
 =#
 
-function _get_proposal(prior::ParameterDistribution)
-    # *only* use covariance of prior, not full distribution
-    Σsqrt = sqrt(ParameterDistributions.cov(prior)) # rt_cov * MVN(0,I) avoids the posdef errors for MVN in Julia Distributions   
-    return AdvancedMH.RandomWalkProposal(Σsqrt * MvNormal(zeros(size(Σsqrt)[1]), I))
+function _get_proposal(prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
+    # We use the prior covariance to shape the proposal (in the encoded space), 
+    # as proposals are based on increments we do not need to shift the mean too
+    C = cov(prior)
+    E, _ = get_encoder_from_schedule(encoder_schedule, "in")
+    if isnothing(E)
+        Σ = cholesky(Symmetric(C + 1e-12I))
+    else
+        Σ = cholesky(Symmetric(Matrix(E) * C * Matrix(E)' + 1e-12 * I))
+    end
+
+    return AdvancedMH.RandomWalkProposal(Σ.L * MvNormal(zeros(size(Σ, 1)), I))
 end
 
 
@@ -130,8 +143,12 @@ Constructor for all `Sampler` objects, with one method for each supported MCMC a
     (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
     inference isn't prior-dominated.
 """
-function MetropolisHastingsSampler(::RWMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(
+    ::RWMHSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return RWMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -155,8 +172,12 @@ AdvancedMH.logratio_proposal_density(
     transition_prev::AdvancedMH.AbstractTransition,
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
-function MetropolisHastingsSampler(::pCNMHSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(
+    ::pCNMHSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return pCNMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -181,8 +202,12 @@ AdvancedMH.logratio_proposal_density(
     candidate,
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
-function MetropolisHastingsSampler(::BarkerSampling{T}, prior::ParameterDistribution) where {T <: AutodiffProtocol}
-    proposal = _get_proposal(prior)
+function MetropolisHastingsSampler(
+    ::BarkerSampling{T},
+    prior::ParameterDistribution,
+    encoder_schedule::VV,
+) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    proposal = _get_proposal(prior, encoder_schedule)
     return BarkerMetropolisHastings{typeof(proposal), T}(proposal)
 end
 
@@ -238,9 +263,9 @@ Defines the internal log-density function over a vector of observation samples u
 
 Inputs:
 =======
-- θ: Parameters in physical (constrained) coordinates.
-- prior: Prior distribution as a ParameterDistribution
-- em: Emulator object with predict(.) method, evaluations returned in encoded space 
+- θ: Parameters in unconstrained, and encoded coordinates.
+- prior: Prior distribution as a ParameterDistribution (defined on the full, decoded and unconstrained space)
+- em_or_fmw: `Emulator` or `ForwardMapWrapper` object with predict(.) method
 - obs_vec: encoded data vector sample(s)
 """
 function emulator_log_density_model(
@@ -250,17 +275,15 @@ function emulator_log_density_model(
     obs_vec::AV,
 ) where {AV <: AbstractVector, EorFMW <: Union{Emulator, ForwardMapWrapper}}
 
-    # 
-    # transform_to_real = false means g, g_cov, obs_sample are in encoded coords.
-
-    # predict is written to apply to columns.
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
-    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), transform_to_real = false)
+    g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "in_and_out", add_obs_noise_cov = true)
+
+    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # we still compute logpdf(prior, decoded_θ) in full space, where prior is defined
 
     if isa(g_cov[1], Real)
-        return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, decoded_θ)
     else
-        return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, θ)
+        return sum([logpdf(MvNormal(obs, g_cov[1]), vec(g)) for obs in obs_vec]) + logpdf(prior, decoded_θ)
     end
 
 end
@@ -504,19 +527,21 @@ AbstractMCMC's terminology).
 # Fields
 $(DocStringExtensions.TYPEDFIELDS)
 """
-struct MCMCWrapper{AVV <: AbstractVector, AV <: AbstractVector}
+struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
     prior::ParameterDistribution
     "[output_dim x N_samples] matrix, of given observation data."
-    observations::AVV
+    observations::VV1
     "Vector of observations describing the data samples to actually used during MCMC sampling (that have been transformed into a space consistent with emulator outputs)."
-    encoded_observations::AV
+    encoded_observations::VV2
     "`AdvancedMH.DensityModel` object, used to evaluate the posterior density being sampled from."
     log_posterior_map::AbstractMCMC.AbstractModel
     "Object describing a MCMC sampling algorithm and its settings."
     mh_proposal_sampler::AbstractMCMC.AbstractSampler
     "NamedTuple of other arguments to be passed to `AbstractMCMC.sample()`."
     sample_kwargs::NamedTuple
+    "Vector of encoders dictating how to encode/decode data."
+    encoder_schedule::VV3
 end
 
 """
@@ -527,11 +552,18 @@ gets the NameTuple of keywords that are passed into the Sampler algorithm
 get_sample_kwargs(mcmc::MCMCWrapper) = mcmc.sample_kwargs
 
 """
+$(TYPEDSIGNATURES)
+
+gets the stored `encoder_schedule` from an `MCMCWrapper`
+"""
+get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
+
+
+"""
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD 
-decorrelation) that was applied in the Emulator. It creates and wraps an instance of 
-[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator, and 
+Constructor for [`MCMCWrapper`](@ref) that will perform an MCMC sampling in the encoded space given by `em_or_fmw` (`Emulator` or `ForwardMapWrapper`). It creates and wraps an instance of 
+[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator (predicting means and covariances), and 
 [`MetropolisHastingsSampler`](@ref), for generating the MC proposals.
 
 - `mcmc_alg`: [`MCMCProtocol`](@ref) describing the MCMC sampling algorithm to use. Currently
@@ -544,12 +576,11 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
 
-- `obs_sample`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an Observation struct using `get_obs_sample`.
+- `observation`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an `Observation` struct using `get_obs_sample`.
 - `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
   object containing the parameters' prior distributions.
-- `emulator`: [`Emulator`](@ref) to sample from.
-- `stepsize`: MCMC step size, applied as a scaling to the prior covariance.
-- `init_params`: Starting parameter values for MCMC sampling.
+- `em_or_fmw`: [`Emulator`](@ref) or `ForwardMapWrapper` to sample from.
+- `init_params`: Starting parameter values for MCMC sampling. (defined in unconstrained parameter coordinates)
 - `burnin`: Initial number of MCMC steps to discard from output (pre-convergence).
 """
 function MCMCWrapper(
@@ -567,7 +598,7 @@ function MCMCWrapper(
 }
 
     if length(init_params) == 0
-        init_params = mean(prior)
+        init_params = ndims(prior) > 1 ? mean(prior) : [mean(prior)]
     end
 
     # make into iterable over vectors
@@ -577,30 +608,36 @@ function MCMCWrapper(
         eachcol(observation)
     end
 
-    # encoding works on columns but mcmc wants vec-of-vec
-    encoded_obs = [vec(encode_data(em_or_fmw, reshape(obs, :, 1), "out")) for obs in obs_slice]
+    # encoding, saved in MCMCWrapper
+    encoder_schedule = get_encoder_schedule(em_or_fmw)
+
+    # encoding data works on columns but mcmc wants vec-of-vec
+    encoded_obs = [vec(encode_data(encoder_schedule, reshape(obs, :, 1), "out")) for obs in obs_slice]
+    # encoding initial condition
+    encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params, :, 1), "in"))
 
     log_posterior_map = EmulatorPosteriorModel(prior, em_or_fmw, encoded_obs)
-    mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior)
+    mh_proposal_sampler = MetropolisHastingsSampler(mcmc_alg, prior, encoder_schedule)
 
-    # parameter names are needed in every dimension in a MCMCChains object needed for diagnostics
-    # so create the duplicates here
-    dd = get_dimensions(prior)
-    if all(dd .== 1) # i.e if dd == [1, 1, 1, 1, 1], => all params are univariate
-        param_names = get_name(prior)
-    else # else use multiplicity to get still informative parameter names
-        pn = get_name(prior)
-        param_names = reduce(vcat, [(pn[k] * "_") .* map(x -> string(x), 1:dd[k]) for k in 1:length(pn)])
-    end
+    # naming encoded dimensions
+    param_names = ["encoded_param_$(k)" for k in 1:size(encoded_init_params, 1)]
 
     sample_kwargs = (; # set defaults here
-        :initial_params => deepcopy(init_params),
+        :initial_params => deepcopy(encoded_init_params),
         :param_names => param_names,
         :discard_initial => burnin,
         :chain_type => MCMCChains.Chains,
     )
     sample_kwargs = merge(sample_kwargs, kwargs) # override defaults with any explicit values
-    return MCMCWrapper(prior, obs_slice, encoded_obs, log_posterior_map, mh_proposal_sampler, sample_kwargs)
+    return MCMCWrapper(
+        prior,
+        obs_slice,
+        encoded_obs,
+        log_posterior_map,
+        mh_proposal_sampler,
+        sample_kwargs,
+        encoder_schedule,
+    )
 end
 
 function MCMCWrapper(
@@ -762,15 +799,61 @@ optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBA
 
 
 """
+$(TYPEDSIGNATURES)
+
+Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+
+The quantification of correlation depends on Gaussian assumptions, and therefore is approximate. 
+"""
+function decode_and_add_noise(
+    encoder_schedule::VV,
+    samples::MM,
+    prior::PD,
+    boost_for_loss::FT,
+) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+
+    E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
+    if isnothing(E)
+        return samples
+    end
+
+    C = cov(prior)
+    m = reshape(mean(prior), :, 1)
+    E = Matrix(E)
+    enc_m = (E * m + b)
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
+    K = C * E' * (ECEt \ I) # Gain
+    Σ_cond = C - K * E * C
+    projection_loss = tr(Σ_cond) / tr(C)
+    if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
+        @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
+        recovered_samples = m .+ K * (samples .- enc_m) # similar to `decode_data`
+
+        # Conditionally sample from the null space to preserve correlations with the reduced samples
+        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+        null_samples = L * randn(size(C, 1), size(samples, 2))
+        full_samples = null_samples + recovered_samples
+    else
+        # more consistent to return decoded_samples than recovered samples
+        full_samples = decode_data(encoder_schedule, samples, "in")
+    end
+
+    return full_samples
+end
+
+"""
 $(DocStringExtensions.TYPEDSIGNATURES)
 
 Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
 samples in `chain`.
 
+keywod args
+- `boost_for_loss`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `boost_for_loss`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
+
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
 """
-function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
+function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_loss = 0.001)
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
@@ -778,8 +861,15 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains)
     # Cast data in chain to a ParameterDistribution object. Data layout in Chain is an
     # (N_samples x n_params x n_chains) AxisArray, so samples are in rows.
     p_chain = Array(Chains(chain, :parameters)) # discard internal/diagnostic data
-    p_samples = [Samples(p_chain[:, slice, 1], params_are_columns = false) for slice in p_slices]
 
+    # get the encoding schedule for decoding
+    encoder_schedule = get_encoder_schedule(mcmc)
+
+    # flatten samples from the chain for manipulation as an array with columns as samples
+    red_samples = p_chain[:, :, 1]'
+    full_samples = decode_and_add_noise(encoder_schedule, red_samples, mcmc.prior, boost_for_loss)
+
+    p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
 
     # live in same space as prior
     # checks if a function distribution, by looking at if the distribution is nested

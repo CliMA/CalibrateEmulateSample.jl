@@ -30,7 +30,9 @@ export create_encoder_schedule,
     norm,
     norm_linear_map,
     isequal_linear,
-    encoder_kwargs_from
+    encoder_kwargs_from,
+    get_encoder_from_schedule,
+    get_decoder_from_schedule
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -730,6 +732,108 @@ function bad_in_or_out(in_or_out::AS) where {AS <: AbstractString}
         ArgumentError(
             "`in_or_out` must be either \"in\" (data is an input) or \"out\" (data is an output). Received $(in_or_out)",
         ),
+    )
+end
+
+# get affine encoder from schedule
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
+function get_encoder_from_schedule(
+    encoder_schedule::VV,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString}
+
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+
+        encoder_mats =
+            [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
+
+        if length(encoder_mats) == 0
+            return nothing, nothing
+        else
+            linear_part = prod(encoder_mats)
+
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
+
+            return linear_part, constant_part
+        end
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+"""
+function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return Dict(
+        "in" => get_encoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_encoder_from_schedule(encoder_schedule, "out"),
+    )
+
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine decodings can be represented as `Dx + b`. This function returns `D,b`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
+function get_decoder_from_schedule(
+    encoder_schedule::VV,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString}
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+        decoder_mats = []
+        for idx in reverse(eachindex(encoder_schedule))
+            (processor, apply_to) = encoder_schedule[idx]
+            if apply_to == in_or_out
+                push!(decoder_mats, get_decoder_mat(processor)[1])
+            end
+        end
+
+        if length(decoder_mats) == 0
+            return nothing, nothing
+        else
+            linear_part = prod(decoder_mats)
+
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
+
+            return linear_part, constant_part
+        end
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine decodings can be represented as `Dx + b`. This function returns `D,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+"""
+function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return Dict(
+        "in" => get_decoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_decoder_from_schedule(encoder_schedule, "out"),
     )
 end
 

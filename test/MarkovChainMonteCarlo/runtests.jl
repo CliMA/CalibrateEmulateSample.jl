@@ -238,7 +238,6 @@ function test_vrfi(y, σ2_y, iopairs::PairedDataContainer)
     return em
 end
 
-
 function mcmc_test_template(
     prior::ParameterDistribution,
     σ2_y,
@@ -259,14 +258,17 @@ function mcmc_test_template(
 
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em) # without ICs
 
-    @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), mean(prior)))
+    enc_sch = get_encoder_schedule(em)
+    mp = ndims(prior) > 1 ? mean(prior) : [mean(prior)]
+    encoded_ics = encode_data(enc_sch, reshape(mp, :, 1), "in")
+    @test all(isapprox.(getfield(get_sample_kwargs(mcmc), :initial_params), encoded_ics))
 
     mcmc = MCMCWrapper(mcmc_alg, obs_sample, prior, em; init_params = init_params)
     # First let's run a short chain to determine a good step size
-    new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 5000, target_acc = target_acc)
+    new_step = optimize_stepsize(mcmc; init_stepsize = step, N = 2000, target_acc = target_acc)
 
     # Now begin the actual MCMC, sample is multiply exported so we qualify
-    chain = MCMC.sample(rng, mcmc, 50_000; stepsize = new_step, discard_initial = 10000)
+    chain = MCMC.sample(rng, mcmc, 20_000; stepsize = new_step, discard_initial = 2_000)
     posterior_distribution = get_posterior(mcmc, chain)
     if TEST_PLOT_OUTPUT
         # plot:
@@ -328,7 +330,7 @@ end
     validate_emulator(em_1b, "test_data", prior, test_data_kwargs, exp_name = "agpjl_1d")
     validate_emulator(em_2, "test_data", prior, test_data_kwargs, exp_name = "gpjl-svd_1d")
 
-    # [2.] 10D -> 1D
+    # [2.] 5D -> 1D
     # setup
     obs_sample_mv = [5.0]
     input_dim = 5
@@ -549,6 +551,67 @@ end
         end
     end
 
+
+    @testset "Test the encode-decode for posterior samples" begin
+
+        # build a mv problem in input space
+        input_dim = 10
+        n_samples = 5000
+        prior_mv = test_prior_mv(input_dim)
+        test_data_mv_kwargs = (; input_dim = input_dim)
+        y_mv, σ2_y_mv, iopairs_mv, rng_mv = test_data_mv(prior_mv; test_data_mv_kwargs...) # iopairs unconstrained inputs
+
+        # new data
+        samples = 0.1 * collect(1:input_dim) .* randn(input_dim, n_samples)
+
+        # lossless encoding
+        lossless_sch = create_encoder_schedule((minmax_scale(), "in"))
+        initialize_and_encode_with_schedule!(lossless_sch, iopairs_mv; prior_cov = cov(prior_mv))
+
+        enc_samples = encode_data(lossless_sch, samples, "in")
+        full_samples = decode_and_add_noise(lossless_sch, enc_samples, prior_mv, 1.0) # 1.0 = no boosting, should be like decoding
+        tol = 1e-12
+        enc_factor = size(enc_samples, 1) * size(enc_samples, 2)
+        dec_factor = size(full_samples, 1) * size(full_samples, 2)
+        @test isapprox(norm(full_samples - decode_data(lossless_sch, enc_samples, "in")), 0; atol = tol * dec_factor)
+
+        # lossy encoding
+        lossy_sch = create_encoder_schedule((decorrelate_sample_cov(retain_var = 0.8), "in")) # lossy drops ~ 0.2 variance       
+        initialize_and_encode_with_schedule!(lossy_sch, iopairs_mv; prior_cov = cov(prior_mv))
+
+        enc_samples = encode_data(lossy_sch, samples, "in")
+        # -> without noise injection
+        dec_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.25) # should not boost (0.25>0.2)
+        @test isapprox(norm(dec_samples - decode_data(lossy_sch, enc_samples, "in")), 0; atol = tol * dec_factor)
+        @test isapprox(norm(encode_data(lossy_sch, dec_samples, "in") - enc_samples), 0; atol = tol * enc_factor)
+
+        # -> with noise injection
+        full_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15) # should boost (0.15 < 0.2)
+
+        # check re encoding samples gives same reduced samples (will be rough when lossy drops larger variance %)
+        bigger_tol = 1e-6
+        @test isapprox(
+            norm(encode_data(lossy_sch, full_samples, "in") - enc_samples),
+            0;
+            atol = bigger_tol * enc_factor,
+        )
+
+        # check that the fill-in has distribution that matches C - KEC
+        # compute deterinistic part
+        E, b = get_encoder_from_schedule(lossy_sch, "in")
+        E = Matrix(E)
+        C = cov(prior_mv)
+        m = reshape(mean(prior_mv), :, 1)
+        ECEt = cholesky(Symmetric(E * C * E' + 1e-12I))
+        K = C * E' * (ECEt \ I)
+        det_part = m .+ K * (enc_samples .- (E * m .+ b))
+
+        # asses the covariance of the remainder
+        C_rem = cov(full_samples - det_part, dims = 2)
+        @test isapprox(norm(C_rem - (C - K * E * C)), 0; atol = input_dim / sqrt(n_samples)) #  N is huge
+    end
+
+
     @testset "Autodiff MCMC variants" begin
         mcmc_algs = [
             RWMHSampling(), # sanity-check
@@ -582,5 +645,4 @@ end
             end
         end
     end
-
 end
