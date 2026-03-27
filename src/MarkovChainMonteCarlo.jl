@@ -39,7 +39,8 @@ export EmulatorPosteriorModel,
     get_sample_kwargs,
     get_encoder_schedule,
     sample,
-    esjd
+    esjd,
+    decode_and_add_noise
 
 # ------------------------------------------------------------------------------------------
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
@@ -804,6 +805,42 @@ optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBA
 
 
 """
+$(TYPEDSIGNATURES)
+
+Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+"""
+function decode_and_add_noise(encoder_schedule::VV, samples::MM, prior::PD, boost_for_loss::FT) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+        
+    E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
+    if isnothing(E)
+        return samples
+    end
+    
+    C = cov(prior)
+    m = reshape(mean(prior), :, 1)
+    E = Matrix(E)
+    enc_m = (E * m + b)
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12*I))
+    K = C * E' * (ECEt \ I) # Gain
+    Σ_cond = C - K * E * C    
+    projection_loss = tr(Σ_cond) / tr(C)
+    if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
+        @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
+        recovered_samples = m .+ K * (samples .- enc_m) # similar to `decode_data`
+
+        # Conditionally sample from the null space to preserve correlations with the reduced samples
+        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+        null_samples = L * randn(size(C, 1), size(samples, 2))
+        full_samples = null_samples + recovered_samples
+    else
+        # more consistent to return decoded_samples than recovered samples
+        full_samples = decode_data(encoder_schedule, samples, "in")
+    end
+
+    return full_samples
+end
+
+"""
 $(DocStringExtensions.TYPEDSIGNATURES)
 
 Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
@@ -826,34 +863,8 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_lo
 
     # flatten samples from the chain for manipulation as an array with columns as samples
     red_samples = p_chain[:, :, 1]'
-
-    E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
-    if isnothing(E)
-        full_samples = red_samples
-    else
-        # Perform a lift back to the full-space, that is aware of the correlation between reduced and null-space variables (through a Gaussian assumption)
-        # Can be done by defining the deterministic Gaussin gain K, to decode, then if the null-space "(I-KE)" is big we also inject noise in the null space
-
-        C = cov(mcmc.prior)
-        m = reshape(mean(mcmc.prior), :, 1)
-        E = Matrix(E)
-        enc_m = (E * m + b)
-        ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
-        K = C * E' * (ECEt \ I) # Gain
-        # deterministic reconstruction with the Gain (should be similar to decode_data(...))
-        full_samples = m .+ K * (red_samples .- enc_m)
-
-        projection_loss = tr(C - K * E * C) / tr(C)
-        if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
-            @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
-            # Conditionally sample from the null space to preserve correlations with the reduced samples
-            Σ_cond = C - K * E * C
-            L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
-            null_samples = L * randn(size(C, 1), size(red_samples, 2))
-            full_samples += null_samples
-        end
-    end
-
+    full_samples = decode_and_add_noise(encoder_schedule, red_samples, mcmc.prior, boost_for_loss)
+    
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
 
     # live in same space as prior
