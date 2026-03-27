@@ -212,7 +212,7 @@ function initialize_processor!(
         # creat the linear maps:
         # we explicitly make the encoder/decoder maps 
         encoder_map = LinearMap(
-            x -> encoder_mat x, # Ax
+            x -> encoder_mat * x, # Ax
             x -> encoder_mat' * x, # A'x
             size(encoder_mat, 1), # size(A,1)
             size(encoder_mat, 2), # size(A,2)
@@ -249,7 +249,7 @@ $(TYPEDSIGNATURES)
 
 Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix
 """
-function decode_data(li::LikelihoodInformed, data::MM) {MM <: AbstractMatrix}
+function decode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
     dec = get_decoder_mat(li)[1]
     out = zeros(size(dec, 1), size(data, 2))    
     mul!(out, dec, data)  # must use this form to get matrix output of dec*out
