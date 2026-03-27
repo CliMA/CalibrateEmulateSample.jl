@@ -809,20 +809,25 @@ $(TYPEDSIGNATURES)
 
 Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
 """
-function decode_and_add_noise(encoder_schedule::VV, samples::MM, prior::PD, boost_for_loss::FT) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
-        
+function decode_and_add_noise(
+    encoder_schedule::VV,
+    samples::MM,
+    prior::PD,
+    boost_for_loss::FT,
+) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+
     E, b = get_encoder_from_schedule(encoder_schedule, "in") # encoder is affine: E*x + b
     if isnothing(E)
         return samples
     end
-    
+
     C = cov(prior)
     m = reshape(mean(prior), :, 1)
     E = Matrix(E)
     enc_m = (E * m + b)
-    ECEt = cholesky(Symmetric(E * C * E' + 1e-12*I))
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
     K = C * E' * (ECEt \ I) # Gain
-    Σ_cond = C - K * E * C    
+    Σ_cond = C - K * E * C
     projection_loss = tr(Σ_cond) / tr(C)
     if projection_loss > boost_for_loss # (default >0.1% of variance is lost in projecting)
         @info "As the variance lost in reduced space is sufficiently large: $(projection_loss) > boost_for_loss (= $(boost_for_loss)), we inject additional noise into the complement of the reduced space"
@@ -864,7 +869,7 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_lo
     # flatten samples from the chain for manipulation as an array with columns as samples
     red_samples = p_chain[:, :, 1]'
     full_samples = decode_and_add_noise(encoder_schedule, red_samples, mcmc.prior, boost_for_loss)
-    
+
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
 
     # live in same space as prior

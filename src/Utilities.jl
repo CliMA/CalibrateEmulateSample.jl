@@ -748,7 +748,7 @@ function get_encoder_from_schedule(
         if in_or_out ∉ ["in", "out"]
             bad_in_or_out(in_or_out)
         end
-        
+
         encoder_mats =
             [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
 
@@ -770,7 +770,7 @@ function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
         "in" => get_encoder_from_schedule(encoder_schedule, "in"),
         "out" => get_encoder_from_schedule(encoder_schedule, "out"),
     )
-    
+
 end
 
 
