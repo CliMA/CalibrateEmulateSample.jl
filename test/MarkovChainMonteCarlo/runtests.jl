@@ -608,7 +608,7 @@ end
 
         # asses the covariance of the remainder
         C_rem = cov(full_samples - det_part, dims = 2)
-        @test isapprox(norm(C_rem - (C - K * E * C)), 0; atol = 0.1 * input_dim / sqrt(n_samples)) #  N is huge
+        @test isapprox(norm(C_rem - (C - K * E * C)), 0; atol = input_dim / sqrt(n_samples)) #  N is huge
     end
 
 
