@@ -342,7 +342,17 @@ end
 $(TYPEDSIGNATURES)
 
 Makes a prediction using the emulator on new inputs (each new inputs given as data columns).
-Default is to predict in the decorrelated space.
+
+Keyword args
+- `encode` [=`nothing`]: For the input encoder `Eᵢ`, and output decoder `Dₒ` stored in the emulator, we have learnt a predict method method `G` in the encoded space. Interpret the keyword as follows:
+    - nothing     : applies Dₒ∘G∘Eᵢ(x) (nothing is encoded) - most common for user interaction
+    - "in"        : applies Dₒ∘G(z) (the inputs are provided as encoded (z=Eᵢx))
+    - "out"       : applies G∘Eᵢ(x) (the outputs are returned as encoded)
+    - "in_and_out": applies G(z) (inputs (z=Eᵢx) and outputs are both encoded) - internally called by `Sample` method
+- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
+    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
+    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
+- All other kwargs are passed into the machine learning tool.
 
 Return type of N inputs: (in the output space)
   - 1-D: mean [1 x N], cov [1 x N]
@@ -445,7 +455,20 @@ function predict(
 end
 
 ### Forward Map constructor and methods
+"""
+$(TYPEDSIGNATURES)
 
+Constructor of the `ForwardMapWrapper` object. Behaves similarly to constructing the `Emulator` but additionally requires the `prior` parameter distribution.
+
+Positional Arguments
+ - `forward_map`: a function that represents the forward map `F(x)` mapping physical parameters (in constrained space) to outputs
+ - `prior`: a `ParameterDistribution` object describing the prior on the physical parameters.
+ - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+
+Keyword Arguments 
+ -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
+ - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
+"""
 function forward_map_wrapper(
     forward_map::Function,
     prior::PD,
@@ -482,7 +505,26 @@ function forward_map_wrapper(
 end
 
 
+"""
+$(TYPEDSIGNATURES)
 
+Makes a prediction using the ForwardMapWrapper on new inputs (each new inputs given as data columns).
+
+Keyword args
+- `encode` [=`nothing`]: For the output encoder `Eₒ`, and input decoder `Dᵢ` stored in the `ForwardMapWrapper`, we have provided the forward map `G` in the decoded space. Interpret the keyword as follows:
+    - nothing     : applies G(x) (nothing is encoded) - most common for user interaction
+    - "in"        : applies G∘Dᵢ(z) (the inputs are provided as encoded (x=Dᵢz))
+    - "out"       : applies Eₒ∘G(x) (the outputs are returned as encoded)
+    - "in_and_out": applies Eₒ∘G∘Dᵢ(z) (inputs (x=Dᵢz) and outputs are both encoded) - internally called by `Sample` method
+- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
+    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
+    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
+- All other kwargs are passed into the machine learning tool.
+
+Return type of N inputs: (in the output space)
+  - 1-D: mean [1 x N], cov [1 x N]
+  - p-D: mean [p x N], cov N x [p x p] 
+"""
 function predict(
     fmw::FMW,
     new_inputs::AM;

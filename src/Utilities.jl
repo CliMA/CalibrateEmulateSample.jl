@@ -736,6 +736,13 @@ function bad_in_or_out(in_or_out::AS) where {AS <: AbstractString}
 end
 
 # get affine encoder from schedule
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
 function get_encoder_from_schedule(
     encoder_schedule::VV,
     in_or_out::AS,
@@ -765,6 +772,11 @@ function get_encoder_from_schedule(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+"""
 function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
     return Dict(
         "in" => get_encoder_from_schedule(encoder_schedule, "in"),
@@ -773,7 +785,13 @@ function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
 
 end
 
+"""
+$(TYPEDSIGNATURES)
 
+Affine decodings can be represented as `Dx + b`. This function returns `D,b`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
 function get_decoder_from_schedule(
     encoder_schedule::VV,
     in_or_out::AS,
@@ -807,6 +825,11 @@ function get_decoder_from_schedule(
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Affine decodings can be represented as `Dx + b`. This function returns `D,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+"""
 function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
     return Dict(
         "in" => get_decoder_from_schedule(encoder_schedule, "in"),

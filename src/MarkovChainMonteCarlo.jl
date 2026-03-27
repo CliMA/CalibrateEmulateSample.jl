@@ -263,9 +263,9 @@ Defines the internal log-density function over a vector of observation samples u
 
 Inputs:
 =======
-- θ: Parameters in physical (constrained) coordinates.
-- prior: Prior distribution as a ParameterDistribution
-- em: Emulator object with predict(.) method, evaluations returned in encoded space 
+- θ: Parameters in unconstrained, and encoded coordinates.
+- prior: Prior distribution as a ParameterDistribution (defined on the full, decoded and unconstrained space)
+- em_or_fmw: `Emulator` or `ForwardMapWrapper` object with predict(.) method
 - obs_vec: encoded data vector sample(s)
 """
 function emulator_log_density_model(
@@ -275,14 +275,10 @@ function emulator_log_density_model(
     obs_vec::AV,
 ) where {AV <: AbstractVector, EorFMW <: Union{Emulator, ForwardMapWrapper}}
 
-    # 
-    # transform_to_real = false means g, g_cov, obs_sample are in encoded coords.
-
-    # predict is written to apply to columns.
     # Returned g is a length-1, Vector{Real} or Vector{Vector}, and g_cov is length-1 Vector{Vector} or Vector{Matrix} respectively
     g, g_cov = Emulators.predict(em_or_fmw, reshape(θ, :, 1), encode = "in_and_out", add_obs_noise_cov = true)
 
-    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # we still compute logpdf(prior, decoded_θ) in full space
+    decoded_θ = vec(decode_data(em_or_fmw, reshape(θ, :, 1), "in")) # we still compute logpdf(prior, decoded_θ) in full space, where prior is defined
 
     if isa(g_cov[1], Real)
         return sum([logpdf(MvNormal(obs, g_cov[1] * I), vec(g)) for obs in obs_vec]) + logpdf(prior, decoded_θ)
@@ -566,9 +562,8 @@ get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Constructor for [`MCMCWrapper`](@ref) which performs the same standardization (SVD 
-decorrelation) that was applied in the Emulator. It creates and wraps an instance of 
-[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator, and 
+Constructor for [`MCMCWrapper`](@ref) that will perform an MCMC sampling in the encoded space given by `em_or_fmw` (`Emulator` or `ForwardMapWrapper`). It creates and wraps an instance of 
+[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator (predicting means and covariances), and 
 [`MetropolisHastingsSampler`](@ref), for generating the MC proposals.
 
 - `mcmc_alg`: [`MCMCProtocol`](@ref) describing the MCMC sampling algorithm to use. Currently
@@ -581,12 +576,11 @@ decorrelation) that was applied in the Emulator. It creates and wraps an instanc
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
 
-- `obs_sample`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an Observation struct using `get_obs_sample`.
+- `observation`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an `Observation` struct using `get_obs_sample`.
 - `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
   object containing the parameters' prior distributions.
-- `emulator`: [`Emulator`](@ref) to sample from.
-- `stepsize`: MCMC step size, applied as a scaling to the prior covariance.
-- `init_params`: Starting parameter values for MCMC sampling.
+- `em_or_fmw`: [`Emulator`](@ref) or `ForwardMapWrapper` to sample from.
+- `init_params`: Starting parameter values for MCMC sampling. (defined in unconstrained parameter coordinates)
 - `burnin`: Initial number of MCMC steps to discard from output (pre-convergence).
 """
 function MCMCWrapper(
@@ -808,6 +802,8 @@ optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBA
 $(TYPEDSIGNATURES)
 
 Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+
+The quantification of correlation depends on Gaussian assumptions, and therefore is approximate. 
 """
 function decode_and_add_noise(
     encoder_schedule::VV,
@@ -850,6 +846,9 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 
 Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
 samples in `chain`.
+
+keywod args
+- `boost_for_loss`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `boost_for_loss`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
 
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
