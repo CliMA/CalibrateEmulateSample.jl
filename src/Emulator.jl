@@ -1,12 +1,14 @@
 module Emulators
 
 using ..DataContainers
+using ..Utilities
 import ..Utilities.encode_with_schedule
 import ..Utilities.decode_with_schedule
 import ..Utilities.encode_data
 import ..Utilities.decode_data
 import ..Utilities.encode_structure_matrix
 import ..Utilities.decode_structure_matrix
+
 
 using DocStringExtensions
 using Statistics
@@ -116,7 +118,7 @@ $(TYPEDFIELDS)
 # Constructors:
 - `forward_map_wrapper(forward_map, prior, input_output_pairs; encoder_schedule=nothing, encoder_kwargs=NamedTuple())`
 """
-struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution}
+struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: NoiseInjector}
     "function that represents the forward map"
     forward_map::Function
     "a parameter distribution, containing transformations to constrain the forward map inputs"
@@ -127,6 +129,8 @@ struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistri
     encoded_io_pairs::PairedDataContainer{FT}
     "Store of the pipeline to encode (/decode) the data"
     encoder_schedule::VV
+    "For lossy encodings, this determines how to inject noise into the null-space upon decoding"
+    noise_injector::NI
 end
 """
 $(TYPEDSIGNATURES)
@@ -162,6 +166,13 @@ $(TYPEDSIGNATURES)
 Gets the `encoder_schedule` field of the `ForwardMapWrapper`
 """
 get_encoder_schedule(fmw::ForwardMapWrapper) = fmw.encoder_schedule
+
+"""
+$(TYPEDSIGNATURES)
+
+Gets the `noise_injector` field of the `ForwardMapWrapper`
+"""
+get_noise_injector(fmw::ForwardMapWrapper) = fmw.noise_injector
 
 
 ### Emulator constructors and methods
@@ -468,6 +479,7 @@ Positional Arguments
 Keyword Arguments 
  -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
  - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
+ - `boost_for_loss`[=`0.001`]: A threshold to implementing noise boosting when decoding from an lossily encoded space. If the variance loss due to encoding is `>boost_for_loss` then additional noise is added to the null-space (consistent with the prior correlation structure).
 """
 function forward_map_wrapper(
     forward_map::Function,
@@ -475,6 +487,7 @@ function forward_map_wrapper(
     input_output_pairs::PairedDataContainer{FT};
     encoder_schedule = nothing,
     encoder_kwargs = NamedTuple(),
+    boost_for_loss = 0.001,
 ) where {FT <: Real, PD <: ParameterDistribution}
 
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
@@ -495,12 +508,17 @@ function forward_map_wrapper(
     (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
         initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; encoder_kwargs...)
 
+    # As we apply FMW in decoded space, it may be that we need to add additional noise if the encoder is suitably lossy (determined by >`boost_for_loss`). We create a noise injector which puts noise in the null space, retaining correlations from the prior. Precompute it here:
+    noise_injector = make_noise_injector(encoder_schedule, prior, boost_for_loss)
+
+
     return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior)}(
         forward_map,
         prior,
         input_output_pairs,
         encoded_io_pairs,
         encoder_schedule,
+        noise_injector,
     )
 end
 
@@ -555,9 +573,9 @@ function predict(
     end
 
     prior = get_prior(fmw)
-    #need to boost to decode inputs
     if in_already_encoded
-        decoded_inputs = Matrix(decode_data(fmw, new_inputs, "in"))
+        # if suitably lossy encoder, we must also inject noise into its null space
+        decoded_inputs = decode_and_add_noise(get_noise_injector(fmw), new_inputs)
     else
         decoded_inputs = new_inputs
     end

@@ -409,9 +409,12 @@ end
     tol = 1e-12
     schedules = [
         (zscore_scale(), "in_and_out"),
-        (decorrelate_sample_cov(), "in_and_out"),
-        (canonical_correlation(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
+        [(canonical_correlation(), "in_and_out"), (zscore_scale(), "in_and_out")],
+        [
+            (decorrelate_sample_cov(retain_var = 0.99), "in_and_out"),
+            (decorrelate_sample_cov(retain_var = 0.99), "in_and_out"), # reduce dim twice
+        ],
     ]
 
     for sch in schedules

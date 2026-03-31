@@ -32,7 +32,9 @@ export create_encoder_schedule,
     isequal_linear,
     encoder_kwargs_from,
     get_encoder_from_schedule,
-    get_decoder_from_schedule
+    get_decoder_from_schedule,
+    NoiseInjector,
+    decode_and_add_noise
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -762,8 +764,8 @@ function get_encoder_from_schedule(
         if length(encoder_mats) == 0
             return nothing, nothing
         else
-            linear_part = prod(encoder_mats)
-
+            # Note, the action of encoders (E_1,E_2,E_3) is the product x -> (E_3*E_2*E_1)*x so must be reversed. `prod` unsafe here
+            linear_part = reduce(*, reverse(encoder_mats))
             # rather than extracting the shifts etc. we can get this by just applying it to zero
             constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
 
@@ -815,7 +817,8 @@ function get_decoder_from_schedule(
         if length(decoder_mats) == 0
             return nothing, nothing
         else
-            linear_part = prod(decoder_mats)
+            # Note, the action of decoders (D_1,D_2,D_3) is the product x -> (D_3*D_2*D_1)*x so must be reversed (again)
+            linear_part = reduce(*, reverse(decoder_mats))
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
             constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
@@ -837,6 +840,114 @@ function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
     )
 end
 
+## Decoding and add noise:
+
+struct NoiseInjector{
+    MM1 <: AbstractMatrix,
+    MM2 <: AbstractMatrix,
+    MM3 <: AbstractMatrix,
+    VV <: AbstractVector,
+    NorMM <: Union{Nothing, AbstractMatrix},
+}
+    "Gain Matrix from encoded to decoded space"
+    K::MM1
+    "encoded prior mean"
+    enc_m::MM2
+    "prior mean"
+    m::MM3
+    "cholesky factor of encoded prior covariance"
+    L::NorMM
+    "whether to use the encoding or not"
+    use_noise::Bool
+    "the encoding that was used to construct this"
+    encoder_schedule::VV
+end
+
+
+"""
+$(TYPEDSIGNATURES)
+
+Returns either a `NoiseInjector` object that stores precomputed quantities used in `decode_and_add_noise(...)`, or returns `nothing`. The condition to return nothing:
+1. If the encoder is effectively lossless, as determined by it's variance loss not exceeding threshold `boost_for_loss`
+2. If the encoder_schedule is empty
+
+"""
+function make_noise_injector(
+    encoder_schedule::VV,
+    prior::PD,
+    boost_for_loss::FT,
+) where {PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+
+    E, b = get_encoder_from_schedule(encoder_schedule, "in")
+    if isnothing(E)
+        return nothing
+    end
+
+    C = cov(prior)
+    m = reshape(mean(prior), :, 1)
+    E = Matrix(E)
+
+    enc_m = E * m + b
+
+    # Precompute gain
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
+    K = C * E' * (ECEt \ I)
+
+    Σ_cond = C - K * E * C
+    projection_loss = tr(Σ_cond) / tr(C)
+
+    if projection_loss > boost_for_loss
+        @info "Injecting nullspace noise: $(projection_loss) > $(boost_for_loss)"
+        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+        use_noise = true
+    else
+        L = nothing
+        use_noise = false
+    end
+
+    return NoiseInjector(K, enc_m, m, L, use_noise, encoder_schedule)
+end
+
+function decode_and_add_noise(
+    noise_injector::NorNI,
+    samples::MM,
+) where {NorNI <: Union{Nothing, NoiseInjector}, MM <: AbstractMatrix}
+    if isnothing(noise_injector)
+        return samples
+    end
+
+    K, enc_m, m, L, use_noise, encoder_schedule = noise_injector.K,
+    noise_injector.enc_m,
+    noise_injector.m,
+    noise_injector.L,
+    noise_injector.use_noise,
+    noise_injector.encoder_schedule
+    if use_noise
+        recovered_samples = m .+ K * (samples .- enc_m)
+
+        null_samples = L * randn(size(L, 1), size(samples, 2))
+        return recovered_samples + null_samples
+    else
+        return decode_data(encoder_schedule, samples, "in")
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+
+The quantification of correlation depends on Gaussian assumptions, and therefore is approximate. 
+"""
+function decode_and_add_noise(
+    encoder_schedule::VV,
+    samples::MM,
+    prior::PD,
+    boost_for_loss::FT,
+) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+    noise_injector = make_noise_injector(encoder_schedule, prior, boost_for_loss)
+    return decode_and_add_noise(noise_injector, samples)
+end
 
 # Processors
 
