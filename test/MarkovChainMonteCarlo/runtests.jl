@@ -609,6 +609,20 @@ end
         # asses the covariance of the remainder
         C_rem = cov(full_samples - det_part, dims = 2)
         @test isapprox(norm(C_rem - (C - K * E * C)), 0; atol = input_dim / sqrt(n_samples)) #  N is huge
+
+        # check noise injector components:
+        noise_injector = create_noise_injector(lossy_sch, prior_mv, 0.0)
+        @test isapprox(norm(K - noise_injector.K), 0; atol = tol * size(K, 1) * size(K, 2))
+        @test isapprox(norm(E * m - noise_injector.enc_m), 0; atol = tol * size(noise_injector.enc_m, 1))
+        @test isapprox(norm(m - noise_injector.m), 0; atol = tol * size(m, 1))
+        @test isapprox(
+            norm(cholesky(Symmetric(C_rem + 1e-12 * I)).L - noise_injector.L),
+            0;
+            atol = tol * size(noise_injector.L, 1) * size(noise_injector.L, 2) / 2,
+        )
+        @test noise_injector.use_noise
+
+
     end
 
 

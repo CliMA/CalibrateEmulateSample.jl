@@ -34,7 +34,8 @@ export create_encoder_schedule,
     get_encoder_from_schedule,
     get_decoder_from_schedule,
     NoiseInjector,
-    decode_and_add_noise
+    decode_and_add_noise,
+    create_noise_injector
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -841,7 +842,13 @@ function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
 end
 
 ## Decoding and add noise:
+"""
+$(TYPEDEF)
 
+Structure used to store precomputed quantities for `decode_and_add_noise(...)`, build with `create_noise_injector(...)`
+
+$(TYPEDFIELDS)
+"""
 struct NoiseInjector{
     MM1 <: AbstractMatrix,
     MM2 <: AbstractMatrix,
@@ -869,10 +876,9 @@ $(TYPEDSIGNATURES)
 
 Returns either a `NoiseInjector` object that stores precomputed quantities used in `decode_and_add_noise(...)`, or returns `nothing`. The condition to return nothing:
 1. If the encoder is effectively lossless, as determined by it's variance loss not exceeding threshold `boost_for_loss`
-2. If the encoder_schedule is empty
-
+2. If the encoder_schedule is empty 
 """
-function make_noise_injector(
+function create_noise_injector(
     encoder_schedule::VV,
     prior::PD,
     boost_for_loss::FT,
@@ -945,7 +951,7 @@ function decode_and_add_noise(
     prior::PD,
     boost_for_loss::FT,
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
-    noise_injector = make_noise_injector(encoder_schedule, prior, boost_for_loss)
+    noise_injector = create_noise_injector(encoder_schedule, prior, boost_for_loss)
     return decode_and_add_noise(noise_injector, samples)
 end
 
