@@ -855,6 +855,7 @@ struct NoiseInjector{
     MM3 <: AbstractMatrix,
     VV <: AbstractVector,
     NorMM <: Union{Nothing, AbstractMatrix},
+    FT <: Real,
 }
     "Gain Matrix from encoded to decoded space"
     K::MM1
@@ -864,6 +865,8 @@ struct NoiseInjector{
     m::MM3
     "cholesky factor of encoded prior covariance"
     L::NorMM
+    "Scale the noise (may be needed (<1.0) for robustness if samples will be run in a physical model)"
+    scaling::FT
     "whether to use the encoding or not"
     use_noise::Bool
     "the encoding that was used to construct this"
@@ -875,13 +878,15 @@ end
 $(TYPEDSIGNATURES)
 
 Returns either a `NoiseInjector` object that stores precomputed quantities used in `decode_and_add_noise(...)`, or returns `nothing`. The condition to return nothing:
-1. If the encoder is effectively lossless, as determined by it's variance loss not exceeding threshold `boost_for_loss`
-2. If the encoder_schedule is empty 
+1. If the encoder is effectively lossless, as determined by it's variance loss not exceeding threshold `noise_injector_threshold`
+2. If the encoder_schedule is empty
+One can additionally scale the injected samples with `noise_injector_scaling`
 """
 function create_noise_injector(
     encoder_schedule::VV,
     prior::PD,
-    boost_for_loss::FT,
+    noise_injector_threshold::FT,
+    noise_injector_scaling::FT,
 ) where {PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
 
     E, b = get_encoder_from_schedule(encoder_schedule, "in")
@@ -902,8 +907,8 @@ function create_noise_injector(
     Σ_cond = C - K * E * C
     projection_loss = tr(Σ_cond) / tr(C)
 
-    if projection_loss > boost_for_loss
-        @info "Injecting nullspace noise: $(projection_loss) > $(boost_for_loss)"
+    if projection_loss > noise_injector_threshold
+        @info "Injecting nullspace noise: $(projection_loss) > $(noise_injector_threshold)"
         L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
         use_noise = true
     else
@@ -911,7 +916,14 @@ function create_noise_injector(
         use_noise = false
     end
 
-    return NoiseInjector(K, enc_m, m, L, use_noise, encoder_schedule)
+    if noise_injector_scaling < 0.0
+        scaling = abs(noise_injector_scaling) + eps()
+        @warn "`noise_injector_scaling` must be positive, received $(noise_injector_scaling). Continuing with scaling= $(scaling)..."
+    else
+        scaling = noise_injector_scaling
+    end
+
+    return NoiseInjector(K, enc_m, m, L, scaling, use_noise, encoder_schedule)
 end
 
 function decode_and_add_noise(
@@ -922,16 +934,18 @@ function decode_and_add_noise(
         return samples
     end
 
-    K, enc_m, m, L, use_noise, encoder_schedule = noise_injector.K,
+    K, enc_m, m, L, scaling, use_noise, encoder_schedule = noise_injector.K,
     noise_injector.enc_m,
     noise_injector.m,
     noise_injector.L,
+    noise_injector.scaling,
     noise_injector.use_noise,
     noise_injector.encoder_schedule
+
     if use_noise
         recovered_samples = m .+ K * (samples .- enc_m)
 
-        null_samples = L * randn(size(L, 1), size(samples, 2))
+        null_samples = scaling * L * randn(size(L, 1), size(samples, 2))
         return recovered_samples + null_samples
     else
         return decode_data(encoder_schedule, samples, "in")
@@ -941,7 +955,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `boost_for_loss`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `noise_injector_threshold`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
 
 The quantification of correlation depends on Gaussian assumptions, and therefore is approximate. 
 """
@@ -949,9 +963,10 @@ function decode_and_add_noise(
     encoder_schedule::VV,
     samples::MM,
     prior::PD,
-    boost_for_loss::FT,
+    noise_injector_threshold::FT,
+    noise_injector_scaling::FT,
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
-    noise_injector = create_noise_injector(encoder_schedule, prior, boost_for_loss)
+    noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
     return decode_and_add_noise(noise_injector, samples)
 end
 

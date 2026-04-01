@@ -479,7 +479,7 @@ Positional Arguments
 Keyword Arguments 
  -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
  - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
- - `boost_for_loss`[=`0.001`]: A threshold to implementing noise boosting when decoding from an lossily encoded space. If the variance loss due to encoding is `>boost_for_loss` then additional noise is added to the null-space (consistent with the prior correlation structure).
+ - `noise_injector_threshold`[=`0.001`]: A threshold to implementing noise boosting when decoding from an lossily encoded space. If the variance loss due to encoding is `>noise_injector_threshold` then additional noise is added to the null-space (consistent with the prior correlation structure).
 """
 function forward_map_wrapper(
     forward_map::Function,
@@ -487,7 +487,8 @@ function forward_map_wrapper(
     input_output_pairs::PairedDataContainer{FT};
     encoder_schedule = nothing,
     encoder_kwargs = NamedTuple(),
-    boost_for_loss = 0.001,
+    noise_injector_threshold = 0.001,
+    noise_injector_scaling = 0.1,
 ) where {FT <: Real, PD <: ParameterDistribution}
 
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.
@@ -508,8 +509,8 @@ function forward_map_wrapper(
     (encoded_io_pairs, input_structure_mats, output_structure_mats, _, _) =
         initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; encoder_kwargs...)
 
-    # As we apply FMW in decoded space, it may be that we need to add additional noise if the encoder is suitably lossy (determined by >`boost_for_loss`). We create a noise injector which puts noise in the null space, retaining correlations from the prior. Precompute it here:
-    noise_injector = create_noise_injector(encoder_schedule, prior, boost_for_loss)
+    # As we apply FMW in decoded space, it may be that we need to add additional noise if the encoder is suitably lossy (determined by >`noise_injector_threshold`). We create a noise injector which puts noise in the null space, retaining correlations from the prior. Precompute it here:
+    noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
 
 
     return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior), typeof(noise_injector)}(

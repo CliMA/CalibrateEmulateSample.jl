@@ -569,7 +569,8 @@ end
         initialize_and_encode_with_schedule!(lossless_sch, iopairs_mv; prior_cov = cov(prior_mv))
 
         enc_samples = encode_data(lossless_sch, samples, "in")
-        full_samples = decode_and_add_noise(lossless_sch, enc_samples, prior_mv, 1.0) # 1.0 = no boosting, should be like decoding
+        ni_scaling = 1.0 # don't scale the noise injected samples
+        full_samples = decode_and_add_noise(lossless_sch, enc_samples, prior_mv, 1.0, ni_scaling) # 1.0 = no boosting, should be like decoding
         tol = 1e-12
         enc_factor = size(enc_samples, 1) * size(enc_samples, 2)
         dec_factor = size(full_samples, 1) * size(full_samples, 2)
@@ -581,12 +582,12 @@ end
 
         enc_samples = encode_data(lossy_sch, samples, "in")
         # -> without noise injection
-        dec_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.25) # should not boost (0.25>0.2)
+        dec_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.25, ni_scaling) # should not boost (0.25>0.2)
         @test isapprox(norm(dec_samples - decode_data(lossy_sch, enc_samples, "in")), 0; atol = tol * dec_factor)
         @test isapprox(norm(encode_data(lossy_sch, dec_samples, "in") - enc_samples), 0; atol = tol * enc_factor)
 
         # -> with noise injection
-        full_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15) # should boost (0.15 < 0.2)
+        full_samples = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15, ni_scaling) # should boost (0.15 < 0.2)
 
         # check re encoding samples gives same reduced samples (will be rough when lossy drops larger variance %)
         bigger_tol = 1e-6
@@ -611,7 +612,7 @@ end
         @test isapprox(norm(C_rem - (C - K * E * C)), 0; atol = input_dim / sqrt(n_samples)) #  N is huge
 
         # check noise injector components:
-        noise_injector = create_noise_injector(lossy_sch, prior_mv, 0.0)
+        noise_injector = create_noise_injector(lossy_sch, prior_mv, 0.0, 0.5)
         @test isapprox(norm(K - noise_injector.K), 0; atol = tol * size(K, 1) * size(K, 2))
         @test isapprox(norm(E * m + b - noise_injector.enc_m), 0; atol = tol * size(noise_injector.enc_m, 1))
         @test isapprox(norm(m - noise_injector.m), 0; atol = tol * size(m, 1))
@@ -620,7 +621,8 @@ end
             0;
             atol = input_dim / sqrt(n_samples),
         )
-        @test noise_injector.use_noise
+        @test noise_injector.use_noise # check for noise_injector_threshold
+        @test noise_injector.scaling == 0.5
 
 
     end

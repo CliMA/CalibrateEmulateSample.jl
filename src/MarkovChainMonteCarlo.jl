@@ -818,12 +818,18 @@ Returns a `ParameterDistribution` object corresponding to the empirical distribu
 samples in `chain`.
 
 keywod args
-- `boost_for_loss`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `boost_for_loss`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
+- `noise_injector_threshold`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `noise_injector_threshold`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
+- `noise_injector_scaling`[`=1.0`]: Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
 
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
 """
-function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_loss = 0.001)
+function get_posterior(
+    mcmc::MCMCWrapper,
+    chain::MCMCChains.Chains;
+    noise_injector_threshold::FT = 0.001,
+    noise_injector_scaling::FT = 1.0,
+) where {FT <: Real}
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
     flat_constraints = get_all_constraints(mcmc.prior)
@@ -837,7 +843,13 @@ function get_posterior(mcmc::MCMCWrapper, chain::MCMCChains.Chains; boost_for_lo
 
     # flatten samples from the chain for manipulation as an array with columns as samples
     red_samples = p_chain[:, :, 1]'
-    full_samples = decode_and_add_noise(encoder_schedule, red_samples, mcmc.prior, boost_for_loss)
+    full_samples = decode_and_add_noise(
+        encoder_schedule,
+        red_samples,
+        mcmc.prior,
+        noise_injector_threshold,
+        noise_injector_scaling,
+    )
 
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
 
