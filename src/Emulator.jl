@@ -509,10 +509,10 @@ function forward_map_wrapper(
         initialize_and_encode_with_schedule!(encoder_schedule, input_output_pairs; encoder_kwargs...)
 
     # As we apply FMW in decoded space, it may be that we need to add additional noise if the encoder is suitably lossy (determined by >`boost_for_loss`). We create a noise injector which puts noise in the null space, retaining correlations from the prior. Precompute it here:
-    noise_injector = make_noise_injector(encoder_schedule, prior, boost_for_loss)
+    noise_injector = create_noise_injector(encoder_schedule, prior, boost_for_loss)
 
 
-    return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior)}(
+    return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior), typeof(noise_injector)}(
         forward_map,
         prior,
         input_output_pairs,
