@@ -206,7 +206,12 @@ using CalibrateEmulateSample.Utilities
     new_inputs[:, 3] = [π, π / 2]
     new_inputs[:, 4] = [3 * π / 2, 2 * π]
 
-    μ4_noise_learnt, σ4²_noise_learnt = Emulators.predict(em4_noise_learnt, new_inputs, transform_to_real = true)
+    # First is just to test deprecation message!
+    _, _ = Emulators.predict(em4_noise_learnt, new_inputs; transform_to_real = true)
+    _, _ = Emulators.predict(em4_noise_learnt, new_inputs; transform_to_real = false)
+
+    # continue with example
+    μ4_noise_learnt, σ4²_noise_learnt = Emulators.predict(em4_noise_learnt, new_inputs; add_obs_noise_cov = true)
     tol_mu = 0.25
 
     @test μ4_noise_learnt[:, 1] ≈ [1.0, -1.0] atol = tol_mu
@@ -216,7 +221,7 @@ using CalibrateEmulateSample.Utilities
     @test length(σ4²_noise_learnt) == size(new_inputs, 2)
     @test size(σ4²_noise_learnt[1]) == (d, d)
 
-    μ4_noise_from_Σ, σ4²_noise_from_Σ = Emulators.predict(em4_noise_from_Σ, new_inputs, transform_to_real = true)
+    μ4_noise_from_Σ, σ4²_noise_from_Σ = Emulators.predict(em4_noise_from_Σ, new_inputs; add_obs_noise_cov = true)
 
     @test μ4_noise_from_Σ[:, 1] ≈ [1.0, -1.0] atol = tol_mu
     @test μ4_noise_from_Σ[:, 2] ≈ [0.0, 2.0] atol = tol_mu
@@ -243,7 +248,7 @@ using CalibrateEmulateSample.Utilities
 
     em_agp_from_gp4 = Emulator(agp4, iopairs2; encoder_kwargs = (; obs_noise_cov = Σ), kernel_params = kernel_params)
 
-    μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs, transform_to_real = true)
+    μ4b, σ4b² = Emulators.predict(em_agp_from_gp4, new_inputs; add_obs_noise_cov = true)
 
     # gp1 and agp_from_gp2 should give similar predictions
     tol_small = 1e-12

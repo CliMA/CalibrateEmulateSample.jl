@@ -30,7 +30,12 @@ export create_encoder_schedule,
     norm,
     norm_linear_map,
     isequal_linear,
-    encoder_kwargs_from
+    encoder_kwargs_from,
+    get_encoder_from_schedule,
+    get_decoder_from_schedule,
+    NoiseInjector,
+    decode_and_add_noise,
+    create_noise_injector
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -733,6 +738,239 @@ function bad_in_or_out(in_or_out::AS) where {AS <: AbstractString}
     )
 end
 
+# get affine encoder from schedule
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
+function get_encoder_from_schedule(
+    encoder_schedule::VV,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString}
+
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+
+        encoder_mats =
+            [get_encoder_mat(processor)[1] for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
+
+        if length(encoder_mats) == 0
+            return nothing, nothing
+        else
+            # Note, the action of encoders (E_1,E_2,E_3) is the product x -> (E_3*E_2*E_1)*x so must be reversed. `prod` unsafe here
+            linear_part = reduce(*, reverse(encoder_mats))
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
+
+            return linear_part, constant_part
+        end
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine encodings can be represented as `Ex + b`. This function returns `E,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `E` will be represented as a `LinearMap` object (can apply `E = Matrix(E)` to rebuild).
+"""
+function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return Dict(
+        "in" => get_encoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_encoder_from_schedule(encoder_schedule, "out"),
+    )
+
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine decodings can be represented as `Dx + b`. This function returns `D,b`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+
+- `in_or_out`: should be either `"in"` or `"out"`, to retrieve either the `input` or `output` encoder
+"""
+function get_decoder_from_schedule(
+    encoder_schedule::VV,
+    in_or_out::AS,
+) where {VV <: AbstractVector, AS <: AbstractString}
+    # if no encoding
+    if length(encoder_schedule) == 0
+        return nothing, nothing
+    else
+
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+        decoder_mats = []
+        for idx in reverse(eachindex(encoder_schedule))
+            (processor, apply_to) = encoder_schedule[idx]
+            if apply_to == in_or_out
+                push!(decoder_mats, get_decoder_mat(processor)[1])
+            end
+        end
+
+        if length(decoder_mats) == 0
+            return nothing, nothing
+        else
+            # Note, the action of decoders (D_1,D_2,D_3) is the product x -> (D_3*D_2*D_1)*x so must be reversed (again)
+            linear_part = reduce(*, reverse(decoder_mats))
+
+            # rather than extracting the shifts etc. we can get this by just applying it to zero
+            constant_part = decode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
+
+            return linear_part, constant_part
+        end
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Affine decodings can be represented as `Dx + b`. This function returns `D,b` for the input and output encoders in a `Dict` indexed by `"in"` and `"out"`. `D` will be represented as a `LinearMap` object (can apply `D = Matrix(D)` to rebuild).
+"""
+function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVector}
+    return Dict(
+        "in" => get_decoder_from_schedule(encoder_schedule, "in"),
+        "out" => get_decoder_from_schedule(encoder_schedule, "out"),
+    )
+end
+
+## Decoding and add noise:
+"""
+$(TYPEDEF)
+
+Structure used to store precomputed quantities for `decode_and_add_noise(...)`, build with `create_noise_injector(...)`
+
+$(TYPEDFIELDS)
+"""
+struct NoiseInjector{
+    MM1 <: AbstractMatrix,
+    MM2 <: AbstractMatrix,
+    MM3 <: AbstractMatrix,
+    VV <: AbstractVector,
+    NorMM <: Union{Nothing, AbstractMatrix},
+    FT <: Real,
+}
+    "Gain Matrix from encoded to decoded space"
+    K::MM1
+    "encoded prior mean"
+    enc_m::MM2
+    "prior mean"
+    m::MM3
+    "cholesky factor of encoded prior covariance"
+    L::NorMM
+    "Scale the noise (may be needed (<1.0) for robustness if samples will be run in a physical model)"
+    scaling::FT
+    "whether to use the noise injection or not"
+    use_noise::Bool
+    "the encoding that was used to construct this object"
+    encoder_schedule::VV
+end
+
+
+"""
+$(TYPEDSIGNATURES)
+
+Returns either a `NoiseInjector` object that stores precomputed quantities used in `decode_and_add_noise(...)`, or returns `nothing`. The condition to return nothing:
+1. If the encoder is effectively lossless, as determined by it's variance loss not exceeding threshold `noise_injector_threshold`
+2. If the encoder_schedule is empty
+One can additionally scale the injected samples with `noise_injector_scaling`
+"""
+function create_noise_injector(
+    encoder_schedule::VV,
+    prior::PD,
+    noise_injector_threshold::FT,
+    noise_injector_scaling::FT,
+) where {PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+
+    E, b = get_encoder_from_schedule(encoder_schedule, "in")
+    if isnothing(E)
+        return nothing
+    end
+
+    C = cov(prior)
+    m = reshape(mean(prior), :, 1)
+    E = Matrix(E)
+
+    enc_m = E * m + b
+
+    # Precompute gain
+    ECEt = cholesky(Symmetric(E * C * E' + 1e-12 * I))
+    K = C * E' * (ECEt \ I)
+
+    Σ_cond = C - K * E * C
+    projection_loss = tr(Σ_cond) / tr(C)
+
+    if projection_loss > noise_injector_threshold
+        @info "Injecting nullspace noise: $(projection_loss) > $(noise_injector_threshold)"
+        L = cholesky(Symmetric(Σ_cond + 1e-12 * I)).L
+        use_noise = true
+    else
+        L = nothing
+        use_noise = false
+    end
+
+    if noise_injector_scaling < 0.0
+        scaling = abs(noise_injector_scaling) + eps()
+        @warn "`noise_injector_scaling` must be positive, received $(noise_injector_scaling). Continuing with scaling= $(scaling)..."
+    else
+        scaling = noise_injector_scaling
+    end
+
+    return NoiseInjector(K, enc_m, m, L, scaling, use_noise, encoder_schedule)
+end
+
+function decode_and_add_noise(
+    noise_injector::NorNI,
+    samples::MM,
+) where {NorNI <: Union{Nothing, NoiseInjector}, MM <: AbstractMatrix}
+    if isnothing(noise_injector)
+        return samples
+    end
+
+    (K, enc_m, m, L, scaling, use_noise, encoder_schedule) = (
+        noise_injector.K,
+        noise_injector.enc_m,
+        noise_injector.m,
+        noise_injector.L,
+        noise_injector.scaling,
+        noise_injector.use_noise,
+        noise_injector.encoder_schedule,
+    )
+
+    if use_noise
+        recovered_samples = m .+ K * (samples .- enc_m)
+
+        null_samples = scaling * L * randn(size(L, 1), size(samples, 2))
+        return recovered_samples + null_samples
+    else
+        return decode_data(encoder_schedule, samples, "in")
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Lift back the encoded samples into the full space. Similar to using `decode_data`, except that this additionally injects noise from the prior when the encoding is determined to be sufficiently lossy (total lost variance < keyword `noise_injector_threshold`). This is done in a way that preserves any known correlations between reduced and null-space directions, which is important for posterior reconstruction.
+
+The quantification of correlation depends on Gaussian assumptions, and therefore is approximate. 
+"""
+function decode_and_add_noise(
+    encoder_schedule::VV,
+    samples::MM,
+    prior::PD,
+    noise_injector_threshold::FT,
+    noise_injector_scaling::FT,
+) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
+    noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
+    return decode_and_add_noise(noise_injector, samples)
+end
 
 # Processors
 

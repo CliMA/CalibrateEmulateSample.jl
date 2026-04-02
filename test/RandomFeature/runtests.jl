@@ -362,13 +362,13 @@ rng = Random.MersenneTwister(seed)
 
         # predict and test at the new inputs
         tol_μ = 0.1 * ntest
-        μs, σs² = Emulators.predict(em_srfi, new_inputs, transform_to_real = true)
+        μs, σs² = Emulators.predict(em_srfi, new_inputs; add_obs_noise_cov = true)
         @test size(μs) == (1, ntest)
         @test size(σs²) == (1, ntest)
         @test isapprox.(norm(μs - new_outputs), 0, atol = tol_μ)
         @test all(isapprox.(vec(σs²), 0.05^2 * ones(ntest), atol = 1e-2))
 
-        μv, σv² = Emulators.predict(em_vrfi, new_inputs, transform_to_real = true)
+        μv, σv² = Emulators.predict(em_vrfi, new_inputs; add_obs_noise_cov = true)
         @test size(μv) == (1, ntest)
         @test size(σv²) == (1, ntest)
         @test isapprox.(norm(μv - new_outputs), 0, atol = tol_μ)
@@ -480,12 +480,12 @@ rng = Random.MersenneTwister(seed)
         outx[1, :] = sin.(new_inputs[1, :]) .+ cos.(new_inputs[2, :])
         outx[2, :] = sin.(new_inputs[1, :]) .- cos.(new_inputs[2, :])
 
-        μ_ssd, σ²_ssd = Emulators.predict(em_srfi_svd_diagin, new_inputs, transform_to_real = true)
-        μ_ss, σ²_ss = Emulators.predict(em_srfi_svd, new_inputs, transform_to_real = true)
-        μ_vsd, σ²_vsd = Emulators.predict(em_vrfi_svd_diagout, new_inputs, transform_to_real = true)
-        μ_vs, σ²_vs = Emulators.predict(em_vrfi_svd, new_inputs, transform_to_real = true)
-        μ_v, σ²_v = Emulators.predict(em_vrfi, new_inputs)
-        μ_vns, σ²_vns = Emulators.predict(em_vrfi_nonsep, new_inputs)
+        μ_ssd, σ2_ssd = Emulators.predict(em_srfi_svd_diagin, new_inputs)
+        μ_ss, σ2_ss = Emulators.predict(em_srfi_svd, new_inputs)
+        μ_vsd, σ2_vsd = Emulators.predict(em_vrfi_svd_diagout, new_inputs)
+        μ_vs, σ2_vs = Emulators.predict(em_vrfi_svd, new_inputs)
+        μ_v, σ2_v = Emulators.predict(em_vrfi, new_inputs)
+        μ_vns, σ2_vns = Emulators.predict(em_vrfi_nonsep, new_inputs)
 
         tol_μ = 0.1 * ntest * output_dim
         @test isapprox.(norm(μ_ssd - outx), 0, atol = tol_μ)
@@ -494,6 +494,10 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μ_vs - outx), 0, atol = tol_μ)
         @test isapprox.(norm(μ_v - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
         @test isapprox.(norm(μ_vns - outx), 0, atol = 2 * tol_μ) # approximate option so likely less good approx
+        @info norm.([σ2_ssd, σ2_ss, σ2_vsd, σ2_vs, σ2_v, σ2_vns])
+        @test all(isapprox.(norm.([σ2_ssd, σ2_ss, σ2_vsd, σ2_vs]), 0; atol = tol_μ)) # the emulator uncert. of the mean
+        @test all(isapprox.(norm.([σ2_v, σ2_vns]), 0; atol = 2 * tol_μ))
+
         # An example with the other threading option
         vrfi_tul = VectorRandomFeatureInterface(
             n_features,
@@ -504,8 +508,9 @@ rng = Random.MersenneTwister(seed)
             rng = rng,
         )
         em_vrfi_svd_tul = Emulator(vrfi_tul, iopairs; encoder_kwargs = (; obs_noise_cov = Σ))
-        μ_vs_tul, σ²_vs_tul = Emulators.predict(em_vrfi_svd_tul, new_inputs, transform_to_real = true)
+        μ_vs_tul, σ2_vs_tul = Emulators.predict(em_vrfi_svd_tul, new_inputs)
         @test isapprox.(norm(μ_vs_tul - outx), 0, atol = tol_μ)
+        @test all(isapprox.(norm.(σ2_vs_tul), 0; atol = tol_μ))
 
     end
 

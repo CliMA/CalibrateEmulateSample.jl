@@ -390,6 +390,61 @@ end
 
     end
 
+    # test retrieval of the affine components from the schedule
+    # nothing option
+    enc1 = get_encoder_from_schedule([])
+    Ein, ain = enc1["in"]
+    Eout, aout = enc1["out"]
+    @test all(isnothing.([Ein, ain, Eout, aout]))
+
+    dec1 = get_decoder_from_schedule([])
+    Din, bin = dec1["in"]
+    Dout, bout = dec1["out"]
+    @test all(isnothing.([Din, bin, Dout, bout]))
+
+    @test_throws ArgumentError get_encoder_from_schedule([schedules[1]], "not_in_or_out")
+    @test_throws ArgumentError get_decoder_from_schedule([schedules[1]], "not_in_or_out")
+
+    # test for some schedules
+    tol = 1e-12
+    schedules = [
+        (zscore_scale(), "in_and_out"),
+        (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
+        [(canonical_correlation(), "in_and_out"), (zscore_scale(), "in_and_out")],
+        [
+            (decorrelate_sample_cov(retain_var = 0.99), "in_and_out"),
+            (decorrelate_sample_cov(retain_var = 0.99), "in_and_out"), # reduce dim twice
+        ],
+    ]
+
+    for sch in schedules
+        encoder_schedule = create_encoder_schedule(sch)
+        (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+        enc2 = get_encoder_from_schedule(encoder_schedule)
+        dec2 = get_decoder_from_schedule(encoder_schedule)
+        in_dat = reshape(get_inputs(io_pairs)[:, 1], :, 1)
+        out_dat = reshape(get_outputs(io_pairs)[:, 1], :, 1)
+        in_mat = in_dat * in_dat'
+        out_mat = out_dat * out_dat'
+        for (i_o, dat, mat) in (("in", in_dat, in_mat), ("out", out_dat, out_mat))
+            enc_dat = encode_data(encoder_schedule, dat, i_o)
+            dec_dat = decode_data(encoder_schedule, enc_dat, i_o)
+            enc_mat = Matrix(encode_structure_matrix(encoder_schedule, mat, i_o))
+            dec_mat = Matrix(decode_structure_matrix(encoder_schedule, enc_mat, i_o))
+            # retrieve 
+            E, a = enc2[i_o]
+            D, b = dec2[i_o]
+            E = Matrix(E)
+            D = Matrix(D)
+
+            @test isapprox(norm((E * dat + a) - enc_dat), 0; atol = tol * size(E, 1))
+            @test isapprox(norm((D * enc_dat + b) - dec_dat), 0; atol = tol * size(D, 1))
+            @test isapprox(norm(E * mat * E' - enc_mat), 0; atol = tol * size(E, 1)^2)
+            @test isapprox(norm(D * enc_mat * D' - dec_mat), 0; atol = tol * size(D, 1)^2)
+        end
+    end
+
     # test throws on lack of sample_mat
     sch2a = (decorrelate_structure_mat(), "in")
     schedule2a = create_encoder_schedule(sch2a)
@@ -427,7 +482,6 @@ end
         obs_noise_cov,
     )
     @test_throws ArgumentError decode_with_schedule(bad_encoder_schedule, io_pairs, prior_cov, obs_noise_cov)
-
 
     encoder_schedule = create_encoder_schedule(schedule_builder)
 
