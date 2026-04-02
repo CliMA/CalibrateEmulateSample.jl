@@ -206,6 +206,11 @@ using CalibrateEmulateSample.Utilities
     new_inputs[:, 3] = [π, π / 2]
     new_inputs[:, 4] = [3 * π / 2, 2 * π]
 
+    # First is just to test deprecation message!
+    _, _ = Emulators.predict(em4_noise_learnt, new_inputs; transform_to_real = true)
+    _, _ = Emulators.predict(em4_noise_learnt, new_inputs; transform_to_real = false)
+
+    # continue with example
     μ4_noise_learnt, σ4²_noise_learnt = Emulators.predict(em4_noise_learnt, new_inputs; add_obs_noise_cov = true)
     tol_mu = 0.25
 
