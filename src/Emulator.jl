@@ -479,7 +479,8 @@ Positional Arguments
 Keyword Arguments 
  -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
  - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
- - `noise_injector_threshold`[=`0.001`]: A threshold to implementing noise boosting when decoding from an lossily encoded space. If the variance loss due to encoding is `>noise_injector_threshold` then additional noise is added to the null-space (consistent with the prior correlation structure).
+ - `noise_injector_threshold`[=`0.001`]: A threshold to implementing noise injection when decoding from an lossily encoded space. If the variance loss due to encoding is `>noise_injector_threshold` then additional noise is added to the null-space (consistent with the prior correlation structure).
+ - `noise_injector_scaling`[=`1.0`]: a multiplicative scaling that is applied to injected noise samples. (1.0 is "consistent" with Gaussian theory, but may cause instability in Non-Gaussian problems and can be reduced)
 """
 function forward_map_wrapper(
     forward_map::Function,
@@ -488,7 +489,7 @@ function forward_map_wrapper(
     encoder_schedule = nothing,
     encoder_kwargs = NamedTuple(),
     noise_injector_threshold = 0.001,
-    noise_injector_scaling = 0.1,
+    noise_injector_scaling = 1.0,
 ) where {FT <: Real, PD <: ParameterDistribution}
 
     # Default processing: decorrelate_sample_cov() where no structure matrix provided, and decorrelate_structure_mat() where provided.

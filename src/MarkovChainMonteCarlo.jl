@@ -817,7 +817,7 @@ $(DocStringExtensions.TYPEDSIGNATURES)
 Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
 samples in `chain`.
 
-keywod args
+keyword args
 - `noise_injector_threshold`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `noise_injector_threshold`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
 - `noise_injector_scaling`[`=1.0`]: Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
 

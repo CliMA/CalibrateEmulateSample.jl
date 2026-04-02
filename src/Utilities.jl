@@ -867,9 +867,9 @@ struct NoiseInjector{
     L::NorMM
     "Scale the noise (may be needed (<1.0) for robustness if samples will be run in a physical model)"
     scaling::FT
-    "whether to use the encoding or not"
+    "whether to use the noise injection or not"
     use_noise::Bool
-    "the encoding that was used to construct this"
+    "the encoding that was used to construct this object"
     encoder_schedule::VV
 end
 
@@ -934,13 +934,15 @@ function decode_and_add_noise(
         return samples
     end
 
-    K, enc_m, m, L, scaling, use_noise, encoder_schedule = noise_injector.K,
-    noise_injector.enc_m,
-    noise_injector.m,
-    noise_injector.L,
-    noise_injector.scaling,
-    noise_injector.use_noise,
-    noise_injector.encoder_schedule
+    (K, enc_m, m, L, scaling, use_noise, encoder_schedule) = (
+        noise_injector.K,
+        noise_injector.enc_m,
+        noise_injector.m,
+        noise_injector.L,
+        noise_injector.scaling,
+        noise_injector.use_noise,
+        noise_injector.encoder_schedule,
+    )
 
     if use_noise
         recovered_samples = m .+ K * (samples .- enc_m)
