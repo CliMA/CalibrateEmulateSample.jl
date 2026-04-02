@@ -115,7 +115,7 @@ end
 
     io_pairs = PairedDataContainer(x, y, data_are_columns = true)
 
-    # Test forward map wrapper with default encoding
+    # Test forward map wrapper with default encoding (remove noise injection for test)
     fmw = forward_map_wrapper(G, prior, io_pairs)
     @test get_forward_map(fmw) == G
     @test get_prior(fmw) == prior
@@ -134,19 +134,19 @@ end
     x_test = PD.sample(prior, m)
     y_test = reduce(hcat, G(transform_unconstrained_to_constrained(prior, xcol)) for xcol in eachcol(x_test))
 
-    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true)
+    y_pred, y_cov = EM.predict(fmw, x_test, add_obs_noise_cov = true)
     @test all(isapprox(norm(y_pred - y_test), 0; atol = sqrt(d * m) * tol))
     sample_Σ = decode_structure_matrix(fmw, I, "out")
     @test all(isapprox(norm(sample_Σ - yc), 0; atol = d * tol) for yc in y_cov)
 
-    y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; transform_to_real = false)
+    y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; encode = "out")
     y_test_enc = encode_data(fmw, y_test, "out")
     @test all(isapprox(norm(y_pred_enc - y_test_enc), 0; atol = sqrt(d * m) * tol))
-    @test_throws ArgumentError EM.predict(fmw, x_test'; transform_to_real = true)
+    @test_throws ArgumentError EM.predict(fmw, x_test')
 
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))
-    y_pred, y_cov = EM.predict(fmw, x_test; transform_to_real = true)
+    y_pred, y_cov = EM.predict(fmw, x_test, add_obs_noise_cov = true)
     @test all(isapprox(norm(yc - Σ), 0; atol = d * tol) for yc in y_cov)
     # try pass encoder for input
     new_schedule = (decorrelate_sample_cov(), "in") # for these i

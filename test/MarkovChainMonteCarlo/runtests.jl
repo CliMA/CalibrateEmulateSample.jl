@@ -42,7 +42,7 @@ function validate_emulator(em, data_name, prior, test_data_kwargs; exp_name = "t
     end
 
 
-    μ_valid, σ2_valid = Emulators.predict(em, get_inputs(validation_data), transform_to_real = true)
+    μ_valid, σ2_valid = Emulators.predict(em, get_inputs(validation_data); add_obs_noise_cov = true)
     rmse_valid = norm(μ_valid - get_outputs(validation_data)) ./ sqrt(size(get_outputs(validation_data), 2))
     avg_σ2_valid = mean([norm(ss) for ss in σ2_valid])
     @info "$(exp_name) \n per-point - Emulator RMSE = $rmse_valid \n Emulator STD = $(sqrt(avg_σ2_valid))\n (These numbers should be similar sized to indicate no overfitting)"
