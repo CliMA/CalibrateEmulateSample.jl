@@ -7,12 +7,22 @@ using EnsembleKalmanProcesses.ParameterDistributions
 
 abstract type ForwardMapType end
 
-## Linear-times-exponential model
-function linlinexp(input_dim, output_dim, rng)
+function bad_model_type(mod_type, mod_types)
+    throw(ArgumentError("Unknown model type provided: $(mod_type), please choose from $(mod_types)"))
+end
+
+## Linear
+struct Lin{AM <: AbstractMatrix} <: ForwardMapType
+    input_dim::Int
+    output_dim::Int
+    G::AM
+end
+
+function lin(input_dim, output_dim, rng)
     # prior
     γ0 = 4.0
     β_γ = -2
-    Γ = Diagonal([γ0 * (1.0 * j)^β_γ for j in 1:input_dim])
+    prior_cov = Diagonal([γ0 * (1.0 * j)^β_γ for j in 1:input_dim])
 
     U = qr(randn(rng, (output_dim, output_dim))).Q
     V = qr(randn(rng, (input_dim, input_dim))).Q
@@ -20,31 +30,27 @@ function linlinexp(input_dim, output_dim, rng)
     β_λ = -1
     Λ = Diagonal([λ0 * (1.0 * j)^β_λ for j in 1:output_dim])
     A = U * Λ * V[1:output_dim, :] # output x input
-    model = LinLinExp(input_dim, output_dim, A)
+    model = Lin(input_dim, output_dim, A)
 
     # generate data sample
     obs_noise_cov = Diagonal([Float64(j)^(-1 / 2) for j in 1:output_dim])
     noise = rand(rng, MvNormal(zeros(output_dim), obs_noise_cov))
     # true_parameter = reshape(ones(input_dim), :, 1)
-    true_parameter = rand(rng, MvNormal(zeros(input_dim), Γ))
+    true_parameter = rand(rng, MvNormal(zeros(input_dim), prior_cov))
     y = vec(forward_map(true_parameter, model) + noise)
-    return Γ, y, obs_noise_cov, model, true_parameter
+    return prior_cov, y, obs_noise_cov, model, true_parameter
 end
 
-struct LinLinExp{AM <: AbstractMatrix} <: ForwardMapType
-    input_dim::Int
-    output_dim::Int
-    G::AM
+function forward_map(X::AVorM, model::Lin) where {AVorM <: AbstractVecOrMat}
+    return model.G * X
 end
 
-function forward_map(X::AVorM, model::LinLinExp) where {AVorM <: AbstractVecOrMat}
-    return model.G * (X .* exp.(0.05X))
+function jac_forward_map(X::AbstractVector, model::Lin)
+    return model.G 
 end
 
-function jac_forward_map(X::AbstractVector, model::LinLinExp)
-    return model.G * Diagonal(exp.(0.05X) .* (1 .+ 0.05X))
-end
-
-function jac_forward_map(X::AbstractMatrix, model::LinLinExp)
+function jac_forward_map(X::AbstractMatrix, model::Lin)
     return [jac_forward_map(x, model) for x in eachcol(X)]
 end
+
+
