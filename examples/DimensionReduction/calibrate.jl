@@ -5,6 +5,10 @@ using LinearAlgebra
 using Random
 
 include("./models.jl")
+# select the forward map
+mod_types=["linear"]
+mod_type = mod_types[1]
+@info "Executing model type $(mod_type)"
 
 datadir = joinpath(@__DIR__,"datafiles")
 if !isdir(datadir)
@@ -18,12 +22,16 @@ output_dim = 100
 num_trials = 5
 for trial in 1:num_trials
     @info "Trial $trial"
-
-    prior_cov, y, obs_noise_cov, model, true_parameter = linlinexp(input_dim, output_dim, rng)
+    if mod_type == "linear"
+        prior_cov, y, obs_noise_cov, model, true_parameter = lin(input_dim, output_dim, rng)
+    else
+        bad_model(mod_type, mod_types)
+    end
+    
     prior_obj = ParameterDistribution(
         Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)),
         fill(no_constraint(), size(prior_cov, 1)),
-        "linlinexp_prior",
+        "$(mod_type)_prior",
     )
 
     n_ensemble = 50
@@ -58,7 +66,7 @@ for trial in 1:num_trials
     
     #! format: off
     save(
-        joinpath(datadir,"ekp_linlinexp_$(trial).jld2"),
+        joinpath(datadir,"ekp_$(mod_type)_$(trial).jld2"),
         "ekpobj", ekp,
         "ekp_samples", ekp_samples,
         "prior_obj", prior_obj,
