@@ -18,7 +18,7 @@ mutable struct LikelihoodInformed{VV1<:AbstractVector, VV2<:AbstractVector, VV3<
     encoder_mat::VV1
     decoder_mat::VV2
     data_mean::VV3
-    retain_kl::FT
+    retain_info::FT
     apply_to::Union{Nothing, AbstractString}
     iters::VV4
     grad_type::Symbol
@@ -29,12 +29,12 @@ end
 $(TYPEDSIGNATURES)
 
 Constructs the `LikelihoodInformed` struct. Keywords:
-- `retain_kl`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - retain_kl). Choose `retain_kl` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
+- `retain_info`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - retain_info). Choose `retain_info` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
 - `iters`[=[1]]: the likelihood-informed data processor requires samples from the distribution ∝ π_prior(x) π_likelihood(y | x)^α with α ∈ [0, 1]. Here, `iter` indicates the structure vector iterations to use, as sampled from these distributions. For how to pass in these samples, see the `use_data_as_samples` parameter.
 - `grad_type`[=:localsl]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
 - `use_data_as_samples`[=false]: if this parameter is `true`, then the data being processed (the training data for the emulator) will be used as the samples mentioned earlier. This means that they must be from the correct distribution corresponding to the chosen `alpha`. If this parameter is `false`, then the method expects `:samples_in` and `:samples_out` structure vectors that contain the samples instead.
 """
-function likelihood_informed(; retain_kl = 1, iters=1, grad_type = :linreg, use_data_as_samples = false)
+function likelihood_informed(; retain_info = 1, iters=1, grad_type = :linreg, use_data_as_samples = false)
     if grad_type ∉ [:linreg, :localsl]
         @error "Unknown grad_type=$grad_type"
     end
@@ -45,21 +45,21 @@ function likelihood_informed(; retain_kl = 1, iters=1, grad_type = :linreg, use_
       throw(ArgumentError, "Iterations must be passed as an Int or Vec{Int}. This corresponds to which of the structure-vectors are used to construct the subspace")
     end
     
-    LikelihoodInformed([], [], [], retain_kl, nothing, iters, grad_type, use_data_as_samples)
+    LikelihoodInformed([], [], [], retain_info, nothing, iters, grad_type, use_data_as_samples)
 end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
 get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
 get_data_mean(li::LikelihoodInformed) = li.data_mean
-get_retain_kl(li::LikelihoodInformed) = li.retain_kl
+get_retain_info(li::LikelihoodInformed) = li.retain_info
 get_iters(li::LikelihoodInformed) = li.iters
 get_grad_type(li::LikelihoodInformed) = li.grad_type
 
 function Base.show(io::IO, li::LikelihoodInformed)
     out = "LikelihoodInformed"
     out *= ": iters=$(get_iters(li)), grad_type=$(get_grad_type(li))"
-    if get_retain_kl(li) < 1.0
-        out *= ", retain_kl=$(get_retain_kl(li))"
+    if get_retain_info(li) < 1.0
+        out *= ", retain_info=$(get_retain_info(li))"
     end
     print(io, out)
 end
@@ -164,12 +164,11 @@ function initialize_processor!(
                             grad for (g, grad) in zip(eachcol(samples_out), grads)
                                 ),
                 )
-            #elseif apply_to == "out" && (α ≈ 0 && obs_whitened)
-                # if we keep this branch then we get an annoying cross-problem where we have to combine both diagnostic mats and diagnostic f's. So we can make them both "f's" for now
-            #    diagnostic_mats[it] = hermitianpart(mean(grad * grad' for grad in grads))
+            elseif apply_to == "out" && (α ≈ 0 && obs_whitened) && (length(alphas[iters]) == 1) # special case for output space (whitened and prior-only distribution)
+                diagnostic_mats[it] = hermitianpart(mean(grad * grad' for grad in grads))
             else
-                #                @assert apply_to == "out" &&  !(α ≈ 0 && obs_whitened)
-                   @assert apply_to == "out"
+                # @assert apply_to == "out" && ( !(α ≈ 0 && obs_whitened) || length(alphas[iters]) > 1 )
+                @assert apply_to == "out"
                 # Need to represent the "f" and "egrad" functions for this α
                 f =
                     (_, Vs) -> begin
@@ -196,15 +195,17 @@ function initialize_processor!(
                                     B *
                                     Vs
                     end
+
                 push!(diagnostic_fs, f)
-                push!(diagnostic_egrads, egrad)                
+                push!(diagnostic_egrads, egrad)
+                
             end
            
         end
         
         # summarize path of diagnostic matrices, if we have more than one
         encoder_mat=nothing
-        if length(keys(diagnostic_mats))>0 # using diagnostic_mats
+        if length(keys(diagnostic_mats))>0 # using diagnostic_mats 
             if length(iters)>1
                 # trap rule
                 alpha_weight = zeros(length(iters))
@@ -221,15 +222,15 @@ function initialize_processor!(
             
             # then get the eigen-decomposition
             decomp = eigen(diagnostic_mat, sortby = (-))
-            sv_cumsum = cumsum(decomp.values) / sum(decomp.values)
-            retain_kl = get_retain_kl(li)
-            if retain_kl >= 1.0
+            sv_cumsum = cumsum(log.(decomp.values .+ 1).^2)/sum(log.(decomp.values .+ 1).^2) # frac Forstner distance-based cutoff
+            trunc_val=nothing
+            retain_info = get_retain_info(li)
+            if retain_info >= 1.0
                 trunc_val = apply_to == "in" ? input_dim : output_dim
-                
-            else                
-                trunc_val = findfirst(x -> (x ≥ retain_kl), sv_cumsum)
+            else                                
+                trunc_val = findfirst(x -> (x ≥ retain_info), sv_cumsum)
                 trunc_val = isnothing(trunc_val) ? (apply_to == "in" ? input_dim : output_dim) : trunc_val
-                @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the KL divergence reduction"
+                @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the information"
             end
             encoder_mat = decomp.vectors[:, 1:trunc_val]' 
         else # using diagnostic_f's and diagnostic_egrads
@@ -270,7 +271,7 @@ function initialize_processor!(
             
             k = 1
             Vs = nothing
-            retain_kl = get_retain_kl(li)
+            retain_info = get_retain_info(li)
             while true
                 M = Grassmann(output_dim, k)
                 
@@ -284,7 +285,7 @@ function initialize_processor!(
                 
                 ref = diagnostic_f(M, zeros(output_dim, 0))
                 val = diagnostic_f(M, Vs)
-                if val / ref ≤ 1 - retain_kl
+                if val / ref ≤ 1 - retain_info
                     @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                     break # TODO: Start bisecting?
                 else
