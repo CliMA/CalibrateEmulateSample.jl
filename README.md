@@ -139,8 +139,7 @@ mlt = ScalarRandomFeatureInterface(
 
 
 # Define a data encoding recipe for the input-output data
-#encoder_schedule = [(decorrelate_structure_mat(), "in_and_out")]
-encoder_schedule = [(decorrelate_sample_cov(), "in_and_out")]
+encoder_schedule = [(decorrelate_structure_mat(), "in_and_out")]
 encoder_kwargs = (; prior_cov = cov(prior), obs_noise_cov = Γ)
 
 # create emulator and train
@@ -152,8 +151,6 @@ emulator = Emulator(
 )
 
 optimize_hyperparameters!(emulator)
-
-
 ```
 
 We can also predict on a test set - (here the true value), to validate the emulator. We recommend you do much more than just this to check your emulator is working as expected!
@@ -175,7 +172,6 @@ new_step = optimize_stepsize(mcmc; init_stepsize = 1.0, N = 2000, discard_initia
 chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000) # sample
 
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
-
 ```
 
 We can plot the posterior using commands such as:
