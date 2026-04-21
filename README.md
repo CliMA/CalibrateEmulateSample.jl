@@ -163,18 +163,19 @@ pred_test_mean, pred_test_cov = predict(emulator, get_inputs(input_output_test))
 pp = scatter(
     vec(get_outputs(input_output_pairs)),
     vec(pred_train_mean),
-    xlabel="true outputs",
-    ylabel="predicted outputs",
-    label="training data",
+    xlabel="True outputs",
+    ylabel="Predicted outputs",
+    label="Training data (EKI iter. 1:N-2)",
     color=:lightgrey,
     markersize=3,
     markerstrokewidth = 0,
+    size=(1.6*500,500),
 )
 scatter!(
     pp,
     vec(get_outputs(input_output_test)),
     vec(pred_test_mean),
-    label="testing data",
+    label="Test data (EKI iter. N-1:N)",
     color=:red,
     markersize=3,
     markerstrokewidth = 0,
@@ -184,7 +185,7 @@ scatter!(
     vec(y),
     vec(pred_true_mean),
     color=:black,
-    label="true parameters",
+    label="True parameters",
     markersize=6,
     markerstrokewidth = 4,
     marker=:+,
@@ -193,6 +194,8 @@ scatter!(
 lo = minimum([minimum(pred_train_mean), minimum(pred_test_mean), minimum(y)])
 hi = maximum([maximum(pred_train_mean), maximum(pred_test_mean), minimum(y)])
 plot!(pp, [lo, hi], [lo, hi]; lc = :grey, ls = :dash, label = "1:1")
+display(pp)
+
 ```
 ![quick-readme-emulate](docs/src/assets/readme_emulate.png)
 
