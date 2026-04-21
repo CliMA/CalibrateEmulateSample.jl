@@ -216,7 +216,7 @@ chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard
 posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 ```
 
-We can plot the posterior using commands such as:
+We can plot the prior-posterior, and observe (at least) how the marginals capture the EKI optimum and the true parameter values.
 ```julia
 # plot marginals
 p = plot(prior, fill = :lightgray)
