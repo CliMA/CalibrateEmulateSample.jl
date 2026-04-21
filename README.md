@@ -38,7 +38,7 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 
 # Quick links
 
-- [I'm getting errors about the python dependency](https://clima.github.io/CalibrateEmulateSample.jl/dev/installation_instructions/
+- [I'm getting errors about the python dependency](https://clima.github.io/CalibrateEmulateSample.jl/dev/installation_instructions/)
 - [How do I build prior distributions?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
 - [How do I build good observational noise covariances](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)
 - [What ensemble size should I take? Which process should I use? What is the recommended configuration?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/defaults/)
@@ -121,15 +121,17 @@ We then set up the emulation framework, by getting input-output pairs from the E
 using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.Utilities
+using CalibrateEmulateSample.DataContainers
 using Statistics
 
-# get training data
-input_output_pairs = get_training_points(ensemble_kalman_process, N_iterations)
+# get training and test data from EKI iterations
+input_output_pairs = get_training_points(ensemble_kalman_process, collect(1:N_iterations-2))
+input_output_test = get_training_points(ensemble_kalman_process, collect(N_iterations-1:N_iterations))
 
 #choose an ML tool
 input_dim = ndims(prior)
 n_features = 200
-kernel_structure=SeparableKernel(DiagonalFactor(1e-8),OneDimFactor())
+kernel_structure=SeparableKernel(DiagonalFactor(1e-10),OneDimFactor())
 
 mlt = ScalarRandomFeatureInterface(
     n_features,
@@ -153,9 +155,9 @@ emulator = Emulator(
 optimize_hyperparameters!(emulator)
 ```
 
-We can also predict on a test set - (here the true value), to validate the emulator. We recommend you do much more than just this to check your emulator is working as expected!
+It is essential to validate the emulator. Here we just predict on train, test and the true parameters to validate the mean prediction lies near 1:1. We recommend you do much more than just this to check your emulator is working as expected!
 ```julia
-# quick check for emulator faithfulness - user should do more
+# make some predictions, and plot
 pred_true_mean, pred_true_cov = predict(emulator, reshape(true_u,:,1))
 pred_train_mean, pred_train_cov = predict(emulator, get_inputs(input_output_pairs))
 pred_test_mean, pred_test_cov = predict(emulator, get_inputs(input_output_test))
