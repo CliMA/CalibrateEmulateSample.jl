@@ -33,9 +33,16 @@ optimize_hyperparameters!(emulator)
 For some machine learning packages however, this may be completed during construction automatically, and for others this will not. If automatic construction took place, the `optimize_hyperparameters!` line does not perform any new task, so may be safely called. In the Lorenz example, this line learns the hyperparameters of the Gaussian process, which depend on the choice of [kernel](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/#kernels), and the choice of GP package.
 Predictions at new inputs can then be made using
 ```julia
-y, cov = Emulator.predict(emulator, new_inputs)
+em_mean, em_cov = Emulator.predict(emulator, new_inputs)
 ```
-This returns both a mean value and a covariance.
+This returns both a mean value and a covariance. The emulator is subject to encoding (see [Data processing and Dimension reduction](@ref data-proc)), and so we provide the `encode` and `add_obs_noise_cov` to enable users to predict in different spaces, and with different inflation.
+```julia
+# produce output in encoded space
+em_mean_enc, em_cov_enc = Emulator.predict(emulator, new_inputs; encode="out")
+
+# given encoded inputs, produce outputs in real space, and inflate the emulator uncertainty with observational noise
+em_mean, em_and_obs_noise_cov = Emulator.predict(emulator, new_encoded_inputs; encode="in", add_obs_noise_cov=true) 
+```
 
 ## [Modular interface](@id modular-interface)
 

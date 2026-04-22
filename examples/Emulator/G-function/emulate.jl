@@ -159,7 +159,7 @@ function main()
 
         @info "statistics of training time for case $(case): \n mean(s): $(mean(times[1:rep_idx])) \n var(s) : $(var(times[1:rep_idx]))"
         # predict on all Sobol points with emulator (example)    
-        y_pred, y_var = predict(emulator, samples', transform_to_real = true)
+        y_pred, y_var = predict(emulator, samples')
 
         # obtain emulated Sobol indices
         result_pred = analyze(data, y_pred')

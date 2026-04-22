@@ -214,13 +214,13 @@ function main()
         u_test_tmp[:, 1] = sol_test.u[1]
 
         for i in 1:(length(xspan_test) - 1)
-            rf_mean, _ = predict(emulator, u_test_tmp[:, i:i], transform_to_real = true) # 3x1 matrix
+            rf_mean, _ = predict(emulator, u_test_tmp[:, i:i]) # 3x1 matrix
             u_test_tmp[:, i + 1] = rf_mean
         end
 
         train_err_tmp = [0.0]
         for i in 1:size(input, 2)
-            train_mean, _ = predict(emulator, input[:, i:i], transform_to_real = true) # 3x1
+            train_mean, _ = predict(emulator, input[:, i:i]) # 3x1
             train_err_tmp[1] += norm(train_mean - output[:, i])
         end
         println("normalized L^2 error on training data:", 1 / size(input, 2) * train_err_tmp[1])
@@ -229,7 +229,7 @@ function main()
         u_hist_tmp[:, 1] = sol_hist.u[1]  # start at end of previous sim
 
         for i in 1:(length(xspan_hist) - 1)
-            rf_mean, _ = predict(emulator, u_hist_tmp[:, i:i], transform_to_real = true) # 3x1 matrix
+            rf_mean, _ = predict(emulator, u_hist_tmp[:, i:i]) # 3x1 matrix
             u_hist_tmp[:, i + 1] = rf_mean
         end
 

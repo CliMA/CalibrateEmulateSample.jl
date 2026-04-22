@@ -162,11 +162,11 @@ function main()
 
             # errors:
             # training error
-            y_pred, y_var = predict(emulator, get_inputs(iopairs), transform_to_real = true)
+            y_pred, y_var = predict(emulator, get_inputs(iopairs))
             train_err[f_idx, rep_idx] = sqrt(sum((y_pred - get_outputs(iopairs)) .^ 2)) / n_train_pts
 
             # predict on all test points with emulator (example)    
-            y_pred, y_var = predict(emulator, samples', transform_to_real = true) #predict on all points
+            y_pred, y_var = predict(emulator, samples') #predict on all points
             ind_test = ind_total[(n_train_pts + 1):end]
             test_err[f_idx, rep_idx] = sqrt(sum((y_pred[ind_test] - y[ind_test]) .^ 2)) / length(ind_test)
 

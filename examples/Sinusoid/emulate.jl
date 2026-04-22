@@ -168,9 +168,9 @@ g_true_grid = reshape(g_true, (output_dim, N_grid, N_grid))
 # Next, predict with emulators. We first need to transform to the unconstrained space.
 input_grid_unconstrained = Emulators.transform_constrained_to_unconstrained(prior, input_grid)
 
-gp_mean, gp_cov = Emulators.predict(emulator_gp, input_grid_unconstrained, transform_to_real = true)
-rf_mean, rf_cov = Emulators.predict(emulator_rf, input_grid_unconstrained, transform_to_real = true)
-fm_mean, fm_cov = Emulators.predict(emulator_fm, input_grid_unconstrained; transform_to_real = true)
+gp_mean, gp_cov = Emulators.predict(emulator_gp, input_grid_unconstrained)
+rf_mean, rf_cov = Emulators.predict(emulator_rf, input_grid_unconstrained)
+fm_mean, fm_cov = Emulators.predict(emulator_fm, input_grid_unconstrained)
 
 
 # Reshape into (output_dim x 50 x 50) grid

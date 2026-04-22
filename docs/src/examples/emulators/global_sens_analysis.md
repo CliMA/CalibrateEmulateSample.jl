@@ -127,11 +127,11 @@ optimize_hyperparameters!(emulator) # (only needed for some Emulator packages)
 
 ### Results and plots
 
-We validate the emulator by evaluating it on the entire Sobol sequence, and calculating the Sobol indices (presenting mean and std if using multiple repeats.
+We validate the emulator by evaluating it on the entire Sobol sequence, and calculating the Sobol indices (presenting mean and std if using multiple repeats).
 
 ```julia
 # predict on all Sobol points with emulator (example)    
-y_pred, y_var = predict(emulator, samples', transform_to_real = true)
+y_pred, y_var = predict(emulator, samples')
 
 # obtain emulated Sobol indices
 result_pred = analyze(data, y_pred')

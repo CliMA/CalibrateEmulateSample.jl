@@ -230,8 +230,8 @@ The emulator is checked for accuracy by evaluating its predictions on the true p
 ```julia
 # Check how well the Gaussian Process regression predicts on the
 # true parameters
-y_mean, y_var = Emulators.predict(emulator, reshape(truth_params, :, 1), transform_to_real = true)
-y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(input_output_pairs_test), transform_to_real = true)
+y_mean, y_var = Emulators.predict(emulator, reshape(truth_params, :, 1))
+y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(input_output_pairs_test))
 
 println("ML prediction on true parameters: ")
 println(vec(y_mean))

@@ -356,10 +356,10 @@ Makes a prediction using the emulator on new inputs (each new inputs given as da
 
 Keyword args
 - `encode` [=`nothing`]: For the input encoder `Eᵢ`, and output decoder `Dₒ` stored in the emulator, we have learnt a predict method method `G` in the encoded space. Interpret the keyword as follows:
-    - nothing     : applies Dₒ∘G∘Eᵢ(x) (nothing is encoded) - most common for user interaction
-    - "in"        : applies Dₒ∘G(z) (the inputs are provided as encoded (z=Eᵢx))
-    - "out"       : applies G∘Eᵢ(x) (the outputs are returned as encoded)
-    - "in_and_out": applies G(z) (inputs (z=Eᵢx) and outputs are both encoded) - internally called by `Sample` method
+    - `nothing`     : applies Dₒ∘G∘Eᵢ(x) (nothing is encoded) - most common for user interaction
+    - `"in"`        : applies Dₒ∘G(z) (the inputs are provided as encoded (z=Eᵢx))
+    - `"out"`       : applies G∘Eᵢ(x) (the outputs are returned as encoded)
+    - `"in_and_out"`: applies G(z) (inputs (z=Eᵢx) and outputs are both encoded) - internally called by `Sample` method
 - `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
     - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
     - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
@@ -532,10 +532,10 @@ Makes a prediction using the ForwardMapWrapper on new inputs (each new inputs gi
 
 Keyword args
 - `encode` [=`nothing`]: For the output encoder `Eₒ`, and input decoder `Dᵢ` stored in the `ForwardMapWrapper`, we have provided the forward map `G` in the decoded space. Interpret the keyword as follows:
-    - nothing     : applies G(x) (nothing is encoded) - most common for user interaction
-    - "in"        : applies G∘Dᵢ(z) (the inputs are provided as encoded (x=Dᵢz))
-    - "out"       : applies Eₒ∘G(x) (the outputs are returned as encoded)
-    - "in_and_out": applies Eₒ∘G∘Dᵢ(z) (inputs (x=Dᵢz) and outputs are both encoded) - internally called by `Sample` method
+    - `nothing`     : applies G(x) (nothing is encoded) - most common for user interaction
+    - `"in"`        : applies G∘Dᵢ(z) (the inputs are provided as encoded (x=Dᵢz))
+    - `"out"`       : applies Eₒ∘G(x) (the outputs are returned as encoded)
+    - `"in_and_out"`: applies Eₒ∘G∘Dᵢ(z) (inputs (x=Dᵢz) and outputs are both encoded) - internally called by `Sample` method
 - `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
     - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
     - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
