@@ -19,7 +19,8 @@ using CalibrateEmulateSample.ParameterDistributions
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    initial_ensemble = randn(rng, dim_par, n_ens)#params are cols
+    prior = constrained_gaussian("test", 1.0, 2.0, repeats=dim_par)
+    initial_ensemble = construct_initial_ensemble(rng, prior, n_ens) # params are cols
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I, dim_obs, dim_obs)
     ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng = rng)
@@ -41,6 +42,40 @@ using CalibrateEmulateSample.ParameterDistributions
     pdmat2 = posdef_correct(mat, tol = tol)
     @test isposdef(pdmat2)
     @test minimum(eigvals(pdmat2)) >= (1 - 1e-4) * tol
+
+    # get encoder kwargs from ekp and prior
+    g_ens_final = randn(rng, dim_obs, n_ens) # add a final set out outputs.
+    encoder_kwargs = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
+
+    prior_kwargs = (; prior_cov=cov(prior))
+    obs_kwargs = (; obs_noise_cov = [Γy], observation=[y_obs])
+    io_kwargs = (;
+                 input_structure_vecs = Dict(
+                     :dt => [0, get_algorithm_time(ekp)...],
+                     :samples_in => get_u(ekp),
+                 ),
+                 output_structure_vecs = Dict(
+                     :dt => [0, get_algorithm_time(ekp)...],
+                     :samples_out => [get_g(ekp)..., g_ens_final],
+                 ),
+                 )
+    test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
+    
+    @test all(encoder_kwargs[key] == test_kwargs[key] for key in keys(encoder_kwargs))
+    # remove final g
+    encoder_reduced_kwargs = encoder_kwargs_from(ekp, prior)
+    io_reduced_kwargs = (;
+                 input_structure_vecs = Dict(
+                     :dt => [0, get_algorithm_time(ekp)...][1:end-1],
+                     :samples_in => get_u(ekp)[1:end-1],
+                 ),
+                 output_structure_vecs = Dict(
+                     :dt => [0, get_algorithm_time(ekp)...][1:end-1],
+                     :samples_out => [get_g(ekp)...],
+                 ),
+                 )
+    test_reduced_kwargs = merge(prior_kwargs, obs_kwargs, io_reduced_kwargs)
+    @test all(encoder_reduced_kwargs[key] == test_reduced_kwargs[key] for key in keys(encoder_kwargs))
 
 end
 
