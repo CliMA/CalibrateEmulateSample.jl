@@ -178,8 +178,7 @@ function main()
         # Check how well the Gaussian Process regression predicts on the
         # true parameters
         y_mean, y_var = Emulators.predict(emulator, reshape(truth_params, :, 1))
-        y_mean_test, y_var_test =
-            Emulators.predict(emulator, get_inputs(input_output_pairs_test))
+        y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(input_output_pairs_test))
 
         println("ML prediction on true parameters: ")
         println(vec(y_mean))
