@@ -139,9 +139,9 @@ x2 = range(0.0, stop = 2 * π, length = n_pts)
 X1, X2 = meshgrid(x1, x2)
 inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
 ```
-We predict using the emulators at the new inputs, and `transform_to_real` inverts the data processing back to physical values
+We predict using the emulators at the new inputs, 
 ```julia
-em_mean, em_cov = predict(emulator, inputs, transform_to_real = true)
+em_mean, em_cov = predict(emulator, inputs)
 ```
 We then plot the predicted mean and pointwise variances, and calculate the errors from the three highlighted cases:
 

@@ -151,7 +151,7 @@ u_test_tmp = zeros(3, length(xspan_test))
 u_test_tmp[:, 1] = sol_test.u[1] # initialize at the final-time solution of the training period
 
 for i in 1:(length(xspan_test) - 1)
-    rf_mean, _ = predict(emulator, u_test_tmp[:, i:i], transform_to_real = true) # 3x1 matrix
+    rf_mean, _ = predict(emulator, u_test_tmp[:, i:i]) # 3x1 matrix
     u_test_tmp[:, i + 1] = rf_mean
 end
 ```

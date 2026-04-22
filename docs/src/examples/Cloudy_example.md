@@ -417,8 +417,7 @@ on them).
 # Check how well the emulator predicts on the true parameters
 y_mean, y_var = Emulators.predict(
     emulator,
-    reshape(θ_true, :, 1);
-    transform_to_real = true
+    reshape(θ_true, :, 1)
 )
 
 println("Emulator ($(case)) prediction on true parameters: ")
