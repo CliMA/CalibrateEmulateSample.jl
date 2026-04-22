@@ -49,7 +49,7 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 
 
 # What does it look like to use?
-Having installed CES and Plots, you can copy-paste the snippets below to recreate this random experiment (up to random number generation)
+Having installed CES and Plots, you can copy-paste the snippets below to recreate this random experiment (up to random number generation). 
 
 ### Calibrate
 Below we will outline the current user experience for using `EnsembleKalmanProcesses.jl`.
@@ -70,7 +70,7 @@ G(u) = [
 true_u = [3, 1, 2,-3,-4]
 y = G(true_u)
 ```
-We assume some prior knowledge of the parameters `u` in the problem (such as approximate scales, and the first parameter being positive), then we are ready to go! 
+We assume some prior knowledge of the parameters `u` in the problem (such as approximate scales, and the first parameter being positive), then we learn which parameters best fit the data with EKP.
 
 ```julia
 
@@ -109,12 +109,13 @@ end
 display(p)
 
 ```
+We now hvae a quick and cheap estimate of the mode of the distribution here, but no quantified uncertainty. To postprocess in a way that gives us back uncertainty, we will emulate `G` using our current EKP evaluations, and apply a proper sampling algorithm to the emulator. No more evaluations of `G` are required!
 ![quick-readme-calibrate](docs/src/assets/readme_calibrate.png)
 
 
 # Emulate
 
-We then set up the emulation framework, by getting input-output pairs from the EKI, defining which emulator to use, and defining what space we will train our emulator in. Here, we take a Random Feature model, and we decorrelate the training space, using prior (input) and noise (output) covariances. *This stage can take several minutes.*
+We then set up the emulation framework, by getting input-output pairs from the EKP, defining which emulator to use, and defining what space we will train our emulator in. Here, we take a Random Feature emulator, and we decorrelate the training space, using prior (input) and noise (output) covariances. *This stage can take several minutes.*
 ```julia
 using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
@@ -202,7 +203,7 @@ display(pp)
 
 # Sample
 
-Having created a suitable emulator, we can pass everything into the Sampler, here a random walk metropolis algorithm. We find a suitable step size and then draw 100,000 samples.
+Having created a suitable emulator, we can pass everything into the sampler, here a random walk metropolis algorithm (MCMC). We find a suitable step size and then draw 100,000 samples from the emulator-based posterior.
 ```julia
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 mcmc = MCMCWrapper(RWMHSampling(), y, prior, emulator; init_params = get_u_mean_final(ensemble_kalman_process))
