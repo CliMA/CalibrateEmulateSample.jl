@@ -56,7 +56,7 @@ Extract the training points needed to train the Gaussian process regression.
 function get_training_points(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
     train_iterations::Union{IT, AbstractVector{IT}};
-    g_final=nothing,
+    g_final = nothing,
 ) where {FT, IT, P}
 
     if !isa(train_iterations, AbstractVector)
@@ -69,23 +69,26 @@ function get_training_points(
     u_tp = []
     g_tp = []
 
-    g_len=length(get_g(ekp))
+    g_len = length(get_g(ekp))
     g_full = [get_g(ekp, i) for i in iter_range[iter_range .<= g_len]]
     if !isnothing(g_final)
         if (isa(g_final, AbstractMatrix)) # add the matrix
             @assert(size(g_full[1]) == size(g_final))
             push!(g_full, g_final)
         else
-           throw(ArgumentError, "Expected `g_final` to be type `<:AbstractMatrix`, of size: $(size(g_full[1])), received $(typeof(g_final))")
+            throw(
+                ArgumentError,
+                "Expected `g_final` to be type `<:AbstractMatrix`, of size: $(size(g_full[1])), received $(typeof(g_final))",
+            )
         end
     end
-   
+
     for (idx, ir) in enumerate(iter_range)
         push!(u_tp, get_u(ekp, ir)) #N_parameters x N_ens
         push!(g_tp, g_full[idx]) #N_data x N_ens
     end
-    u_tp = reduce(hcat,u_tp) # N_parameters x (N_ek_it x N_ensemble)]
-    g_tp = reduce(hcat,g_tp) # N_data x (N_ek_it x N_ensemble)
+    u_tp = reduce(hcat, u_tp) # N_parameters x (N_ek_it x N_ensemble)]
+    g_tp = reduce(hcat, g_tp) # N_data x (N_ek_it x N_ensemble)
 
     training_points = PairedDataContainer(u_tp, g_tp, data_are_columns = true)
 
@@ -152,11 +155,15 @@ Contains
 
 Commonly called from `encoder_kwargs_from(ekp, prior)`
 """
-function encoder_kwargs_from(samples_in::VV2, samples_out::VV1, dt::VV3) where {VV1 <: AbstractVector,  VV2 <: AbstractVector,  VV3 <: AbstractVector}
+function encoder_kwargs_from(
+    samples_in::VV2,
+    samples_out::VV1,
+    dt::VV3,
+) where {VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
     if !(minimum(abs.(dt[1])) < eps()) # if 0 is not the first element of the algorithm time.
-        dt = [0, dt...] 
+        dt = [0, dt...]
     end
-    if length(samples_out)< min(length(samples_in),length(dt))
+    if length(samples_out) < min(length(samples_in), length(dt))
         @info """Detected fewer `samples_out` ($(length(samples_out))) than `samples_in` ($(length(samples_in))) and `dt` ($(length(dt))). Input-output structure vectors will be created from $(length(samples_out)) samples.
 This commonly occurs when samples are built from `get_u(ekp), get_g(ekp)`.
 The final interation of output samples, (e.g., from evaluating `g=forward_map_ensemble(get_ϕ_final(ekp)`) can be provided by `encoder_kwargs_from(ekp, prior; final_samples_out=g)`
@@ -168,8 +175,7 @@ The final interation of output samples, (e.g., from evaluating `g=forward_map_en
     samples_in = samples_in[1:len]
     dt = dt[1:len]
     samples_out = samples_out[1:len]
-    return(
-        ;
+    return (;
         input_structure_vecs = Dict(:dt => dt, :samples_in => samples_in),
         output_structure_vecs = Dict(:dt => dt, :samples_out => samples_out),
     )
@@ -185,31 +191,39 @@ kwargs:
 
 - Other overloading kwargs: `observation_series`,`samples_in`,`samples_out`,`dt`
 """
-function encoder_kwargs_from(ekp::EKP, prior::PD; observation_series=nothing, samples_in=nothing, samples_out=nothing, dt=nothing, final_samples_out=nothing) where {PD <: ParameterDistribution, EKP <: EnsembleKalmanProcess}
+function encoder_kwargs_from(
+    ekp::EKP,
+    prior::PD;
+    observation_series = nothing,
+    samples_in = nothing,
+    samples_out = nothing,
+    dt = nothing,
+    final_samples_out = nothing,
+) where {PD <: ParameterDistribution, EKP <: EnsembleKalmanProcess}
     observation_series = isnothing(observation_series) ? get_observation_series(ekp) : observation_series
     samples_in = isnothing(samples_in) ? get_u(ekp) : samples_in
-    samples_out = isnothing(samples_out) ? get_g(ekp) : samples_out    
+    samples_out = isnothing(samples_out) ? get_g(ekp) : samples_out
     dt = isnothing(dt) ? get_algorithm_time(ekp) : dt
     # a common setting is you have one-less samples_out than (samples_in, dt) so we extend g
     if !isnothing(final_samples_out)
         if (isa(final_samples_out, AbstractMatrix)) # add one matrix
-            if length(samples_out)>0
+            if length(samples_out) > 0
                 @assert(size(samples_out[1]) == size(final_samples_out))
             end
             push!(samples_out, final_samples_out)
         else # add a vector of matrices
-            if length(samples_out)>0
+            if length(samples_out) > 0
                 @assert(size(samples_out[1]) == size(final_samples_out[1]))
             end
-            samples_out = reduce(vcat, [samples_out,final_samples_out])
+            samples_out = reduce(vcat, [samples_out, final_samples_out])
         end
     end
-    
+
     prior_kwargs = encoder_kwargs_from(prior)
     obs_kwargs = encoder_kwargs_from(observation_series)
     io_kwargs = encoder_kwargs_from(samples_in, samples_out, dt)
     return merge(prior_kwargs, obs_kwargs, io_kwargs)
-    
+
 end
 
 
@@ -472,12 +486,12 @@ function get_structure_mat(structure_mats, name = nothing)
     end
 end
 
-function encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector} 
+function encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
     if eltype(data) <: Real # one vec
-        return encode_data(proc, reshape(data,:,1)) # reshape to column
+        return encode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
         return [encode_data(proc, vec_or_mat) for vec_or_mat in data]
-    end  
+    end
 end
 
 
@@ -494,10 +508,10 @@ end
 
 function decode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
     if eltype(data) <: Real # one vec
-        return decode_data(proc, reshape(data,:,1)) # reshape to column
+        return decode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
         return [decode_data(proc, data[vec]) for vec in data]
-    end  
+    end
 end
 
 function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
@@ -654,7 +668,7 @@ function initialize_and_encode_with_schedule!(
     if !isnothing(samples_out)
         (output_structure_vecs[:samples_out] = samples_out)
     end
-    
+
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
         @info "Initialize encoding of data: \"$(apply_to)\" with $(processor)"
@@ -670,19 +684,23 @@ function initialize_and_encode_with_schedule!(
         non_encode_list = [:dt] # non-data fields 
         if apply_to == "in"
             input_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat)
-                for (name, mat) in input_structure_mats)
+                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat) for
+                (name, mat) in input_structure_mats
+            )
             input_structure_vecs = Dict{Symbol, StructureVector}(
-                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec)
-                for (name, vec) in input_structure_vecs)
+                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec) for
+                (name, vec) in input_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
             output_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat)
-                for (name, mat) in output_structure_mats)
+                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat) for
+                (name, mat) in output_structure_mats
+            )
             output_structure_vecs = Dict{Symbol, StructureVector}(
-                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec)
-                for (name, vec) in output_structure_vecs)
+                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec) for
+                (name, vec) in output_structure_vecs
+            )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
     end
@@ -877,7 +895,7 @@ function get_encoder_from_schedule(
             return nothing, nothing
         else
             # Note, the action of encoders (E_1,E_2,E_3) is the product x -> (E_3*E_2*E_1)*x so must be reversed
-            linear_part = reduce(*,reverse(encoder_mats))
+            linear_part = reduce(*, reverse(encoder_mats))
 
             # rather than extracting the shifts etc. we can get this by just applying it to zero
             constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
@@ -911,10 +929,10 @@ function get_encoded_dim(encoder_schedule::VV, in_or_out::AS) where {VV <: Abstr
         if in_or_out ∉ ["in", "out"]
             bad_in_or_out(in_or_out)
         end
-        
+
         encoder_mat_sizes =
             [size(get_encoder_mat(processor)[1]) for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
-        
+
         if length(encoder_mat_sizes) == 0
             return nothing
         else
@@ -930,10 +948,7 @@ $(TYPEDSIGNATURES)
 gets the dimension of the encoded space, returned as a Dict with keys "in","out". Provides nothing values if encoder schedule is empty or uninitialized
 """
 function get_encoded_dim(encoder_schedule::VV) where {VV <: AbstractVector}
-    return Dict(
-        "in" => get_encoded_dim(encoder_schedule, "in"),
-        "out" => get_encoded_dim(encoder_schedule, "out"),
-    )
+    return Dict("in" => get_encoded_dim(encoder_schedule, "in"), "out" => get_encoded_dim(encoder_schedule, "out"))
 end
 
 """
@@ -989,10 +1004,13 @@ function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
     )
 end
 
-    
-get_encoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} = get_encoder_from_schedule([single_encoder], args...; kwargs...)
-get_decoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} = get_decoder_from_schedule([single_encoder], args...; kwargs...)
-get_encoded_dim(single_encoder::T, args...; kwargs...) where {T <: Tuple} = get_encoded_dim([single_encoder], args...; kwargs...)
+
+get_encoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_encoder_from_schedule([single_encoder], args...; kwargs...)
+get_decoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_decoder_from_schedule([single_encoder], args...; kwargs...)
+get_encoded_dim(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_encoded_dim([single_encoder], args...; kwargs...)
 
 ## Decoding and add noise:
 """

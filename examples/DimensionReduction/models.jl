@@ -46,11 +46,9 @@ function forward_map(X::AVorM, model::Lin) where {AVorM <: AbstractVecOrMat}
 end
 
 function jac_forward_map(X::AbstractVector, model::Lin)
-    return model.G 
+    return model.G
 end
 
 function jac_forward_map(X::AbstractMatrix, model::Lin)
     return [jac_forward_map(x, model) for x in eachcol(X)]
 end
-
-
