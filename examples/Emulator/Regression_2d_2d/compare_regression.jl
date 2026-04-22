@@ -206,7 +206,7 @@ function main()
             # Input for predict has to be of size  input_dim x N_samples
             inputs = permutedims(hcat(X1[:], X2[:]), (2, 1))
 
-            em_mean, em_cov = predict(emulator, inputs, transform_to_real = true)
+            em_mean, em_cov = predict(emulator, inputs)
             println("end predictions at ", n_pts * n_pts, " points")
 
             g1_true = g1(inputs)

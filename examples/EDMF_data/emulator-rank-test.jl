@@ -268,7 +268,7 @@ function main()
             # error of emulator on the training points: (no denoised training data)
             train_err_tmp = [0.0]
             for i in 1:size(train_inputs, 2)
-                train_mean, _ = Emulators.predict(emulator, train_inputs[:, i:i], transform_to_real = true) # 3x1
+                train_mean, _ = Emulators.predict(emulator, train_inputs[:, i:i]) # 3x1
                 train_err_tmp[1] += norm(train_mean - train_outputs[:, i])
             end
             train_err[rank_id, rep_idx] = 1 / size(train_inputs, 2) * train_err_tmp[1]
@@ -276,7 +276,7 @@ function main()
             # error of emulator on test points: 
             test_err_tmp = [0.0]
             for i in 1:size(test_inputs, 2)
-                test_mean, _ = Emulators.predict(emulator, test_inputs[:, i:i], transform_to_real = true) # 3x1
+                test_mean, _ = Emulators.predict(emulator, test_inputs[:, i:i]) # 3x1
                 test_err_tmp[1] += norm(test_mean - test_outputs[:, i])
             end
             test_err[rank_id, rep_idx] = 1 / size(test_inputs, 2) * test_err_tmp[1]

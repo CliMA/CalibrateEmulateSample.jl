@@ -138,7 +138,7 @@ function main()
             push!(opt_diagnostics, diag_tmp)
         end
         # predict on all Sobol points with emulator (example)    
-        y_pred, y_var = predict(emulator, samples', transform_to_real = true)
+        y_pred, y_var = predict(emulator, samples')
 
         # obtain emulated Sobol indices
         result_pred = analyze(data, y_pred')

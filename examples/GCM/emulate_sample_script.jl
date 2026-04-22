@@ -197,7 +197,7 @@ function main()
             new_input = [log(0.31735951644387783 / (1 - 0.31735951644387783)) log(90632.50269636544)]' # random parameter value ("far" from truth
         end
 
-        pred_mean, pred_cov = predict(emulator, new_input, transform_to_real = true)
+        pred_mean, pred_cov = predict(emulator, new_input)
         pred_sd = sqrt.([max(10 * eps(), pred_cov[1][i, i]) for i in 1:size(pred_cov[1], 1)])
 
 
@@ -223,7 +223,7 @@ function main()
     end
 
     plot_input = [log(0.7 / 0.3) log(7200)]' # physical parameter value (at truth)
-    plot_mean, plot_cov = predict(emulator, plot_input, transform_to_real = true)
+    plot_mean, plot_cov = predict(emulator, plot_input)
     plot_sd = sqrt.([max(10 * eps(), plot_cov[1][i, i]) for i in 1:size(plot_cov[1], 1)])
 
 
