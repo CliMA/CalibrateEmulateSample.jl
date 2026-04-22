@@ -74,7 +74,7 @@ using CalibrateEmulateSample.Utilities
 
     Emulators.optimize_hyperparameters!(em1)
 
-    @test_throws ErrorException Emulators.optimize_hyperparameters(10) # not an mlt
+    @test_throws ErrorException Emulators.optimize_hyperparameters!(10) # not an mlt
     
     μ1, σ1² = Emulators.predict(em1, new_inputs)
 
