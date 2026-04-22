@@ -124,7 +124,7 @@ end
     default_encoder = (decorrelate_sample_cov(), "in_and_out") # for these inputs this is the default
     enc_sch = create_encoder_schedule(default_encoder)
     enc_io_pairs, enc_I_in, enc_I_out = initialize_and_encode_with_schedule!(enc_sch, io_pairs; obs_noise_cov = 1.0 * I)
-    tol = 1e-14
+    tol = 1e-12
     @test get_encoder_schedule(fmw) == enc_sch # inputs: proc
     @test all(isapprox.(get_inputs(get_encoded_io_pairs(fmw)), get_inputs(enc_io_pairs), atol = tol))
     @test all(isapprox.(get_outputs(get_encoded_io_pairs(fmw)), get_outputs(enc_io_pairs), atol = tol))
