@@ -7,8 +7,9 @@ The framework works as follows
 - An `encoder_schedule` defines the type of processing to be applied to input and/or output spaces
 - The `encoder_schedule` is passed into the `Emulator` where it is initialized and stored. Sometimes it will require additional information, passed in as `encoder_kwargs`. 
 - The encoder will be used automatically to encode training data, covariance matrices, and predictions within the Emulate and Sample routines.
+- Users can predict to/from encoded space with `predict(...; encode=X)` with `X` being `"in"`, `"out"`, or `"in_and_out"` if needed. 
 
-An external API is also available using the `encode_data`, and `encode_structure_matrix` methods if needed.
+An external API is also available using the `encode_data`, and `encode_structure_matrix` methods if needed to encode new data, or new covariance-type matrices.
 
 ## Defaults and recommendations
 ### Default schedule (no explicit dimension reduction)
