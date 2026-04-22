@@ -158,6 +158,8 @@ end
     @test Utilities.get_structure_mat(structure_mats, "c") == [1 2; 3 4]
 
     # quick build tests and test getters
+
+    # elementwise
     zs = zscore_scale()
     mm = minmax_scale()
     qq = quartile_scale()
@@ -174,6 +176,7 @@ end
     @test get_data_decoder_mat(QQ) == [4]
     @test get_struct_encoder_mat(QQ) == [5]
     @test get_struct_decoder_mat(QQ) == [6]
+    # decorrelator
     dd = decorrelate()
     @test get_retain_var(dd) == 1.0
     @test get_decorrelate_with(dd) == "combined"
@@ -191,7 +194,7 @@ end
     @test get_max_rank(DD) == 5
     @test get_psvd_kwargs(DD) == (; test = 6)
 
-
+    # canonical correlation
     cc = canonical_correlation()
     @test get_retain_var(cc) == 1.0
     cc2 = canonical_correlation(retain_var = 0.7)
@@ -202,15 +205,37 @@ end
     @test get_decoder_mat(cc3) == [3]
     @test get_apply_to(cc3) == "test"
 
+    # likelihood informed
+    ll = likelihood_informed()
+    @test get_retain_info(ll) == 1.0
+    @test get_iters(ll) == [1]
+    @test get_grad_type(ll) == :linreg
+    ll2 = likelihood_informed(retain_info=0.99, iters=3:5, grad_type=:localsl)
+    @test get_retain_info(ll2) == 0.99
+    @test get_iters(ll2) == 3:5
+    @test get_grad_type(ll2) == :localsl
+    ll3 = LikelihoodInformed([2],[3],[4], 0.99, nothing, [3:5], :localsl) 
+    @test get_encoder_mat(ll3) == [2]
+    @test get_decoder_mat(ll3) == [3]
+    @test get_data_mean(ll3) == [4]
+    @test_throws ArgumentError likelihood_informed(grad_type = :bad_type)
+    @test_throws ArgumentError likelihood_informed(iters = 1.3)
 
     # test equalities
     cc = canonical_correlation()
     cc_copy = canonical_correlation()
     dd = decorrelate()
     dd_copy = decorrelate()
+    zs = zscore_scale()
+    zs_copy = zscore_scale()
+    ll = likelihood_informed()
+    ll_copy = likelihood_informed()
+
     @test cc == cc_copy
     @test dd == dd_copy
-
+    @test zs == zs_copy
+    @test ll == ll_copy
+    
     # get some data as IO pairs for functional tests
 
     in_dim = 10
@@ -234,6 +259,7 @@ end
         "canonical-correlation",
         "decorrelate-structure-mat-retain-0.95-var",
         "canonical-correlation-0.95-var",
+        "likelihood_informed-0.99-info"
     ]
 
     # Test encodings-decodings individually
@@ -247,9 +273,10 @@ end
         (canonical_correlation(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
+        (likelihood_informed(retain_info = 0.99), "in_and_out"), 
     ]
 
-    lossless = [fill(true, 6); fill(false, 4)] # are these lossless approximations? 
+    lossless = [fill(true, 6); fill(false, 5)] # are these lossless approximations? 
 
     # functional test pipeline
     tol = 1e-12

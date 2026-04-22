@@ -2,7 +2,7 @@
 
 using Manifolds, Manopt
 
-export LikelihoodInformed, likelihood_informed
+export LikelihoodInformed, likelihood_informed, get_retain_info, get_iters, get_grad_type
 
 """
 $(TYPEDEF)
@@ -22,7 +22,6 @@ mutable struct LikelihoodInformed{VV1<:AbstractVector, VV2<:AbstractVector, VV3<
     apply_to::Union{Nothing, AbstractString}
     iters::VV4
     grad_type::Symbol
-    use_data_as_samples::Bool
 end
 
 """
@@ -32,11 +31,11 @@ Constructs the `LikelihoodInformed` struct. Keywords:
 - `retain_info`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - retain_info). Choose `retain_info` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
 - `iters`[=[1]]: the likelihood-informed data processor requires samples from the distribution ∝ π_prior(x) π_likelihood(y | x)^α with α ∈ [0, 1]. Here, `iter` indicates the structure vector iterations to use, as sampled from these distributions. For how to pass in these samples, see the `use_data_as_samples` parameter.
 - `grad_type`[=:localsl]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
-- `use_data_as_samples`[=false]: if this parameter is `true`, then the data being processed (the training data for the emulator) will be used as the samples mentioned earlier. This means that they must be from the correct distribution corresponding to the chosen `alpha`. If this parameter is `false`, then the method expects `:samples_in` and `:samples_out` structure vectors that contain the samples instead.
 """
-function likelihood_informed(; retain_info = 1, iters=1, grad_type = :linreg, use_data_as_samples = false)
-    if grad_type ∉ [:linreg, :localsl]
-        @error "Unknown grad_type=$grad_type"
+function likelihood_informed(; retain_info = 1, iters=1, grad_type = :linreg)
+    grad_types = [:linreg, :localsl]
+    if grad_type ∉ grad_types
+        throw(ArgumentError("Unknown grad_type=$grad_type, please select from $(grad_types)"))
     end
     if !isa(iters, AbstractVector)
         iters=[iters]
@@ -45,7 +44,7 @@ function likelihood_informed(; retain_info = 1, iters=1, grad_type = :linreg, us
       throw(ArgumentError, "Iterations must be passed as an Int or Vec{Int}. This corresponds to which of the structure-vectors are used to construct the subspace")
     end
     
-    LikelihoodInformed([], [], [], retain_info, nothing, iters, grad_type, use_data_as_samples)
+    LikelihoodInformed([], [], [], retain_info, nothing, iters, grad_type)
 end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
@@ -79,8 +78,15 @@ function initialize_processor!(
 
     
     if length(get_encoder_mat(li))==0
-        iters = get_iters(li)      
-        alphas = get_structure_vec(input_structure_vectors, :dt)
+        iters = get_iters(li)
+
+        if :dt in keys(input_structure_vectors)
+            alphas = get_structure_vec(input_structure_vectors, :dt)
+        else
+            @warn "Structure vectors do not contain key `:dt`. \n Continuing, assuming all vectors come from the prior `:dt=>0`."
+            iters = [1]
+            alphas = [0]
+        end
         @info "Constructing a likelihood-informed subspace using, \n iterations:$(get_iters(li)), \n α: $(alphas[iters]) "        
         diagnostic_mats = Dict{Int64, AbstractMatrix}()
         samples_means = Dict{Int64, AbstractMatrix}()
@@ -112,13 +118,14 @@ function initialize_processor!(
             end
             
             # take samples from the appropriate distribution as prescribed by alpha
-            samples_in, samples_out = if li.use_data_as_samples
-                (in_data, out_data)
-            else
+            samples_in, samples_out = if issubset([:samples_in, :samples_out], keys(input_structure_vectors))
                 (
                     get_structure_vec(input_structure_vectors, :samples_in)[it],
                     get_structure_vec(output_structure_vectors, :samples_out)[it],
                 )
+            else
+                @info "Structure vectors either not provided, else do not contain keys `:samples_in, :samples_out`. \n Continuing using input-output pairs as structure vectors"
+                (in_data, out_data)
             end
             samples_in_mean = mean(samples_in,dims=2)
             samples_out_mean = mean(samples_out,dims=2)
