@@ -48,13 +48,11 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 - [How to I plot or interpret the posterior distribution?](https://clima.github.io/CalibrateEmulateSample.jl/dev/sample/)
 
 
-# What does it look like to use:
-Having installed CES, and Plots, you can copy-paste the snippets below!
-## What does it look like to use?
+# What does it look like to use?
+Having installed CES and Plots, you can copy-paste the snippets below to recreate this random experiment (up to random number generation)
 
 ### Calibrate
-Below we will outline the current user experience for using `EnsembleKalmanProcesses.jl`. Copy-paste the snippets to reproduce the results (up to random number generation).
-
+Below we will outline the current user experience for using `EnsembleKalmanProcesses.jl`.
 We solve the classic inverse problem where we learn `y = G(u)`, noisy forward map `G` distributed as `N(0,Γ)`. For example, 
 ```julia
 
@@ -116,7 +114,7 @@ display(p)
 
 # Emulate
 
-We then set up the emulation framework, by getting input-output pairs from the EKI, defining which emulator to use, and defining what space we will train our emulator in. Here, we take a Random Feature model, and we decorrelate the training space, using prior (input) and noise (output) covariances. 
+We then set up the emulation framework, by getting input-output pairs from the EKI, defining which emulator to use, and defining what space we will train our emulator in. Here, we take a Random Feature model, and we decorrelate the training space, using prior (input) and noise (output) covariances. *This stage can take several minutes.*
 ```julia
 using CalibrateEmulateSample
 using CalibrateEmulateSample.Emulators
@@ -219,14 +217,16 @@ posterior = MarkovChainMonteCarlo.get_posterior(mcmc, chain)
 We can plot the prior-posterior, and observe (at least) how the marginals capture the EKI optimum and the true parameter values.
 ```julia
 # plot marginals
-p = plot(prior, fill = :lightgray)
-plot!(posterior, fill = :darkblue, alpha = 0.5)
-for (i,sp) in enumerate(p.subplots)
+ppp = plot(prior, fill = :lightgray)
+plot!(ppp, posterior, fill = :darkblue, alpha = 0.5)
+for (i,sp) in enumerate(ppp.subplots)
     vline!(sp, [true_u[i]], lc="black", lw=4)
     vline!(sp, [final_solution[i]], lc="magenta", lw=4)
 end
-display(p)
+display(ppp)
 ```
+
+We see that the approximate posterior contains both EKI and the true parameter, and that the the parameter `four_with_spread_5(dim 4)` is highly constrained, while `four_with_spread_5(dims 1)` and `(dim 4)` are least constrained by the observations, coinciding with the EKI performance. More detail on correlation structure can be extracted by pair-plotting, and posterior analysis.
 
 ![quick-readme-sample](docs/src/assets/readme_sample.png)
 
