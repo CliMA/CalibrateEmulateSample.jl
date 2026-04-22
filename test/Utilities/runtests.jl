@@ -19,7 +19,7 @@ using CalibrateEmulateSample.ParameterDistributions
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    prior = constrained_gaussian("test", 1.0, 2.0, repeats=dim_par)
+    prior = constrained_gaussian("test", 1.0, 2.0, 0.0, Inf, repeats=dim_par)
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ens) # params are cols
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I, dim_obs, dim_obs)
