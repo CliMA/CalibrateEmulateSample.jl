@@ -41,7 +41,7 @@ This returns both a mean value and a covariance. The emulator is subject to enco
 em_mean_enc, em_cov_enc = Emulator.predict(emulator, new_inputs; encode="out")
 
 # given encoded inputs, produce outputs in real space, and inflate the emulator uncertainty with observational noise
-em_mean_enc, em_and_obs_noise_cov = Emulator.predict(emulator, new_encoded_inputs; encode="in", add_obs_noise_cov=true) 
+em_mean, em_and_obs_noise_cov = Emulator.predict(emulator, new_encoded_inputs; encode="in", add_obs_noise_cov=true) 
 ```
 
 ## [Modular interface](@id modular-interface)
