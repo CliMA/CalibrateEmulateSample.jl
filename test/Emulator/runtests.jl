@@ -147,7 +147,7 @@ end
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))
     y_pred, y_cov = EM.predict(fmw, x_test, add_obs_noise_cov = true)
-    @test all(isapprox(norm(yc - Σ), 0; atol = d * tol) for yc in y_cov)
+    @test all(isapprox(norm(yc - Σ), 0; atol = d * tol ) for yc in y_cov)
     # try pass encoder for input
     new_schedule = (decorrelate_sample_cov(), "in") # for these i
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_schedule = new_schedule)
