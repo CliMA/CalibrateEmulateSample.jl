@@ -134,7 +134,7 @@ function initialize_processor!(
             end
 
             # take samples from the appropriate distribution as prescribed by alpha
-            samples_in, samples_out = if issubset([:samples_in, :samples_out], keys(input_structure_vectors))
+            samples_in, samples_out = if (:samples_in ∈ keys(input_structure_vectors)) && (:samples_out ∈ keys(output_structure_vectors))
                 (
                     get_structure_vec(input_structure_vectors, :samples_in)[it],
                     get_structure_vec(output_structure_vectors, :samples_out)[it],
