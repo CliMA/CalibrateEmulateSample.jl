@@ -352,12 +352,7 @@ function initialize_processor!(
 
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `LikelihoodInformed` encoder, on a columns-are-data matrix
-"""
-function encode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
+function _encode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(li)[1]
     encoder_mat = get_encoder_mat(li)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
@@ -365,12 +360,7 @@ function encode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatr
     return out
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `LikelihoodInformed` decoder, on a columns-are-data matrix
-"""
-function decode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
+function _decode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(li)[1]
     decoder_mat = get_decoder_mat(li)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))
@@ -378,22 +368,12 @@ function decode_data(li::LikelihoodInformed, data::MM) where {MM <: AbstractMatr
     return out .+ data_mean
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `LikelihoodInformed` encoder to a provided structure matrix
-"""
-function encode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
+function _encode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(li)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `LikelihoodInformed` decoder to a provided structure matrix
-"""
-function decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
+function _decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(li)[1]
     return decoder_mat * structure_matrix * decoder_mat'
 end

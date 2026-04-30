@@ -22,9 +22,9 @@ export PairedDataContainerProcessor, DataContainerProcessor
 export create_encoder_schedule,
     initialize_and_encode_with_schedule!,
     encode_with_schedule,
-    decode_with_schedule,
     encode_data,
     encode_structure_matrix,
+    decode_with_schedule,
     decode_data,
     decode_structure_matrix,
     norm,
@@ -486,41 +486,45 @@ function get_structure_mat(structure_mats, name = nothing)
     end
 end
 
-function encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
+# just for reshaping into matrix
+function _encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
+    data_vec = isa(data, DataContainer) ? get_data(data) : data
     if eltype(data) <: Real # one vec
-        return encode_data(proc, reshape(data, :, 1)) # reshape to column
+        return _encode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
-        return [encode_data(proc, vec_or_mat) for vec_or_mat in data]
+        return [_encode_data(proc, vec_or_mat) for vec_or_mat in data]
     end
 end
 
 
-function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
+function _encode_data(proc::P, data::PDC, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
     if apply_to == "in"
-        return encode_data(proc, input_data)
+        return _encode_data(proc, input_data)
     elseif apply_to == "out"
-        return encode_data(proc, output_data)
+        return _encode_data(proc, output_data)
     else
         bad_apply_to(apply_to)
     end
 end
 
-function decode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
+# just for reshaping
+function _decode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
     if eltype(data) <: Real # one vec
-        return decode_data(proc, reshape(data, :, 1)) # reshape to column
+        return _decode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
-        return [decode_data(proc, data[vec]) for vec in data]
+        return [_decode_data(proc, data[vec]) for vec in data]
     end
 end
 
-function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
+
+function _decode_data(proc::P, data::PDC, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
 
     if apply_to == "in"
-        return decode_data(proc, input_data)
+        return _decode_data(proc, input_data)
     elseif apply_to == "out"
-        return decode_data(proc, output_data)
+        return _decode_data(proc, output_data)
     else
         bad_apply_to(apply_to)
     end
@@ -684,21 +688,21 @@ function initialize_and_encode_with_schedule!(
         non_encode_list = [:dt] # non-data fields 
         if apply_to == "in"
             input_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat) for
+                name => (name ∉ non_encode_list ? _encode_structure_matrix(processor, mat) : mat) for
                 (name, mat) in input_structure_mats
             )
             input_structure_vecs = Dict{Symbol, StructureVector}(
-                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec) for
+                name => (name ∉ non_encode_list ? _encode_data(processor, vec) : vec) for
                 (name, vec) in input_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
             output_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => (name ∉ non_encode_list ? encode_structure_matrix(processor, mat) : mat) for
+                name => (name ∉ non_encode_list ? _encode_structure_matrix(processor, mat) : mat) for
                 (name, mat) in output_structure_mats
             )
             output_structure_vecs = Dict{Symbol, StructureVector}(
-                name => (name ∉ non_encode_list ? encode_data(processor, vec) : vec) for
+                name => (name ∉ non_encode_list ? _encode_data(processor, vec) : vec) for
                 (name, vec) in output_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
@@ -728,7 +732,7 @@ function encode_with_schedule(
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            processed = encode_data(processor, get_data(processed_container))
+            processed = _encode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
         end
     end
@@ -754,12 +758,47 @@ function encode_with_schedule(
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            processed_structure_matrix = encode_structure_matrix(processor, processed_structure_matrix)
+            processed_structure_matrix = _encode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
     return processed_structure_matrix
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Encode the new data (a `DataContainer`, or matrix where data are columns, or vector viewed as one column) representing inputs (`"in"`) or outputs (`"out"`), with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.encode_with_schedule`
+"""
+function encode_data(
+    encoder_schedule::VV,
+    data::VorMorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractVector)
+        return vec(get_data(encode_with_schedule(encoder_schedule, DataContainer(reshape(data,:,1)), in_or_out)))
+    elseif isa(data, AbstractMatrix)
+        return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return encode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
+Always internally calls `CES.Utilities.encode_with_schedule`. If the structure matrix is a `LinearMap`, then the encoded structure matrix remains a `LinearMap`
+"""
+function encode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return encode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
+
 
 """
 $TYPEDSIGNATURES
@@ -782,10 +821,10 @@ function decode_with_schedule(
         processed = _decode_data(processor, processed_io_pairs, apply_to)
 
         if apply_to == "in"
-            processed_input_structure_mat = decode_structure_matrix(processor, processed_input_structure_mat)
+            processed_input_structure_mat = _decode_structure_matrix(processor, processed_input_structure_mat)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_output_structure_mat = decode_structure_matrix(processor, processed_output_structure_mat)
+            processed_output_structure_mat = _decode_structure_matrix(processor, processed_output_structure_mat)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         else
             bad_apply_to(apply_to)
@@ -814,7 +853,7 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed = decode_data(processor, get_data(processed_container))
+            processed = _decode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
         end
     end
@@ -841,13 +880,47 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed_structure_matrix = decode_structure_matrix(processor, processed_structure_matrix)
+            processed_structure_matrix = _decode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
     return processed_structure_matrix
 end
 
+
+"""
+$(TYPEDSIGNATURES)
+
+Decode the new data (a `DataContainer`, or matrix where data are columns, or vector viewed as one column) representing inputs (`"in"`) or outputs (`"out"`), with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.decode_with_schedule`
+"""
+function decode_data(
+    encoder_schedule::VV,
+    data::VorMorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractVector)
+        return vec(get_data(decode_with_schedule(encoder_schedule, DataContainer(reshape(data,:,1)), in_or_out)))
+    elseif isa(data, AbstractMatrix)
+        return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return decode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.decode_with_schedule`. If the structure matrix is a `LinearMap`, then the decoded structure matrix remains a `LinearMap`
+"""
+function decode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return decode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
 
 # Errors
 
