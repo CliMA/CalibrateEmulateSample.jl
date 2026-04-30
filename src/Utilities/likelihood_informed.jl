@@ -134,15 +134,16 @@ function initialize_processor!(
             end
 
             # take samples from the appropriate distribution as prescribed by alpha
-            samples_in, samples_out = if (:samples_in ∈ keys(input_structure_vectors)) && (:samples_out ∈ keys(output_structure_vectors))
-                (
-                    get_structure_vec(input_structure_vectors, :samples_in)[it],
-                    get_structure_vec(output_structure_vectors, :samples_out)[it],
-                )
-            else
-                @info "Structure vectors either not provided, else do not contain keys `:samples_in, :samples_out`. \n Continuing using input-output pairs as structure vectors"
-                (in_data, out_data)
-            end
+            samples_in, samples_out =
+                if (:samples_in ∈ keys(input_structure_vectors)) && (:samples_out ∈ keys(output_structure_vectors))
+                    (
+                        get_structure_vec(input_structure_vectors, :samples_in)[it],
+                        get_structure_vec(output_structure_vectors, :samples_out)[it],
+                    )
+                else
+                    @info "Structure vectors either not provided, else do not contain keys `:samples_in, :samples_out`. \n Continuing using input-output pairs as structure vectors"
+                    (in_data, out_data)
+                end
             samples_in_mean = mean(samples_in, dims = 2)
             samples_out_mean = mean(samples_out, dims = 2)
 

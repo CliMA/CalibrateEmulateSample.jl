@@ -497,7 +497,11 @@ function _encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: Abstra
 end
 
 
-function _encode_data(proc::P, data::PDC, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
+function _encode_data(
+    proc::P,
+    data::PDC,
+    apply_to::AS,
+) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
     if apply_to == "in"
         return _encode_data(proc, input_data)
@@ -518,7 +522,11 @@ function _decode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: Abstra
 end
 
 
-function _decode_data(proc::P, data::PDC, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
+function _decode_data(
+    proc::P,
+    data::PDC,
+    apply_to::AS,
+) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
 
     if apply_to == "in"
@@ -777,7 +785,7 @@ function encode_data(
     in_or_out::AS,
 ) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
     if isa(data, AbstractVector)
-        return vec(get_data(encode_with_schedule(encoder_schedule, DataContainer(reshape(data,:,1)), in_or_out)))
+        return vec(get_data(encode_with_schedule(encoder_schedule, DataContainer(reshape(data, :, 1)), in_or_out)))
     elseif isa(data, AbstractMatrix)
         return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
     else
@@ -900,7 +908,7 @@ function decode_data(
     in_or_out::AS,
 ) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
     if isa(data, AbstractVector)
-        return vec(get_data(decode_with_schedule(encoder_schedule, DataContainer(reshape(data,:,1)), in_or_out)))
+        return vec(get_data(decode_with_schedule(encoder_schedule, DataContainer(reshape(data, :, 1)), in_or_out)))
     elseif isa(data, AbstractMatrix)
         return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
     else

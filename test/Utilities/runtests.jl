@@ -19,7 +19,7 @@ using CalibrateEmulateSample.ParameterDistributions
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    prior = constrained_gaussian("test", 1.0, 2.0, 0.0, Inf, repeats=dim_par)
+    prior = constrained_gaussian("test", 1.0, 2.0, 0.0, Inf, repeats = dim_par)
     initial_ensemble = construct_initial_ensemble(rng, prior, n_ens) # params are cols
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I, dim_obs, dim_obs)
@@ -47,33 +47,30 @@ using CalibrateEmulateSample.ParameterDistributions
     g_ens_final = randn(rng, dim_obs, n_ens) # add a final set out outputs.
     encoder_kwargs = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
 
-    prior_kwargs = (; prior_cov=cov(prior))
-    obs_kwargs = (; obs_noise_cov = [Γy], observation=[y_obs])
+    prior_kwargs = (; prior_cov = cov(prior))
+    obs_kwargs = (; obs_noise_cov = [Γy], observation = [y_obs])
     io_kwargs = (;
-                 input_structure_vecs = Dict(
-                     :dt => [0, get_algorithm_time(ekp)...],
-                     :samples_in => get_u(ekp),
-                 ),
-                 output_structure_vecs = Dict(
-                     :dt => [0, get_algorithm_time(ekp)...],
-                     :samples_out => [get_g(ekp)..., g_ens_final],
-                 ),
-                 )
+        input_structure_vecs = Dict(:dt => [0, get_algorithm_time(ekp)...], :samples_in => get_u(ekp)),
+        output_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...],
+            :samples_out => [get_g(ekp)..., g_ens_final],
+        ),
+    )
     test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
-    
+
     @test all(encoder_kwargs[key] == test_kwargs[key] for key in keys(encoder_kwargs))
     # remove final g
     encoder_reduced_kwargs = encoder_kwargs_from(ekp, prior)
     io_reduced_kwargs = (;
-                 input_structure_vecs = Dict(
-                     :dt => [0, get_algorithm_time(ekp)...][1:end-1],
-                     :samples_in => get_u(ekp)[1:end-1],
-                 ),
-                 output_structure_vecs = Dict(
-                     :dt => [0, get_algorithm_time(ekp)...][1:end-1],
-                     :samples_out => [get_g(ekp)...],
-                 ),
-                 )
+        input_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
+            :samples_in => get_u(ekp)[1:(end - 1)],
+        ),
+        output_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
+            :samples_out => [get_g(ekp)...],
+        ),
+    )
     test_reduced_kwargs = merge(prior_kwargs, obs_kwargs, io_reduced_kwargs)
     @test all(encoder_reduced_kwargs[key] == test_reduced_kwargs[key] for key in keys(encoder_kwargs))
 
@@ -490,6 +487,7 @@ end
         in_mat = in_dat * in_dat'
         out_mat = out_dat * out_dat'
         for (i_o, dat, mat) in (("in", in_dat, in_mat), ("out", out_dat, out_mat))
+
             enc_dat = encode_data(encoder_schedule, dat, i_o)
             dec_dat = decode_data(encoder_schedule, enc_dat, i_o)
             enc_mat = Matrix(encode_structure_matrix(encoder_schedule, mat, i_o))
@@ -504,6 +502,13 @@ end
             @test isapprox(norm((D * enc_dat + b) - dec_dat), 0; atol = tol * size(D, 1))
             @test isapprox(norm(E * mat * E' - enc_mat), 0; atol = tol * size(E, 1)^2)
             @test isapprox(norm(D * enc_mat * D' - dec_mat), 0; atol = tol * size(D, 1)^2)
+
+            # test vec input
+            enc_dat_vec = encode_data(encoder_schedule, vec(dat), i_o)
+            dec_dat_vec = decode_data(encoder_schedule, enc_dat_vec, i_o)
+            @test isapprox(norm(enc_dat_vec - vec(enc_dat)), 0; atol = tol)
+            @test isapprox(norm(dec_dat_vec - vec(dec_dat)), 0; atol = tol)
+
         end
     end
 

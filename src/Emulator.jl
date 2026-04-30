@@ -253,10 +253,7 @@ function encode_data(
     em_or_fmw::EorFMW,
     data,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    EorFMW <: Union{Emulator, ForwardMapWrapper},
-}
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return encode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
 end
 
@@ -272,10 +269,7 @@ function decode_data(
     em_or_fmw::EorFMW,
     data,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    EorFMW <: Union{Emulator, ForwardMapWrapper},
-}
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return decode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
 end
 
