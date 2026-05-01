@@ -24,7 +24,14 @@ using CalibrateEmulateSample.ParameterDistributions
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I, dim_obs, dim_obs)
     ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng = rng)
-    g_ens = randn(rng, dim_obs, n_ens) # data are cols
+    function G(rng, x::MM, Γy) where {MM <: AbstractMatrix}
+        d_in, d_ens = size(x)
+        d_out = size(Γy, 1)
+        A = randn(rng, d_out, d_in)
+        b = abs.(randn(rng, d_out, 1))
+        return A * x .+ b .+ rand(MvNormal(zeros(d_out), Γy), d_ens)
+    end
+    g_ens = G(rng, initial_ensemble, Γy) # data are cols
     EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
@@ -44,7 +51,7 @@ using CalibrateEmulateSample.ParameterDistributions
     @test minimum(eigvals(pdmat2)) >= (1 - 1e-4) * tol
 
     # get encoder kwargs from ekp and prior
-    g_ens_final = randn(rng, dim_obs, n_ens) # add a final set out outputs.
+    g_ens_final = G(rng, get_ϕ_final(prior, ekp), Γy)
     encoder_kwargs = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
 
     prior_kwargs = (; prior_cov = cov(prior))
@@ -74,6 +81,8 @@ using CalibrateEmulateSample.ParameterDistributions
     test_reduced_kwargs = merge(prior_kwargs, obs_kwargs, io_reduced_kwargs)
     @test all(encoder_reduced_kwargs[key] == test_reduced_kwargs[key] for key in keys(encoder_kwargs))
 
+    # for the following experiments
+    encoder_kwargs_for_exps = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
 end
 
 
@@ -312,13 +321,23 @@ end
 
     lossless = [fill(true, 6); fill(false, length(schedules) - 6)] # are these lossless approximations? 
 
+    # kwargs - can usually get from EKP
+    prior_kwargs = (; prior_cov = prior_cov)
+    obs_kwargs = (; obs_noise_cov = [obs_noise_cov], observation = [vec(out_data[:, 1])])
+    io_kwargs = (;
+        input_structure_vecs = Dict(:dt => [0, 0.5], :samples_in => [in_data, in_data .+ 1]),
+        output_structure_vecs = Dict(:dt => [0, 0.5], :samples_out => [out_data, out_data .+ 1]),
+    )
+    test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
+
+
     # functional test pipeline
     tol = 1e-12
 
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; test_kwargs...)
 
         (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
             encoder_schedule,
