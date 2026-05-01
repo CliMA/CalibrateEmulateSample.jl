@@ -218,24 +218,14 @@ function initialize_processor!(es::ElementwiseScaler, data::MM) where {MM <: Abs
     end
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `ElementwiseScaler` encoder, on a columns-are-data matrix
-"""
-function encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+function _encode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = zeros(size(data))
     enc = get_data_encoder_mat(es)[1]
     mul!(out, enc, data)  # must use this form to get matrix output of enc*out
     return out
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `ElementwiseScaler` decoder, on a columns-are-data matrix
-"""
-function decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
+function _decode_data(es::ElementwiseScaler, data::MM) where {MM <: AbstractMatrix}
     out = zeros(size(data))
     dec = get_data_decoder_mat(es)[1]
     mul!(out, dec, data)  # must use this form to get matrix output of dec*out
@@ -255,22 +245,12 @@ initialize_processor!(
 ) where {MM <: AbstractMatrix} = initialize_processor!(es, data)
 
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `ElementwiseScaler` encoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
-"""
-function encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
+function _encode_structure_matrix(es::ElementwiseScaler, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_struct_encoder_mat(es)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `ElementwiseScaler` decoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
-"""
-function decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
+function _decode_structure_matrix(es::ElementwiseScaler, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_struct_decoder_mat(es)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end

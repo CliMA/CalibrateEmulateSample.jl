@@ -22,9 +22,9 @@ export PairedDataContainerProcessor, DataContainerProcessor
 export create_encoder_schedule,
     initialize_and_encode_with_schedule!,
     encode_with_schedule,
-    decode_with_schedule,
     encode_data,
     encode_structure_matrix,
+    decode_with_schedule,
     decode_data,
     decode_structure_matrix,
     norm,
@@ -35,7 +35,8 @@ export create_encoder_schedule,
     get_decoder_from_schedule,
     NoiseInjector,
     decode_and_add_noise,
-    create_noise_injector
+    create_noise_injector,
+    get_encoded_dim
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -50,10 +51,12 @@ Extract the training points needed to train the Gaussian process regression.
   during the Ensemble Kalman (EK) process.
 - `train_iterations` - Number (or indices) EK layers/iterations to train on.
 
+- `g_final[=nothing]` - EKP will typically store one extra input data iteration. If desired, the user can add output data for this final iteration directly with `g_final`. It should be of type `<: AbstractMatrix`, sized consistently as with return values from `get_g(ekp,1)`.
 """
 function get_training_points(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
-    train_iterations::Union{IT, AbstractVector{IT}},
+    train_iterations::Union{IT, AbstractVector{IT}};
+    g_final = nothing,
 ) where {FT, IT, P}
 
     if !isa(train_iterations, AbstractVector)
@@ -65,12 +68,27 @@ function get_training_points(
 
     u_tp = []
     g_tp = []
-    for i in iter_range
-        push!(u_tp, get_u(ekp, i)) #N_parameters x N_ens
-        push!(g_tp, get_g(ekp, i)) #N_data x N_ens
+
+    g_len = length(get_g(ekp))
+    g_full = [get_g(ekp, i) for i in iter_range[iter_range .<= g_len]]
+    if !isnothing(g_final)
+        if (isa(g_final, AbstractMatrix)) # add the matrix
+            @assert(size(g_full[1]) == size(g_final))
+            push!(g_full, g_final)
+        else
+            throw(
+                ArgumentError,
+                "Expected `g_final` to be type `<:AbstractMatrix`, of size: $(size(g_full[1])), received $(typeof(g_final))",
+            )
+        end
     end
-    u_tp = hcat(u_tp...) # N_parameters x (N_ek_it x N_ensemble)]
-    g_tp = hcat(g_tp...) # N_data x (N_ek_it x N_ensemble)
+
+    for (idx, ir) in enumerate(iter_range)
+        push!(u_tp, get_u(ekp, ir)) #N_parameters x N_ens
+        push!(g_tp, g_full[idx]) #N_data x N_ens
+    end
+    u_tp = reduce(hcat, u_tp) # N_parameters x (N_ek_it x N_ensemble)]
+    g_tp = reduce(hcat, g_tp) # N_data x (N_ek_it x N_ensemble)
 
     training_points = PairedDataContainer(u_tp, g_tp, data_are_columns = true)
 
@@ -85,6 +103,8 @@ $(TYPEDSIGNATURES)
 Extracts the relevant encoder kwargs from the observation as a NamedTuple. Contains,
 - `:obs_noise_cov` as (unbuilt) noise covariance
 - `:observation` as obs vector
+
+Commonly called from `encoder_kwargs_from(ekp, prior)`
 """
 function encoder_kwargs_from(obs::OB) where {OB <: Observation}
     return (; obs_noise_cov = get_obs_noise_cov(obs, build = false), observation = get_obs(obs))
@@ -96,6 +116,8 @@ $(TYPEDSIGNATURES)
 Extracts the relevant encoder kwargs from the ObservationSeries as a NamedTuple. Assumes the same noise covariance for all observation vectors. Contains,
 - `:obs_noise_cov` as (unbuilt) noise covariance of FIRST observation
 - `:observation` as obs vector from all observations
+
+Commonly called from `encoder_kwargs_from(ekp, prior)`
 """
 function encoder_kwargs_from(os::OS) where {OS <: ObservationSeries}
     observations = get_observations(os)
@@ -115,10 +137,95 @@ $(TYPEDSIGNATURES)
 
 Extracts the relevant encoder kwargs from the ParameterDistribution prior. Contains,
 - `:prior_cov` as prior covariance
+
+Commonly called from `encoder_kwargs_from(ekp, prior)`
 """
 function encoder_kwargs_from(prior::PD) where {PD <: ParameterDistribution}
     return (; prior_cov = cov(prior))
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Extracts the relevant encoder kwargs from a vector triple (samples_in, samples_out, dt). Samples describe an ordered sequence of distributions in input and output space, each indexed with a temperature, or algorithm time, `dt`.
+
+Contains
+- `:input_structure_vecs`: Dict with fields `:dt` (Vec{Float}), `:samples_in` (Vec{Matrix})
+- `:output_structure_vecs`: Dict with fields `:dt` (Vec{Float}), `:samples_out` (Vec{Matrix})
+
+Commonly called from `encoder_kwargs_from(ekp, prior)`
+"""
+function encoder_kwargs_from(
+    samples_in::VV2,
+    samples_out::VV1,
+    dt::VV3,
+) where {VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
+    if !(minimum(abs.(dt[1])) < eps()) # if 0 is not the first element of the algorithm time.
+        dt = [0, dt...]
+    end
+    if length(samples_out) < min(length(samples_in), length(dt))
+        @info """Detected fewer `samples_out` ($(length(samples_out))) than `samples_in` ($(length(samples_in))) and `dt` ($(length(dt))). Input-output structure vectors will be created from $(length(samples_out)) samples.
+This commonly occurs when samples are built from `get_u(ekp), get_g(ekp)`.
+The final interation of output samples, (e.g., from evaluating `g=forward_map_ensemble(get_ϕ_final(ekp)`) can be provided by `encoder_kwargs_from(ekp, prior; final_samples_out=g)`
+
+"""
+    end
+    len = minimum([length(samples_out), length(samples_in), length(dt)])
+    # usually u is stored to one later value than g
+    samples_in = samples_in[1:len]
+    dt = dt[1:len]
+    samples_out = samples_out[1:len]
+    return (;
+        input_structure_vecs = Dict(:dt => dt, :samples_in => samples_in),
+        output_structure_vecs = Dict(:dt => dt, :samples_out => samples_out),
+    )
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Extracts the relevant encoder kwargs from the `ekp` object, `prior` distribution. returned as a tuple that is passed to an `Emulator` or `ForwardMapWrapper` in the keyword argument `encoder_kwargs`. One can overload constructed kwargs by providing kwargs.
+
+kwargs:
+- Common overloaded kwarg: `final_samples_out`. As `ekp` stores one more input than output, by default we truncate to the penultimate `ekp` iteration (where input output pairs exist). However, one can provide an additional final output paired with `g=forward_map_ensemble(get_ϕ_final(ekp))` with `final_samples_out=g`
+
+- Other overloading kwargs: `observation_series`,`samples_in`,`samples_out`,`dt`
+"""
+function encoder_kwargs_from(
+    ekp::EKP,
+    prior::PD;
+    observation_series = nothing,
+    samples_in = nothing,
+    samples_out = nothing,
+    dt = nothing,
+    final_samples_out = nothing,
+) where {PD <: ParameterDistribution, EKP <: EnsembleKalmanProcess}
+    observation_series = isnothing(observation_series) ? get_observation_series(ekp) : observation_series
+    samples_in = isnothing(samples_in) ? get_u(ekp) : samples_in
+    samples_out = isnothing(samples_out) ? get_g(ekp) : samples_out
+    dt = isnothing(dt) ? get_algorithm_time(ekp) : dt
+    # a common setting is you have one-less samples_out than (samples_in, dt) so we extend g
+    if !isnothing(final_samples_out)
+        if (isa(final_samples_out, AbstractMatrix)) # add one matrix
+            if length(samples_out) > 0
+                @assert(size(samples_out[1]) == size(final_samples_out))
+            end
+            push!(samples_out, final_samples_out)
+        else # add a vector of matrices
+            if length(samples_out) > 0
+                @assert(size(samples_out[1]) == size(final_samples_out[1]))
+            end
+            samples_out = reduce(vcat, [samples_out, final_samples_out])
+        end
+    end
+
+    prior_kwargs = encoder_kwargs_from(prior)
+    obs_kwargs = encoder_kwargs_from(observation_series)
+    io_kwargs = encoder_kwargs_from(samples_in, samples_out, dt)
+    return merge(prior_kwargs, obs_kwargs, io_kwargs)
+
+end
+
 
 ##  multiplication with observation covariance objects without building
 """
@@ -379,24 +486,53 @@ function get_structure_mat(structure_mats, name = nothing)
     end
 end
 
-function _encode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
+# just for reshaping into matrix
+function _encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
+    data_vec = isa(data, DataContainer) ? get_data(data) : data
+    if eltype(data) <: Real # one vec
+        return _encode_data(proc, reshape(data, :, 1)) # reshape to column
+    else # vec of vec
+        return [_encode_data(proc, vec_or_mat) for vec_or_mat in data]
+    end
+end
+
+
+function _encode_data(
+    proc::P,
+    data::PDC,
+    apply_to::AS,
+) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
     if apply_to == "in"
-        return encode_data(proc, input_data)
+        return _encode_data(proc, input_data)
     elseif apply_to == "out"
-        return encode_data(proc, output_data)
+        return _encode_data(proc, output_data)
     else
         bad_apply_to(apply_to)
     end
 end
 
-function _decode_data(proc::P, data, apply_to::AS) where {P <: DataProcessor, AS <: AbstractString}
+# just for reshaping
+function _decode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
+    if eltype(data) <: Real # one vec
+        return _decode_data(proc, reshape(data, :, 1)) # reshape to column
+    else # vec of vec
+        return [_decode_data(proc, data[vec]) for vec in data]
+    end
+end
+
+
+function _decode_data(
+    proc::P,
+    data::PDC,
+    apply_to::AS,
+) where {P <: DataProcessor, AS <: AbstractString, PDC <: PairedDataContainer}
     input_data, output_data = get_data(data)
 
     if apply_to == "in"
-        return decode_data(proc, input_data)
+        return _decode_data(proc, input_data)
     elseif apply_to == "out"
-        return decode_data(proc, output_data)
+        return _decode_data(proc, output_data)
     else
         bad_apply_to(apply_to)
     end
@@ -410,7 +546,11 @@ function _initialize_and_encode_data!(
     apply_to::AS,
 ) where {AS <: AbstractString}
     initialize_processor!(proc, get_data(data)..., structure_mats..., structure_vecs..., apply_to)
-    return _encode_data(proc, data, apply_to)
+    if apply_to ∈ ["in", "out"]
+        return _encode_data(proc, data, apply_to)
+    else
+        bad_apply_to(apply_to)
+    end
 end
 
 function _initialize_and_encode_data!(
@@ -500,8 +640,8 @@ function initialize_and_encode_with_schedule!(
     prior_cov::Union{Nothing, StructureMatrix} = nothing,
     obs_noise_cov::Union{Nothing, StructureMatrix} = nothing,
     observation::Union{Nothing, StructureVector} = nothing,
-    prior_samples_in::Union{Nothing, StructureVector} = nothing,
-    prior_samples_out::Union{Nothing, StructureVector} = nothing,
+    samples_in::Union{Nothing, StructureVector} = nothing,
+    samples_out::Union{Nothing, StructureVector} = nothing,
 ) where {VV <: AbstractVector, PDC <: PairedDataContainer}
     processed_io_pairs = deepcopy(io_pairs)
 
@@ -533,16 +673,16 @@ function initialize_and_encode_with_schedule!(
     end
 
     input_structure_vecs = deepcopy(input_structure_vecs)
-    if !isnothing(prior_samples_in)
-        (input_structure_vecs[:prior_samples_in] = prior_samples_in)
+    if !isnothing(samples_in)
+        (input_structure_vecs[:samples_in] = samples_in)
     end
 
     output_structure_vecs = deepcopy(output_structure_vecs)
     if !isnothing(observation)
         (output_structure_vecs[:observation] = observation)
     end
-    if !isnothing(prior_samples_out)
-        (output_structure_vecs[:prior_samples_out] = prior_samples_out)
+    if !isnothing(samples_out)
+        (output_structure_vecs[:samples_out] = samples_out)
     end
 
     # apply_to is the string "in", "out" etc.
@@ -557,20 +697,25 @@ function initialize_and_encode_with_schedule!(
             apply_to,
         )
 
+        non_encode_list = [:dt] # non-data fields 
         if apply_to == "in"
             input_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => encode_structure_matrix(processor, mat) for (name, mat) in input_structure_mats
+                name => (name ∉ non_encode_list ? _encode_structure_matrix(processor, mat) : mat) for
+                (name, mat) in input_structure_mats
             )
             input_structure_vecs = Dict{Symbol, StructureVector}(
-                name => encode_data(processor, vec) for (name, vec) in input_structure_vecs
+                name => (name ∉ non_encode_list ? _encode_data(processor, vec) : vec) for
+                (name, vec) in input_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
             output_structure_mats = Dict{Symbol, StructureMatrix}(
-                name => encode_structure_matrix(processor, mat) for (name, mat) in output_structure_mats
+                name => (name ∉ non_encode_list ? _encode_structure_matrix(processor, mat) : mat) for
+                (name, mat) in output_structure_mats
             )
             output_structure_vecs = Dict{Symbol, StructureVector}(
-                name => encode_data(processor, vec) for (name, vec) in output_structure_vecs
+                name => (name ∉ non_encode_list ? _encode_data(processor, vec) : vec) for
+                (name, vec) in output_structure_vecs
             )
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         end
@@ -599,7 +744,7 @@ function encode_with_schedule(
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            processed = encode_data(processor, get_data(processed_container))
+            processed = _encode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
         end
     end
@@ -625,12 +770,47 @@ function encode_with_schedule(
     # apply_to is the string "in", "out" etc.
     for (processor, apply_to) in encoder_schedule
         if apply_to == in_or_out
-            processed_structure_matrix = encode_structure_matrix(processor, processed_structure_matrix)
+            processed_structure_matrix = _encode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
     return processed_structure_matrix
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Encode the new data (a `DataContainer`, or matrix where data are columns, or vector viewed as one column) representing inputs (`"in"`) or outputs (`"out"`), with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.encode_with_schedule`
+"""
+function encode_data(
+    encoder_schedule::VV,
+    data::VorMorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractVector)
+        return vec(get_data(encode_with_schedule(encoder_schedule, DataContainer(reshape(data, :, 1)), in_or_out)))
+    elseif isa(data, AbstractMatrix)
+        return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return encode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
+Always internally calls `CES.Utilities.encode_with_schedule`. If the structure matrix is a `LinearMap`, then the encoded structure matrix remains a `LinearMap`
+"""
+function encode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return encode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
+
 
 """
 $TYPEDSIGNATURES
@@ -653,10 +833,10 @@ function decode_with_schedule(
         processed = _decode_data(processor, processed_io_pairs, apply_to)
 
         if apply_to == "in"
-            processed_input_structure_mat = decode_structure_matrix(processor, processed_input_structure_mat)
+            processed_input_structure_mat = _decode_structure_matrix(processor, processed_input_structure_mat)
             processed_io_pairs = PairedDataContainer(processed, get_outputs(processed_io_pairs))
         elseif apply_to == "out"
-            processed_output_structure_mat = decode_structure_matrix(processor, processed_output_structure_mat)
+            processed_output_structure_mat = _decode_structure_matrix(processor, processed_output_structure_mat)
             processed_io_pairs = PairedDataContainer(get_inputs(processed_io_pairs), processed)
         else
             bad_apply_to(apply_to)
@@ -685,7 +865,7 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed = decode_data(processor, get_data(processed_container))
+            processed = _decode_data(processor, get_data(processed_container))
             processed_container = DataContainer(processed)
         end
     end
@@ -712,13 +892,47 @@ function decode_with_schedule(
     for idx in reverse(eachindex(encoder_schedule))
         (processor, apply_to) = encoder_schedule[idx]
         if apply_to == in_or_out
-            processed_structure_matrix = decode_structure_matrix(processor, processed_structure_matrix)
+            processed_structure_matrix = _decode_structure_matrix(processor, processed_structure_matrix)
         end
     end
 
     return processed_structure_matrix
 end
 
+
+"""
+$(TYPEDSIGNATURES)
+
+Decode the new data (a `DataContainer`, or matrix where data are columns, or vector viewed as one column) representing inputs (`"in"`) or outputs (`"out"`), with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.decode_with_schedule`
+"""
+function decode_data(
+    encoder_schedule::VV,
+    data::VorMorDC,
+    in_or_out::AS,
+) where {AS <: AbstractString, VorMorDC <: Union{AbstractVector, AbstractMatrix, DataContainer}, VV <: AbstractVector}
+    if isa(data, AbstractVector)
+        return vec(get_data(decode_with_schedule(encoder_schedule, DataContainer(reshape(data, :, 1)), in_or_out)))
+    elseif isa(data, AbstractMatrix)
+        return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
+    else
+        return decode_with_schedule(encoder_schedule, data, in_or_out)
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule.
+Always internally calls `CES.Utilities.decode_with_schedule`. If the structure matrix is a `LinearMap`, then the decoded structure matrix remains a `LinearMap`
+"""
+function decode_structure_matrix(
+    encoder_schedule::VV,
+    structure_mat,
+    in_or_out::AS,
+) where {AS <: AbstractString, VV <: AbstractVector}
+    return decode_with_schedule(encoder_schedule, structure_mat, in_or_out)
+end
 
 # Errors
 
@@ -765,8 +979,9 @@ function get_encoder_from_schedule(
         if length(encoder_mats) == 0
             return nothing, nothing
         else
-            # Note, the action of encoders (E_1,E_2,E_3) is the product x -> (E_3*E_2*E_1)*x so must be reversed. `prod` unsafe here
+            # Note, the action of encoders (E_1,E_2,E_3) is the product x -> (E_3*E_2*E_1)*x so must be reversed
             linear_part = reduce(*, reverse(encoder_mats))
+
             # rather than extracting the shifts etc. we can get this by just applying it to zero
             constant_part = encode_data(encoder_schedule, zeros(size(linear_part, 2), 1), in_or_out)
 
@@ -785,7 +1000,40 @@ function get_encoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
         "in" => get_encoder_from_schedule(encoder_schedule, "in"),
         "out" => get_encoder_from_schedule(encoder_schedule, "out"),
     )
+end
 
+"""
+$(TYPEDSIGNATURES)
+
+gets the dimension of the encoded space, for input (providing "in"), or output (providing "out"), provides nothing if encoder schedule is empty or uninitialized
+"""
+function get_encoded_dim(encoder_schedule::VV, in_or_out::AS) where {VV <: AbstractVector, AS <: AbstractString}
+    if length(encoder_schedule) == 0
+        return nothing
+    else
+        if in_or_out ∉ ["in", "out"]
+            bad_in_or_out(in_or_out)
+        end
+
+        encoder_mat_sizes =
+            [size(get_encoder_mat(processor)[1]) for (processor, apply_to) in encoder_schedule if apply_to == in_or_out]
+
+        if length(encoder_mat_sizes) == 0
+            return nothing
+        else
+            # (E_1, E_2, E_3) applied as E_3(E_2(E_1(x))) size(E_3,1) matters
+            return encoder_mat_sizes[end][1]
+        end
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+gets the dimension of the encoded space, returned as a Dict with keys "in","out". Provides nothing values if encoder schedule is empty or uninitialized
+"""
+function get_encoded_dim(encoder_schedule::VV) where {VV <: AbstractVector}
+    return Dict("in" => get_encoded_dim(encoder_schedule, "in"), "out" => get_encoded_dim(encoder_schedule, "out"))
 end
 
 """
@@ -840,6 +1088,14 @@ function get_decoder_from_schedule(encoder_schedule::VV) where {VV <: AbstractVe
         "out" => get_decoder_from_schedule(encoder_schedule, "out"),
     )
 end
+
+
+get_encoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_encoder_from_schedule([single_encoder], args...; kwargs...)
+get_decoder_from_schedule(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_decoder_from_schedule([single_encoder], args...; kwargs...)
+get_encoded_dim(single_encoder::T, args...; kwargs...) where {T <: Tuple} =
+    get_encoded_dim([single_encoder], args...; kwargs...)
 
 ## Decoding and add noise:
 """
@@ -977,5 +1233,6 @@ end
 include("Utilities/canonical_correlation.jl")
 include("Utilities/decorrelator.jl")
 include("Utilities/elementwise_scaler.jl")
+include("Utilities/likelihood_informed.jl")
 
 end # module

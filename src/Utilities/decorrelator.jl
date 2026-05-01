@@ -359,12 +359,7 @@ function initialize_processor!(
 end
 
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `Decorrelator` encoder, on a columns-are-data matrix
-"""
-function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
+function _encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     encoder_mat = get_encoder_mat(dd)[1]
     out = zeros(size(encoder_mat, 1), size(data, 2))
@@ -372,12 +367,7 @@ function encode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     return out
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `Decorrelator` decoder, on a columns-are-data matrix
-"""
-function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
+function _decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     data_mean = get_data_mean(dd)[1]
     decoder_mat = get_decoder_mat(dd)[1]
     out = zeros(size(decoder_mat, 1), size(data, 2))
@@ -385,22 +375,12 @@ function decode_data(dd::Decorrelator, data::MM) where {MM <: AbstractMatrix}
     return out .+ data_mean
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `Decorrelator` encoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
-"""
-function encode_structure_matrix(dd::Decorrelator, structure_matrix::SM) where {SM <: StructureMatrix}
+function _encode_structure_matrix(dd::Decorrelator, structure_matrix::SM) where {SM <: StructureMatrix}
     encoder_mat = get_encoder_mat(dd)[1]
     return encoder_mat * structure_matrix * encoder_mat'
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Apply the `Decorrelator` decoder to a provided structure matrix. If the structure matrix is a LinearMap, then the encoded structure matrix remains a LinearMap.
-"""
-function decode_structure_matrix(dd::Decorrelator, enc_structure_matrix::SM) where {SM <: StructureMatrix}
+function _decode_structure_matrix(dd::Decorrelator, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(dd)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
 end

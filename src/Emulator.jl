@@ -2,13 +2,11 @@ module Emulators
 
 using ..DataContainers
 using ..Utilities
-import ..Utilities.encode_with_schedule
-import ..Utilities.decode_with_schedule
+# to API for encoding
 import ..Utilities.encode_data
-import ..Utilities.decode_data
 import ..Utilities.encode_structure_matrix
+import ..Utilities.decode_data
 import ..Utilities.decode_structure_matrix
-
 
 using DocStringExtensions
 using Statistics
@@ -41,17 +39,21 @@ include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
 # etc.
 
 # defaults in error, all MachineLearningTools require these functions.
-function throw_define_mlt()
-    throw(ErrorException("Unknown MachineLearningTool defined, please use a known implementation"))
+function throw_define_mlt(mlt)
+    throw(
+        ErrorException(
+            "Unknown MachineLearningTool defined, please use a known implementation. Please check all methods are defined for the MLT received: \n $mlt",
+        ),
+    )
 end
 function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 function optimize_hyperparameters!(mlt)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 function predict(mlt, new_inputs; mlt_kwargs...)
-    throw_define_mlt()
+    throw_define_mlt(mlt)
 end
 
 # We will define the different emulator types after the general statements
@@ -247,47 +249,12 @@ function optimize_hyperparameters!(emulator::Emulator{FT}, args...; kwargs...) w
     optimize_hyperparameters!(emulator.machine_learning_tool, args...; kwargs...)
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Encode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
-"""
-function encode_data(
-    encoder_schedule::VV,
-    data::MorDC,
-    in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
-    if isa(data, AbstractMatrix)
-        return get_data(encode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
-    else
-        return encode_with_schedule(encoder_schedule, data, in_or_out)
-    end
-end
-
 function encode_data(
     em_or_fmw::EorFMW,
-    data::MorDC,
+    data,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    MorDC <: Union{AbstractMatrix, DataContainer},
-    EorFMW <: Union{Emulator, ForwardMapWrapper},
-}
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return encode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
-end
-
-
-"""
-$(TYPEDSIGNATURES)
-
-Encode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
-"""
-function encode_structure_matrix(
-    encoder_schedule::VV,
-    structure_mat,
-    in_or_out::AS,
-) where {AS <: AbstractString, VV <: AbstractVector}
-    return encode_with_schedule(encoder_schedule, structure_mat, in_or_out)
 end
 
 function encode_structure_matrix(
@@ -298,47 +265,12 @@ function encode_structure_matrix(
     return encode_structure_matrix(get_encoder_schedule(em_or_fmw), structure_mat, in_or_out)
 end
 
-
-"""
-$(TYPEDSIGNATURES)
-
-Decode the new data (a `DataContainer`, or matrix where data are columns) representing inputs (`"in"`) or outputs (`"out"`). with the stored and initialized encoder schedule.
-"""
-function decode_data(
-    encoder_schedule::VV,
-    data::MorDC,
-    in_or_out::AS,
-) where {AS <: AbstractString, MorDC <: Union{AbstractMatrix, DataContainer}, VV <: AbstractVector}
-    if isa(data, AbstractMatrix)
-        return get_data(decode_with_schedule(encoder_schedule, DataContainer(data), in_or_out))
-    else
-        return decode_with_schedule(encoder_schedule, data, in_or_out)
-    end
-end
-
 function decode_data(
     em_or_fmw::EorFMW,
-    data::MorDC,
+    data,
     in_or_out::AS,
-) where {
-    AS <: AbstractString,
-    MorDC <: Union{AbstractMatrix, DataContainer},
-    EorFMW <: Union{Emulator, ForwardMapWrapper},
-}
+) where {AS <: AbstractString, EorFMW <: Union{Emulator, ForwardMapWrapper}}
     return decode_data(get_encoder_schedule(em_or_fmw), data, in_or_out)
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Decode a new structure matrix in the input space (`"in"`) or output space (`"out"`). with the stored and initialized encoder schedule. 
-"""
-function decode_structure_matrix(
-    encoder_schedule::VV,
-    structure_mat,
-    in_or_out::AS,
-) where {AS <: AbstractString, VV <: AbstractVector}
-    return decode_with_schedule(encoder_schedule, structure_mat, in_or_out)
 end
 
 function decode_structure_matrix(
@@ -502,8 +434,6 @@ function forward_map_wrapper(
         else
             push!(encoder_schedule, (decorrelate_sample_cov(), "out"))
         end
-    else
-        @warn "Please note that only the output encoder is used in this implementation. \nThe input encoder will be initialized if provided, but not used during sampling, which is completed in the full parameter space."
     end
 
     encoder_schedule = create_encoder_schedule(encoder_schedule)

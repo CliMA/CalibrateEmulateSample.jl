@@ -19,11 +19,19 @@ using CalibrateEmulateSample.ParameterDistributions
     n_ens = 10
     dim_obs = 3
     dim_par = 2
-    initial_ensemble = randn(rng, dim_par, n_ens)#params are cols
+    prior = constrained_gaussian("test", 1.0, 2.0, 0.0, Inf, repeats = dim_par)
+    initial_ensemble = construct_initial_ensemble(rng, prior, n_ens) # params are cols
     y_obs = randn(rng, dim_obs)
     Γy = Matrix{Float64}(I, dim_obs, dim_obs)
     ekp = EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble, y_obs, Γy, Inversion(), rng = rng)
-    g_ens = randn(rng, dim_obs, n_ens) # data are cols
+    function G(rng, x::MM, Γy) where {MM <: AbstractMatrix}
+        d_in, d_ens = size(x)
+        d_out = size(Γy, 1)
+        A = randn(rng, d_out, d_in)
+        b = abs.(randn(rng, d_out, 1))
+        return A * x .+ b .+ rand(MvNormal(zeros(d_out), Γy), d_ens)
+    end
+    g_ens = G(rng, initial_ensemble, Γy) # data are cols
     EnsembleKalmanProcesses.update_ensemble!(ekp, g_ens)
     training_points = get_training_points(ekp, 1)
     @test get_inputs(training_points) ≈ initial_ensemble
@@ -42,6 +50,39 @@ using CalibrateEmulateSample.ParameterDistributions
     @test isposdef(pdmat2)
     @test minimum(eigvals(pdmat2)) >= (1 - 1e-4) * tol
 
+    # get encoder kwargs from ekp and prior
+    g_ens_final = G(rng, get_ϕ_final(prior, ekp), Γy)
+    encoder_kwargs = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
+
+    prior_kwargs = (; prior_cov = cov(prior))
+    obs_kwargs = (; obs_noise_cov = [Γy], observation = [y_obs])
+    io_kwargs = (;
+        input_structure_vecs = Dict(:dt => [0, get_algorithm_time(ekp)...], :samples_in => get_u(ekp)),
+        output_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...],
+            :samples_out => [get_g(ekp)..., g_ens_final],
+        ),
+    )
+    test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
+
+    @test all(encoder_kwargs[key] == test_kwargs[key] for key in keys(encoder_kwargs))
+    # remove final g
+    encoder_reduced_kwargs = encoder_kwargs_from(ekp, prior)
+    io_reduced_kwargs = (;
+        input_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
+            :samples_in => get_u(ekp)[1:(end - 1)],
+        ),
+        output_structure_vecs = Dict(
+            :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
+            :samples_out => [get_g(ekp)...],
+        ),
+    )
+    test_reduced_kwargs = merge(prior_kwargs, obs_kwargs, io_reduced_kwargs)
+    @test all(encoder_reduced_kwargs[key] == test_reduced_kwargs[key] for key in keys(encoder_kwargs))
+
+    # for the following experiments
+    encoder_kwargs_for_exps = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
 end
 
 
@@ -158,6 +199,8 @@ end
     @test Utilities.get_structure_mat(structure_mats, "c") == [1 2; 3 4]
 
     # quick build tests and test getters
+
+    # elementwise
     zs = zscore_scale()
     mm = minmax_scale()
     qq = quartile_scale()
@@ -174,6 +217,7 @@ end
     @test get_data_decoder_mat(QQ) == [4]
     @test get_struct_encoder_mat(QQ) == [5]
     @test get_struct_decoder_mat(QQ) == [6]
+    # decorrelator
     dd = decorrelate()
     @test get_retain_var(dd) == 1.0
     @test get_decorrelate_with(dd) == "combined"
@@ -191,7 +235,7 @@ end
     @test get_max_rank(DD) == 5
     @test get_psvd_kwargs(DD) == (; test = 6)
 
-
+    # canonical correlation
     cc = canonical_correlation()
     @test get_retain_var(cc) == 1.0
     cc2 = canonical_correlation(retain_var = 0.7)
@@ -202,14 +246,36 @@ end
     @test get_decoder_mat(cc3) == [3]
     @test get_apply_to(cc3) == "test"
 
+    # likelihood informed
+    ll = likelihood_informed()
+    @test get_retain_info(ll) == 1.0
+    @test get_iters(ll) == [1]
+    @test get_grad_type(ll) == :linreg
+    ll2 = likelihood_informed(retain_info = 0.99, iters = 3:5, grad_type = :localsl)
+    @test get_retain_info(ll2) == 0.99
+    @test get_iters(ll2) == 3:5
+    @test get_grad_type(ll2) == :localsl
+    ll3 = LikelihoodInformed([2], [3], [4], 0.99, nothing, [3:5], :localsl)
+    @test get_encoder_mat(ll3) == [2]
+    @test get_decoder_mat(ll3) == [3]
+    @test get_data_mean(ll3) == [4]
+    @test_throws ArgumentError likelihood_informed(grad_type = :bad_type)
+    @test_throws ArgumentError likelihood_informed(iters = 1.3)
 
     # test equalities
     cc = canonical_correlation()
     cc_copy = canonical_correlation()
     dd = decorrelate()
     dd_copy = decorrelate()
+    zs = zscore_scale()
+    zs_copy = zscore_scale()
+    ll = likelihood_informed()
+    ll_copy = likelihood_informed()
+
     @test cc == cc_copy
     @test dd == dd_copy
+    @test zs == zs_copy
+    @test ll == ll_copy
 
     # get some data as IO pairs for functional tests
 
@@ -234,6 +300,8 @@ end
         "canonical-correlation",
         "decorrelate-structure-mat-retain-0.95-var",
         "canonical-correlation-0.95-var",
+        "likelihood_informed-0.99-info",
+        "likelihood_informed-0.99-info-acc",
     ]
 
     # Test encodings-decodings individually
@@ -247,9 +315,25 @@ end
         (canonical_correlation(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
+        (likelihood_informed(retain_info = 0.99), "in_and_out"),
+        (likelihood_informed(retain_info = 0.99, iters = 1:2, grad_type = :localsl), "in_and_out"),
     ]
 
-    lossless = [fill(true, 6); fill(false, 4)] # are these lossless approximations? 
+    lossless = [fill(true, 6); fill(false, length(schedules) - 6)] # are these lossless approximations? 
+
+    # kwargs - can usually get from EKP
+    prior_kwargs = (; prior_cov = prior_cov)
+    obs_kwargs = (; obs_noise_cov = [obs_noise_cov], observation = [vec(out_data[:, 1])])
+    io_kwargs = (;
+        input_structure_vecs = Dict(:dt => [0, 0.5], :samples_in => [in_data, in_data .+ 1]),
+        output_structure_vecs = Dict(:dt => [0, 0.5], :samples_out => [out_data, out_data .+ 1]),
+    )
+    test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
+
+    # quick test without struct. vec,
+    test_kwargs_no_svs = merge(prior_kwargs, obs_kwargs)
+    sch_test = create_encoder_schedule((likelihood_informed(retain_info = 0.85), "in_and_out"))
+    initialize_and_encode_with_schedule!(sch_test, io_pairs; test_kwargs_no_svs...)
 
     # functional test pipeline
     tol = 1e-12
@@ -257,7 +341,7 @@ end
     for (name, sch, ll_flag) in zip(test_names, schedules, lossless)
         encoder_schedule = create_encoder_schedule(sch)
         (encoded_io_pairs, encoded_input_structure_mats, encoded_output_structure_mats, _, _) =
-            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; prior_cov, obs_noise_cov)
+            initialize_and_encode_with_schedule!(encoder_schedule, io_pairs; test_kwargs...)
 
         (decoded_io_pairs, decoded_input_structure_mat, decoded_output_structure_mat) = decode_with_schedule(
             encoder_schedule,
@@ -265,6 +349,18 @@ end
             encoded_input_structure_mats[:prior_cov],
             encoded_output_structure_mats[:obs_noise_cov],
         )
+        enc_in_dim = get_encoded_dim(encoder_schedule, "in")
+        enc_out_dim = get_encoded_dim(encoder_schedule, "out")
+        enc_dims = get_encoded_dim(encoder_schedule)
+        @test enc_in_dim == enc_dims["in"]
+        @test enc_out_dim == enc_dims["out"]
+        @test enc_in_dim == size(get_inputs(encoded_io_pairs), 1)
+        @test enc_out_dim == size(get_outputs(encoded_io_pairs), 1)
+        @test isnothing(get_encoded_dim([], "in"))
+        @test_throws ArgumentError get_encoded_dim(encoder_schedule, "bad_in")
+
+
+
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
             (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
@@ -274,6 +370,7 @@ end
             (prior_cov, obs_noise_cov),
             (in_dim, out_dim),
         )
+
             # univariate "rescaling" tests
             if name == "zscore"
                 stat_vec = [[mean(dd), std(dd)] for dd in eachrow(enc_dat)]
@@ -428,6 +525,7 @@ end
         in_mat = in_dat * in_dat'
         out_mat = out_dat * out_dat'
         for (i_o, dat, mat) in (("in", in_dat, in_mat), ("out", out_dat, out_mat))
+
             enc_dat = encode_data(encoder_schedule, dat, i_o)
             dec_dat = decode_data(encoder_schedule, enc_dat, i_o)
             enc_mat = Matrix(encode_structure_matrix(encoder_schedule, mat, i_o))
@@ -442,6 +540,13 @@ end
             @test isapprox(norm((D * enc_dat + b) - dec_dat), 0; atol = tol * size(D, 1))
             @test isapprox(norm(E * mat * E' - enc_mat), 0; atol = tol * size(E, 1)^2)
             @test isapprox(norm(D * enc_mat * D' - dec_mat), 0; atol = tol * size(D, 1)^2)
+
+            # test vec input
+            enc_dat_vec = encode_data(encoder_schedule, vec(dat), i_o)
+            dec_dat_vec = decode_data(encoder_schedule, enc_dat_vec, i_o)
+            @test isapprox(norm(enc_dat_vec - vec(enc_dat)), 0; atol = tol)
+            @test isapprox(norm(dec_dat_vec - vec(dec_dat)), 0; atol = tol)
+
         end
     end
 
