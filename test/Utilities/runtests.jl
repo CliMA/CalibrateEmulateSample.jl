@@ -324,8 +324,11 @@ end
             encoded_input_structure_mats[:prior_cov],
             encoded_output_structure_mats[:obs_noise_cov],
         )
-        enc_in_dim = get_encoded_dim(encoded_schedule,"in")
-        enc_out_dim = get_encoded_dim(encoded_schedule,"out")
+        enc_in_dim = get_encoded_dim(encoder_schedule,"in")
+        enc_out_dim = get_encoded_dim(encoder_schedule,"out")
+        enc_dims = get_encoded_dim(encoder_schedule)
+        @test enc_in_dim == enc_dims["in"]
+        @test enc_out_dim == enc_dims["out"]
         @test enc_in_dim == size(get_inputs(encoded_io_pairs),1)
         @test enc_out_dim == size(get_outputs(encoded_io_pairs),1)
         @test isnothing(get_encoded_dim([],"in"))
