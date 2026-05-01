@@ -279,20 +279,20 @@ end
     in_data = rand(rng, MvNormal(zeros(in_dim), prior_cov), samples)
     obs_noise_cov = [max(5.0 - abs(i - j), 0.0) for i in 1:out_dim, j in 1:out_dim] # [5 4 3 2 1 0 0 ...] off diagonal
     out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
-    
+
     io_pairs = PairedDataContainer(in_data, out_data)
     test_names = [ # order as in schedules below
-                   "zscore",
-                   "quartile",
-                   "minmax",
-                   "decorrelate-sample-cov",
-                   "decorrelate-structure-mat",
-                   "decorrelate-combined",
-                   "canonical-correlation",
-                   "decorrelate-structure-mat-retain-0.95-var",
-                   "canonical-correlation-0.95-var",
-                   "likelihood_informed-0.99-info",
-                   "likelihood_informed-0.99-info-acc",
+        "zscore",
+        "quartile",
+        "minmax",
+        "decorrelate-sample-cov",
+        "decorrelate-structure-mat",
+        "decorrelate-combined",
+        "canonical-correlation",
+        "decorrelate-structure-mat-retain-0.95-var",
+        "canonical-correlation-0.95-var",
+        "likelihood_informed-0.99-info",
+        "likelihood_informed-0.99-info-acc",
     ]
 
     # Test encodings-decodings individually
@@ -307,10 +307,10 @@ end
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
         (likelihood_informed(retain_info = 0.99), "in_and_out"),
-        (likelihood_informed(retain_info = 0.99, iters=1:2, grad_type=:localsl), "in_and_out"), 
+        (likelihood_informed(retain_info = 0.99, iters = 1:2, grad_type = :localsl), "in_and_out"),
     ]
 
-    lossless = [fill(true, 6); fill(false, length(schedules)-6)] # are these lossless approximations? 
+    lossless = [fill(true, 6); fill(false, length(schedules) - 6)] # are these lossless approximations? 
 
     # functional test pipeline
     tol = 1e-12
@@ -326,14 +326,14 @@ end
             encoded_input_structure_mats[:prior_cov],
             encoded_output_structure_mats[:obs_noise_cov],
         )
-        enc_in_dim = get_encoded_dim(encoder_schedule,"in")
-        enc_out_dim = get_encoded_dim(encoder_schedule,"out")
+        enc_in_dim = get_encoded_dim(encoder_schedule, "in")
+        enc_out_dim = get_encoded_dim(encoder_schedule, "out")
         enc_dims = get_encoded_dim(encoder_schedule)
         @test enc_in_dim == enc_dims["in"]
         @test enc_out_dim == enc_dims["out"]
-        @test enc_in_dim == size(get_inputs(encoded_io_pairs),1)
-        @test enc_out_dim == size(get_outputs(encoded_io_pairs),1)
-        @test isnothing(get_encoded_dim([],"in"))
+        @test enc_in_dim == size(get_inputs(encoded_io_pairs), 1)
+        @test enc_out_dim == size(get_outputs(encoded_io_pairs), 1)
+        @test isnothing(get_encoded_dim([], "in"))
         @test_throws ArgumentError get_encoded_dim(encoder_schedule, "bad_in")
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
@@ -344,7 +344,7 @@ end
             (prior_cov, obs_noise_cov),
             (in_dim, out_dim),
         )
-            
+
             # univariate "rescaling" tests
             if name == "zscore"
                 stat_vec = [[mean(dd), std(dd)] for dd in eachrow(enc_dat)]

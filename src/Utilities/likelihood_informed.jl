@@ -272,16 +272,15 @@ function initialize_processor!(
                 diagnostic_f = (x, Vs) -> sum(w * f(x, Vs) for (f, w) in zip(diagnostic_fs, alpha_weight))
                 diagnostic_egrad =
                     (x, Vs) -> sum(w * egrad(x, Vs) for (egrad, w) in zip(diagnostic_egrads, alpha_weight))
-                samples_mean =
-                    sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
-                
+                samples_mean = sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
+
                 # return:
                 diagnostic_f, diagnostic_egrad, samples_mean
             else
                 diagnostic_f = diagnostic_fs[1]
                 diagnostic_egrad = diagnostic_egrads[1]
                 samples_mean = samples_means[iters[1]]
-                
+
                 # return:
                 diagnostic_f, diagnostic_egrad, samples_mean
             end
