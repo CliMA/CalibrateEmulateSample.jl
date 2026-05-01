@@ -330,6 +330,10 @@ end
     )
     test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
 
+    # quick test without struct. vec,
+    test_kwargs_no_svs = merge(prior_kwargs, obs_kwargs)
+    sch_test = (likelihood_informed(retain_info = 0.99), "in_and_out")
+    initialize_and_encode_with_schedule!(sch_test, io_pairs; test_kwargs_no_svs...)
 
     # functional test pipeline
     tol = 1e-12
@@ -354,6 +358,9 @@ end
         @test enc_out_dim == size(get_outputs(encoded_io_pairs), 1)
         @test isnothing(get_encoded_dim([], "in"))
         @test_throws ArgumentError get_encoded_dim(encoder_schedule, "bad_in")
+        
+        
+        
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
             (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
@@ -498,7 +505,7 @@ end
     # test for some schedules
     tol = 1e-12
     schedules = [
-        (zscore_scale(), "in_and_out"),
+        (zscore_scale(), "in_and out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         [(canonical_correlation(), "in_and_out"), (zscore_scale(), "in_and_out")],
         [
