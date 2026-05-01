@@ -264,33 +264,25 @@ function initialize_processor!(
             @assert apply_to == "out"
 
             diagnostic_f, diagnostic_egrad, samples_mean = if length(iters) > 1
-                method = "trap_rule"
-                if method == "trap_rule"
-
-                    alpha_weight = zeros(length(iters))
-                    Δa = diff(alphas[iters])
-                    alpha_weight[1:(end - 1)] .+= Δa ./ 2
-                    alpha_weight[2:end] .+= Δa ./ 2
-                    alpha_weight ./= sum(alpha_weight)
-                    diagnostic_f = (x, Vs) -> sum(w * f(x, Vs) for (f, w) in zip(diagnostic_fs, alpha_weight))
-                    diagnostic_egrad =
-                        (x, Vs) -> sum(w * egrad(x, Vs) for (egrad, w) in zip(diagnostic_egrads, alpha_weight))
-                    samples_mean =
-                        sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
-
-                    diagnostic_f, diagnostic_egrad, samples_mean
-                elseif method == "final"
-                    diagnostic_f = diagnostic_fs[end]
-                    diagnostic_egrad = diagnostic_egrads[end]
-                    samples_mean = samples_means[iters[end]]
-
-                    diagnostic_f, diagnostic_egrad, samples_mean
-                end
+                alpha_weight = zeros(length(iters))
+                Δa = diff(alphas[iters])
+                alpha_weight[1:(end - 1)] .+= Δa ./ 2
+                alpha_weight[2:end] .+= Δa ./ 2
+                alpha_weight ./= sum(alpha_weight)
+                diagnostic_f = (x, Vs) -> sum(w * f(x, Vs) for (f, w) in zip(diagnostic_fs, alpha_weight))
+                diagnostic_egrad =
+                    (x, Vs) -> sum(w * egrad(x, Vs) for (egrad, w) in zip(diagnostic_egrads, alpha_weight))
+                samples_mean =
+                    sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
+                
+                # return:
+                diagnostic_f, diagnostic_egrad, samples_mean
             else
                 diagnostic_f = diagnostic_fs[1]
                 diagnostic_egrad = diagnostic_egrads[1]
                 samples_mean = samples_means[iters[1]]
-
+                
+                # return:
                 diagnostic_f, diagnostic_egrad, samples_mean
             end
 
