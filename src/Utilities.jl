@@ -546,7 +546,11 @@ function _initialize_and_encode_data!(
     apply_to::AS,
 ) where {AS <: AbstractString}
     initialize_processor!(proc, get_data(data)..., structure_mats..., structure_vecs..., apply_to)
-    return _encode_data(proc, data, apply_to)
+    if apply_to ∈ ["in", "out"]
+        return _encode_data(proc, data, apply_to)
+    else
+        bad_apply_to(apply_to)
+    end
 end
 
 function _initialize_and_encode_data!(

@@ -332,7 +332,7 @@ end
 
     # quick test without struct. vec,
     test_kwargs_no_svs = merge(prior_kwargs, obs_kwargs)
-    sch_test = (likelihood_informed(retain_info = 0.99), "in_and_out")
+    sch_test = create_encoder_schedule((likelihood_informed(retain_info = 0.85), "in_and_out"))
     initialize_and_encode_with_schedule!(sch_test, io_pairs; test_kwargs_no_svs...)
 
     # functional test pipeline
