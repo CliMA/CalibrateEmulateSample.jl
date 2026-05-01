@@ -324,6 +324,12 @@ end
             encoded_input_structure_mats[:prior_cov],
             encoded_output_structure_mats[:obs_noise_cov],
         )
+        enc_in_dim = get_encoded_dim(encoded_schedule,"in")
+        enc_out_dim = get_encoded_dim(encoded_schedule,"out")
+        @test enc_in_dim == size(get_inputs(encoded_io_pairs),1)
+        @test enc_out_dim == size(get_outputs(encoded_io_pairs),1)
+        @test isnothing(get_encoded_dim([],"in"))
+        @test_throws ArgumentError get_encoded_dim(encoder_schedule, "bad_in")
         for (enc_dat, dec_dat, test_dat, enc_covv, dec_covv, test_covv, dim) in zip(
             (get_inputs(encoded_io_pairs), get_outputs(encoded_io_pairs)),
             (get_inputs(decoded_io_pairs), get_outputs(decoded_io_pairs)),
@@ -333,6 +339,7 @@ end
             (prior_cov, obs_noise_cov),
             (in_dim, out_dim),
         )
+            
             # univariate "rescaling" tests
             if name == "zscore"
                 stat_vec = [[mean(dd), std(dd)] for dd in eachrow(enc_dat)]
