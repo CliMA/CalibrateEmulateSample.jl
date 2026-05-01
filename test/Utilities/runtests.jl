@@ -505,7 +505,7 @@ end
     # test for some schedules
     tol = 1e-12
     schedules = [
-        (zscore_scale(), "in_and out"),
+        (zscore_scale(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         [(canonical_correlation(), "in_and_out"), (zscore_scale(), "in_and_out")],
         [
