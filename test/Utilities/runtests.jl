@@ -279,19 +279,20 @@ end
     in_data = rand(rng, MvNormal(zeros(in_dim), prior_cov), samples)
     obs_noise_cov = [max(5.0 - abs(i - j), 0.0) for i in 1:out_dim, j in 1:out_dim] # [5 4 3 2 1 0 0 ...] off diagonal
     out_data = rand(rng, MvNormal(-10 * ones(out_dim), obs_noise_cov), samples)
-
+    
     io_pairs = PairedDataContainer(in_data, out_data)
     test_names = [ # order as in schedules below
-        "zscore",
-        "quartile",
-        "minmax",
-        "decorrelate-sample-cov",
-        "decorrelate-structure-mat",
-        "decorrelate-combined",
-        "canonical-correlation",
-        "decorrelate-structure-mat-retain-0.95-var",
-        "canonical-correlation-0.95-var",
-        "likelihood_informed-0.99-info",
+                   "zscore",
+                   "quartile",
+                   "minmax",
+                   "decorrelate-sample-cov",
+                   "decorrelate-structure-mat",
+                   "decorrelate-combined",
+                   "canonical-correlation",
+                   "decorrelate-structure-mat-retain-0.95-var",
+                   "canonical-correlation-0.95-var",
+                   "likelihood_informed-0.99-info",
+                   "likelihood_informed-0.99-info-acc",
     ]
 
     # Test encodings-decodings individually
@@ -306,9 +307,10 @@ end
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
         (likelihood_informed(retain_info = 0.99), "in_and_out"),
+        (likelihood_informed(retain_info = 0.99, iters=1:2, grad_type=:localsl), "in_and_out"), 
     ]
 
-    lossless = [fill(true, 6); fill(false, 5)] # are these lossless approximations? 
+    lossless = [fill(true, 6); fill(false, length(schedules)-6)] # are these lossless approximations? 
 
     # functional test pipeline
     tol = 1e-12
