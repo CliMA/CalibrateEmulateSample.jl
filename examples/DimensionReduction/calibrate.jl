@@ -15,20 +15,20 @@ function main()
     else
         bad_model(mod_type, mod_types)
     end
-    
+
     prior_obj = ParameterDistribution(
         Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)),
         fill(no_constraint(), size(prior_cov, 1)),
         "$(mod_type)_prior",
     )
 
-    n_ensemble = 50
+    n_ensemble = 80
     initial_ensemble = construct_initial_ensemble(rng, prior_obj, n_ensemble)
     ekp = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, TransformInversion(); rng)
-    
+
     max_iter = 20
     n_iters = 0
-    for i in 1:max_iter 
+    for i in 1:max_iter
         n_iters += 1
         G_ens = hcat([forward_map(param, model) for param in eachcol(get_ϕ_final(prior_obj, ekp))]...)
         terminate = update_ensemble!(ekp, G_ens)
