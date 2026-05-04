@@ -35,10 +35,10 @@ function main()
     max_iter = min(10, length(αs)) # number of EKP iterations to use data from is at most this
     training_points = [ekp_samples[α] for α in αs[min_iter:max_iter]]
 
-    encoder_schedule_ref = [(decorrelate_structure_mat(; retain_var = 1.0), "in_and_out")]
+    encoder_schedule_ref = [(decorrelate_structure_mat(), "in_and_out")]
 
     # chosen some truncations with similar dimension
-    rvs_rinfos = [(0.995, 0.999999), (0.99, 0.9999), (0.98, 0.999), (0.94, 0.94), (0.9, 0.88)]
+    rvs_rinfos = [(0.995, 0.99999), (0.99, 0.9999), (0.98, 0.999), (0.95, 0.99), (0.9, 0.95)]
     all_errs = zeros(length(rvs_rinfos), 1 + length(αs))
 
     # as we have more input samples than out stored in ekp. we provide the extended set of outputs to be used in the likelihood informed processor
@@ -47,11 +47,11 @@ function main()
 
     flat_io_pairs = get_training_points(ekpobj, min_iter:max_iter, g_final = final_samples_out)
 
-    names = ["reference", "PCA-in", ["LI-in 1:$(i)" for i in mask]...]
+    names = ["reference", "PCA-in-out", ["LI-in(1:$(i))-out(1:1)" for i in mask]...]
 
 
     if mod_type == "linear"
-        ni_scaling = 0.0 # noise injection into null space scaling (def. 1)
+        ni_scaling = 0.0 # noise injection when eval forward map (def. 1)
     else
         bad_model(mod_type, mod_types)
     end
@@ -60,12 +60,12 @@ function main()
 
     for (idx, rv_rinfo) in enumerate(rvs_rinfos)
         rv, rinfo = rv_rinfo
-        encoder_schedule_decorrelate =
-            [(decorrelate_structure_mat(retain_var = rv), "in"), (decorrelate_structure_mat(), "out")]
+        encoder_schedule_decorrelate = [(decorrelate_structure_mat(retain_var = rv), "in_and_out")]
         encoder_schedules_li = [
             [
                 (decorrelate_structure_mat(), "in_and_out"),
                 (likelihood_informed(retain_info = rinfo, iters = 1:i), "in"),
+                (likelihood_informed(retain_info = rinfo, iters = 1:1), "out"),
             ] for i in mask
         ]
 
