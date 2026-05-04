@@ -4,30 +4,18 @@ using JLD2
 using LinearAlgebra
 using Random
 
-include("./models.jl")
+
+include("./models.jl") # defines dims, files, mod_type
 # select the forward map
-mod_types = ["linear"]
-mod_type = mod_types[1]
 @info "Executing model type $(mod_type)"
 
-datadir = joinpath(@__DIR__, "datafiles")
-if !isdir(datadir)
-    mkpath(datadir)
-end
-
-rng = Random.MersenneTwister(41)
-input_dim = 100
-output_dim = 100
-
-num_trials = 5
-for trial in 1:num_trials
-    @info "Trial $trial"
+function main()
     if mod_type == "linear"
         prior_cov, y, obs_noise_cov, model, true_parameter = lin(input_dim, output_dim, rng)
     else
         bad_model(mod_type, mod_types)
     end
-
+    
     prior_obj = ParameterDistribution(
         Parameterized(MvNormal(zeros(size(prior_cov, 1)), prior_cov)),
         fill(no_constraint(), size(prior_cov, 1)),
@@ -37,9 +25,10 @@ for trial in 1:num_trials
     n_ensemble = 50
     initial_ensemble = construct_initial_ensemble(rng, prior_obj, n_ensemble)
     ekp = EnsembleKalmanProcess(initial_ensemble, y, obs_noise_cov, TransformInversion(); rng)
-
+    
+    max_iter = 20
     n_iters = 0
-    for i in 1:50
+    for i in 1:max_iter 
         n_iters += 1
         G_ens = hcat([forward_map(param, model) for param in eachcol(get_ϕ_final(prior_obj, ekp))]...)
         terminate = update_ensemble!(ekp, G_ens)
@@ -60,7 +49,7 @@ for trial in 1:num_trials
 
     #! format: off
     save(
-        joinpath(datadir,"ekp_$(mod_type)_$(trial).jld2"),
+        joinpath(datadir,"ekp_$(mod_type).jld2"),
         "ekpobj", ekp,
         "ekp_samples", ekp_samples,
         "prior_obj", prior_obj,
@@ -71,4 +60,6 @@ for trial in 1:num_trials
         "alphas", αs,
     )
     #! format: on
+
 end
+main()

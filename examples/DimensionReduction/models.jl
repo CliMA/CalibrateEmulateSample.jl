@@ -11,6 +11,22 @@ function bad_model_type(mod_type, mod_types)
     throw(ArgumentError("Unknown model type provided: $(mod_type), please choose from $(mod_types)"))
 end
 
+# setup parameters
+input_dim = 100
+output_dim = 100
+
+datadir = joinpath(@__DIR__, "datafiles")
+if !isdir(datadir)
+    mkpath(datadir)
+end
+
+rng = Random.MersenneTwister(41)
+
+mod_types = ["linear"]
+mod_type = mod_types[1]
+
+
+
 ## Linear
 struct Lin{AM <: AbstractMatrix} <: ForwardMapType
     input_dim::Int
