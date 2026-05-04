@@ -12,37 +12,72 @@ The framework works as follows
 An external API is also available using the `encode_data`, and `encode_structure_matrix` methods if needed to encode new data, or new covariance-type matrices.
 
 ## Defaults and recommendations
-### Default schedule (no explicit dimension reduction)
-When no schedule is provided, i.e. 
+
+### Recommended schedule: ("latest and greatest")
+
+Given `ekp` and `prior` from an ensemble kalman process run (e.g., the "Calibrate" stage). Assume we have chosen our machine learning tool and obtained training data. Our recommendeded family to balance efficiency and reduce dimension is to use the `retain_var` and `retain_info`. 
+
 ```julia
-emulator = Emulator(machine_learning_tool, input_output_pairs)
+retain_var = 0.999 # reduce dimension retaining 99.9% of variance (for PCA)
+retain_info = 0.999 # reduce dimension retaining 99.9% of information (for likelihood-informed)
+ekp_it = 5 # number of eki iteration (for likelihood-informed)
+
+encoder_schedule = [
+    (decorrelate_sample_cov(retain_var = retain_var), "in"),
+    (decorrelate_structure_mat(retain_var = retain_var), "out"),
+    (likelihood_informed(retain_info=retain_info, iters = 1:ekp_it), "in"),
+    (likelihood_informed(retain_info=retain_info, iters = 1:1), "out"),
+]
 ```
-The default schedule under-the-hood, is given by
+The motivation is that PCA is an efficient, but blunt, tool for reducing dimension from ((>100s) -> (100s)) dimension, then use likelihood-informed tools to hone down ((100s) -> (10s)) dimensions. `iters=1:X` is more performant in input than output dimension for `X>1` so we only do this here. This schedule is added to the emulator as follows
+```
+emulator = Emulator(
+    machine_learning_tool,       
+    input_output_pairs;
+    encoder_schedule = encoder_schedule,
+    encoder_kwargs = encoder_kwargs_from(ekp, prior), # kwargs from "Calibrate" objects
+)
+```
+
+## Recommended: get `encoder_kwargs` from and `EnsembleKalmanProcess` and `Prior`
+
+To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can get the kwargs in the `EnsembleKalmanProcesses.jl` package. This will provide a superset of kwargs that work for any of the data-processors.
+
 ```julia
-schedule = (decorrelate_sample_cov(), "in_and_out")
+# `prior::ParameterDistribution`
+# `ekp::EnsembleKalmanProcess`
+encoder_kwargs = encoder_kwargs_from(ekp, prior) 
 ```
-If the user only provides the observational noise covariance, 
+
+### Default schedule (whiten with no dimension reduction)
+When the user provides no `encoder_schedule`, the following is created
 ```julia
 emulator = Emulator(
     machine_learning_tool,       
     input_output_pairs;
-    encoder_kwargs = (; obs_noise_cov = obs_noise_cov),
+    encoder_kwargs = encoder_kwargs,
 )
 ```
 The default schedule under-the-hood, is given by
 ```julia
 schedule = [
     (decorrelate_sample_cov(), "in"),
-    (decorrelate_structure_mat(), "out"), # uses obs_noise_cov
+    (decorrelate_structure_mat(), "out"), # uses obs_noise_cov kwarg
+]
+```
+With no kwargs also provided, the following schedule under-the-hood, is given by
+```julia
+schedule = [
+    (decorrelate_sample_cov(), "in_and_out"),
 ]
 ```
 
 !!! note "Switch encoding off"
     To ensure that no encoding is happening, the user must pass in an empty schedule `encoder_schedule = []`
 
-### Recommended: schedule for PCA dimension reduction
+## Other typical schedule: PCA dimension reduction
 
-Our recommendeded family to balance efficiency and reduce dimension is to use the `retain_var` kwargs.
+Robust and blunt dimension reduction can be done with only PCA
 ```julia
 retain_var_in = 0.99 # reduce dimension retaining 99% of input variance
 retain_var_out = 0.95 # reduce dimension retaining 95% of output variance
@@ -59,22 +94,21 @@ emulator = Emulator(
     encoder_kwargs = encoder_kwargs,
 )
 ```
-## Recommended: Get `encoder_kwargs` from `ObservationSeries` etc.
+## kwargs from other objects:
 
-To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can also get the kwargs in the desired format from any [`Observation` and `ObservationSeries`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/) objects, as well as [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) objects used in the `EnsembleKalmanProcesses.jl` package.
+One can also obtain individual kwarg sets from other objects, and can merge these as follows
 ```julia
 # `prior::ParameterDistribution`
-input_kwargs = get_kwargs_from(prior)
-
 # `observation_series::ObservationSeries`
+input_kwargs = get_kwargs_from(prior)
 output_kwargs = get_kwargs_from(observation_series)
-
 encoder_kwargs = merge(input_kwargs, output_kwargs)
 ```
+
+Though not recommended, you can also build your own keyword arguments.
 !!! note "Observational noise notes"
     1. The `obs_noise_cov` object does not need to be a constructed `AbstractMatrix`, rather it can be any type of compactly stored matrix compatible with `EnsembleKalmanProcesses` (e.g., [here](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/observations/)).
-    2. When `ObservationSeries` contains multiple observations, it is assumed that the covariance of the noise of all observations are the same. (If they are not, only the first will be taken by default in `get_kwargs_from(...)`
-    
+    2. When `ObservationSeries` contains multiple observations, it is assumed that the covariance of the noise of all observations are the same. (If they are not, only the first will be taken by default in `get_kwargs_from(...)`    
 
 ## Building and interpreting encoder schedules
 
