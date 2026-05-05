@@ -152,7 +152,6 @@ function main()
     df = DataFrame(all_errs, [Symbol(n) for n in names[1:end]])
 
     # build dataframe
-    @info size(reduced_dims), size(all_errs)
     pairs = [(reduced_dims[i, j], all_errs[i, j]) for i in axes(all_errs, 1), j in axes(all_errs, 2)]
 
     df = DataFrame(pairs, Symbol.(names[1:end]))  # columns = names
