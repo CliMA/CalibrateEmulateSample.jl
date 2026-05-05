@@ -73,13 +73,24 @@ using CalibrateEmulateSample.ParameterDistributions
             :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
             :samples_in => get_u(ekp)[1:(end - 1)],
         ),
-        output_structure_vecs = Dict(
-            :dt => [0, get_algorithm_time(ekp)...][1:(end - 1)],
-            :samples_out => [get_g(ekp)...],
-        ),
+        output_structure_vecs = Dict(:dt => [0, get_algorithm_time(ekp)...][1:(end - 1)], :samples_out => get_g(ekp)),
     )
     test_reduced_kwargs = merge(prior_kwargs, obs_kwargs, io_reduced_kwargs)
     @test all(encoder_reduced_kwargs[key] == test_reduced_kwargs[key] for key in keys(encoder_kwargs))
+
+    # replace samples:
+    encoder_reduced_kwargs_2 = encoder_kwargs_from(
+        ekp,
+        prior;
+        dt = [0, 0, get_algorithm_time(ekp)...],
+        samples_in = [get_u(ekp)[1], get_u(ekp)[1], get_u(ekp)[1]],
+        samples_out = [get_g(ekp)[1]], # 2-short
+        final_samples_out = [get_g(ekp)[1], g_ens_final], # extend by 2
+    )
+
+    @test encoder_reduced_kwargs_2[:output_structure_vecs] ==
+          Dict(:dt => [0, 0, get_algorithm_time(ekp)...], :samples_out => [get_g(ekp)[1], get_g(ekp)[1], g_ens_final])
+
 
     # for the following experiments
     encoder_kwargs_for_exps = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)

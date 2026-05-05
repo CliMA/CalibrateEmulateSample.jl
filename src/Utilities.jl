@@ -213,7 +213,7 @@ function encoder_kwargs_from(
             push!(samples_out, final_samples_out)
         else # add a vector of matrices
             if length(samples_out) > 0
-                @assert(size(samples_out[1]) == size(final_samples_out[1]))
+                @assert all(size(samples_out[1]) == size(so) for so in final_samples_out)
             end
             samples_out = reduce(vcat, [samples_out, final_samples_out])
         end
