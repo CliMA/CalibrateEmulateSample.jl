@@ -38,8 +38,7 @@ function main()
     encoder_schedule_ref = [(decorrelate_structure_mat(), "in_and_out")]
 
     # chosen some truncations with similar dimension
-    rvs_rinfos = [(0.995, 0.99999), (0.99, 0.9999), (0.98, 0.999), (0.95, 0.99), (0.9, 0.95)]
-    all_errs = zeros(length(rvs_rinfos), 1 + length(αs))
+    rvs_rinfos = [(0.995, 0.99995), (0.99, 0.9995), (0.98, 0.995), (0.95, 0.97), (0.9, 0.9)]
 
     # as we have more input samples than out stored in ekp. we provide the extended set of outputs to be used in the likelihood informed processor
     final_samples_out = ekp_samples[αs[end]][2]
@@ -47,7 +46,7 @@ function main()
 
     flat_io_pairs = get_training_points(ekpobj, min_iter:max_iter, g_final = final_samples_out)
 
-    names = ["reference", "PCA-in-out", ["LI-in(1:$(i))-out(1:1)" for i in mask]...]
+    names = ["reference", "PCA-in-out", "PCA(mat)-in-out", ["LI-in(1:$(i))-out(1:1)" for i in mask]...]
 
 
     if mod_type == "linear"
@@ -56,10 +55,12 @@ function main()
         bad_model(mod_type, mod_types)
     end
 
-    reduced_dims = zeros(Int, length(rvs_rinfos), length(αs) + 2) # store reduced dims for final table
+    all_errs = zeros(length(rvs_rinfos), length(names))
+    reduced_dims = zeros(Int, length(rvs_rinfos), length(names)) # store reduced dims for final table
 
     for (idx, rv_rinfo) in enumerate(rvs_rinfos)
         rv, rinfo = rv_rinfo
+        encoder_schedule_decorrelate_samp = [(decorrelate_sample_cov(retain_var = rv), "in_and_out")]
         encoder_schedule_decorrelate = [(decorrelate_structure_mat(retain_var = rv), "in_and_out")]
         encoder_schedules_li = [
             [
@@ -78,6 +79,15 @@ function main()
             noise_injector_scaling = ni_scaling, # shouldnt be needed
         )
 
+        em_decorrelate_samp = forward_map_wrapper(
+            param -> forward_map(param, model),
+            prior,
+            flat_io_pairs;
+            encoder_schedule = deepcopy(encoder_schedule_decorrelate_samp),
+            encoder_kwargs = deepcopy(encoder_kwargs),
+            noise_injector_scaling = ni_scaling,
+        )
+
         em_decorrelate = forward_map_wrapper(
             param -> forward_map(param, model),
             prior,
@@ -86,6 +96,7 @@ function main()
             encoder_kwargs = deepcopy(encoder_kwargs),
             noise_injector_scaling = ni_scaling,
         )
+
 
         ems_li = [
             forward_map_wrapper(
@@ -99,7 +110,7 @@ function main()
         ]
         post_means = reshape(true_parameter, input_dim, 1)
         post_covs = []
-        for (iidx, nn, em) in zip(1:length(names), names, vcat(em_ref, em_decorrelate, ems_li...))
+        for (iidx, nn, em) in zip(1:length(names), names, vcat(em_ref, em_decorrelate_samp, em_decorrelate, ems_li...))
 
             reduced_dims[idx, iidx] = get_encoded_dim(get_encoder_schedule(em), "in")
             println(" ")
@@ -135,20 +146,21 @@ function main()
         # post_means[:,2] = ref
         # post_means[:,3] = decor, LI etc.
         # so err cols are normalized diff to ref of (decor, LI etc.) (lower is better)
-        all_errs[idx, :] = [norm(post_means[:, 2] - v) / norm(post_means[:, 2]) for v in eachcol(post_means[:, 3:end])]'
+        all_errs[idx, :] = [norm(post_means[:, 1] - v) / norm(post_means[:, 1]) for v in eachcol(post_means[:, 2:end])]'
     end
 
-    df = DataFrame(all_errs, [Symbol(n) for n in names[2:end]])
+    df = DataFrame(all_errs, [Symbol(n) for n in names[1:end]])
 
     # build dataframe
-    pairs = [(reduced_dims[i, j + 1], all_errs[i, j]) for i in axes(all_errs, 1), j in axes(all_errs, 2)]
+    @info size(reduced_dims), size(all_errs)
+    pairs = [(reduced_dims[i, j], all_errs[i, j]) for i in axes(all_errs, 1), j in axes(all_errs, 2)]
 
-    df = DataFrame(pairs, Symbol.(names[2:end]))  # columns = names
+    df = DataFrame(pairs, Symbol.(names[1:end]))  # columns = names
     df.truncation = rvs_rinfos            # add row labels
-    return df, all_errs, reduced_dims[:, 2:end]
+    return df, all_errs, reduced_dims[:, 1:end]
 end
 
 df, all_errs, red_dims = main()
 
 @info "(reduced_dim, error) of posterior mean to whitened \"reference\" solution,\n when using the truncation ({for PCA}, {for LI})"
-select!(df, :truncation, :)
+select!(df, :reference, :)
