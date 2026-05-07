@@ -45,12 +45,11 @@ const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a mat
 """
 $(DocStringExtensions.TYPEDSIGNATURES)
 
-Extract the training points needed to train the Gaussian process regression.
+Extract and flatten the training points needed to train an Emulator. returned as a `PairedDataContainer`
 
 - `ekp` - EnsembleKalmanProcess holding the parameters and the data that were produced
   during the Ensemble Kalman (EK) process.
-- `train_iterations` - Number (or indices) EK layers/iterations to train on.
-
+- `train_iterations` - Number (e.g. 1:train_iterations), or indices train_iterations=`3:2:9`, for EKP iterations to extract. 
 - `g_final[=nothing]` - EKP will typically store one extra input data iteration. If desired, the user can add output data for this final iteration directly with `g_final`. It should be of type `<: AbstractMatrix`, sized consistently as with return values from `get_g(ekp,1)`.
 """
 function get_training_points(
@@ -60,12 +59,18 @@ function get_training_points(
 ) where {FT, IT, P}
 
     if !isa(train_iterations, AbstractVector)
-        # Note u[end] does not have an equivalent g
-        iter_range = (get_N_iterations(ekp) - train_iterations + 1):get_N_iterations(ekp)
+        iter_range = 1:min(train_iterations, length(get_u(ekp)))
     else
-        iter_range = train_iterations
+        min_it = max(1,minimum(train_iterations))
+        max_it = min(length(get_u(ekp)),maximum(train_iterations))
+        iter_range = [i for i in train_iterations if  (min_it <= i <= max_it) ]
     end
-
+    
+    @info "extracting iterations $(iter_range) from EnsembleKalmanProcess"
+    if (maximum(iter_range) > length(get_g(ekp))) && isnothing(g_final)
+        throw(ArgumentError("Require outputs associated to parameters `get_u(ekp,$(maximum(iter_range)))`. \n the user can provide this with the `g_final` keyword. Received `g_final=$(g_final)`"))
+    end
+        
     u_tp = []
     g_tp = []
 
@@ -73,12 +78,15 @@ function get_training_points(
     g_full = [get_g(ekp, i) for i in iter_range[iter_range .<= g_len]]
     if !isnothing(g_final)
         if (isa(g_final, AbstractMatrix)) # add the matrix
-            @assert(size(g_full[1]) == size(g_final))
+            if !(size(g_full[1]) == size(g_final))
+                throw(
+                    ArgumentError("Expected `g_final` size: $(size(g_full[1])), received $(size(g_final)).")
+                )
+            end
             push!(g_full, g_final)
         else
             throw(
-                ArgumentError,
-                "Expected `g_final` to be type `<:AbstractMatrix`, of size: $(size(g_full[1])), received $(typeof(g_final))",
+                ArgumentError("Expected `g_final` to be type `<:AbstractMatrix`, of size: $(size(g_full[1])), received $(typeof(g_final)).")
             )
         end
     end
