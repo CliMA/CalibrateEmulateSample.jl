@@ -35,8 +35,8 @@ $(TYPEDSIGNATURES)
 
 Constructs the `LikelihoodInformed` struct. Keywords:
 - `retain_info`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - `retain_info`). Choose `retain_info` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
-- `iters`[=[1]]: the likelihood-informed data processor requires samples from the distribution `∝ π_prior(x) π_likelihood(y | x)^α` with `α ∈ [0, 1]`. Here, `iter` indicates the structure vector iterations to use, as sampled from these distributions. For how to pass in these samples, see the `use_data_as_samples` parameter.
-- `grad_type`[=:localsl]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
+- `iters`[`= [1]`]: the likelihood-informed data processor requires samples from the distribution `∝ π_prior(x) π_likelihood(y | x)^α` with `α ∈ [0, 1]`. Here, `iter` indicates the structure vector iterations to use, as sampled from these distributions. For how to pass in these samples, see the `use_data_as_samples` parameter.
+- `grad_type`[`= :linreg`]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
 """
 function likelihood_informed(; retain_info = 1, iters = 1, grad_type = :linreg)
     grad_types = [:linreg, :localsl]
@@ -123,7 +123,7 @@ function initialize_processor!(
         li.apply_to = apply_to
 
         for (it, α) in zip(iters, alphas[iters]) # take the iterations from alpha
-            #(NB! "it" may not be 1:end)
+            #(NB! "iters" may not be 1:end)
 
             # construct the diagnostic matrix, for which we take the eigendecomposition to find encoder/decoder matrices
             y = if α ≈ 0.0

@@ -39,9 +39,9 @@ emulator = Emulator(
 )
 ```
 
-## Recommended: get `encoder_kwargs` from and `EnsembleKalmanProcess` and `Prior`
+## Recommended `encoder_kwargs`
 
-To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, one can get the kwargs in the `EnsembleKalmanProcesses.jl` package. This will provide a superset of kwargs that work for any of the data-processors.
+The `EnsembleKalmanProcesses` infrastructure naturally provides information to build the data processors. We provide some utilities to extract these into `kwargs` of the correct format, the recommended (but not only) option is:
 
 ```julia
 # `prior::ParameterDistribution`
@@ -49,7 +49,7 @@ To transition more smoothly from the `EnsembleKalmanProcesses` infrastructure, o
 encoder_kwargs = encoder_kwargs_from(ekp, prior) 
 ```
 
-### Default schedule (whiten with no dimension reduction)
+### Default schedule (to whiten with no dimension reduction)
 When the user provides no `encoder_schedule`, the following is created
 ```julia
 emulator = Emulator(
