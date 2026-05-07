@@ -38,13 +38,13 @@ using CalibrateEmulateSample.ParameterDistributions
     @test get_outputs(training_points) ≈ g_ens
 
     g_ens_final = G(rng, get_ϕ_final(prior, ekp), Γy)
-    training_points = get_training_points(ekp, 1:2, g_final=g_ens_final)
+    training_points = get_training_points(ekp, 1:2, g_final = g_ens_final)
     @test get_inputs(training_points) ≈ reduce(hcat, get_u(ekp))
     @test get_outputs(training_points) ≈ reduce(hcat, [g_ens, g_ens_final])
     @test_throws ArgumentError get_training_points(ekp, 1:2)
-    @test_throws ArgumentError get_training_points(ekp, 1:2, g_final=[1])
-    @test_throws ArgumentError get_training_points(ekp, 1:2, g_final=g_ens_final')
-    
+    @test_throws ArgumentError get_training_points(ekp, 1:2, g_final = [1])
+    @test_throws ArgumentError get_training_points(ekp, 1:2, g_final = g_ens_final')
+
     #positive definiteness
     mat = reshape(collect(-3:(-3 + 10^2 - 1)), 10, 10)
     tol = 1e12 * eps()
@@ -60,7 +60,7 @@ using CalibrateEmulateSample.ParameterDistributions
 
     # get encoder kwargs from ekp and prior
     encoder_kwargs = encoder_kwargs_from(ekp, prior, final_samples_out = g_ens_final)
-    
+
     prior_kwargs = (; prior_cov = cov(prior))
     obs_kwargs = (; obs_noise_cov = [Γy], observation = [y_obs])
     io_kwargs = (;
@@ -73,8 +73,8 @@ using CalibrateEmulateSample.ParameterDistributions
     test_kwargs = merge(prior_kwargs, obs_kwargs, io_kwargs)
 
     @test all(encoder_kwargs[key] == test_kwargs[key] for key in keys(encoder_kwargs))
-    
-    
+
+
     # remove final g
     encoder_reduced_kwargs = encoder_kwargs_from(ekp, prior)
     io_reduced_kwargs = (;
