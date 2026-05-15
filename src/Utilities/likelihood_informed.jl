@@ -248,15 +248,16 @@ function initialize_processor!(
 
             # then get the eigen-decomposition
             decomp = eigen(diagnostic_mat, sortby = (-))
-            sv_cumsum = cumsum(log.(decomp.values .+ 1) .^ 2) / sum(log.(decomp.values .+ 1) .^ 2) # frac Forstner distance-based cutoff
+            # truncate when tail_sum(log(1+λ_i) < ϵ
+            sv_tails = cumsum(reverse(log.(1 .+ decomp.values)))
             trunc_val = nothing
             retain_info = get_retain_info(li)
             if retain_info >= 1.0
                 trunc_val = apply_to == "in" ? input_dim : output_dim
             else
-                trunc_val = findfirst(x -> (x ≥ retain_info), sv_cumsum)
-                trunc_val = isnothing(trunc_val) ? (apply_to == "in" ? input_dim : output_dim) : trunc_val
-                @info "    truncating at $trunc_val/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the information"
+                trunc_val = Int(findfirst(k -> (k == length(sv_tails) || sv_tails[k] < 1-retain_info), eachindex(sv_tails)))
+                
+                @info "    truncating at $trunc_val/$(length(sv_tails)) retaining $(100.0*(1-sv_tails[trunc_val]))% of the information"
             end
             encoder_mat = decomp.vectors[:, 1:trunc_val]'
         else # using diagnostic_f's and diagnostic_egrads
