@@ -8,7 +8,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
-const PD = CalibrateEmulateSample.ParameterDistributions
+const PD = ParameterDistributions
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
