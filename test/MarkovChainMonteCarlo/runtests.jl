@@ -8,6 +8,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
+const PD = CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
@@ -628,8 +629,8 @@ end
         input_dim = 1
         n_samples = 10
         prior_1d = constrained_gaussian("1d-check", 0, 1, -Inf, 5)
-        in_data = sample(prior_1d, n_samples)
-        out_data = sample(prior_1d, n_samples)
+        in_data = PD.sample(prior_1d, n_samples)
+        out_data = PD.sample(prior_1d, n_samples)
         io_pairs_1d = PairedDataContainer(in_data, out_data, data_are_columns = true)
 
         # lossless encoding
