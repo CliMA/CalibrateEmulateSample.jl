@@ -27,8 +27,16 @@ save_all_ekp = true
 
 cases = ["const-force", "vec-force", "flux-force"] # problem types
 # User specifications
-case = cases[1] # choose problem type
-N_ens_sizes = [80, 90, 100] # list of number of ensemble members (should be problem dependent)
+#case = cases[1] # choose problem type
+#N_ens_sizes = [5, 15, 30] # e.g. for case 1
+
+#case = cases[2] # choose problem type
+#N_ens_sizes = [50, 75, 100]
+
+case = cases[3] # choose problem type
+N_ens_sizes = [50, 75, 100] # e.g. for case 1
+
+
 N_iter = 20 # maximum number of EKI iterations allowed
 target_rmse = 1.0 # target RMSE
 n_repeats = 4
@@ -252,6 +260,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         @info "Ensemble size: $(N_ens)"
         for (kk, method) in enumerate(methods)
             @info "Method: $(nameof(typeof(method)))"
+            ekp_dt = 0.2
             if isa(method, Unscented)
                 ekpobj = EKP.EnsembleKalmanProcess(
                     y,
@@ -259,9 +268,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-                    accelerator = DefaultAccelerator(),
+#                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(),
+                    scheduler = DataMisfitController(terminate_at=100),
                 )
             else
                 ekpobj = EKP.EnsembleKalmanProcess(
@@ -271,9 +280,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-                    accelerator = DefaultAccelerator(),
+ #                   accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(),
+                    scheduler = DataMisfitController(terminate_at=100),
                 )
             end
             Ne = get_N_ens(ekpobj)
@@ -328,7 +337,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 if !isdir(per_method_dir)
                     mkpath(per_method_dir)
                 end
-                prior_filename = joinpath(per_method_dir,"priors_l96.jld2")
+                prior_filename = joinpath(per_method_dir,"l96_priors_$(case).jld2")
                 JLD2.save(prior_filename,"prior", prior)
             end
             if save_all_ekp
