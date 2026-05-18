@@ -8,6 +8,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
 const MCMC = MarkovChainMonteCarlo
 using CalibrateEmulateSample.ParameterDistributions
+const PD = ParameterDistributions
 using CalibrateEmulateSample.Emulators
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.Utilities
@@ -623,6 +624,20 @@ end
         )
         @test noise_injector.use_noise # check for noise_injector_threshold
         @test noise_injector.scaling == 0.5
+
+        # check 1D
+        input_dim = 1
+        n_samples = 10
+        prior_1d = constrained_gaussian("1d-check", 0, 1, -Inf, 5)
+        in_data = PD.sample(prior_1d, n_samples)
+        out_data = PD.sample(prior_1d, n_samples)
+        io_pairs_1d = PairedDataContainer(in_data, out_data, data_are_columns = true)
+
+        # lossless encoding
+        lossless_sch = create_encoder_schedule((minmax_scale(), "in"))
+        initialize_and_encode_with_schedule!(lossless_sch, io_pairs_1d; prior_cov = cov(prior_1d))
+
+        noise_injector = create_noise_injector(lossless_sch, prior_1d, 0.0, 0.5)
 
 
     end
