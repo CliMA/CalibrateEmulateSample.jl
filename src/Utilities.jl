@@ -1163,7 +1163,7 @@ function create_noise_injector(
     end
 
     C = cov(prior)
-    m = (ndims(prior) > 1) ? reshape(mean(prior), :, 1) : fill(mean(prior),1,1)
+    m = (ndims(prior) > 1) ? reshape(mean(prior), :, 1) : fill(mean(prior), 1, 1)
     E = Matrix(E)
 
     enc_m = E * m + b
