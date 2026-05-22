@@ -17,11 +17,6 @@ const EKP = EnsembleKalmanProcesses
 
 method_cases= ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
 force_cases = ["const-force", "vec-force", "flux-force"] # problem types    
-cases = [
-    "GP",
-    "RF-scalar", # diagonalize, train scalar RF, don't asume diag inputs
-    "RF-nonsep", # diagonalize, train scalar RF, don't asume diag inputs
-]
 
 #### CHOOSE YOUR CASE: (todo: looped over in some fashion)
 # calib_data_dir
@@ -34,19 +29,35 @@ force_cases=[force_cases[3]]
 N_enss=[50,75,100]
 rng_idxs=[1,2,3,4]
 
+homedir = pwd()
 
+valid_file_items = []
+valid_files = []
 for force_case in force_cases
     for N_ens in N_enss
         for rng_idx in rng_idxs
+            data_save_directory = joinpath(homedir, "output", calib_directory)
             calib_filename_suffix = "$(force_case)_$(N_ens)_$(rng_idx)"
+            data_file = joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2")
+            if isfile(data_file)
+                push!(valid_files, calib_filename_suffix)
+                push!(valid_file_items, (force_case, N_ens, rng_idx))
+            end
+        end
+    end
+end
+@info "Plotting valid files:"
+display(valid_files)
+println(" ")
+
+for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_items,valid_files)
+    calib_filename_suffix = "$(force_case)_$(N_ens)_$(rng_idx)"
 
             @info("Plotting for L96: \n method: $(calib_directory) \n experiment: $(calib_filename_suffix)")
             
             # load
-            homedir = pwd()
-            println(homedir)
-            figure_save_directory = joinpath(homedir, "output/", calib_directory)
             data_save_directory = joinpath(homedir, "output", calib_directory)
+            figure_save_directory = data_save_directory
             data_file = joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2")
             truth_params = load(data_file)["truth_params_constrained"]
             final_params = load(data_file)["final_params_constrained"]
@@ -79,7 +90,7 @@ for force_case in force_cases
                 color = :black,
                 linewidth = 4,
                 xlabel = "Spatial index",
-                ylabel = "Forcing (input)",
+                ylabel = "Forcing difference (input)",
                 left_margin = 15mm,
                 bottom_margin = 15mm,
             )
@@ -104,11 +115,39 @@ for force_case in force_cases
             
             savefig(plt, joinpath(figure_save_directory, "data_$(calib_filename_suffix).png"))
             savefig(plt, joinpath(figure_save_directory, "data_$(calib_filename_suffix).pdf"))
+                        
+            gr(size = (2 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
+            p1 = plot(
+                range(0, nx - 1, step = 1),
+                zeros(nx),
+                label = "solution",
+                color = :black,
+                linewidth = 4,
+                xlabel = "Spatial index",
+                ylabel = "Forcing difference (input)",
+                left_margin = 15mm,
+                bottom_margin = 15mm,
+            )
             
-            p3 = deepcopy(p1)
-            p4 = deepcopy(p2)
-            
-            plot!(p1, range(0, nx - 1, step = 1), final_params, label = "mean ensemble input", color = :lightgreen, linewidth = 4)
+            p2 = plot(
+                1:ny,
+                y,
+                ribbon = sqrt.(diag(get_obs_noise_cov(ekpobj))),
+                label = "data",
+                color = :black,
+                linewidth = 4,
+                xlabel = "Spatial index",
+                ylabel = "State mean/std output)",
+                left_margin = 15mm,
+                bottom_margin = 15mm,
+                #    xticks = (Int.(0:10:ny), Int.(nx+0:10:nx))
+                #    xticks = (Int.(0:10:ny), [0:10:nx], 10, 20, 30, (40, 0), 10, 20, 30, 40]),
+            )
+
+    p3 = deepcopy(p1)
+    p4 = deepcopy(p2)
+
+            plot!(p1, range(0, nx - 1, step = 1), final_params .- truth_params, label = "mean ensemble input", color = :lightgreen, linewidth = 4)
             plot!(p2, 1:length(y), get_g_mean_final(ekpobj), label = "mean ensemble output", color = :lightgreen, linewidth = 4)
             
             l = @layout [a b]
@@ -121,7 +160,7 @@ for force_case in force_cases
             plot!(
                 p3,
                 range(0, nx - 1, step = 1),
-                get_ϕ_final(prior, ekpobj)[:, 1],
+                get_ϕ_final(prior, ekpobj)[:, 1] .- truth_params,
                 label = "ensemble inputs",
                 color = :lightgreen,
                 linewidth = 4,
@@ -131,7 +170,7 @@ for force_case in force_cases
             plot!(
                 p3,
                 range(0, nx - 1, step = 1),
-                get_ϕ_final(prior, ekpobj)[:, 2:end],
+                get_ϕ_final(prior, ekpobj)[:, 2:end] .- truth_params,
                 label = "",
                 color = :lightgreen,
                 linewidth = 4,
@@ -140,7 +179,7 @@ for force_case in force_cases
             plot!(
                 p3,
                 range(0, nx - 1, step = 1),
-                get_ϕ(prior, ekpobj, 1)[:, 1],
+                get_ϕ(prior, ekpobj, 1)[:, 1] .- truth_params,
                 label = "",
                 color = :lightgreen,
                 linewidth = 4,
@@ -150,7 +189,7 @@ for force_case in force_cases
             plot!(
                 p3,
                 range(0, nx - 1, step = 1),
-                get_ϕ(prior, ekpobj, 1)[:, 2:end],
+                get_ϕ(prior, ekpobj, 1)[:, 2:end] .- truth_params,
                 label = "",
                 color = :lightgreen,
                 linewidth = 4,
@@ -181,12 +220,12 @@ for force_case in force_cases
             gr(size = (1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
             p1 = plot(
                 range(0, nx - 1, step = 1),
-                [truth_params final_params],
+                [truth_params final_params] .- truth_params,
                 label = ["solution" "EKI-opt"],
     color = [:black :lightgreen],
                 linewidth = 4,
                 xlabel = "Spatial index",
-                ylabel = "Forcing (input)",
+                ylabel = "Forcing difference (input)",
                 left_margin = 15mm,
                 bottom_margin = 15mm,
             )
@@ -194,7 +233,7 @@ for force_case in force_cases
             plot!(
                 p1,
                 range(0, nx - 1, step = 1),
-                quantiles[:, 2], # median of all vals
+                quantiles[:, 2] .- truth_params, # median of all vals
                 color = :blue,
                 label = "posterior",
                 linewidth = 4,
@@ -206,8 +245,6 @@ for force_case in force_cases
             savefig(figpath * ".png")
             savefig(figpath * ".pdf")
         end
-    end
-end
 ##########################
 #cases = ["GP", "RF-scalar", "RF-nonsep"]
 #=
