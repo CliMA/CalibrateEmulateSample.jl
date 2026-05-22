@@ -36,9 +36,9 @@ function main()
 
     # calib_filename_suffix items to loop over
     force_cases=[force_cases[3]]
-    N_enss = [50, 75, 100] # [5,15,30] #[50,75,100]
-    rng_idxs=[1,2,3,4]
-
+    N_enss = [100] # [5,15,30] #[50,75,100]
+    rng_idxs=[2,3,4]
+    
     # emulate_sample cases
     for force_case in force_cases
         for N_ens in N_enss
@@ -112,18 +112,21 @@ function main()
                 
                 
                 # Get training points from the EKP iteration number in the second input term  
-                N_iter = min(max_iter, length(get_u(ekpobj)) - 1) # number of paired iterations taken from EKP
+                N_iter = min(max_iter, length(get_u(ekpobj))-1) # number of paired iterations taken from EKP
                 min_iter = min(max_iter, max(1, min_iter))
-                if N_iter < 2
+                if N_iter < 1
+                    @error("No iterations found in ekpobj, perhaps a calibration issue? Skipping case $(calib_filename_suffix)...")
+                    continue
+                elseif N_iter == 1
                     @warn("Convergence in only 1 iteration, removing train-test split based on iterations")
-                    input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:N_iter)
                     @info "Train iterations: $(min_iter:skip_iter:N_iter)"
-                    
+                    input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:N_iter+1)                    
                 else
-                    input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:(N_iter - 1))
-                    input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:(length(get_u(ekpobj)) - 1)) #  "next" iterations
                     @info "Train iterations: $(min_iter:skip_iter:(N_iter-1))"
                     @info "Test iterations: $(N_iter:(length(get_u(ekpobj)) - 1))"
+                    input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:(N_iter - 1))
+                    input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:(length(get_u(ekpobj)) - 1)) #  "next" iterations
+          
                 end
                 
                 # Save data
