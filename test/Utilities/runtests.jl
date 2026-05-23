@@ -268,11 +268,11 @@ end
 
     # likelihood informed
     ll = likelihood_informed()
-    @test get_retain_info(ll) == 1.0
+    @test get_retain_spectral_mass(ll) == 1.0
     @test get_iters(ll) == [1]
     @test get_grad_type(ll) == :linreg
-    ll2 = likelihood_informed(retain_info = 0.99, iters = 3:5, grad_type = :localsl)
-    @test get_retain_info(ll2) == 0.99
+    ll2 = likelihood_informed(retain_spectral_mass = 0.99, iters = 3:5, grad_type = :localsl)
+    @test get_retain_spectral_mass(ll2) == 0.99
     @test get_iters(ll2) == 3:5
     @test get_grad_type(ll2) == :localsl
     ll3 = LikelihoodInformed([2], [3], [4], 0.99, nothing, [3:5], :localsl)
@@ -335,8 +335,8 @@ end
         (canonical_correlation(), "in_and_out"),
         (decorrelate_structure_mat(retain_var = 0.95), "in_and_out"),
         (canonical_correlation(retain_var = 0.95), "in_and_out"),
-        (likelihood_informed(retain_info = 0.99), "in_and_out"),
-        (likelihood_informed(retain_info = 0.99, iters = 1:2, grad_type = :localsl), "in_and_out"),
+        (likelihood_informed(retain_spectral_mass = 0.99), "in_and_out"),
+        (likelihood_informed(retain_spectral_mass = 0.99, iters = 1:2, grad_type = :localsl), "in_and_out"),
     ]
 
     lossless = [fill(true, 6); fill(false, length(schedules) - 6)] # are these lossless approximations? 
@@ -352,7 +352,7 @@ end
 
     # quick test without struct. vec,
     test_kwargs_no_svs = merge(prior_kwargs, obs_kwargs)
-    sch_test = create_encoder_schedule((likelihood_informed(retain_info = 0.85), "in_and_out"))
+    sch_test = create_encoder_schedule((likelihood_informed(retain_spectral_mass = 0.85), "in_and_out"))
     initialize_and_encode_with_schedule!(sch_test, io_pairs; test_kwargs_no_svs...)
 
     # functional test pipeline

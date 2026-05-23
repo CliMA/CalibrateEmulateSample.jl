@@ -2,7 +2,7 @@
 
 using Manifolds, Manopt
 
-export LikelihoodInformed, likelihood_informed, get_retain_info, get_iters, get_grad_type
+export LikelihoodInformed, likelihood_informed, get_retain_spectral_mass, get_iters, get_grad_type
 
 """
 $(TYPEDEF)
@@ -24,7 +24,7 @@ mutable struct LikelihoodInformed{
     encoder_mat::VV1
     decoder_mat::VV2
     data_mean::VV3
-    retain_info::FT
+    retain_spectral_mass::FT
     apply_to::Union{Nothing, AbstractString}
     iters::VV4
     grad_type::Symbol
@@ -34,11 +34,11 @@ end
 $(TYPEDSIGNATURES)
 
 Constructs the `LikelihoodInformed` struct. Keywords:
-- `retain_info`: the method will attempt to limit the KL divergence of the true posterior from the reduced posterior to a value proportional to (1 - `retain_info`). Choose `retain_info` close to 1 to get a good approximation in a large subspace, and reduce it to get a worse approximation in a smaller subspace.
+- `retain_spectral_mass`: The truncation is chosen such that the remaining log-spectrum mass satisfies: `Σ_{i<=k} log(1 + λ_i)/ Σ_i log(1 + λ_i) ≥ retain_spectral_mass` smaller values produce more aggressive dimensionality reduction.
 - `iters`[`= [1]`]: the likelihood-informed data processor requires samples from the distribution `∝ π_prior(x) π_likelihood(y | x)^α` with `α ∈ [0, 1]`. Here, `iter` indicates the structure vector iterations to use, as sampled from these distributions. For how to pass in these samples, see the `use_data_as_samples` parameter.
 - `grad_type`[`= :linreg`]: how the gradient of the forward model at the samples will be approximated. Choose from `:linreg` (global linear regression) and `:localsl` (localized statistical linearization; see [Wacker, 2025]).
 """
-function likelihood_informed(; retain_info = 1, iters = 1, grad_type = :linreg)
+function likelihood_informed(; retain_spectral_mass = 1, iters = 1, grad_type = :linreg)
     grad_types = [:linreg, :localsl]
     if grad_type ∉ grad_types
         throw(ArgumentError("Unknown grad_type=$grad_type, please select from $(grad_types)"))
@@ -53,21 +53,21 @@ function likelihood_informed(; retain_info = 1, iters = 1, grad_type = :linreg)
         )
     end
 
-    LikelihoodInformed([], [], [], retain_info, nothing, iters, grad_type)
+    LikelihoodInformed([], [], [], retain_spectral_mass, nothing, iters, grad_type)
 end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
 get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
 get_data_mean(li::LikelihoodInformed) = li.data_mean
-get_retain_info(li::LikelihoodInformed) = li.retain_info
+get_retain_spectral_mass(li::LikelihoodInformed) = li.retain_spectral_mass
 get_iters(li::LikelihoodInformed) = li.iters
 get_grad_type(li::LikelihoodInformed) = li.grad_type
 
 function Base.show(io::IO, li::LikelihoodInformed)
     out = "LikelihoodInformed"
     out *= ": iters=$(get_iters(li)), grad_type=$(get_grad_type(li))"
-    if get_retain_info(li) < 1.0
-        out *= ", retain_info=$(get_retain_info(li))"
+    if get_retain_spectral_mass(li) < 1.0
+        out *= ", retain_spectral_mass=$(get_retain_spectral_mass(li))"
     end
     print(io, out)
 end
@@ -247,17 +247,37 @@ function initialize_processor!(
             end
 
             # then get the eigen-decomposition
-            decomp = eigen(diagnostic_mat, sortby = (-))
-            # truncate when tail_sum(log(1+λ_i) < ϵ
-            sv_tails = cumsum(reverse(log.(1 .+ decomp.values)))
+            decomp = eigen(diagnostic_mat, sortby = x -> -x)
+            # truncate when tail_sum(log(1+λ_i)) < ϵ
+            summand = log.(1 .+ decomp.values)
+
+            sv_tails = reverse(cumsum(reverse(summand))) # sv_tails[k] = sum_{i>=k} summand[i]
             trunc_val = nothing
-            retain_info = get_retain_info(li)
-            if retain_info >= 1.0
+            retain_spectral_mass = get_retain_spectral_mass(li)
+            if retain_spectral_mass >= 1.0
                 trunc_val = apply_to == "in" ? input_dim : output_dim
             else
-                trunc_val = Int(findfirst(k -> (k == length(sv_tails) || sv_tails[k] < 1-retain_info), eachindex(sv_tails)))
+                # interpret the user object
+                I_total = sv_tails[1]
+                ϵ = 1 - retain_spectral_mass 
+                trunc_val = Int(findfirst(k -> (k == length(sv_tails) || sv_tails[k+1]/ I_total < ϵ ), eachindex(sv_tails)))
                 
-                @info "    truncating at $trunc_val/$(length(sv_tails)) retaining $(100.0*(1-sv_tails[trunc_val]))% of the information"
+                I_tail  = sv_tails[trunc_val+1]
+                I_frac = 1 - I_tail / I_total
+
+                λk = decomp.values[trunc_val]
+                λk1 = trunc_val <  length(decomp.values) ? decomp.values[trunc_val+1] : 0.0
+                
+                gap = λk / (λk1 + eps())
+                tail_ratio = I_tail / log(1+λk)
+                @info """
+                spectral truncation summary:
+                    Truncated at eigenvalue:        $(trunc_val) / $(length(decomp.values)),
+                    Information retained:           $(100*I_frac)%
+                    Information lost (tail mass):   $(I_tail)
+                    tail-to-trunc. ratio (tail/$(trunc_val)): $(tail_ratio)
+                    Spectral gap at truncation:     $(gap)
+                """
             end
             encoder_mat = decomp.vectors[:, 1:trunc_val]'
         else # using diagnostic_f's and diagnostic_egrads
@@ -290,7 +310,7 @@ function initialize_processor!(
 
             k = 1
             Vs = nothing
-            retain_info = get_retain_info(li)
+            retain_spectral_mass = get_retain_spectral_mass(li)
             while true
                 M = Grassmann(output_dim, k)
 
@@ -304,7 +324,8 @@ function initialize_processor!(
 
                 ref = diagnostic_f(M, zeros(output_dim, 0))
                 val = diagnostic_f(M, Vs)
-                if val / ref ≤ 1 - retain_info
+                # TODO: look at greedy metric here... i.e. is the information added here worth it? Possibly with bisection
+                if val / ref ≤ 1 - retain_spectral_mass
                     @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                     break # TODO: Start bisecting?
                 else
