@@ -277,12 +277,14 @@ function Base.show(io::IO, ::MIME"text/plain", x::ForwardMapWrapper)
         show(io, x)
     else
         n_in, n_out = size(get_io_pairs(x), 1)
-        ni = x.noise_injector
+        enc_sch     = get_encoder_schedule(x)
+        ni          = x.noise_injector
         println(io, "ForwardMapWrapper")
         println(io, "  input_dim    : ", n_in)
         println(io, "  output_dim   : ", n_out)
         println(io, "  prior_dim    : ", ndims(get_prior(x)))
-        println(io, "  encoders     : ", length(get_encoder_schedule(x)))
+        _show_encoder_line(io, enc_sch, n_in,  "in",  "encoder (input)  ")
+        _show_encoder_line(io, enc_sch, n_out, "out", "encoder (output) ")
         print(io,   "  noise_inject : ", !isnothing(ni) && ni.use_noise)
     end
 end
