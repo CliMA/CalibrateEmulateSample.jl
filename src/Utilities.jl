@@ -223,12 +223,16 @@ function encoder_kwargs_from(
     if !isnothing(final_samples_out)
         if (isa(final_samples_out, AbstractMatrix)) # add one matrix
             if length(samples_out) > 0
-                @assert(size(samples_out[1]) == size(final_samples_out))
+                size(samples_out[1]) == size(final_samples_out) || error(
+                    "size of final_samples_out ($(size(final_samples_out))) does not match existing samples_out entries ($(size(samples_out[1])))",
+                )
             end
             push!(samples_out, final_samples_out)
         else # add a vector of matrices
             if length(samples_out) > 0
-                @assert all(size(samples_out[1]) == size(so) for so in final_samples_out)
+                all(size(samples_out[1]) == size(so) for so in final_samples_out) || error(
+                    "not all final_samples_out entries have size $(size(samples_out[1])) to match existing samples_out",
+                )
             end
             samples_out = reduce(vcat, [samples_out, final_samples_out])
         end
@@ -278,15 +282,9 @@ function create_compact_linear_map(
     ds = []
     batches = []
     shift = 0
-    for a in Avec
+    for (i, a) in enumerate(Avec)
         bsize = 0
-        if isa(a, UniformScaling)
-            throw(
-                ArgumentError(
-                    "Detected `UniformScaling` (i.e. \"λI\") StructureMatrix, and unable to infer dimensionality. \n Please recast this as a diagonal matrix, defining \"λI(d)\" for dimension d",
-                ),
-            )
-        end
+        isa(a, UniformScaling) && _throw_uniform_scaling_elem(i, length(Avec))
         if isa(a, AbstractMatrix)
             if size(a, 1) <= svd_dim_max
                 svda = svd(a)
@@ -1256,6 +1254,17 @@ function decode_and_add_noise(
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
     noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
     return decode_and_add_noise(noise_injector, samples)
+end
+
+## Error helpers
+
+@noinline function _throw_uniform_scaling_elem(i::Int, total::Int)
+    throw(ArgumentError("""
+Structure matrix $i (of $total) is a `UniformScaling` ("λI"), whose dimension cannot be inferred.
+
+Suggestion:
+    Replace `λ * I` with `Diagonal(fill(λ, d))` where `d` is the required matrix dimension.
+"""))
 end
 
 # Processors

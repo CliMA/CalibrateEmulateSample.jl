@@ -386,13 +386,7 @@ function build_models!(
         n_train = Int(floor(train_fraction * n_data))
         n_test = n_data - n_train
 
-        if n_test * n_cross_val_sets > n_data
-            throw(
-                ArgumentError(
-                    "train/test split produces cross validation test sets of size $(n_test), out of $(n_data). \"n_cross_val_sets\" optimizer_options keyword < $(Int(floor(n_data/n_test))). Received $n_cross_val_sets",
-                ),
-            )
-        end
+        n_test * n_cross_val_sets > n_data && _throw_cross_val_split(n_test, n_data, n_cross_val_sets)
 
         for i in 1:n_cross_val_sets
             tmp = idx_shuffle[((i - 1) * n_test + 1):(i * n_test)]
@@ -425,11 +419,7 @@ function build_models!(
         elseif multithread == "tullio"
             multithread_type = TullioThreading()
         else
-            throw(
-                ArgumentError(
-                    "Unknown optimizer option for multithreading, please choose from \"tullio\" (allows Tullio.jl to control threading in RandomFeatures.jl), or \"ensemble\" (threading is done over the ensemble)",
-                ),
-            )
+            _throw_unknown_multithread(multithread)
         end
         # scale up the prior so that default priors are always "reasonable"
         prior_in_scale = 1.0 ./ std(input_values, dims = 2)

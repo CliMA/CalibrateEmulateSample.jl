@@ -131,11 +131,7 @@ function cov_structure_from_string(s::S, d::Int) where {S <: AbstractString}
     elseif s == "hierlowrank"
         return HierarchicalLowRankFactor(Int(ceil(sqrt(d))))
     else
-        throw(
-            ArgumentError(
-                "Recieved unknown `input_cov_structure` keyword $(s), \n please choose from [\"onedim\",\"diagonal\",\"cholesky\", \"lowrank\"] or provide a CovarianceStructureType",
-            ),
-        )
+        _throw_unknown_cov_structure(s)
     end
 end
 cov_structure_from_string(cst::CST, args...; kwargs...) where {CST <: CovarianceStructureType} = cst
@@ -1104,6 +1100,54 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     return vcat(blockmeans, coeffl2norm, complexity), blockcovmat
 
+end
+
+## Error helpers
+
+@noinline function _throw_unknown_cov_structure(s)
+    throw(ArgumentError("""
+Unknown `input_cov_structure` keyword.
+
+Expected:
+    One of: "onedim", "diagonal", "cholesky", "lowrank", or a CovarianceStructureType value
+
+Got:
+    input_cov_structure = $(repr(s))
+
+Suggestion:
+    Pass a recognised string keyword or construct a CovarianceStructureType directly.
+"""))
+end
+
+@noinline function _throw_unknown_multithread(multithread)
+    throw(ArgumentError("""
+Unknown `multithread` optimizer option.
+
+Expected:
+    "tullio" (lets Tullio.jl control threading in RandomFeatures.jl)
+    "ensemble" (threads over ensemble members)
+
+Got:
+    multithread = $(repr(multithread))
+"""))
+end
+
+@noinline function _throw_cross_val_split(n_test, n_data, n_cross_val_sets)
+    throw(ArgumentError("""
+`n_cross_val_sets` is too large for the available data and train/test split.
+
+Expected:
+    n_cross_val_sets ≤ $(Int(floor(n_data / n_test)))
+
+Got:
+    n_data           = $n_data
+    n_test           = $n_test  (= n_data - n_train)
+    n_cross_val_sets = $n_cross_val_sets
+
+Suggestion:
+    Reduce `n_cross_val_sets` to at most $(Int(floor(n_data / n_test))), or increase
+    `train_fraction` to produce smaller test sets.
+"""))
 end
 
 include("ScalarRandomFeature.jl")

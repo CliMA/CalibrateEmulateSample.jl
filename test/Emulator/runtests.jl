@@ -41,7 +41,9 @@ struct MLTester <: Emulators.MachineLearningTool end
 
     # Unknown ML type
     mlt = MLTester()
-    @test_throws ErrorException emulator = Emulator(mlt, io_pairs)
+    let thrown = @test_throws ArgumentError Emulator(mlt, io_pairs)
+        @test contains(thrown.value.msg, "does not implement the required emulator interface")
+    end
 
     # test getters & defaults
     gp = GaussianProcess(GPJL())
@@ -142,7 +144,10 @@ end
     y_pred_enc, y_cov_enc = EM.predict(fmw, x_test; encode = "out")
     y_test_enc = encode_data(fmw, y_test, "out")
     @test all(isapprox(norm(y_pred_enc - y_test_enc), 0; atol = sqrt(d * m) * tol))
-    @test_throws ArgumentError EM.predict(fmw, x_test')
+    let thrown = @test_throws DimensionMismatch EM.predict(fmw, x_test')
+        @test contains(thrown.value.msg, "ForwardMapWrapper")
+        @test contains(thrown.value.msg, "new_inputs row count")
+    end
 
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))

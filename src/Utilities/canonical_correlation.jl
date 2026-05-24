@@ -97,11 +97,7 @@ function initialize_processor!(
     if length(get_encoder_mat(cc)) == 0
 
         if size(in_data, 2) < size(in_data, 1) || size(out_data, 2) < size(out_data, 1)
-            throw(
-                ArgumentError(
-                    "CanonicalCorrelation implementation not defined for # data samples < dimensions, please obtain more samples, or perform prior dimension reduction approaches until this is satisfied",
-                ),
-            )
+            _throw_insufficient_cca_samples(in_data, out_data)
         end
 
         # Individually decompose in and out
@@ -189,4 +185,24 @@ end
 function _decode_structure_matrix(cc::CanonicalCorrelation, enc_structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(cc)[1]
     return decoder_mat * enc_structure_matrix * decoder_mat'
+end
+
+## Error helpers
+
+@noinline function _throw_insufficient_cca_samples(in_data, out_data)
+    throw(ArgumentError("""
+CanonicalCorrelation requires at least as many data samples as input and output dimensions.
+
+Expected:
+    size(in_data, 2)  ≥ size(in_data, 1)   (samples ≥ input dimension)
+    size(out_data, 2) ≥ size(out_data, 1)  (samples ≥ output dimension)
+
+Got:
+    size(in_data)  = $(size(in_data))   ($(size(in_data,2)) samples, $(size(in_data,1)) input dims)
+    size(out_data) = $(size(out_data))  ($(size(out_data,2)) samples, $(size(out_data,1)) output dims)
+
+Suggestion:
+    Obtain more data samples, or apply a dimension-reduction step (e.g. Decorrelator)
+    before using CanonicalCorrelation.
+"""))
 end

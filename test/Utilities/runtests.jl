@@ -165,7 +165,10 @@ end
         A[4].svd_cov.U * Diagonal(A[4].svd_cov.S) * A[4].svd_cov.Vt + A[4].diag_cov
 
 
-    @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+    let thrown = @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+        @test contains(thrown.value.msg, "UniformScaling")
+        @test contains(thrown.value.msg, "Diagonal")
+    end
 
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing
@@ -280,7 +283,10 @@ end
     @test get_decoder_mat(ll3) == [3]
     @test get_data_mean(ll3) == [4]
     @test_throws ArgumentError likelihood_informed(grad_type = :bad_type)
-    @test_throws ArgumentError likelihood_informed(iters = 1.3)
+    let thrown = @test_throws ArgumentError likelihood_informed(iters = 1.3)
+        @test contains(thrown.value.msg, "eltype(iters)")
+        @test contains(thrown.value.msg, "Float64")
+    end
 
     # test equalities
     cc = canonical_correlation()

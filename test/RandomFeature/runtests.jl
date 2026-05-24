@@ -78,7 +78,10 @@ rng = Random.MersenneTwister(seed)
             @test cov_structure_from_string(cs, d) == cc
         end
         @test cov_structure_from_string(OneDimFactor()) == OneDimFactor()
-        @test_throws ArgumentError cov_structure_from_string("bad-string", d)
+        let thrown = @test_throws ArgumentError cov_structure_from_string("bad-string", d)
+            @test contains(thrown.value.msg, "input_cov_structure")
+            @test contains(thrown.value.msg, repr("bad-string"))
+        end
 
         # [2. ] Kernel Structures 
         d = 6

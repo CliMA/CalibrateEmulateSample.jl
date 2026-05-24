@@ -39,12 +39,17 @@ include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
 # etc.
 
 # defaults in error, all MachineLearningTools require these functions.
-function throw_define_mlt(mlt)
-    throw(
-        ErrorException(
-            "Unknown MachineLearningTool defined, please use a known implementation. Please check all methods are defined for the MLT received: \n $mlt",
-        ),
-    )
+@noinline function throw_define_mlt(mlt)
+    throw(ArgumentError("""
+Unknown machine learning tool type — $(typeof(mlt)) does not implement the required emulator interface.
+
+Got:
+    typeof(mlt) = $(typeof(mlt))
+
+Suggestion:
+    Implement `build_models!`, `optimize_hyperparameters!`, and `predict` for your custom type,
+    or use a built-in type such as `GaussianProcess` or `ScalarRandomFeatureInterface`.
+"""))
 end
 function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
     throw_define_mlt(mlt)
@@ -339,13 +344,7 @@ function predict(
     check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != check_dim
-        throw(
-            ArgumentError(
-                "Emulator object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
-            ),
-        )
-    end
+    size(new_inputs, 1) != check_dim && _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :Emulator)
 
 
     # encode the new input data
@@ -519,13 +518,7 @@ function predict(
     check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != check_dim
-        throw(
-            ArgumentError(
-                "ForwardMapWrapper object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
-            ),
-        )
-    end
+    size(new_inputs, 1) != check_dim && _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :ForwardMapWrapper)
 
     prior = get_prior(fmw)
     if in_already_encoded
@@ -581,7 +574,26 @@ function predict(
 end
 
 
+## Error helpers
+
+@noinline function _throw_input_dim_mismatch(actual::Int, expected::Int; caller::Symbol)
+    throw(DimensionMismatch("""
+$caller: new_inputs row count does not match the expected input dimension.
+
+Expected:
+    size(new_inputs, 1) == $expected
+
+Got:
+    size(new_inputs, 1) = $actual
+
+Suggestion:
+    Pass new_inputs with $expected rows (one per input dimension).
+    If inputs are already in the encoded space, set `in_already_encoded = true`.
+"""))
+end
+
 ### Deprecated keywords
+
 function deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
     if !isnothing(transform_to_real)
         @warn(

@@ -42,25 +42,34 @@ vague scope like "the whole package" or "all the source files".
 **Agent prompt to use** (fill in `<path>` and `<package_name>`):
 
 ```
-Audit `<path>` for error-raising patterns. For every `@assert`, `error(`, or
-`throw(` site in every `.jl` file:
+Audit `<path>` for error-raising patterns. Before reading individual files, grep
+for two structurally-broken patterns that are the highest priority to fix:
+
+  rg -n 'throw\s*\(\s*[A-Z]\w+\s*,' <path>   # throw(Type, "string") — always MethodError
+  rg -n 'throw\s*\(\s*"' <path>              # throw("raw string") — throws non-exception
+
+Then, for every `@assert`, `error(`, or `throw(` site in every `.jl` file:
 
 1. Record: file, line number, exception type (or "bare @assert" / "bare error"),
    and the full message text (including multiline strings).
 2. Classify message quality:
+   - "broken" — structurally wrong throw that will never produce the intended
+     exception: `throw(Type, "string")` (always MethodError), or `throw("string")`
+     (throws a raw String, not catchable as a typed exception)
    - "good"  — has `$(expr)` interpolation showing the actual received value, and
      is either short (≤3 lines) or already in a `_throw_` helper function
-   - "long-inline" — message content is good, but the body exceeds 3 lines and
-     the throw is written inline (not in a `_throw_` helper)
+   - "long-inline" — message content is good, but the message string body exceeds
+     3 lines and the throw is written inline (not in a `_throw_` helper)
    - "vague" — missing a received value, or no Expected/Got structure
    - "missing" — bare `@assert` with no message at all
 3. Note whether the site is at an API boundary (user-facing input) or an internal
    invariant (would require a package bug to fire).
 
 Return a markdown table with columns:
-  File | Line | Exception type | Quality | Notes (one-line note on what's wrong if vague/missing/long-inline)
+  File | Line | Exception type | Quality | Notes (one-line note on what's wrong)
 
-Focus only on sites that are "vague", "missing", or "long-inline" — skip "good" ones.
+Focus only on sites that are "broken", "vague", "missing", or "long-inline" — skip "good" ones.
+Fix "broken" sites first — they silently misbehave rather than just being unhelpful.
 ```
 
 **How to use the result**: treat the returned table as your working inventory for
@@ -209,6 +218,10 @@ Inline is appropriate only for genuinely short messages (≤3 lines) at a single
 call site. A single summary line, or a summary plus one Got line, is the ceiling
 for inline. When in doubt, count — if it doesn't fit in 3 lines, extract.
 
+Count lines of the *message string body*, not lines of the surrounding `throw(...)`
+call. A single-line message formatted as `throw(\n  ArgumentError(\n    "msg"\n  )\n)` across
+five code lines is still a 1-line message and does not require extraction.
+
 **Where helpers go**
 
 Default: a `## Error helpers` section at the **bottom of the source file**, above
@@ -221,6 +234,11 @@ utility file) only when **≥2 different source files** call the same helper. Di
 which file to use by reading the top-level module file (e.g. `src/PackageName.jl`)
 for its `include(...)` list — then add `include("ErrorMessages.jl")` as the first
 `include` so every subsequent file sees the helpers without any `using`/`import`.
+
+**Include-chained files**: if the two source files are both `include`-d by a common
+parent file (e.g. `ScalarRandomFeature.jl` and `VectorRandomFeature.jl` are both
+included by `RandomFeature.jl`), add the shared helper to that parent file *before*
+the `include(...)` lines — no new file needed, and no `using`/`import` required.
 
 **Naming convention**
 
@@ -383,6 +401,18 @@ site:
 ```bash
 grep -n '@test_throws' test/<module>/runtests.jl | grep '<function_name>'
 ```
+
+**Before changing an exception type**, also grep for existing tests that assert the
+*old* type — they will silently become stale after your edit:
+
+```bash
+grep -rn '@test_throws OldType' test/
+```
+
+Update every hit in the same edit that changes the source. A stale
+`@test_throws WrongType` will either pass against old code and fail once your
+rewrite lands, or pass forever without catching a regression — either way it's
+a test that no longer protects anything.
 
 Three outcomes:
 
