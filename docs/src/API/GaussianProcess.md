@@ -18,4 +18,6 @@ GaussianProcess(
 build_models!(::GaussianProcess{GPJL}, ::PairedDataContainer{FT}, input_structure_mats, output_structure_mats) where {FT <: AbstractFloat}
 optimize_hyperparameters!(::GaussianProcess{GPJL})
 predict(::GaussianProcess{GPJL},  ::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+get_params
+get_param_names
 ```

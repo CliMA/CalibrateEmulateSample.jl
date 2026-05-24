@@ -59,8 +59,29 @@ end
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
 get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
 get_data_mean(li::LikelihoodInformed) = li.data_mean
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the `retain_info` threshold stored in `li`, controlling how much of the
+KL-divergence reduction from the full posterior is retained by the subspace.
+"""
 get_retain_info(li::LikelihoodInformed) = li.retain_info
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the iteration indices stored in `li` that specify which distribution samples
+(indexed by algorithm-time `α`) are used to construct the likelihood-informed subspace.
+"""
 get_iters(li::LikelihoodInformed) = li.iters
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the gradient-approximation type stored in `li`: `:linreg` (global linear regression)
+or `:localsl` (localized statistical linearization).
+"""
 get_grad_type(li::LikelihoodInformed) = li.grad_type
 
 function initialize_processor!(

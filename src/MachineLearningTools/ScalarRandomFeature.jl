@@ -2,12 +2,12 @@ export ScalarRandomFeatureInterface
 # getters already exported in VRFI
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Structure holding the Scalar Random Feature models. 
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 
 """
 struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST <: KernelStructureType} <:
@@ -37,49 +37,49 @@ struct ScalarRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the rfms field
 """
 get_rfms(srfi::ScalarRandomFeatureInterface) = srfi.rfms
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the fitted_features field
 """
 get_fitted_features(srfi::ScalarRandomFeatureInterface) = srfi.fitted_features
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets batch_sizes the field
 """
 get_batch_sizes(srfi::ScalarRandomFeatureInterface) = srfi.batch_sizes
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the n_features field
 """
 get_n_features(srfi::ScalarRandomFeatureInterface) = srfi.n_features
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the input_dim field
 """
 get_input_dim(srfi::ScalarRandomFeatureInterface) = srfi.input_dim
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the rng field
 """
 EKP.get_rng(srfi::ScalarRandomFeatureInterface) = srfi.rng
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the regularization field
 """
@@ -87,28 +87,28 @@ get_regularization(srfi::ScalarRandomFeatureInterface) = srfi.regularization
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the kernel_structure field
 """
 get_kernel_structure(srfi::ScalarRandomFeatureInterface) = srfi.kernel_structure
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the feature_decomposition field
 """
 get_feature_decomposition(srfi::ScalarRandomFeatureInterface) = srfi.feature_decomposition
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the optimizer_options field
 """
 get_optimizer_options(srfi::ScalarRandomFeatureInterface) = srfi.optimizer_options
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the optimizer field
 """
@@ -116,7 +116,7 @@ get_optimizer(srfi::ScalarRandomFeatureInterface) = srfi.optimizer
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for the `RandomFeatures.jl` package for multi-input and single- (or decorrelated-)output emulators.
  - `n_features` - the number of random features
@@ -126,20 +126,20 @@ Constructs a `ScalarRandomFeatureInterface <: MachineLearningTool` interface for
  - `rng = Random.GLOBAL_RNG` - random number generator 
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
  - `optimizer_options = nothing` - Dict of options to pass into EKI optimization of hyperparameters (defaults created in `ScalarRandomFeatureInterface` constructor):
-     - "prior":  the prior for the hyperparameter optimization 
-     - "n_ensemble":  number of ensemble members
-     - "n_iteration":  number of eki iterations
-     - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0)  
-     - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
-     - "inflation":  additive inflation ∈ [0,1] with 0 being no inflation
-     - "train_fraction":  e.g. 0.8 (default)  means 80:20 train - test split
-     - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
-     - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
-     - "accelerator": use EKP accelerators (default is no acceleration)
-     - "verbose" => false: verbose optimizer statements
-     - "cov_correction" => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
-     - "overfit" => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
-     - "n_cross_val_sets" => 2: train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
+     - `"prior"`:  the prior for the hyperparameter optimization 
+     - `"n_ensemble"`:  number of ensemble members
+     - `"n_iteration"`:  number of eki iterations
+     - `"cov_sample_multiplier"`: increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0)  
+     - `"scheduler"`: Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
+     - `"inflation"`:  additive inflation ∈ [0,1] with 0 being no inflation
+     - `"train_fraction"`:  e.g. 0.8 (default)  means 80:20 train - test split
+     - `"n_features_opt"`:  fix the number of features for optimization (default `n_features`, as used for prediction)
+     - `"multithread"`: how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
+     - `"accelerator"`: use EKP accelerators (default is no acceleration)
+     - `"verbose"` => false: verbose optimizer statements
+     - `"cov_correction"` => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
+     - `"overfit"` => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
+     - `"n_cross_val_sets"` => 2: train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 """
 function ScalarRandomFeatureInterface(
     n_features::Int,
@@ -253,7 +253,7 @@ function hyperparameter_distribution_from_flat(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Builds the random feature method from hyperparameters. We use cosine activation functions and a MatrixVariateNormal(M,U,V) distribution (from `Distributions.jl`) with mean M=0, and input covariance U built using a `CovarianceStructureType`.
 """
@@ -330,7 +330,7 @@ RFM_from_hyperparameters(
 )
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Builds the random feature method from hyperparameters. We use cosine activation functions and a Multivariate Normal distribution (from `Distributions.jl`) with mean M=0, and input covariance U built with the `CovarianceStructureType`.
 """
@@ -614,7 +614,7 @@ function build_models!(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Empty method, as optimization takes place within the build_models stage
 """
@@ -623,7 +623,7 @@ function optimize_hyperparameters!(srfi::ScalarRandomFeatureInterface, args...; 
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Prediction of emulator mean at new inputs (passed in as columns in a matrix), and a prediction of the total covariance at new inputs equal to (emulator covariance + noise covariance). 
 """

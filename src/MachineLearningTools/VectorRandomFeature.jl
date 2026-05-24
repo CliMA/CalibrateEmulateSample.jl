@@ -13,12 +13,12 @@ export get_rfms,
     get_optimizer
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Structure holding the Vector Random Feature models. 
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 
 """
 struct VectorRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST <: KernelStructureType} <:
@@ -50,91 +50,91 @@ struct VectorRandomFeatureInterface{S <: AbstractString, RNG <: AbstractRNG, KST
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the rfms field
 """
 get_rfms(vrfi::VectorRandomFeatureInterface) = vrfi.rfms
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the fitted_features field
 """
 get_fitted_features(vrfi::VectorRandomFeatureInterface) = vrfi.fitted_features
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the batch_sizes field
 """
 get_batch_sizes(vrfi::VectorRandomFeatureInterface) = vrfi.batch_sizes
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the n_features field
 """
 get_n_features(vrfi::VectorRandomFeatureInterface) = vrfi.n_features
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the input_dim field
 """
 get_input_dim(vrfi::VectorRandomFeatureInterface) = vrfi.input_dim
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the output_dim field
 """
 get_output_dim(vrfi::VectorRandomFeatureInterface) = vrfi.output_dim
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the rng field
 """
 EKP.get_rng(vrfi::VectorRandomFeatureInterface) = vrfi.rng
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the regularization field
 """
 get_regularization(vrfi::VectorRandomFeatureInterface) = vrfi.regularization
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the kernel_structure field
 """
 get_kernel_structure(vrfi::VectorRandomFeatureInterface) = vrfi.kernel_structure
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the feature_decomposition field
 """
 get_feature_decomposition(vrfi::VectorRandomFeatureInterface) = vrfi.feature_decomposition
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Gets the optimizer_options field
 """
 get_optimizer_options(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer_options
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 gets the optimizer field
 """
 get_optimizer(vrfi::VectorRandomFeatureInterface) = vrfi.optimizer
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for the `RandomFeatures.jl` package for multi-input and multi-output emulators.
  - `n_features` - the number of random features
@@ -145,21 +145,21 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
  - `rng = Random.GLOBAL_RNG` - random number generator 
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
  - `optimizer_options = nothing` - Dict of options to pass into EKI optimization of hyperparameters (defaults created in `VectorRandomFeatureInterface` constructor):
-      - "prior": the prior for the hyperparameter optimization
+      - `"prior"`: the prior for the hyperparameter optimization
       - "prior_in_scale"/"prior_out_scale": use these to tune the input/output prior scale.
-      - "n_ensemble": number of ensemble members
-      - "n_iteration": number of eki iterations
-      - "scheduler": Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
-      - "cov_sample_multiplier": increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0) 
-      - "inflation": additive inflation ∈ [0,1] with 0 being no inflation
-      - "train_fraction": e.g. 0.8 (default)  means 80:20 train - test split
-      - "n_features_opt":  fix the number of features for optimization (default `n_features`, as used for prediction)
-      - "multithread": how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
-      - "accelerator": use EKP accelerators (default is no acceleration)
-      - "verbose" => false, verbose optimizer statements to check convergence, priors and optimal parameters.
-     - "cov_correction" => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
-      - "overfit" => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
-      - "n_cross_val_sets" => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
+      - `"n_ensemble"`: number of ensemble members
+      - `"n_iteration"`: number of eki iterations
+      - `"scheduler"`: Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
+      - `"cov_sample_multiplier"`: increase for more samples to estimate covariance matrix in optimization (default 10.0, minimum 0.0) 
+      - `"inflation"`: additive inflation ∈ [0,1] with 0 being no inflation
+      - `"train_fraction"`: e.g. 0.8 (default)  means 80:20 train - test split
+      - `"n_features_opt"`:  fix the number of features for optimization (default `n_features`, as used for prediction)
+      - `"multithread"`: how to multithread. "ensemble" (default) threads across ensemble members "tullio" threads random feature matrix algebra
+      - `"accelerator"`: use EKP accelerators (default is no acceleration)
+      - `"verbose"` => false, verbose optimizer statements to check convergence, priors and optimal parameters.
+     - `"cov_correction"` => "nice": type of conditioning to improve estimated covariance. "shrinkage", "shrinkage_corr" (Ledoit Wolfe 03), "nice" for (Vishny, Morzfeld et al. 2024)
+      - `"overfit"` => 1.0: if > 1.0 forcibly overfit/under-regularize the optimizer cost, (vice versa for < 1.0).
+      - `"n_cross_val_sets"` => 2, train fraction creates (default 5) train-test data subsets, then use 'n_cross_val_sets' of these stacked in the loss function. If set to 0, train=test on the full data provided ignoring "train_fraction".
 """
 function VectorRandomFeatureInterface(
     n_features::Int,
@@ -300,7 +300,7 @@ end
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Builds the random feature method from hyperparameters. We use cosine activation functions and a Matrixvariate Normal distribution with mean M=0, and input(output) covariance U(V) built with a `CovarianceStructureType`.
 """
@@ -355,7 +355,7 @@ end
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Build Vector Random Feature model for the input-output pairs subject to regularization, and optimizes the hyperparameters with EKP. 
 """
@@ -643,7 +643,7 @@ function build_models!(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Empty method, as optimization takes place within the build_models stage
 """
@@ -652,7 +652,7 @@ function optimize_hyperparameters!(vrfi::VectorRandomFeatureInterface, args...; 
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Prediction of data observation (not latent function) at new inputs (passed in as columns in a matrix). That is, we add the observational noise into predictions.
 """

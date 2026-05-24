@@ -77,10 +77,10 @@ the definition. Produce a prioritised list:
 
 **Also scan every function in the file for old-style docstrings**, regardless of
 whether it is exported. An old-style docstring is one that uses an indented
-function-name header (e.g. `    my_func(arg1, arg2)`) and/or an `Args:` /
-`Arguments:` block with the `` `name` - description `` format. Convert these to
-the `$(TYPEDSIGNATURES)` convention in the same editing pass — the whole file
-should end up stylistically uniform.
+function-name header (e.g. `    my_func(arg1, arg2)`), a `$(FUNCTIONNAME)(args...)`
+header line, and/or an `Args:` / `Arguments:` block with the `` `name` - description ``
+format. Convert these to the `$(TYPEDSIGNATURES)` convention in the same editing
+pass — the whole file should end up stylistically uniform.
 
 ### Step 3 — Draft docstrings
 
@@ -182,11 +182,14 @@ checking whether the function is mentioned in user-facing tutorials or the
 
 #### Old-style function docstrings (all functions, not just exported)
 
-Convert any docstring that uses an indented function-name header or an `Args:` /
-`Arguments:` section to the `$(TYPEDSIGNATURES)` style, even for internal
-(non-exported) helpers. The canonical old-style markers are:
+Convert any docstring that uses an indented function-name header, a `$(FUNCTIONNAME)`
+header, or an `Args:` / `Arguments:` section to the `$(TYPEDSIGNATURES)` style, even
+for internal (non-exported) helpers. The canonical old-style markers are:
 
 - First line indented with spaces: `    my_func(arg, ...)` — replace with `$(TYPEDSIGNATURES)`.
+- First line is `$(FUNCTIONNAME)(args...)` or `$(DocStringExtensions.FUNCTIONNAME)(args...)` —
+  replace the entire header line with `$(TYPEDSIGNATURES)` and convert any signature
+  description into prose below it.
 - Argument block labelled `Args:` or `Arguments:` with `` `name` - description `` lines — replace
   with a `# Arguments` section using `` - `name`: description `` format.
 
@@ -209,6 +212,18 @@ old-style docstrings from persisting as invisible technical debt.
 - For every non-trivial public function where a minimal runnable example can be
   written, add a `# Examples` section with a `jldoctest` block so Documenter.jl
   can verify the example stays correct as the code evolves.
+- Always use the **unqualified** macro forms: `$(TYPEDSIGNATURES)`, `$(TYPEDEF)`,
+  `$(TYPEDFIELDS)`, `$(METHODLIST)` — never `$(DocStringExtensions.TYPEDSIGNATURES)`
+  etc. Julia propagates `using DocStringExtensions` from a module to all files it
+  `include`s, so the short forms are always in scope within a package.
+- Only write `` [`name`](@ref) `` cross-reference links to symbols that have a
+  `@docs` entry on some API page. For concrete subtypes that are described under
+  their abstract parent's docstring but not individually listed in `@docs`, use
+  plain backtick code instead (e.g. `` `GPJL` `` rather than `` [`GPJL`](@ref) ``).
+  Broken `@ref` links cause docs build errors that are hard to trace back to the
+  offending docstring.
+- Fix obvious typos (missing quotes, misspelled words) in existing docstrings
+  encountered during the editing pass rather than deferring them.
 
 ### Step 4 — Apply edits
 
@@ -272,11 +287,19 @@ Steps 1–3) before adding it to the API page — an undocumented entry in a
 `@docs` block will cause the docs build to error. Every exported, defined
 symbol must end up with a docstring and an API page entry.
 
+**Re-exported symbols.** Before adding a symbol to a page, verify the symbol is
+*defined* in the page's `CurrentModule` — not merely imported or re-exported from
+another module via `import` or `using ... : name`. If it is imported, it belongs
+on the source module's page only; adding it to the importing module's page creates
+a duplicate `@docs` entry that causes a docs build error. A reliable check: grep
+the source files of `CurrentModule` for the function or type definition — if the
+only match is an `import` statement, it lives elsewhere.
+
 **Stale API entries.** An entry is **stale** when the base name is no longer
 exported from the module, or the symbol no longer has a definition in the
 source.
 
-Run all three checks before making edits so you can see the full diff in one
+Run all four checks before making edits so you can see the full diff in one
 pass.
 
 #### 5d — Place missing symbols into appropriate sections
@@ -357,6 +380,12 @@ expect. Apply them consistently.
   signature — never write a manual indented signature as well.
 - **No trailing whitespace** inside the docstring.
 - **No emojis.**
+- **Backtick all identifiers in prose**: any `snake_case` name or quoted string key
+  that appears in prose outside a code fence or existing backtick span must be
+  wrapped in backticks. This is especially important for Dict option keys in
+  `# Arguments` sub-lists (e.g. `` `"cov_sample_multiplier"` `` not
+  `"cov_sample_multiplier"`) — without backticks, Documenter.jl's markdown parser
+  may treat underscores as italic markers.
 - **Physical units** in square brackets: `[m/day]`, `[kg/m³]`, `[day]`, etc.
 - **Field string literals** (the string above each struct field) are distinct
   from the struct-level docstring. Preserve both; do not merge them.

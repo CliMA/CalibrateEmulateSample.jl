@@ -19,6 +19,7 @@ MCMCWrapper(
 sample
 get_posterior
 optimize_stepsize
+get_sample_kwargs
 ```
 
 See [AbstractMCMC sampling API](@ref) for background on our use of Turing.jl's 
@@ -30,6 +31,7 @@ MCMC sampling.
 ```@docs
 MCMCProtocol
 AutodiffProtocol
+GradFreeProtocol
 ForwardDiffProtocol
 ReverseDiffProtocol
 RWMHSampling
@@ -49,4 +51,10 @@ EmulatorPosteriorModel
 ```@docs
 MCMCState
 accept_ratio
+```
+
+## Diagnostics
+
+```@docs
+esjd
 ```
