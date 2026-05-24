@@ -205,15 +205,6 @@ returns the `decorrelate_with` field of the `Decorrelator`.
 """
 get_decorrelate_with(dd::Decorrelator) = dd.decorrelate_with
 
-function Base.show(io::IO, dd::Decorrelator)
-    out = "Decorrelator"
-    out *= ": decorrelate_with=$(get_decorrelate_with(dd))"
-    if get_retain_var(dd) < 1.0
-        out *= ", retain_var=$(get_retain_var(dd))"
-    end
-    print(io, out)
-end
-
 """
 $(TYPEDSIGNATURES)
 

@@ -138,12 +138,6 @@ returns the `struct_decoder_mat` field of the `ElementwiseScaler`. For Consisten
 get_decoder_mat(es::ElementwiseScaler) = es.struct_decoder_mat
 
 
-function Base.show(io::IO, es::ElementwiseScaler)
-    out = "ElementwiseScaler: $(get_type(es))"
-    print(io, out)
-end
-
-
 function initialize_processor!(
     es::ElementwiseScaler,
     data::MM,

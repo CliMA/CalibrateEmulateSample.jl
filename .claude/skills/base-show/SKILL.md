@@ -170,6 +170,30 @@ default to `src/show.jl` if no prior convention exists.
 If creating `src/show.jl`, add `include("show.jl")` to the main module file after the
 type definitions it references.
 
+**Submodule getter pitfall** — when `show.jl` is collected at the top level of a
+package that uses submodules, a getter function defined *inside a submodule* is only
+accessible from `show.jl` if it is exported from that submodule. An unexported getter
+such as `get_noise_injector` will raise a confusing `MethodError: no method matching
+show(...)` at runtime — the error message names the *show* method because Julia
+cannot resolve the getter call inside the show body, and the nearest enclosing method
+frame is the show method itself.
+
+Before writing a show body that calls getters, check whether each getter is exported:
+
+```
+grep -n "export.*getter_name" src/SubModule.jl
+```
+
+If the getter is not exported, use direct field access (`x.field`) instead. This is
+safe — show methods are implementation code, not public API, so coupling to field
+names is acceptable. As a cross-check, after writing all methods, grep show.jl for
+every function call that is not a Julia built-in and confirm each one appears in an
+`export` statement in its defining submodule:
+
+```
+grep -oP '(?<=\()[\w_]+(?=\()' src/show.jl | sort -u
+```
+
 ### Step 4 — Write unit tests
 
 Write one test block per type, covering `show` (full and compact), and `summary`. Each

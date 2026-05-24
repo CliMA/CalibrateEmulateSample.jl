@@ -71,19 +71,6 @@ returns the `apply_to` field of the `CanonicalCorrelation`.
 """
 get_apply_to(cc::CanonicalCorrelation) = cc.apply_to
 
-function Base.show(io::IO, cc::CanonicalCorrelation)
-
-    out = "CanonicalCorrelation:"
-    if length(get_apply_to(cc)) > 0
-        out *= " apply_to=$(get_apply_to(cc)[1])"
-    end
-    if get_retain_var(cc) < 1.0
-        out *= " retain_var=$(get_retain_var(cc))"
-    end
-    print(io, out)
-end
-
-
 function initialize_processor!(
     cc::CanonicalCorrelation,
     in_data::MM,

@@ -63,15 +63,6 @@ get_retain_info(li::LikelihoodInformed) = li.retain_info
 get_iters(li::LikelihoodInformed) = li.iters
 get_grad_type(li::LikelihoodInformed) = li.grad_type
 
-function Base.show(io::IO, li::LikelihoodInformed)
-    out = "LikelihoodInformed"
-    out *= ": iters=$(get_iters(li)), grad_type=$(get_grad_type(li))"
-    if get_retain_info(li) < 1.0
-        out *= ", retain_info=$(get_retain_info(li))"
-    end
-    print(io, out)
-end
-
 function initialize_processor!(
     li::LikelihoodInformed,
     in_data::MM,
