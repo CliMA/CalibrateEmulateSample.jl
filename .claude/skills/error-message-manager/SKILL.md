@@ -394,6 +394,27 @@ julia --project -e 'using CalibrateEmulateSample'
 
 ### Step 7 — Add @test_throws tests
 
+#### Step 7a — Scan for stale @test_throws (run this before editing any source line)
+
+Whenever you change an exception type (e.g. `ErrorException` → `ArgumentError`),
+run this grep **before** touching the source file:
+
+```bash
+grep -rn '@test_throws OldType' test/
+```
+
+Every hit is a test that will break or silently go stale the moment your source
+edit lands. Update each hit **in the same edit as the source change** — never as a
+follow-up. This is not optional: a stale `@test_throws WrongType` either fails CI
+on the new code or passes forever without catching a regression — either way it
+no longer protects anything.
+
+This step is easy to skip because source and tests live in different files and the
+stale test produces no compile error — it only surfaces when the test suite runs.
+Running the grep first makes the problem visible before it bites you.
+
+#### Step 7b — Check existing coverage
+
 Before writing any test, check whether coverage already exists. Grep the matching
 `test/<module>/runtests.jl` for the public API function that reaches the rewritten
 site:
@@ -401,18 +422,6 @@ site:
 ```bash
 grep -n '@test_throws' test/<module>/runtests.jl | grep '<function_name>'
 ```
-
-**Before changing an exception type**, also grep for existing tests that assert the
-*old* type — they will silently become stale after your edit:
-
-```bash
-grep -rn '@test_throws OldType' test/
-```
-
-Update every hit in the same edit that changes the source. A stale
-`@test_throws WrongType` will either pass against old code and fail once your
-rewrite lands, or pass forever without catching a regression — either way it's
-a test that no longer protects anything.
 
 Three outcomes:
 
@@ -451,12 +460,6 @@ end
 Use the specific exception type — never bare `@test_throws Exception`. The test
 should construct the minimal invalid input that triggers the new error, without
 duplicating happy-path coverage.
-
-**Update existing tests that used the wrong type.** If the file already has a
-`@test_throws ErrorException` (or any other type) for a site you're rewriting to
-`ArgumentError`, update that existing test in the same edit. Leaving a stale
-`@test_throws ErrorException` will cause it to pass against the old code but fail
-once your rewrite lands — or vice versa.
 
 **Testing unexported helpers.** If the site is inside an unexported helper (e.g.,
 `construct_constraint`, `construct_2d_array`), do not `import` the internal

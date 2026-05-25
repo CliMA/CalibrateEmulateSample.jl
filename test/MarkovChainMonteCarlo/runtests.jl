@@ -659,7 +659,9 @@ end
         # GPJL doesnt support ForwardDiff
         bad_mcmc_params = deepcopy(mcmc_params)
         bad_mcmc_params[:mcmc_alg] = mcmc_algs[2]
-        @test_throws ErrorException mcmc_test_template(prior, σ2_y, em_1; bad_mcmc_params...)
+        let thrown = @test_throws ArgumentError mcmc_test_template(prior, σ2_y, em_1; bad_mcmc_params...)
+            @test contains(thrown.value.msg, "does not implement the required emulator interface")
+        end
 
         for alg in mcmc_algs
             mcmc_params_ad = deepcopy(mcmc_params)
