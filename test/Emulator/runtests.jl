@@ -148,6 +148,8 @@ end
         @test contains(thrown.value.msg, "ForwardMapWrapper")
         @test contains(thrown.value.msg, "new_inputs row count")
     end
+    # Resolution test (Step 7c): passing already-encoded inputs with encode = "in" must not throw
+    @test EM.predict(fmw, encode_data(fmw, x_test, "in"); encode = "in") isa Tuple
 
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))

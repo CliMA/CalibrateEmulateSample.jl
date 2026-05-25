@@ -589,7 +589,7 @@ Got:
 
 Suggestion:
     Pass new_inputs with $expected rows (one per input dimension).
-    If inputs are already in the encoded space, set `in_already_encoded = true`.
+    If inputs are already in the encoded space, pass `encode = "in"` to predict(...).
 """))
 end
 

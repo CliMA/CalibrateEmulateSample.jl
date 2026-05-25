@@ -477,6 +477,34 @@ end
 This keeps tests coupled to the public contract and avoids brittleness when
 internal function names change.
 
+#### Step 7c — Add a resolution test when the Suggestion is a concrete fix
+
+When the Suggestion section gives a **single concrete API change** — a keyword
+argument, a reshape call, a different constructor argument — add a resolution test
+immediately after the `@test_throws` block. The test calls the same function with
+the suggested fix applied and asserts the result is valid. If the suggestion is
+ever wrong or the API changes, this test will fail and flag the stale message.
+
+```julia
+# @test_throws block (Step 7b)
+let thrown = @test_throws DimensionMismatch predict(emulator, bad_inputs)
+    @test contains(thrown.value.msg, "encode")
+    @test contains(thrown.value.msg, "\"in\"")
+end
+
+# Resolution test (Step 7c) — following the suggestion must not throw
+@test predict(emulator, bad_inputs; encode = "in") isa AbstractMatrix
+```
+
+Use a plain `@test f(...) isa T` — Julia's test runner errors if `f(...)` throws,
+so no special macro is needed. Pick the narrowest type assertion that makes sense
+(`isa AbstractMatrix`, `isa AbstractVector`, `isa Nothing`).
+
+**Only apply this when the Suggestion is a single-call fix.** Skip it for advisory
+suggestions ("check that your data is not degenerate", "increase `alg_reg_noise`",
+"pass a symmetric matrix") where no minimal corrected call can be constructed from
+the same bad input.
+
 ### Step 8 — Offer to improve the skill
 
 Once the rewrites and tests are clean, offer: "Would you like to improve the
