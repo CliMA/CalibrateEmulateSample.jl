@@ -169,6 +169,8 @@ end
         @test contains(thrown.value.msg, "UniformScaling")
         @test contains(thrown.value.msg, "Diagonal")
     end
+    # Resolution test (Step 7c): replacing λI with Diagonal(fill(λ, d)) must not throw
+    @test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing

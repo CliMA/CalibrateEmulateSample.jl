@@ -479,11 +479,20 @@ internal function names change.
 
 #### Step 7c — Add a resolution test when the Suggestion is a concrete fix
 
-When the Suggestion section gives a **single concrete API change** — a keyword
-argument, a reshape call, a different constructor argument — add a resolution test
-immediately after the `@test_throws` block. The test calls the same function with
-the suggested fix applied and asserts the result is valid. If the suggestion is
-ever wrong or the API changes, this test will fail and flag the stale message.
+When the Suggestion section gives a **concrete, demonstrable fix**, add a resolution
+test immediately after the `@test_throws` block. The test applies the fix and asserts
+the result is valid. If the suggestion is ever wrong or the API changes, this test
+will fail and flag the stale message.
+
+A fix qualifies as concrete when it can be demonstrated in a short test expression:
+- A keyword argument change (`encode = "in"`)
+- A reshape or transpose of an argument (`reshape(x, :, 1)`)
+- Replacing one construction with another (`Diagonal(fill(λ, d))` instead of `λ * I`)
+- A different constructor or type choice (`ForwardDiffProtocol` instead of a custom one)
+
+The fix doesn't have to be on the exact same call expression as the error — it's fine
+to construct corrected input in a line or two before the assertion. What matters is
+that the test is short, self-contained, and directly demonstrates the suggestion.
 
 ```julia
 # @test_throws block (Step 7b)
@@ -494,16 +503,22 @@ end
 
 # Resolution test (Step 7c) — following the suggestion must not throw
 @test predict(emulator, bad_inputs; encode = "in") isa AbstractMatrix
+
+# Another example — fix requires constructing corrected input first
+let thrown = @test_throws ArgumentError create_compact_linear_map(3 * I)
+    @test contains(thrown.value.msg, "Diagonal")
+end
+@test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 ```
 
-Use a plain `@test f(...) isa T` — Julia's test runner errors if `f(...)` throws,
-so no special macro is needed. Pick the narrowest type assertion that makes sense
-(`isa AbstractMatrix`, `isa AbstractVector`, `isa Nothing`).
+Use a plain `@test f(...) isa T` or `@test size(f(...)) == (m, n)` — Julia's test
+runner errors if `f(...)` throws, so no special macro is needed. Pick the narrowest
+assertion that makes sense for the return type.
 
-**Only apply this when the Suggestion is a single-call fix.** Skip it for advisory
-suggestions ("check that your data is not degenerate", "increase `alg_reg_noise`",
-"pass a symmetric matrix") where no minimal corrected call can be constructed from
-the same bad input.
+**Skip the resolution test** for advisory suggestions where the fix requires
+domain knowledge or data the test can't construct: "check that your data is not
+degenerate", "increase `alg_reg_noise`", "pass a symmetric matrix". The dividing
+line is whether the fix can be expressed as a small, self-contained code change.
 
 ### Step 8 — Offer to improve the skill
 
