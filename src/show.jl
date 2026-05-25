@@ -5,8 +5,7 @@
 using .Utilities
 using .Emulators
 using .MarkovChainMonteCarlo
-import .MarkovChainMonteCarlo: RWMetropolisHastings, pCNMetropolisHastings,
-                                BarkerMetropolisHastings, AutodiffProtocol
+import .MarkovChainMonteCarlo: RWMetropolisHastings, pCNMetropolisHastings, BarkerMetropolisHastings, AutodiffProtocol
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -22,7 +21,7 @@ function Base.show(io::IO, ::MIME"text/plain", es::ElementwiseScaler)
     else
         println(io, "ElementwiseScaler")
         println(io, "  scaling method : $(get_type(es))")
-        print(io,   "  initialized    : $(!isempty(es.shift))")
+        print(io, "  initialized    : $(!isempty(es.shift))")
     end
 end
 
@@ -49,7 +48,7 @@ function Base.show(io::IO, ::MIME"text/plain", dd::Decorrelator)
         if get_retain_var(dd) < 1.0
             println(io, "  retain_var       : $(get_retain_var(dd))")
         end
-        print(io,   "  initialized      : $(!isempty(dd.data_mean))")
+        print(io, "  initialized      : $(!isempty(dd.data_mean))")
     end
 end
 
@@ -81,7 +80,7 @@ function Base.show(io::IO, ::MIME"text/plain", cc::CanonicalCorrelation)
         if get_retain_var(cc) < 1.0
             println(io, "  retain_var  : $(get_retain_var(cc))")
         end
-        print(io,   "  initialized : $(!isempty(cc.data_mean))")
+        print(io, "  initialized : $(!isempty(cc.data_mean))")
     end
 end
 
@@ -109,7 +108,7 @@ function Base.show(io::IO, ::MIME"text/plain", li::LikelihoodInformed)
         if get_retain_info(li) < 1.0
             println(io, "  retain_info : $(get_retain_info(li))")
         end
-        print(io,   "  initialized : $(!isempty(li.data_mean))")
+        print(io, "  initialized : $(!isempty(li.data_mean))")
     end
 end
 
@@ -131,7 +130,7 @@ function Base.show(io::IO, ::MIME"text/plain", ni::NoiseInjector)
         println(io, "  use_noise        : $(ni.use_noise)")
         println(io, "  scaling          : $(ni.scaling)")
         println(io, "  K size           : $(size(ni.K,1))×$(size(ni.K,2))")
-        print(io,   "  encoder_schedule : $(length(ni.encoder_schedule)) entries")
+        print(io, "  encoder_schedule : $(length(ni.encoder_schedule)) entries")
     end
 end
 
@@ -173,7 +172,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::GaussianProcess{P}) where {P}
         println(io, "GaussianProcess{", nameof(P), "}")
         println(io, "  n_models    : ", n, " (one per output dimension)")
         println(io, "  noise_learn : ", x.noise_learn)
-        print(io,   "  pred_type   : ", nameof(typeof(x.prediction_type)))
+        print(io, "  pred_type   : ", nameof(typeof(x.prediction_type)))
     end
 end
 
@@ -185,8 +184,16 @@ end
 # ScalarRandomFeatureInterface
 
 function Base.show(io::IO, x::ScalarRandomFeatureInterface)
-    print(io, "ScalarRandomFeatureInterface (", get_input_dim(x), "→1, ",
-          get_n_features(x), " features, ", nameof(typeof(get_kernel_structure(x))), "(…))")
+    print(
+        io,
+        "ScalarRandomFeatureInterface (",
+        get_input_dim(x),
+        "→1, ",
+        get_n_features(x),
+        " features, ",
+        nameof(typeof(get_kernel_structure(x))),
+        "(…))",
+    )
 end
 
 function Base.show(io::IO, ::MIME"text/plain", x::ScalarRandomFeatureInterface)
@@ -198,20 +205,38 @@ function Base.show(io::IO, ::MIME"text/plain", x::ScalarRandomFeatureInterface)
         println(io, "  n_features  : ", get_n_features(x))
         println(io, "  kernel      : ", nameof(typeof(get_kernel_structure(x))))
         println(io, "  decomp      : ", x.feature_decomposition)
-        print(io,   "  built       : ", !isempty(x.rfms))
+        print(io, "  built       : ", !isempty(x.rfms))
     end
 end
 
 function Base.summary(io::IO, x::ScalarRandomFeatureInterface)
-    print(io, "ScalarRandomFeatureInterface (", get_input_dim(x), "→1, ",
-          get_n_features(x), " features, ", nameof(typeof(get_kernel_structure(x))), "(…))")
+    print(
+        io,
+        "ScalarRandomFeatureInterface (",
+        get_input_dim(x),
+        "→1, ",
+        get_n_features(x),
+        " features, ",
+        nameof(typeof(get_kernel_structure(x))),
+        "(…))",
+    )
 end
 
 # VectorRandomFeatureInterface
 
 function Base.show(io::IO, x::VectorRandomFeatureInterface)
-    print(io, "VectorRandomFeatureInterface (", get_input_dim(x), "→", get_output_dim(x), ", ",
-          get_n_features(x), " features, ", nameof(typeof(get_kernel_structure(x))), "(…))")
+    print(
+        io,
+        "VectorRandomFeatureInterface (",
+        get_input_dim(x),
+        "→",
+        get_output_dim(x),
+        ", ",
+        get_n_features(x),
+        " features, ",
+        nameof(typeof(get_kernel_structure(x))),
+        "(…))",
+    )
 end
 
 function Base.show(io::IO, ::MIME"text/plain", x::VectorRandomFeatureInterface)
@@ -224,13 +249,23 @@ function Base.show(io::IO, ::MIME"text/plain", x::VectorRandomFeatureInterface)
         println(io, "  n_features  : ", get_n_features(x))
         println(io, "  kernel      : ", nameof(typeof(get_kernel_structure(x))))
         println(io, "  decomp      : ", x.feature_decomposition)
-        print(io,   "  built       : ", !isempty(x.rfms))
+        print(io, "  built       : ", !isempty(x.rfms))
     end
 end
 
 function Base.summary(io::IO, x::VectorRandomFeatureInterface)
-    print(io, "VectorRandomFeatureInterface (", get_input_dim(x), "→", get_output_dim(x), ", ",
-          get_n_features(x), " features, ", nameof(typeof(get_kernel_structure(x))), "(…))")
+    print(
+        io,
+        "VectorRandomFeatureInterface (",
+        get_input_dim(x),
+        "→",
+        get_output_dim(x),
+        ", ",
+        get_n_features(x),
+        " features, ",
+        nameof(typeof(get_kernel_structure(x))),
+        "(…))",
+    )
 end
 
 # Emulator
@@ -245,7 +280,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::Emulator)
     if get(io, :compact, false)
         show(io, x)
     else
-        mlt     = get_machine_learning_tool(x)
+        mlt = get_machine_learning_tool(x)
         n_in, n_out = size(get_io_pairs(x), 1)
         n_train = size(DataContainers.get_inputs(get_io_pairs(x)), 2)
         enc_sch = get_encoder_schedule(x)
@@ -254,7 +289,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::Emulator)
         println(io, "  input_dim             : ", n_in)
         println(io, "  output_dim            : ", n_out)
         println(io, "  n_train               : ", n_train, " samples")
-        _show_encoder_line(io, enc_sch, n_in,  "in",  "encoder (input)      ")
+        _show_encoder_line(io, enc_sch, n_in, "in", "encoder (input)      ")
         _show_encoder_line(io, enc_sch, n_out, "out", "encoder (output)     ")
     end
 end
@@ -277,15 +312,15 @@ function Base.show(io::IO, ::MIME"text/plain", x::ForwardMapWrapper)
         show(io, x)
     else
         n_in, n_out = size(get_io_pairs(x), 1)
-        enc_sch     = get_encoder_schedule(x)
-        ni          = x.noise_injector
+        enc_sch = get_encoder_schedule(x)
+        ni = x.noise_injector
         println(io, "ForwardMapWrapper")
         println(io, "  input_dim    : ", n_in)
         println(io, "  output_dim   : ", n_out)
         println(io, "  prior_dim    : ", ndims(get_prior(x)))
-        _show_encoder_line(io, enc_sch, n_in,  "in",  "encoder (input)  ")
+        _show_encoder_line(io, enc_sch, n_in, "in", "encoder (input)  ")
         _show_encoder_line(io, enc_sch, n_out, "out", "encoder (output) ")
-        print(io,   "  noise_inject : ", !isnothing(ni) && ni.use_noise)
+        print(io, "  noise_inject : ", !isnothing(ni) && ni.use_noise)
     end
 end
 
@@ -364,17 +399,17 @@ function Base.show(io::IO, ::MIME"text/plain", mcmc::MCMCWrapper)
     if get(io, :compact, false)
         show(io, mcmc)
     else
-        n_par        = ndims(mcmc.prior)
-        n_obs        = length(mcmc.observations)
-        obs_dim      = isempty(mcmc.observations) ? nothing : length(first(mcmc.observations))
+        n_par = ndims(mcmc.prior)
+        n_obs = length(mcmc.observations)
+        obs_dim = isempty(mcmc.observations) ? nothing : length(first(mcmc.observations))
         sampler_name = nameof(typeof(mcmc.mh_proposal_sampler))
-        enc_sch      = get_encoder_schedule(mcmc)
+        enc_sch = get_encoder_schedule(mcmc)
         println(io, "MCMCWrapper")
         println(io, "  prior_dim        : ", n_par, " parameter", n_par == 1 ? "" : "s")
         isnothing(obs_dim) || println(io, "  obs_dim          : ", obs_dim)
         println(io, "  n_obs            : ", n_obs, " sample", n_obs == 1 ? "" : "s")
         println(io, "  sampler          : ", sampler_name)
-        _show_encoder_line(io, enc_sch, n_par,   "in",  "encoder (input)  ")
+        _show_encoder_line(io, enc_sch, n_par, "in", "encoder (input)  ")
         isnothing(obs_dim) || _show_encoder_line(io, enc_sch, obs_dim, "out", "encoder (output)")
     end
 end

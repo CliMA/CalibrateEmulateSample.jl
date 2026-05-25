@@ -238,9 +238,11 @@ function initialize_processor!(
             map2 = create_compact_linear_map(decorrelation_action2)
             decorrelation_map = map1 + map2 # x -> dm.maps[1].f(x) + dm.maps[2].f(x)
         else
-            throw(ArgumentError(
-                "Invalid `decorrelate_with` keyword: expected one of \"sample_cov\", \"structure_mat\", or \"combined\", got $(repr(decorrelate_with))",
-            ))
+            throw(
+                ArgumentError(
+                    "Invalid `decorrelate_with` keyword: expected one of \"sample_cov\", \"structure_mat\", or \"combined\", got $(repr(decorrelate_with))",
+                ),
+            )
         end
 
         n_totvar_samples = get_n_totvar_samples(dd)

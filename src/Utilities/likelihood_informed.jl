@@ -158,7 +158,8 @@ function initialize_processor!(
                 grad = (samples_out .- samples_out_mean) / (samples_in .- samples_in_mean)
                 fill(grad, size(samples_in, 2))
             else
-                get_grad_type(li) == :localsl || error("Internal error: unhandled grad_type $(repr(get_grad_type(li))) in initialize_processor!")
+                get_grad_type(li) == :localsl ||
+                    error("Internal error: unhandled grad_type $(repr(get_grad_type(li))) in initialize_processor!")
 
                 map(eachcol(samples_in)) do u
                     # TODO: It might be interesting to introduce a parameter to weight this distance with.
@@ -199,7 +200,8 @@ function initialize_processor!(
                 diagnostic_mats[it] = hermitianpart(mean(grad * grad' for grad in grads))
             else
                 # @assert apply_to == "out" && ( !(α ≈ 0 && obs_whitened) || length(alphas[iters]) > 1 )
-                apply_to == "out" || error("Internal error: unexpected apply_to=$(repr(apply_to)) in the output-space diagnostic branch")
+                apply_to == "out" ||
+                    error("Internal error: unexpected apply_to=$(repr(apply_to)) in the output-space diagnostic branch")
                 # Need to represent the "f" and "egrad" functions for this α
                 f =
                     (_, Vs) -> begin
@@ -267,8 +269,11 @@ function initialize_processor!(
             end
             encoder_mat = decomp.vectors[:, 1:trunc_val]'
         else # using diagnostic_f's and diagnostic_egrads
-            (length(diagnostic_fs) > 0 && length(diagnostic_egrads) > 0) || error("Internal error: no diagnostic functions were accumulated (length(diagnostic_fs)=$(length(diagnostic_fs)))")
-            apply_to == "out" || error("Internal error: unexpected apply_to=$(repr(apply_to)) in the matrix-free diagnostic branch")
+            (length(diagnostic_fs) > 0 && length(diagnostic_egrads) > 0) || error(
+                "Internal error: no diagnostic functions were accumulated (length(diagnostic_fs)=$(length(diagnostic_fs)))",
+            )
+            apply_to == "out" ||
+                error("Internal error: unexpected apply_to=$(repr(apply_to)) in the matrix-free diagnostic branch")
 
             diagnostic_f, diagnostic_egrad, samples_mean = if length(iters) > 1
                 alpha_weight = zeros(length(iters))

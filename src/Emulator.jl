@@ -518,7 +518,8 @@ function predict(
     check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    size(new_inputs, 1) != check_dim && _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :ForwardMapWrapper)
+    size(new_inputs, 1) != check_dim &&
+        _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :ForwardMapWrapper)
 
     prior = get_prior(fmw)
     if in_already_encoded

@@ -160,11 +160,9 @@ const MCMC = MarkovChainMonteCarlo
 
     @testset "ForwardMapWrapper" begin
         prior = constrained_gaussian("x", 0.0, 1.0, -Inf, Inf; repeats = 3)
-        iop   = PairedDataContainer(rand(3, 5), rand(2, 5), data_are_columns = true)
-        ni    = NoiseInjector(rand(2, 3), rand(3, 1), rand(2, 1), nothing, 0.5, true, [])
-        fmw   = ForwardMapWrapper{Float64, Vector{Any}, typeof(prior), typeof(ni)}(
-            identity, prior, iop, iop, [], ni,
-        )
+        iop = PairedDataContainer(rand(3, 5), rand(2, 5), data_are_columns = true)
+        ni = NoiseInjector(rand(2, 3), rand(3, 1), rand(2, 1), nothing, 0.5, true, [])
+        fmw = ForwardMapWrapper{Float64, Vector{Any}, typeof(prior), typeof(ni)}(identity, prior, iop, iop, [], ni)
         out = sprint(show, MIME("text/plain"), fmw)
         @test occursin("ForwardMapWrapper", out)
         @test count(==('\n'), out) <= 10
@@ -182,7 +180,7 @@ const MCMC = MarkovChainMonteCarlo
 
     @testset "RWMetropolisHastings" begin
         prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        rw   = MCMC.RWMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
+        rw = MCMC.RWMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
         out = sprint(show, MIME("text/plain"), rw)
         @test occursin("RWMetropolisHastings", out)
         @test count(==('\n'), out) <= 10
@@ -198,7 +196,7 @@ const MCMC = MarkovChainMonteCarlo
 
     @testset "pCNMetropolisHastings" begin
         prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        pcn  = MCMC.pCNMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
+        pcn = MCMC.pCNMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
         out = sprint(show, MIME("text/plain"), pcn)
         @test occursin("pCNMetropolisHastings", out)
         @test count(==('\n'), out) <= 10
@@ -213,7 +211,7 @@ const MCMC = MarkovChainMonteCarlo
     end
 
     @testset "BarkerMetropolisHastings" begin
-        prop  = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
+        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
         barkr = MCMC.BarkerMetropolisHastings{typeof(prop), ForwardDiffProtocol}(prop)
         out = sprint(show, MIME("text/plain"), barkr)
         @test occursin("BarkerMetropolisHastings", out)
@@ -229,14 +227,13 @@ const MCMC = MarkovChainMonteCarlo
     end
 
     @testset "MCMCWrapper" begin
-        prior      = constrained_gaussian("x", 0.0, 1.0, -Inf, Inf; repeats = 2)
-        obs        = [rand(2) for _ in 1:3]
-        log_post   = AdvancedMH.DensityModel(x -> -0.5 * sum(x .^ 2))
-        prop       = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
+        prior = constrained_gaussian("x", 0.0, 1.0, -Inf, Inf; repeats = 2)
+        obs = [rand(2) for _ in 1:3]
+        log_post = AdvancedMH.DensityModel(x -> -0.5 * sum(x .^ 2))
+        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
         rw_sampler = MCMC.RWMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
-        mcmcw = MCMCWrapper{typeof(obs), typeof(obs), Vector{Any}}(
-            prior, prior, obs, obs, log_post, rw_sampler, (;), [],
-        )
+        mcmcw =
+            MCMCWrapper{typeof(obs), typeof(obs), Vector{Any}}(prior, prior, obs, obs, log_post, rw_sampler, (;), [])
         out = sprint(show, MIME("text/plain"), mcmcw)
         @test occursin("MCMCWrapper", out)
         @test count(==('\n'), out) <= 10

@@ -776,7 +776,9 @@ function optimize_stepsize(
             return stepsize
         end
     end
-    error("optimize_stepsize: acceptance rate $(round(acc_ratio; sigdigits = 3)) did not reach target $(target_acc) ± 0.1 within $(max_iter) iterations — last stepsize: $(round(stepsize; sigdigits = 3)).")
+    error(
+        "optimize_stepsize: acceptance rate $(round(acc_ratio; sigdigits = 3)) did not reach target $(target_acc) ± 0.1 within $(max_iter) iterations — last stepsize: $(round(stepsize; sigdigits = 3)).",
+    )
 end
 # use default rng if none given
 optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBAL_RNG, mcmc; kwargs...)
