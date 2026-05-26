@@ -46,7 +46,7 @@ using CalibrateEmulateSample.ParameterDistributions
     @test_throws ArgumentError get_training_points(ekp, 1:2, g_final = g_ens_final')
 
     #positive definiteness
-    mat = reshape(collect(-3:(-3 + 10 ^ 2 - 1)), 10, 10)
+    mat = reshape(collect(-3:(-3 + 10^2 - 1)), 10, 10)
     tol = 1e12 * eps()
     @test !isposdef(mat)
 
