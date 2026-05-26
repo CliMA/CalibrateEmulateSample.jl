@@ -48,6 +48,20 @@ const MCMC = MarkovChainMonteCarlo
         @test !occursin('\n', outs)
     end
 
+    @testset "Decorrelator retain_var branch" begin
+        dd = decorrelate_sample_cov(; retain_var = 0.9)
+        out = sprint(show, MIME("text/plain"), dd)
+        @test occursin("Decorrelator", out)
+        @test occursin("retain_var", out)
+        @test count(==('\n'), out) <= 10
+        out2 = sprint(show, dd)
+        @test occursin("Decorrelator", out2)
+        @test occursin("retain_var", out2)
+        @test !occursin('\n', out2)
+        out3 = sprint(show, MIME("text/plain"), dd; context = :compact => true)
+        @test out2 == out3
+    end
+
     @testset "CanonicalCorrelation" begin
         cc = canonical_correlation()
         out = sprint(show, MIME("text/plain"), cc)
@@ -61,6 +75,21 @@ const MCMC = MarkovChainMonteCarlo
         outs = sprint(summary, cc)
         @test occursin("CanonicalCorrelation", outs)
         @test !occursin('\n', outs)
+    end
+
+    @testset "CanonicalCorrelation apply_to branch" begin
+        cc = canonical_correlation()
+        push!(get_apply_to(cc), "in")
+        out = sprint(show, MIME("text/plain"), cc)
+        @test occursin("CanonicalCorrelation", out)
+        @test occursin("apply_to", out)
+        @test count(==('\n'), out) <= 10
+        out2 = sprint(show, cc)
+        @test occursin("CanonicalCorrelation", out2)
+        @test occursin("apply_to", out2)
+        @test !occursin('\n', out2)
+        out3 = sprint(show, MIME("text/plain"), cc; context = :compact => true)
+        @test out2 == out3
     end
 
     @testset "LikelihoodInformed" begin
@@ -156,6 +185,17 @@ const MCMC = MarkovChainMonteCarlo
         outs = sprint(summary, em)
         @test occursin("Emulator", outs)
         @test !occursin('\n', outs)
+    end
+
+    @testset "Emulator encoder line branch" begin
+        n, p, d = 20, 3, 2
+        iop = PairedDataContainer(rand(p, n), rand(d, n), data_are_columns = true)
+        gp = GaussianProcess(GPJL())
+        em = Emulator(gp, iop)  # default encoder schedule: initialized, non-empty
+        out = sprint(show, MIME("text/plain"), em)
+        @test occursin("Emulator", out)
+        @test occursin("→", out)   # _show_encoder_line printed at least one encoder line
+        @test count(==('\n'), out) <= 10
     end
 
     @testset "ForwardMapWrapper" begin
