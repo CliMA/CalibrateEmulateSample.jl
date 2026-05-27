@@ -38,7 +38,7 @@ function main()
     encoder_schedule_ref = [(decorrelate_structure_mat(), "in_and_out")]
 
     # chosen some truncations with similar dimension
-    rvs_rinfos = [(0.995, 0.99995), (0.99, 0.9995), (0.98, 0.995), (0.95, 0.97), (0.9, 0.9)]
+    rvs_specmas = [(0.995, 0.995), (0.99, 0.98), (0.98, 0.95), (0.95, 0.75), (0.9, 0.6)]
 
     # as we have more input samples than out stored in ekp. we provide the extended set of outputs to be used in the likelihood informed processor
     final_samples_out = ekp_samples[αs[end]][2]
@@ -55,18 +55,18 @@ function main()
         bad_model(mod_type, mod_types)
     end
 
-    all_errs = zeros(length(rvs_rinfos), length(names))
-    reduced_dims = zeros(Int, length(rvs_rinfos), length(names)) # store reduced dims for final table
+    all_errs = zeros(length(rvs_specmas), length(names))
+    reduced_dims = zeros(Int, length(rvs_specmas), length(names)) # store reduced dims for final table
 
-    for (idx, rv_rinfo) in enumerate(rvs_rinfos)
-        rv, rinfo = rv_rinfo
+    for (idx, rv_specma) in enumerate(rvs_specmas)
+        rv, specma = rv_specma
         encoder_schedule_decorrelate_samp = [(decorrelate_sample_cov(retain_var = rv), "in_and_out")]
         encoder_schedule_decorrelate = [(decorrelate_structure_mat(retain_var = rv), "in_and_out")]
         encoder_schedules_li = [
             [
                 (decorrelate_structure_mat(), "in_and_out"),
-                (likelihood_informed(retain_info = rinfo, iters = 1:i), "in"),
-                (likelihood_informed(retain_info = rinfo, iters = 1:1), "out"),
+                (likelihood_informed(retain_spectral_mass = specma, iters = 1:i), "in"),
+                (likelihood_informed(retain_spectral_mass = specma, iters = 1:1), "out"),
             ] for i in mask
         ]
 
@@ -121,7 +121,7 @@ function main()
                 @info "No truncation"
             else
                 ed = get_encoded_dim(get_encoder_schedule(em), "in")
-                @info "Truncation criteria (var>$(rv), or information > $(rinfo))"
+                @info "Truncation criteria (var>$(rv), or information > $(specma))"
                 @info "input dim reduced to: $(ed)"
 
             end
@@ -155,7 +155,7 @@ function main()
     pairs = [(reduced_dims[i, j], all_errs[i, j]) for i in axes(all_errs, 1), j in axes(all_errs, 2)]
 
     df = DataFrame(pairs, Symbol.(names[1:end]))  # columns = names
-    df.truncation = rvs_rinfos            # add row labels
+    df.truncation = rvs_specmas            # add row labels
     return df, all_errs, reduced_dims[:, 1:end]
 end
 
