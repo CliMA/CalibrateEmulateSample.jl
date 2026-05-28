@@ -27,14 +27,16 @@ save_all_ekp = true
 
 cases = ["const-force", "vec-force", "flux-force"] # problem types
 # User specifications
-#case = cases[1] # choose problem type
-#N_ens_sizes = [5, 15, 30] # e.g. for case 1
-
-#case = cases[2] # choose problem type
-#N_ens_sizes = [50, 75, 100]
-
-case = cases[3] # choose problem type
-N_ens_sizes = [50, 75, 100] # e.g. for case 1
+case = cases[1] # choose problem type
+if case == "const-force"
+    N_ens_sizes = [5, 15, 30] 
+elseif case == "vec-force" 
+    N_ens_sizes = [50, 75, 100]
+elseif case == "flux-force"
+    N_ens_sizes = [50, 75, 100] 
+else
+    throw(ArgumentError("Expected case ∈ $(cases). Got case = $case."))
+end
 
 
 N_iter = 20 # maximum number of EKI iterations allowed

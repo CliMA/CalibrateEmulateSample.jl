@@ -16,16 +16,16 @@ const EKP = EnsembleKalmanProcesses
 
 
 method_cases= ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
-force_cases = ["const-force", "vec-force", "flux-force"] # problem types    
+forcing_cases = ["const-force", "vec-force", "flux-force"] # problem types    
 
-#### CHOOSE YOUR CASE: (todo: looped over in some fashion)
+#### CHOOSE YOUR CASE:
 # calib_data_dir
 method=method_cases[1]
 calibrate_date=Date("2026-05-18", "yyyy-mm-dd")
 calib_directory="$(method)_$(calibrate_date)"
 
 # calib_filename_suffix items to loop over 
-force_cases=[force_cases[3]]
+force_cases=[forcing_cases[3]]
 N_enss=[50,75,100]
 rng_idxs=[1,2,3,4]
 
