@@ -141,7 +141,7 @@ mlt = ScalarRandomFeatureInterface(
 
 # Define a data encoding recipe for the input-output data
 encoder_schedule = [(decorrelate_structure_mat(), "in_and_out")]
-encoder_kwargs = (; prior_cov = cov(prior), obs_noise_cov = Γ)
+encoder_kwargs = encoder_kwargs_from(ensemble_kalman_process, prior)
 
 # create emulator and train
 emulator = Emulator(
