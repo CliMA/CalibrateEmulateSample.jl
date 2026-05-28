@@ -9,25 +9,18 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 
 # Step 1, Read and extract the available experiments
 method_cases = ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
-force_cases = ["const-force", "vec-force", "flux-force"] # problem types
 
 #### CHOOSE YOUR CASE:
 # calib_data_dir
 method = method_cases[1]
-calibrate_date = Date("2026-05-18", "yyyy-mm-dd")
+calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
 calib_directory = "$(method)_$(calibrate_date)"
 
 # calib_filename_suffix items to loop over
-force_case = force_cases[2]
-N_enss = [50,75,100] #[5, 15, 30]
+N_enss = [20,25,30]
 rng_idxs = [1, 2, 3, 4]
 
 ### For saving the cases in the leaderboard style
-forcing_cases_key = Dict(
-    "const-force" => "ensemble_results",
-    "vec-force" => "spatial_forcing_ensemble_results",
-    "flux-force" => "nn_forcing_ensemble_results",
-)
 
 method_cases_key = Dict(
     "Inversion" => "ces-eki-dmc",
@@ -35,7 +28,7 @@ method_cases_key = Dict(
     "Unscented" => "ces-uki-dmc",
     "GaussNewtonInversion" => "ces-iekf",
 )
-nc_save_filename = "$(method_cases_key[method])_l96_$(forcing_cases_key[force_case])_$(calibrate_date).nc"
+nc_save_filename = "$(method_cases_key[method])_l63_ensemble_results_$(calibrate_date).nc"
 
 ### determine valid files before we try to load
 
@@ -46,11 +39,11 @@ valid_file_items = []
 valid_files = []
 for N_ens in N_enss
     for rng_idx in rng_idxs
-        calib_filename_suffix = "$(force_case)_$(N_ens)_$(rng_idx)"
+        calib_filename_suffix = "$(N_ens)_$(rng_idx)"
         data_file = joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2")
         if isfile(data_file)
             push!(valid_files, calib_filename_suffix)
-            push!(valid_file_items, (force_case, N_ens, rng_idx))
+            push!(valid_file_items, (N_ens, rng_idx))
         end
     end
 end
@@ -59,7 +52,7 @@ end
 display(valid_files)
 
 if isempty(valid_file_items)
-    error("No valid posterior files found in $(data_save_directory). Run emulate_sample_l96.jl first.")
+    error("No valid posterior files found in $(data_save_directory). Run emulate_sample_l63.jl first.")
 end
 
 ### Load data
@@ -82,8 +75,8 @@ mahal_arr      = fill(NaN, n_rng, n_ens, n_targets, 1)
 logpdf_true_v_map_arr     = fill(NaN, n_rng, n_ens, n_targets, 1)
 n_evals_arr    = fill(NaN, n_rng, n_ens, n_targets, 1)
 
-for (fc, N_ens, rng_idx) in valid_file_items
-    calib_filename_suffix = "$(fc)_$(N_ens)_$(rng_idx)"
+for (N_ens, rng_idx) in valid_file_items
+    calib_filename_suffix = "$(N_ens)_$(rng_idx)"
     post_filename = "posterior_$(calib_filename_suffix).jld2"
     @info "loading case $(post_filename)"
     loaded = JLD2.load(joinpath(data_save_directory, post_filename))
@@ -97,13 +90,14 @@ for (fc, N_ens, rng_idx) in valid_file_items
     
     C_reg = Symmetric(pc + 1e-10 * I)
     post_normal = MvNormal(pm, C_reg)
-    post_array = get_distribution(post_dist)[get_name(post_dist)[1]] # safe as posterior never has constraints - just samples
-    pmode_idx = argmax(logpdf(post_normal, post_array))
-    pmode = post_array[:, pmode_idx]
+    post_samples = reduce(vcat,[get_distribution(post_dist)[name] for name in get_name(post_dist)]) #samples are columns
+    
+    pmode_idx = argmax(logpdf(post_normal, post_samples))
+    pmode = post_samples[:, pmode_idx]
     
 
     # Load ekpobj to compute calibration evaluation count
-    ekp_loaded = JLD2.load(joinpath(data_save_directory, "l96_ekp_$(calib_filename_suffix).jld2"))
+    ekp_loaded = JLD2.load(joinpath(data_save_directory, "l63_ekp_$(calib_filename_suffix).jld2"))
     conv_alg_iters = length(get_g(ekp_loaded["ekpobj"]))  # number of completed EKP update steps
 
     # Array indices

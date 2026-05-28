@@ -44,7 +44,7 @@ function main()
             @info("Perform emulate-sample for L63: \n method: $(calib_directory) \n experiment: $(calib_filename_suffix)")
             min_iter = 1
             skip_iter = 1
-            max_iter = 15 # number of EKP iterations to use data from is at most this 
+            max_iter = 10 # number of EKP iterations to use data from is at most this 
             
             ####
             
@@ -70,7 +70,7 @@ function main()
             priors = load(loaded_calib_files[2])["prior"]
             truth_sample = load(loaded_calib_files[3])["y"]
             truth_params_obj = load(loaded_calib_files[3])["truth_params_structure"] #true parameters in constrained space
-            truth_params_constrained = truth_params_obj.u
+            truth_params_constrained = truth_params_obj.u # the parameters here have been exponentiated not using our in-built constraints.
             truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
             Γy = get_obs_noise_cov(ekpobj)
             
@@ -84,7 +84,7 @@ function main()
             overrides = Dict(
                 #                    "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 1000.0),
-                "cov_sample_multiplier" => 20.0,
+                "cov_sample_multiplier" => 2.0,
                 "n_iteration" => 10,
                 "n_features_opt" => 160,
             )
@@ -100,7 +100,8 @@ function main()
             
             
             # Get training points from the EKP iteration number in the second input term  
-            N_iter = min(max_iter, length(get_u(ekpobj))-1) # number of paired iterations taken from EKP
+            iter_end = length(get_u(ekpobj))-1
+            N_iter = min(max_iter, iter_end) # number of paired iterations taken from EKP
             min_iter = min(max_iter, max(1, min_iter))
             if N_iter < 1
                 @error("No iterations found in ekpobj, perhaps a calibration issue? Skipping case $(calib_filename_suffix)...")
@@ -108,20 +109,17 @@ function main()
             elseif N_iter == 1
                 @warn("Convergence in only 1 iteration, removing train-test split based on iterations")
                 @info "Train iterations: $(min_iter:skip_iter:N_iter)"
-                input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:N_iter+1)                    
+                input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:N_iter)                    
             else
                 @info "Train iterations: $(min_iter:skip_iter:(N_iter-1))"
                 @info "Test iterations: $(N_iter:(length(get_u(ekpobj)) - 1))"
                 input_output_pairs = Utilities.get_training_points(ekpobj, min_iter:skip_iter:(N_iter - 1))
-                input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:(length(get_u(ekpobj)) - 1)) #  "next" iterations
+                input_output_pairs_test = Utilities.get_training_points(ekpobj, N_iter:iter_end) #  "next" iterations
                 
             end
             
-            # Save data
-            @save joinpath(data_save_directory, "input_output_pairs_$(calib_filename_suffix).jld2") input_output_pairs
-            
             # data processing configuration
-            retain_var = 0.95
+            retain_var = 0.99
             encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
             encoder_kwargs = encoder_kwargs_from(ekpobj, priors)
             
@@ -182,7 +180,7 @@ function main()
             
             param_names = get_name(posterior)
             
-            posterior_samples = vcat([get_distribution(posterior)[name] for name in get_name(posterior)]...) #samples are columns
+            posterior_samples = reduce(vcat,[get_distribution(posterior)[name] for name in get_name(posterior)]) #samples are columns
             constrained_posterior_samples =
                 mapslices(x -> transform_unconstrained_to_constrained(posterior, x), posterior_samples, dims = 1)
             
@@ -200,7 +198,7 @@ function main()
             
             # Save data
             save(
-                joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2"),
+                joinpath(data_save_directory, "l63_posterior_$(calib_filename_suffix).jld2"),
                 "posterior",
                 posterior,
                 "priors",

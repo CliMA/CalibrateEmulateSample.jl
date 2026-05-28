@@ -37,16 +37,23 @@ nx = 3  # dimensions of parameter vector
 nu = 2
 truth_params = EnsembleMemberConfig([28.0, 8.0 / 3.0])
 
+#=
+the following better encoder this prior:
 prior_mean = [3.3, 1.2]
 prior_cov = [
     0.15^2 0
     0 0.5^2
 ]
-#Creating prior distribution
 distribution = Parameterized(MvNormal(prior_mean, prior_cov))
-constraint = repeat([no_constraint()], 2)
+constraint = repeat([no_constraint()], 2) # TODO: fix this... 
 name = "l63_prior"
 prior = ParameterDistribution(distribution, constraint, name)
+=#
+
+prior_r = constrained_gaussian("rho", exp(3.3), 4.153, 0, Inf)
+prior_b = constrained_gaussian("beta", exp(1.2), 2.016, 0 ,Inf)
+prior = combine_distributions([prior_r, prior_b])
+#Creating prior distribution
 T = 40.0
 
 
@@ -138,6 +145,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
 
         @info "Ensemble size: $(N_ens)"
         for (kk, method) in enumerate(methods)
+            @info "Method: $(nameof(typeof(method)))"
             if isa(method, Unscented)
                 ekpobj = EKP.EnsembleKalmanProcess(
                     y,
@@ -145,9 +153,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-                    accelerator = DefaultAccelerator(),
+#                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(),
+                    scheduler = DataMisfitController(terminate_at=100),
                 )
             else
                 ekpobj = EKP.EnsembleKalmanProcess(
@@ -157,9 +165,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-                    accelerator = DefaultAccelerator(),
+#                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(),
+                    scheduler = DataMisfitController(terminate_at=100),
                 )
             end
             Ne = get_N_ens(ekpobj)
@@ -169,9 +177,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 params_i = get_ϕ_final(prior, ekpobj)
 
                 # Calculating RMSE_e
-                ens_mean = mean(params_i, dims = 2)[:]
+                ens_mean = mean(params_i, dims = 2)[:] # in constrained_space
                 G_ens_mean = lorenz_forward(
-                    EnsembleMemberConfig(exp.(ens_mean)),
+                    EnsembleMemberConfig(ens_mean),
                     x0 .+ ic_cov_sqrt * rand(rng, Normal(0.0, 1.0), nx, 1),
                     lorenz_config_settings,
                     observation_config,
@@ -190,7 +198,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 G_ens = hcat(
                     [
                         lorenz_forward(
-                            EnsembleMemberConfig(exp.(params_i[:, j])),
+                            EnsembleMemberConfig(params_i[:, j]),
                             (x0 .+ ic_cov_sqrt * rand(rng, Normal(0.0, 1.0), nx, Ne))[:, j],
                             lorenz_config_settings,
                             observation_config,
