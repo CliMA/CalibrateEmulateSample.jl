@@ -19,7 +19,7 @@ calib_directory = "$(method)_$(calibrate_date)"
 
 # calib_filename_suffix items to loop over
 force_case = force_cases[2]
-N_enss = [50, 75, 100]
+N_enss = [50,75,100] #[5, 15, 30]
 rng_idxs = [1, 2, 3, 4]
 
 ### For saving the cases in the leaderboard style
@@ -95,11 +95,13 @@ for (fc, N_ens, rng_idx) in valid_file_items
     pm = vec(mean(post_dist))  # posterior mean, shape (n_params,)
     pc = cov(post_dist)        # posterior covariance, shape (n_params, n_params)
     
-    C_reg = Symmetric(pc + 1e-6 * I(n_params))
+    C_reg = Symmetric(pc + 1e-10 * I)
     post_normal = MvNormal(pm, C_reg)
-    post_array = get_distribution(post_dist)[get_name(post_dist)[1]]
+    post_array = get_distribution(post_dist)[get_name(post_dist)[1]] # safe as posterior never has constraints - just samples
     pmode_idx = argmax(logpdf(post_normal, post_array))
     pmode = post_array[:, pmode_idx]
+    
+
     # Load ekpobj to compute calibration evaluation count
     ekp_loaded = JLD2.load(joinpath(data_save_directory, "l96_ekp_$(calib_filename_suffix).jld2"))
     conv_alg_iters = length(get_g(ekp_loaded["ekpobj"]))  # number of completed EKP update steps
