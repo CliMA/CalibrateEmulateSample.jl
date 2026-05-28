@@ -46,12 +46,7 @@ function likelihood_informed(; retain_info = 1, iters = 1, grad_type = :linreg)
     if !isa(iters, AbstractVector)
         iters = [iters]
     end
-    if !(eltype(iters) <: Integer)
-        throw(
-            ArgumentError,
-            "Iterations must be passed as an Int or Vec{Int}. This corresponds to which of the structure-vectors are used to construct the subspace",
-        )
-    end
+    eltype(iters) <: Integer || _throw_invalid_iters(iters)
 
     LikelihoodInformed([], [], [], retain_info, nothing, iters, grad_type)
 end
@@ -59,18 +54,30 @@ end
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
 get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
 get_data_mean(li::LikelihoodInformed) = li.data_mean
-get_retain_info(li::LikelihoodInformed) = li.retain_info
-get_iters(li::LikelihoodInformed) = li.iters
-get_grad_type(li::LikelihoodInformed) = li.grad_type
 
-function Base.show(io::IO, li::LikelihoodInformed)
-    out = "LikelihoodInformed"
-    out *= ": iters=$(get_iters(li)), grad_type=$(get_grad_type(li))"
-    if get_retain_info(li) < 1.0
-        out *= ", retain_info=$(get_retain_info(li))"
-    end
-    print(io, out)
-end
+"""
+$(TYPEDSIGNATURES)
+
+Return the `retain_info` threshold stored in `li`, controlling how much of the
+KL-divergence reduction from the full posterior is retained by the subspace.
+"""
+get_retain_info(li::LikelihoodInformed) = li.retain_info
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the iteration indices stored in `li` that specify which distribution samples
+(indexed by algorithm-time `α`) are used to construct the likelihood-informed subspace.
+"""
+get_iters(li::LikelihoodInformed) = li.iters
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the gradient-approximation type stored in `li`: `:linreg` (global linear regression)
+or `:localsl` (localized statistical linearization).
+"""
+get_grad_type(li::LikelihoodInformed) = li.grad_type
 
 function initialize_processor!(
     li::LikelihoodInformed,
@@ -151,7 +158,8 @@ function initialize_processor!(
                 grad = (samples_out .- samples_out_mean) / (samples_in .- samples_in_mean)
                 fill(grad, size(samples_in, 2))
             else
-                @assert get_grad_type(li) == :localsl
+                get_grad_type(li) == :localsl ||
+                    error("Internal error: unhandled grad_type $(repr(get_grad_type(li))) in initialize_processor!")
 
                 map(eachcol(samples_in)) do u
                     # TODO: It might be interesting to introduce a parameter to weight this distance with.
@@ -192,7 +200,8 @@ function initialize_processor!(
                 diagnostic_mats[it] = hermitianpart(mean(grad * grad' for grad in grads))
             else
                 # @assert apply_to == "out" && ( !(α ≈ 0 && obs_whitened) || length(alphas[iters]) > 1 )
-                @assert apply_to == "out"
+                apply_to == "out" ||
+                    error("Internal error: unexpected apply_to=$(repr(apply_to)) in the output-space diagnostic branch")
                 # Need to represent the "f" and "egrad" functions for this α
                 f =
                     (_, Vs) -> begin
@@ -260,8 +269,11 @@ function initialize_processor!(
             end
             encoder_mat = decomp.vectors[:, 1:trunc_val]'
         else # using diagnostic_f's and diagnostic_egrads
-            @assert length(diagnostic_fs) > 0 && length(diagnostic_egrads) > 0
-            @assert apply_to == "out"
+            (length(diagnostic_fs) > 0 && length(diagnostic_egrads) > 0) || error(
+                "Internal error: no diagnostic functions were accumulated (length(diagnostic_fs)=$(length(diagnostic_fs)))",
+            )
+            apply_to == "out" ||
+                error("Internal error: unexpected apply_to=$(repr(apply_to)) in the matrix-free diagnostic branch")
 
             diagnostic_f, diagnostic_egrad, samples_mean = if length(iters) > 1
                 alpha_weight = zeros(length(iters))
@@ -368,4 +380,23 @@ end
 function _decode_structure_matrix(li::LikelihoodInformed, structure_matrix::SM) where {SM <: StructureMatrix}
     decoder_mat = get_decoder_mat(li)[1]
     return decoder_mat * structure_matrix * decoder_mat'
+end
+
+## Error helpers
+
+@noinline function _throw_invalid_iters(iters)
+    throw(ArgumentError("""
+`iters` must be an Int or Vector{Int}.
+
+Expected:
+    eltype(iters) <: Integer
+
+Got:
+    typeof(iters) = $(typeof(iters))
+    eltype(iters) = $(eltype(iters))
+
+Suggestion:
+    Pass an integer iteration index, e.g. `iters = 1`, or a vector `iters = [1, 2]`.
+    These indices specify which EKI algorithm-time samples are used to build the subspace.
+"""))
 end

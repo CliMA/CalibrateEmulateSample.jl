@@ -74,7 +74,9 @@ using CalibrateEmulateSample.Utilities
 
     Emulators.optimize_hyperparameters!(em1)
 
-    @test_throws ErrorException Emulators.optimize_hyperparameters!(10) # not an mlt
+    let thrown = @test_throws ArgumentError Emulators.optimize_hyperparameters!(10) # not an mlt
+        @test contains(thrown.value.msg, "does not implement the required emulator interface")
+    end
 
     μ1, σ1² = Emulators.predict(em1, new_inputs)
 

@@ -25,4 +25,6 @@ include("Emulator.jl")
 # Internal deps, light external deps
 include("MarkovChainMonteCarlo.jl")
 
+include("show.jl")
+
 end # module

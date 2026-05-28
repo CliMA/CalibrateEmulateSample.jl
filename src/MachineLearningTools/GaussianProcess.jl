@@ -35,7 +35,7 @@ export get_param_names
 
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type to dispatch which GP package to use:
 
@@ -49,7 +49,7 @@ struct SKLJL <: GaussianProcessesPackage end
 struct AGPJL <: GaussianProcessesPackage end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Predict type for `GPJL` in GaussianProcesses.jl:
  - `YType`
@@ -60,13 +60,13 @@ struct YType <: PredictionType end
 struct FType <: PredictionType end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Structure holding training input and the fitted Gaussian process regression
 models.
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 
 """
 struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTool
@@ -86,13 +86,17 @@ end
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
- - `package` - GaussianProcessPackage object.
- - `kernel` - GaussianProcesses kernel object. Default is a Squared Exponential kernel.
- - `noise_learn` - Boolean to additionally learn white noise in decorrelated space. Default is true.
- - `alg_reg_noise` - Float to fix the (small) regularization parameter of algorithms when `noise_learn = true`
- - `prediction_type` - PredictionType object. Default predicts data, not latent function (FType()).
+Construct a `GaussianProcess` for the chosen backend `package`.
+
+# Arguments
+
+- `package`: one of `GPJL`, `SKLJL`, or `AGPJL` to select the GP backend.
+- `kernel`: kernel object compatible with the chosen backend. Defaults to a squared-exponential kernel.
+- `noise_learn`: if `true`, learns additive white noise via the kernel. Default `true`.
+- `alg_reg_noise`: small regularisation added by the fitting algorithm when `noise_learn = true`. Default `1e-3`.
+- `prediction_type`: `YType()` (predict observations) or `FType()` (predict latent function). Default `YType()`.
 """
 function GaussianProcess(
     package::GPPkg;
@@ -131,14 +135,20 @@ end
 
 # First we create  the GPJL implementation
 """
-Gets flattened kernel hyperparameters from a (vector of) `GaussianProcess{GPJL}` model(s). Extends GaussianProcess.jl method.
+$(TYPEDSIGNATURES)
+
+Return the flattened kernel hyperparameters from each model in `gp`. Extends the
+`GaussianProcesses.jl` method for the `GPJL` backend.
 """
 function GaussianProcesses.get_params(gp::GaussianProcess{GPJL})
     return [get_params(model.kernel) for model in gp.models]
 end
 
 """
-Gets the flattened names of kernel hyperparameters from a (vector of) `GaussianProcess{GPJL}` model(s). Extends GaussianProcess.jl method.
+$(TYPEDSIGNATURES)
+
+Return the flattened names of kernel hyperparameters for each model in `gp`. Extends the
+`GaussianProcesses.jl` method for the `GPJL` backend.
 """
 function GaussianProcesses.get_param_names(gp::GaussianProcess{GPJL})
     return [get_param_names(model.kernel) for model in gp.models]
@@ -146,7 +156,7 @@ end
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Method to build Gaussian process models based on the package.
 """
@@ -228,7 +238,7 @@ function build_models!(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Optimize Gaussian process hyperparameters using in-build package method.
 
@@ -282,7 +292,7 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) wher
     _predict(gp, new_inputs, GaussianProcesses.predict_f)
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Predict means and covariances in decorrelated output space using Gaussian process models. The use of stored `FType` and `YType` to control this method is deprecated, the return covariance is now determined by the `predict(` kwarg `add_obs_noise_cov` 
 """

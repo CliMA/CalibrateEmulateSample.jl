@@ -52,28 +52,28 @@ export EmulatorPosteriorModel,
 # some possible types of autodiff used
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
 """
 abstract type AutodiffProtocol end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type to construct samplers for emulators not compatible with autodifferentiation
 """
 abstract type GradFreeProtocol <: AutodiffProtocol end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type to construct samplers for emulators compatible with `ForwardDiff.jl` autodifferentiation
 """
 abstract type ForwardDiffProtocol <: AutodiffProtocol end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type to construct samplers for emulators compatible with `ReverseDiff.jl` autodifferentiation
 """
@@ -95,7 +95,7 @@ end
 
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref) 
 constructor, corresponding to different sampling algorithms.
@@ -103,7 +103,7 @@ constructor, corresponding to different sampling algorithms.
 abstract type MCMCProtocol end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
     
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
 new parameters as as vanilla random walk, based on the covariance of `prior`.
@@ -123,7 +123,7 @@ AdvancedMH.logratio_proposal_density(
 ) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Constructor for all `Sampler` objects, with one method for each supported MCMC algorithm.
 
@@ -147,7 +147,7 @@ function MetropolisHastingsSampler(
 end
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
     
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
 new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is 
@@ -178,7 +178,7 @@ end
 #------ The following are gradient-based samplers
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the Barker proposal.
@@ -214,11 +214,7 @@ function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_prot
     elseif autodiff_protocol == ReverseDiffProtocol
         return ReverseDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
     else
-        throw(
-            ArgumentError(
-                "Calling `autodiff_gradient(...)` on a sampler with protocol $(autodiff_protocol) that has *no* gradient implementation.\n Please select from a protocol with a gradient implementation (e.g., `ForwardDiffProtocol`).",
-            ),
-        )
+        _throw_no_autodiff_impl(:gradient, autodiff_protocol)
     end
 
 end
@@ -232,12 +228,7 @@ function autodiff_hessian(model::AdvancedMH.DensityModel, params, autodiff_proto
     elseif autodiff_protocol == ReverseDiffProtocol
         return Symmetric(ReverseDiff.hessian(x -> AdvancedMH.logdensity(model, x), params))
     else
-        throw(
-            ArgumentError(
-                "Calling `autodiff_hessian(...)` on a sampler with protocol $(autodiff_protocol) that has *no* hessian implementation.\n Please select from a protocol with a hessian implementation (e.g., `ForwardDiffProtocol`).",
-            ),
-        )
-
+        _throw_no_autodiff_impl(:hessian, autodiff_protocol)
     end
 end
 
@@ -251,7 +242,7 @@ autodiff_hessian(model::AdvancedMH.DensityModel, params, sampler::MH) where {MH 
 # Use emulated model in sampler
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Defines the internal log-density function over a vector of observation samples using an assumed conditionally indepedent likelihood, that is with a log-likelihood of `ℓ(y,θ) = sum^n_i log( p(y_i|θ) )`.
 
@@ -281,7 +272,7 @@ function emulator_log_density_model(
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Factory which constructs `AdvancedMH.DensityModel` objects given an (Encoded) prior on the model 
 parameters (`encoded_prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given 
@@ -301,14 +292,14 @@ end
 # Record MH accept/reject decision in MCMCState object
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Extends the `AdvancedMH.Transition` (which encodes the current state of the MC during
 sampling) with a boolean flag to record whether this state is new (arising from accepting a
 Metropolis-Hastings proposal) or old (from rejecting a proposal).
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 """
 struct MCMCState{T, L <: Real} <: AdvancedMH.AbstractTransition
     "Sampled value of the parameters at the current state of the MCMC chain."
@@ -510,14 +501,14 @@ end
 # Top-level object to contain model and sampler (but not state)
 
 """
-$(DocStringExtensions.TYPEDEF)
+$(TYPEDEF)
 
 Top-level class holding all configuration information needed for MCMC sampling: the prior, 
 emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in 
 AbstractMCMC's terminology).
 
 # Fields
-$(DocStringExtensions.TYPEDFIELDS)
+$(TYPEDFIELDS)
 """
 struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
@@ -554,7 +545,7 @@ get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
 
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Constructor for [`MCMCWrapper`](@ref) that will perform an MCMC sampling in the encoded space given by `em_or_fmw` (`Emulator` or `ForwardMapWrapper`). It creates and wraps an instance of 
 [`EmulatorPosteriorModel`](@ref), for sampling from the Emulator (predicting means and covariances), and 
@@ -675,37 +666,16 @@ function MCMCWrapper(
     return MCMCWrapper(mcmc_alg, observations, prior, em_or_fmw; kwargs...)
 end
 """
-   $(DocStringExtensions.FUNCTIONNAME)([rng,] mcmc::MCMCWrapper, args...; kwargs...)
+$(TYPEDSIGNATURES)
 
-Extends the `sample` methods of AbstractMCMC (which extends StatsBase) to sample from the 
-emulated posterior, using the MCMC sampling algorithm and [`Emulator`](@ref) configured in 
-[`MCMCWrapper`](@ref). Returns a [`MCMCChains.Chains`](https://beta.turing.ml/MCMCChains.jl/dev/) 
-object containing the samples. 
+Extend the `AbstractMCMC.sample` interface to draw from the emulated posterior configured
+in `mcmc`. Returns a `MCMCChains.Chains` object.
 
-Supported methods are:
+Supported call patterns:
 
-- `sample([rng, ]mcmc, N; kwargs...)`
-
-  Return a `MCMCChains.Chains` object containing `N` samples from the emulated posterior.
-
-- `sample([rng, ]mcmc, isdone; kwargs...)`
-
-  Sample from the `model` with the Markov chain Monte Carlo `sampler` until a convergence 
-  criterion `isdone` returns `true`, and return the samples. The function `isdone` has the 
-  signature
-
-  ```julia
-      isdone(rng, model, sampler, samples, state, iteration; kwargs...)
-  ```
-
-  where `state` and `iteration` are the current state and iteration of the sampler, 
-  respectively. It should return `true` when sampling should end, and `false` otherwise.
-
-- `sample([rng, ]mcmc, parallel_type, N, nchains; kwargs...)`
-
-  Sample `nchains` Monte Carlo Markov chains in parallel according to `parallel_type`, which
-  may be `MCMCThreads()` or `MCMCDistributed()` for thread and parallel sampling, 
-  respectively.
+- `sample([rng, ]mcmc, N; kwargs...)` — draw exactly `N` samples.
+- `sample([rng, ]mcmc, isdone; kwargs...)` — sample until `isdone(rng, model, sampler, samples, state, iteration; kwargs...)` returns `true`.
+- `sample([rng, ]mcmc, parallel_type, N, nchains; kwargs...)` — run `nchains` chains in parallel via `MCMCThreads()` or `MCMCDistributed()`.
 """
 function sample(rng::Random.AbstractRNG, mcmc::MCMCWrapper, args...; kwargs...)
     # any explicit function kwargs override defaults in mcmc object
@@ -719,7 +689,7 @@ sample(mcmc::MCMCWrapper, args...; kwargs...) = sample(Random.GLOBAL_RNG, mcmc, 
 # Search for a MCMC stepsize that yields a good MH acceptance rate
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Fraction of MC proposals in `chain` which were accepted (according to Metropolis-Hastings.)
 """
@@ -727,7 +697,7 @@ function accept_ratio(chain::MCMCChains.Chains)
     if :accepted in names(chain, :internals)
         return mean(chain, :accepted)
     else
-        throw("MH `accepted` not recorded in chain: $(names(chain, :internals)).")
+        error("MH `:accepted` not recorded in MCMC chain — available internals: $(names(chain, :internals)).")
     end
 end
 
@@ -750,7 +720,7 @@ function _find_mcmc_step_log(it, stepsize, acc_ratio, chain::MCMCChains.Chains)
 end
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Uses a heuristic to return a stepsize for the `mh_proposal_sampler` element of 
 [`MCMCWrapper`](@ref) which yields fast convergence of the Markov chain.
@@ -806,13 +776,15 @@ function optimize_stepsize(
             return stepsize
         end
     end
-    throw("Failed to choose suitable stepsize in $(max_iter) iterations.")
+    error(
+        "optimize_stepsize: acceptance rate $(round(acc_ratio; sigdigits = 3)) did not reach target $(target_acc) ± 0.1 within $(max_iter) iterations — last stepsize: $(round(stepsize; sigdigits = 3)).",
+    )
 end
 # use default rng if none given
 optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBAL_RNG, mcmc; kwargs...)
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
 samples in `chain`.
@@ -871,7 +843,7 @@ end
 
 # other diagnostic utilities
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
 Computes the expected squared jump distance of the chain.
 """
@@ -886,6 +858,19 @@ function esjd(chain::MCMCChains.Chains)
 
 end
 
+## Error helpers
+
+@noinline function _throw_no_autodiff_impl(op::Symbol, autodiff_protocol)
+    throw(ArgumentError("""
+`autodiff_$(op)` called on a sampler with no $(op) implementation for protocol $(autodiff_protocol).
+
+Got:
+    autodiff_protocol = $(autodiff_protocol)
+
+Suggestion:
+    Select a protocol with a $(op) implementation, e.g. `ForwardDiffProtocol`.
+"""))
+end
 
 
 

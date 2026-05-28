@@ -78,7 +78,10 @@ rng = Random.MersenneTwister(seed)
             @test cov_structure_from_string(cs, d) == cc
         end
         @test cov_structure_from_string(OneDimFactor()) == OneDimFactor()
-        @test_throws ArgumentError cov_structure_from_string("bad-string", d)
+        let thrown = @test_throws ArgumentError cov_structure_from_string("bad-string", d)
+            @test contains(thrown.value.msg, "input_cov_structure")
+            @test contains(thrown.value.msg, repr("bad-string"))
+        end
 
         # [2. ] Kernel Structures 
         d = 6
@@ -338,6 +341,37 @@ rng = Random.MersenneTwister(seed)
             optimizer_options = optimizer_options,
         )
         @test_throws ArgumentError Emulator(srfi_bad, iopairs)
+
+        # test cross-validation split too large (Scalar RF): train_fraction=0.5 → n_test=25, 25*3=75 > n=50
+        let srfi_bad_cv = ScalarRandomFeatureInterface(
+                n_features,
+                input_dim,
+                kernel_structure = scalar_ks,
+                rng = rng,
+                optimizer_options = Dict("train_fraction" => 0.5, "n_cross_val_sets" => 3),
+            )
+            thrown = @test_throws ArgumentError Emulator(srfi_bad_cv, iopairs)
+            @test contains(thrown.value.msg, "n_cross_val_sets")
+            @test contains(thrown.value.msg, "n_test")
+            @test contains(thrown.value.msg, "train_fraction")
+            @test contains(thrown.value.msg, string(n))
+        end
+
+        # test cross-validation split too large (Vector RF)
+        let vrfi_bad_cv = VectorRandomFeatureInterface(
+                n_features,
+                input_dim,
+                output_dim,
+                kernel_structure = vector_ks,
+                rng = rng,
+                optimizer_options = Dict("train_fraction" => 0.5, "n_cross_val_sets" => 3),
+            )
+            thrown = @test_throws ArgumentError Emulator(vrfi_bad_cv, iopairs)
+            @test contains(thrown.value.msg, "n_cross_val_sets")
+            @test contains(thrown.value.msg, "n_test")
+            @test contains(thrown.value.msg, "train_fraction")
+            @test contains(thrown.value.msg, string(n))
+        end
 
         # test under repeats
         @test_logs (:info,) (:warn,) (:info,) (:warn,) Emulator(

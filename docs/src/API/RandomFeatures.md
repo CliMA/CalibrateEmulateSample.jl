@@ -5,6 +5,7 @@ CurrentModule = CalibrateEmulateSample.Emulators
 ```
 ## Kernel and Covariance structure
 ```@docs
+CovarianceStructureType
 OneDimFactor
 DiagonalFactor
 CholeskyFactor
@@ -12,9 +13,14 @@ LowRankFactor
 HierarchicalLowRankFactor
 SeparableKernel
 NonseparableKernel
+cov_structure_from_string
 calculate_n_hyperparameters
 hyperparameters_from_flat
 build_default_prior
+get_eps
+get_input_cov_structure
+get_output_cov_structure
+get_cov_structure
 ```
 
 ## Scalar interface
@@ -50,4 +56,5 @@ get_optimizer_options
 optimize_hyperparameters!(::ScalarRandomFeatureInterface) 
 optimize_hyperparameters!(::VectorRandomFeatureInterface) 
 shrinkage_cov
+nice_cov
 ```

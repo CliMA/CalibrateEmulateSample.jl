@@ -39,12 +39,17 @@ include(joinpath("MachineLearningTools", "RandomFeature.jl")) # Random Freatures
 # etc.
 
 # defaults in error, all MachineLearningTools require these functions.
-function throw_define_mlt(mlt)
-    throw(
-        ErrorException(
-            "Unknown MachineLearningTool defined, please use a known implementation. Please check all methods are defined for the MLT received: \n $mlt",
-        ),
-    )
+@noinline function throw_define_mlt(mlt)
+    throw(ArgumentError("""
+Unknown machine learning tool type — $(typeof(mlt)) does not implement the required emulator interface.
+
+Got:
+    typeof(mlt) = $(typeof(mlt))
+
+Suggestion:
+    Implement `build_models!`, `optimize_hyperparameters!`, and `predict` for your custom type,
+    or use a built-in type such as `GaussianProcess` or `ScalarRandomFeatureInterface`.
+"""))
 end
 function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
     throw_define_mlt(mlt)
@@ -80,28 +85,29 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Gets the `machine_learning_tool` field of the `Emulator`
+Return the `MachineLearningTool` (e.g. `GaussianProcess`, `ScalarRandomFeatureInterface`)
+stored in `emulator`.
 """
 get_machine_learning_tool(emulator::Emulator) = emulator.machine_learning_tool
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `io_pairs` field of the `Emulator`
+Return the original (unencoded) training `PairedDataContainer` stored in `emulator`.
 """
 get_io_pairs(emulator::Emulator) = emulator.io_pairs
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `encoded_io_pairs` field of the `Emulator`
+Return the encoded training `PairedDataContainer` stored in `emulator`.
 """
 get_encoded_io_pairs(emulator::Emulator) = emulator.encoded_io_pairs
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `encoder_schedule` field of the `Emulator`
+Return the initialised encoder schedule stored in `emulator`.
 """
 get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
@@ -109,16 +115,22 @@ get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 ### Forward Map Wrapper
 
 """
-$(TYPEDEF)
-This can replace an `Emulator`, but stores the original forward map. The forward map must be definable as a function `f`. To apply `f` properly this object also builds and stores an encoder `E`  and a parameter distribution (i.e. the prior) containing physical constraints `c`.
+Wrapper that stores an explicit forward map `f` in place of a trained `Emulator`.
+When `predict` is called this object evaluates `E_out ∘ f ∘ c(x)`, where `c` is the
+constraint transformation from the prior and `E_out` is the output encoder.
 
-When predict() is called this map will call `E_{out}∘f∘c(x)`
+$(TYPEDEF)
 
 # Fields
+
 $(TYPEDFIELDS)
 
-# Constructors:
-- `forward_map_wrapper(forward_map, prior, input_output_pairs; encoder_schedule=nothing, encoder_kwargs=NamedTuple())`
+# Constructors
+
+Prefer the [`forward_map_wrapper`](@ref) factory function for construction — it
+builds and initialises the encoder schedule automatically from training data.
+
+$(METHODLIST)
 """
 struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: NoiseInjector}
     "function that represents the forward map"
@@ -137,42 +149,42 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Gets the `forward_map` field of the `ForwardMapWrapper`
+Return the forward-map function stored in `fmw`.
 """
 get_forward_map(fmw::ForwardMapWrapper) = fmw.forward_map
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `prior` field of the `ForwardMapWrapper`
+Return the `ParameterDistribution` prior stored in `fmw`.
 """
 get_prior(fmw::ForwardMapWrapper) = fmw.prior
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `io_pairs` field of the `ForwardMapWrapper`
+Return the original (unencoded) training `PairedDataContainer` stored in `fmw`.
 """
 get_io_pairs(fmw::ForwardMapWrapper) = fmw.io_pairs
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `encoded_io_pairs` field of the `ForwardMapWrapper`
+Return the encoded training `PairedDataContainer` stored in `fmw`.
 """
 get_encoded_io_pairs(fmw::ForwardMapWrapper) = fmw.encoded_io_pairs
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `encoder_schedule` field of the `ForwardMapWrapper`
+Return the initialised encoder schedule stored in `fmw`.
 """
 get_encoder_schedule(fmw::ForwardMapWrapper) = fmw.encoder_schedule
 
 """
 $(TYPEDSIGNATURES)
 
-Gets the `noise_injector` field of the `ForwardMapWrapper`
+Return the `NoiseInjector` stored in `fmw`, used for null-space noise injection when decoding.
 """
 get_noise_injector(fmw::ForwardMapWrapper) = fmw.noise_injector
 
@@ -181,16 +193,21 @@ get_noise_injector(fmw::ForwardMapWrapper) = fmw.noise_injector
 """
 $(TYPEDSIGNATURES)
 
-Constructor of the Emulator object,
+Construct an `Emulator` from a machine-learning tool and paired training data, fitting
+the encoder schedule and building the underlying model in encoded space.
 
-Positional Arguments
- - `machine_learning_tool`: the selected machine learning tool object (e.g. Gaussian process / Random feature interface)
- - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+# Arguments
 
-Keyword Arguments 
- -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
- - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
-Other keywords are passed to the machine learning tool initialization
+- `machine_learning_tool`: the `MachineLearningTool` to train (e.g. `GaussianProcess`, `ScalarRandomFeatureInterface`).
+- `input_output_pairs`: training data as a `PairedDataContainer`.
+- `encoder_schedule` (keyword, default `nothing`): encoding/decoding pipeline passed to
+  [`create_encoder_schedule`](@ref). `nothing` builds a default schedule using
+  [`decorrelate_sample_cov`](@ref) for both input and output, or
+  `(decorrelate_sample_cov(), decorrelate_structure_mat())` when `:obs_noise_cov` is
+  present in `encoder_kwargs`. Pass `[]` to disable encoding.
+- `encoder_kwargs` (keyword, default `NamedTuple()`): forwarded to
+  [`initialize_and_encode_with_schedule!`](@ref).
+- Additional keywords are forwarded to the machine-learning tool initialiser.
 """
 function Emulator(
     machine_learning_tool::MachineLearningTool,
@@ -284,22 +301,26 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Makes a prediction using the emulator on new inputs (each new inputs given as data columns).
+Return emulator predictions (mean and covariance) at `new_inputs`, where each input
+is a column of the matrix.
 
-Keyword args
-- `encode` [=`nothing`]: For the input encoder `Eᵢ`, and output decoder `Dₒ` stored in the emulator, we have learnt a predict method method `G` in the encoded space. Interpret the keyword as follows:
-    - `nothing`     : applies Dₒ∘G∘Eᵢ(x) (nothing is encoded) - most common for user interaction
-    - `"in"`        : applies Dₒ∘G(z) (the inputs are provided as encoded (z=Eᵢx))
-    - `"out"`       : applies G∘Eᵢ(x) (the outputs are returned as encoded)
-    - `"in_and_out"`: applies G(z) (inputs (z=Eᵢx) and outputs are both encoded) - internally called by `Sample` method
-- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
-    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
-    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
-- All other kwargs are passed into the machine learning tool.
+# Arguments
 
-Return type of N inputs: (in the output space)
-  - 1-D: mean [1 x N], cov [1 x N]
-  - p-D: mean [p x N], cov N x [p x p] 
+- `emulator`: trained `Emulator` to query.
+- `new_inputs`: `[input_dim × N]` matrix of query points.
+- `encode` (keyword, default `nothing`): controls which encoding stages are applied.
+  Let `Eᵢ`/`Eₒ` be input/output encoders and `G` the model in encoded space:
+  - `nothing`      → `Dₒ∘G∘Eᵢ(x)` — standard user-facing call.
+  - `"in"`         → `Dₒ∘G(z)` — inputs already encoded as `z = Eᵢx`.
+  - `"out"`        → `G∘Eᵢ(x)` — outputs returned in encoded space.
+  - `"in_and_out"` → `G(z)` — inputs encoded, outputs in encoded space (used internally by `sample`).
+- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds the stored
+  observational noise covariance to the returned uncertainty (used internally by `sample`).
+- Additional keywords are forwarded to the machine-learning tool `predict` method.
+
+Returns `(mean, cov)` where for `N` inputs:
+- 1-D output: `mean` is `[1 × N]`, `cov` is `[1 × N]` variances.
+- p-D output: `mean` is `[p × N]`, `cov` is a length-N iterator of `[p × p]` covariance matrices.
 """
 function predict(
     emulator::Emulator{FT},
@@ -323,13 +344,7 @@ function predict(
     check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != check_dim
-        throw(
-            ArgumentError(
-                "Emulator object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
-            ),
-        )
-    end
+    size(new_inputs, 1) != check_dim && _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :Emulator)
 
 
     # encode the new input data
@@ -401,18 +416,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Constructor of the `ForwardMapWrapper` object. Behaves similarly to constructing the `Emulator` but additionally requires the `prior` parameter distribution.
+Construct a [`ForwardMapWrapper`](@ref) from an explicit forward map, a prior, and
+paired training data. Behaves similarly to the `Emulator` constructor but additionally
+requires `prior` so that inputs can be constrained and null-space noise can be injected
+when the encoder is lossy.
 
-Positional Arguments
- - `forward_map`: a function that represents the forward map `F(x)` mapping physical parameters (in constrained space) to outputs
- - `prior`: a `ParameterDistribution` object describing the prior on the physical parameters.
- - `input_output_pairs`: the paired input-output data points stored in a `PairedDataContainer`
+# Arguments
 
-Keyword Arguments 
- -  `encoder_schedule`[=`nothing`]: the schedule of data encoding/decoding. This will be passed into the method `create_encoder_schedule` internally. `nothing` sets sets a default schedule `[(decorrelate_sample_cov(), "in_and_out")]`, or `[(decorrelate_sample_cov(), "in"), (decorrelate_structure_mat(), "out")]` if an `encoder_kwargs` has a key `:obs_noise_cov`. Pass `[]` for no encoding.
- - `encoder_kwargs`[=`NamedTuple()`]: a Dict or NamedTuple with keyword arguments to be passed to `initialize_and_encode_with_schedule!`
- - `noise_injector_threshold`[=`0.001`]: A threshold to implementing noise injection when decoding from an lossily encoded space. If the variance loss due to encoding is `>noise_injector_threshold` then additional noise is added to the null-space (consistent with the prior correlation structure).
- - `noise_injector_scaling`[=`1.0`]: a multiplicative scaling that is applied to injected noise samples. (1.0 is "consistent" with Gaussian theory, but may cause instability in Non-Gaussian problems and can be reduced)
+- `forward_map`: function `F(x)` mapping physical (constrained) parameters to model outputs.
+- `prior`: `ParameterDistribution` describing the prior on physical parameters.
+- `input_output_pairs`: training data as a `PairedDataContainer`.
+- `encoder_schedule` (keyword, default `nothing`): encoding pipeline; see [`Emulator`](@ref) constructor for details.
+- `encoder_kwargs` (keyword, default `NamedTuple()`): forwarded to [`initialize_and_encode_with_schedule!`](@ref).
+- `noise_injector_threshold` (keyword, default `0.001`): if the variance lost by the
+  encoder exceeds this threshold, noise consistent with the prior is injected into the
+  null-space when decoding encoded MCMC samples.
+- `noise_injector_scaling` (keyword, default `1.0`): multiplicative scale applied to
+  injected noise; values below 1.0 can improve robustness for non-Gaussian problems.
 """
 function forward_map_wrapper(
     forward_map::Function,
@@ -458,22 +478,24 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Makes a prediction using the ForwardMapWrapper on new inputs (each new inputs given as data columns).
+Return predictions (mean and covariance) from the `ForwardMapWrapper` at `new_inputs`,
+where each input is a column. The forward map runs in the physical (decoded) space and is
+encoded/decoded as requested.
 
-Keyword args
-- `encode` [=`nothing`]: For the output encoder `Eₒ`, and input decoder `Dᵢ` stored in the `ForwardMapWrapper`, we have provided the forward map `G` in the decoded space. Interpret the keyword as follows:
-    - `nothing`     : applies G(x) (nothing is encoded) - most common for user interaction
-    - `"in"`        : applies G∘Dᵢ(z) (the inputs are provided as encoded (x=Dᵢz))
-    - `"out"`       : applies Eₒ∘G(x) (the outputs are returned as encoded)
-    - `"in_and_out"`: applies Eₒ∘G∘Dᵢ(z) (inputs (x=Dᵢz) and outputs are both encoded) - internally called by `Sample` method
-- `add_obs_noise_cov`[=`false`]: When returning the prediction covariance, whether to add the observational noise
-    - `false`: Only return the uncertainty given by the machine learning tool - most common for user emulator validation
-    - `true` : Return the sum of emulator and observational uncertainty - internally called by `Sample` method
-- All other kwargs are passed into the machine learning tool.
+# Arguments
 
-Return type of N inputs: (in the output space)
-  - 1-D: mean [1 x N], cov [1 x N]
-  - p-D: mean [p x N], cov N x [p x p] 
+- `fmw`: `ForwardMapWrapper` to query.
+- `new_inputs`: `[input_dim × N]` matrix of query points.
+- `encode` (keyword, default `nothing`): controls encoding stages applied to inputs/outputs.
+  Let `Di`/`Eo` be input decoder/output encoder and `G` the forward map in decoded space:
+  - `nothing`      → `G(x)` — standard user-facing call.
+  - `"in"`         → `G∘Di(z)` — inputs are encoded as `z = Ei(x)`.
+  - `"out"`        → `Eo∘G(x)` — outputs returned in encoded space.
+  - `"in_and_out"` → `Eo∘G∘Di(z)` — used internally by `sample`.
+- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds observational noise
+  covariance to the returned uncertainty (used internally by `sample`).
+
+Returns `(mean, cov)` with the same shape conventions as [`predict`](@ref).
 """
 function predict(
     fmw::FMW,
@@ -496,13 +518,8 @@ function predict(
     check_dim = in_already_encoded ? encoded_input_dim : input_dim
     N_samples = size(new_inputs, 2)
 
-    if size(new_inputs, 1) != check_dim
-        throw(
-            ArgumentError(
-                "ForwardMapWrapper object `io_pairs` (resp. `encoded_io_pairs`) and new inputs do not have consistent dimensions, expected $(check_dim), received $(size(new_inputs,1))",
-            ),
-        )
-    end
+    size(new_inputs, 1) != check_dim &&
+        _throw_input_dim_mismatch(size(new_inputs, 1), check_dim; caller = :ForwardMapWrapper)
 
     prior = get_prior(fmw)
     if in_already_encoded
@@ -558,7 +575,26 @@ function predict(
 end
 
 
+## Error helpers
+
+@noinline function _throw_input_dim_mismatch(actual::Int, expected::Int; caller::Symbol)
+    throw(DimensionMismatch("""
+$caller: new_inputs row count does not match the expected input dimension.
+
+Expected:
+    size(new_inputs, 1) == $expected
+
+Got:
+    size(new_inputs, 1) = $actual
+
+Suggestion:
+    Pass new_inputs with $expected rows (one per input dimension).
+    If inputs are already in the encoded space, pass `encode = "in"` to predict(...).
+"""))
+end
+
 ### Deprecated keywords
+
 function deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
     if !isnothing(transform_to_real)
         @warn(

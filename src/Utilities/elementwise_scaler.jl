@@ -39,9 +39,29 @@ struct ElementwiseScaler{
     struct_decoder_mat::VV5
 end
 
+"""
+Abstract supertype for the family of elementwise affine scaling strategies. Concrete
+subtypes — [`QuartileScaling`](@ref), [`MinMaxScaling`](@ref), [`ZScoreScaling`](@ref) —
+are used as type parameters of [`ElementwiseScaler`](@ref) to select the transformation.
+"""
 abstract type UnivariateAffineScaling end
+
+"""
+Elementwise scaling strategy that centres each dimension on its median and scales by the
+interquartile range (``Q_3 - Q_1``). Use via [`quartile_scale`](@ref).
+"""
 abstract type QuartileScaling <: UnivariateAffineScaling end
+
+"""
+Elementwise scaling strategy that maps each dimension to ``[0,1]`` using its minimum and
+maximum. Use via [`minmax_scale`](@ref).
+"""
 abstract type MinMaxScaling <: UnivariateAffineScaling end
+
+"""
+Elementwise scaling strategy that standardises each dimension to zero mean and unit
+variance. Use via [`zscore_scale`](@ref).
+"""
 abstract type ZScoreScaling <: UnivariateAffineScaling end
 
 """
@@ -136,12 +156,6 @@ $(TYPEDSIGNATURES)
 returns the `struct_decoder_mat` field of the `ElementwiseScaler`. For Consistent API with other encoders
 """
 get_decoder_mat(es::ElementwiseScaler) = es.struct_decoder_mat
-
-
-function Base.show(io::IO, es::ElementwiseScaler)
-    out = "ElementwiseScaler: $(get_type(es))"
-    print(io, out)
-end
 
 
 function initialize_processor!(

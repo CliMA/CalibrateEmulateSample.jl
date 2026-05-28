@@ -165,7 +165,12 @@ end
         A[4].svd_cov.U * Diagonal(A[4].svd_cov.S) * A[4].svd_cov.Vt + A[4].diag_cov
 
 
-    @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+    let thrown = @test_throws ArgumentError create_compact_linear_map(3 * I) # needs dims
+        @test contains(thrown.value.msg, "UniformScaling")
+        @test contains(thrown.value.msg, "Diagonal")
+    end
+    # Resolution test (Step 7c): replacing λI with Diagonal(fill(λ, d)) must not throw
+    @test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing
@@ -280,7 +285,10 @@ end
     @test get_decoder_mat(ll3) == [3]
     @test get_data_mean(ll3) == [4]
     @test_throws ArgumentError likelihood_informed(grad_type = :bad_type)
-    @test_throws ArgumentError likelihood_informed(iters = 1.3)
+    let thrown = @test_throws ArgumentError likelihood_informed(iters = 1.3)
+        @test contains(thrown.value.msg, "eltype(iters)")
+        @test contains(thrown.value.msg, "Float64")
+    end
 
     # test equalities
     cc = canonical_correlation()
@@ -578,7 +586,28 @@ end
     schedule2b = create_encoder_schedule(sch2b)
     @test_throws ArgumentError initialize_and_encode_with_schedule!(schedule2b, io_pairs; prior_cov = prior_cov)
 
+    # test _throw_insufficient_cca_samples: 5 input dims but only 3 samples → triggers
+    let cc_sch = create_encoder_schedule((canonical_correlation(), "in"))
+        bad_in = rand(rng, 5, 3)
+        bad_out = rand(rng, 3, 3)
+        bad_io = PairedDataContainer(bad_in, bad_out)
+        thrown = @test_throws ArgumentError initialize_and_encode_with_schedule!(cc_sch, bad_io)
+        @test contains(thrown.value.msg, "CanonicalCorrelation")
+        @test contains(thrown.value.msg, "samples")
+        @test contains(thrown.value.msg, "(5, 3)")
+    end
 
+    # test invalid decorrelate_with value
+    let bad_sch = create_encoder_schedule((decorrelate(decorrelate_with = "bad_value"), "in"))
+        thrown = @test_throws ArgumentError initialize_and_encode_with_schedule!(bad_sch, io_pairs)
+        @test contains(thrown.value.msg, "decorrelate_with")
+        @test contains(thrown.value.msg, repr("bad_value"))
+    end
+    # resolution: a valid decorrelate_with does not throw
+    @test initialize_and_encode_with_schedule!(
+        create_encoder_schedule((decorrelate(decorrelate_with = "sample_cov"), "in")),
+        io_pairs,
+    ) isa Tuple
 
     # combine a few lossless encoding schedules (lossless requires samples>dims)
     samples = 150 # for full test coverage have samples in_dim < samples < out_dim

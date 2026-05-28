@@ -43,14 +43,17 @@ const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, Li
 const StructureVector = Union{AbstractVector, AbstractMatrix} # In case of a matrix, the columns should be seen as vectors
 
 """
-$(DocStringExtensions.TYPEDSIGNATURES)
+$(TYPEDSIGNATURES)
 
-Extract and flatten the training points needed to train an Emulator. returned as a `PairedDataContainer`
+Extract and flatten the training data from an `EnsembleKalmanProcess` into a
+`PairedDataContainer` suitable for training an `Emulator`.
 
-- `ekp` - EnsembleKalmanProcess holding the parameters and the data that were produced
-  during the Ensemble Kalman (EK) process.
-- `train_iterations` - Number (e.g. 1:train_iterations), or indices train_iterations=`3:2:9`, for EKP iterations to extract. 
-- `g_final[=nothing]` - EKP will typically store one extra input data iteration. If desired, the user can add output data for this final iteration directly with `g_final`. It should be of type `<: AbstractMatrix`, sized consistently as with return values from `get_g(ekp,1)`.
+# Arguments
+
+- `ekp`: `EnsembleKalmanProcess` holding the parameter ensemble and forward-model outputs.
+- `train_iterations`: integer `n` (uses iterations `1:n`) or an index vector such as `3:2:9`.
+- `g_final` (keyword, default `nothing`): optional `AbstractMatrix` of forward-model outputs
+  for the final parameter ensemble (not yet stored in `ekp`), sized as `get_g(ekp, 1)`.
 """
 function get_training_points(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
@@ -220,12 +223,16 @@ function encoder_kwargs_from(
     if !isnothing(final_samples_out)
         if (isa(final_samples_out, AbstractMatrix)) # add one matrix
             if length(samples_out) > 0
-                @assert(size(samples_out[1]) == size(final_samples_out))
+                size(samples_out[1]) == size(final_samples_out) || error(
+                    "size of final_samples_out ($(size(final_samples_out))) does not match existing samples_out entries ($(size(samples_out[1])))",
+                )
             end
             push!(samples_out, final_samples_out)
         else # add a vector of matrices
             if length(samples_out) > 0
-                @assert all(size(samples_out[1]) == size(so) for so in final_samples_out)
+                all(size(samples_out[1]) == size(so) for so in final_samples_out) || error(
+                    "not all final_samples_out entries have size $(size(samples_out[1])) to match existing samples_out",
+                )
             end
             samples_out = reduce(vcat, [samples_out, final_samples_out])
         end
@@ -243,24 +250,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Produces a linear map of type `LinearMap` that can evaluates the stacked actions of the structure matrix in compact form. by calling say `linear_map.f(x)` or `linear_map.fc(x)` to obtain `Ax`, or `A'x`. This particular type can be used by packages like `TSVD.jl` or `IterativeSolvers.jl` for further computations.
+Return a `LinearMap` that evaluates the action `A*x` (and `A'*x`) of a structure matrix
+`A` in compact SVD+diagonal form, without building the full dense matrix. The map can be
+used directly with `TSVD.jl`, `IterativeSolvers.jl`, and similar packages.
 
-This compact map constructs the following form of the Linear map f:
+Internally decomposes each block as `U * S * Vt + D` and stacks the results.
 
-1. get compact form svd-plus-d form "USVt + D" of the `blocks`
-2. create the f via stacking `A.U * A.S * A.Vt * xblock + A.D * xblock for (A,xblock) in  (As, x)`
+# Arguments
 
-kwargs:
-------
-When computing the svd internally from an abstract matrix
-- `svd_dim_max=3000`: this switches to an approximate svd approach when applying to covariance matrices above dimension 3000
-- `psvd_or_tsvd="psvd"`: use psvd or tsvd for approximating svd for large matrices
-- `tsvd_max_rank=50`: when using tsvd, what max rank to use. high rank = higher accuracy
-- `psvd_kwargs=(; rtol=1e-2)`: when using psvd, what kwargs to pass. lower rtol = higher accuracy
-
-Recommended: quick & inaccurate -> slow and more accurate
-- very large matrices - start with tsvd with very low rank, and increase
-- mid-size matrices - psvd with very high rtol, and decrease
+- `A`: structure matrix (or vector of structure matrices for a block-diagonal layout).
+- `svd_dim_max` (keyword, default `3000`): matrices larger than this dimension use an
+  approximate SVD instead of the exact `LinearAlgebra.svd`.
+- `psvd_or_tsvd` (keyword, default `"psvd"`): approximation algorithm for large matrices;
+  `"psvd"` (randomised, `LowRankApprox.jl`) or `"tsvd"` (truncated, `TSVD.jl`).
+- `tsvd_max_rank` (keyword, default `50`): maximum rank when using `"tsvd"`.
+- `psvd_kwargs` (keyword, default `(; rtol=1e-1)`): keyword arguments forwarded to `psvd`.
 """
 function create_compact_linear_map(
     A;
@@ -278,15 +282,9 @@ function create_compact_linear_map(
     ds = []
     batches = []
     shift = 0
-    for a in Avec
+    for (i, a) in enumerate(Avec)
         bsize = 0
-        if isa(a, UniformScaling)
-            throw(
-                ArgumentError(
-                    "Detected `UniformScaling` (i.e. \"λI\") StructureMatrix, and unable to infer dimensionality. \n Please recast this as a diagonal matrix, defining \"λI(d)\" for dimension d",
-                ),
-            )
-        end
+        isa(a, UniformScaling) && _throw_uniform_scaling_elem(i, length(Avec))
         if isa(a, AbstractMatrix)
             if size(a, 1) <= svd_dim_max
                 svda = svd(a)
@@ -355,13 +353,16 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Approximately computes the norm of a `LinearMap` object. For `Amap` associated with matrix `A`, `norm_linear_map(Amap,p)≈norm(A,p)`. Can be aliased as `norm()`
+Approximate the `p`-norm of a `LinearMap` `A` using random matrix–vector products,
+satisfying `norm_linear_map(A, p) ≈ norm(Matrix(A), p)`. Can be called via `norm(A, p)`.
 
-kwargs
-------
-- n_eval(=nothing): number of mat-vec products to apply in the approximation (larger is more accurate). default performs `size(map,2)` products
-- rng(=Random.default_rng()): random number generator
+# Arguments
 
+- `A`: the `LinearMap` to evaluate.
+- `p` (default `2`): norm order.
+- `n_eval` (keyword, default `nothing`): number of matrix–vector products; defaults to
+  `size(A, 2)` (exact for `p=2`, approximate otherwise).
+- `rng` (keyword, default `Random.default_rng()`): random number generator.
 """
 function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.default_rng()) where {LM <: LinearMap}
     m, n = size(A)
@@ -384,22 +385,37 @@ LinearAlgebra.norm(A::LM, p::Real = 2; lm_kwargs...) where {LM <: LinearMap} = n
 # Data processing tooling:
 
 abstract type DataProcessor end
-abstract type PairedDataContainerProcessor <: DataProcessor end # tools that operate on inputs and outputs 
-abstract type DataContainerProcessor <: DataProcessor end # tools that operate on only inputs or outputs
+
+"""
+Abstract supertype for processors that operate jointly on input–output data pairs
+(e.g. [`CanonicalCorrelation`](@ref), [`LikelihoodInformed`](@ref)).
+"""
+abstract type PairedDataContainerProcessor <: DataProcessor end
+
+"""
+Abstract supertype for processors that operate independently on one data container
+— either inputs or outputs — (e.g. [`Decorrelator`](@ref), [`ElementwiseScaler`](@ref)).
+"""
+abstract type DataContainerProcessor <: DataProcessor end
 # define how to have equality
 # this gets messy with LinearMaps, 
 
 """
 $(TYPEDSIGNATURES)
 
-Tests equality for a LinearMap on a standard basis of the input space. Note that this operation requires a matrix multiply per input dimension so can be expensive.
+Test whether two `LinearMap`s `A` and `B` act identically on a standard basis of the
+input space. Requires one matrix–vector product per basis vector tested.
 
-Kwargs:
--------
-- n_eval (=nothing): the number of basis vectors to compare against (randomly selected without replacement if `n_eval < size(A,1)`)
-- tol (=2*eps()): the tolerance for equality on evaluation per entry
-- rng (=default_rng()): When provided, and `n_eval < size(A,1)`; a random subset of the basis is compared, using this `rng`.
-- up_to_sign(=false): Only assess equality up to a sign-error (sufficient for e.g. encoder/decoder matrices)
+# Arguments
+
+- `A`, `B`: `LinearMap`s to compare; must have compatible sizes.
+- `n_eval` (keyword, default `nothing`): number of basis vectors to compare; when less
+  than `size(A, 2)`, a random subset is used.
+- `tol` (keyword, default `2*eps()`): per-entry absolute tolerance for equality.
+- `rng` (keyword, default `Random.default_rng()`): random number generator used when
+  `n_eval < size(A, 2)`.
+- `up_to_sign` (keyword, default `false`): when `true`, equality is checked up to
+  componentwise sign differences (sufficient for comparing encoder/decoder matrices).
 """
 function isequal_linear(
     A::LM1,
@@ -588,7 +604,7 @@ function _initialize_and_encode_data!(
 end
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Create a flatter encoder schedule for the 
 from the user's proposed schedule of the form:
@@ -638,7 +654,7 @@ create_encoder_schedule(schedule_in::TT) where {TT <: Tuple} = create_encoder_sc
 
 # Functions to encode/decode with uninitialized schedule (require structure matrices as input)
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in the created encoder schedule (See [`create_encoder_schedule`](@ref)), and initializes it, and encodes the paired data container, and structure matrices with it.
 """
@@ -739,7 +755,7 @@ end
 # Functions to encode/decode with initialized schedule
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in an already initialized encoder schedule, and encodes a `DataContainer`, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus encoded differently)
 """
@@ -765,7 +781,7 @@ function encode_with_schedule(
 end
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in an already initialized encoder schedule, and encodes a structure matrix, the `in_or_out` string indicates if the structure matrix is for input `"in"` or output `"out"` space (and thus encoded differently)
 """
@@ -825,7 +841,7 @@ end
 
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in an already initialized encoder schedule, and decodes a `DataContainer`, and structure matrices with it, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus decoded differently)
 """
@@ -859,7 +875,7 @@ function decode_with_schedule(
 end
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in an already initialized encoder schedule, and decodes a `DataContainer`, the `in_or_out` string indicates if the data is input `"in"` or output `"out"` data (and thus decoded differently)
 """
@@ -886,7 +902,7 @@ function decode_with_schedule(
 end
 
 """
-$TYPEDSIGNATURES
+$(TYPEDSIGNATURES)
 
 Takes in an already initialized encoder schedule, and decodes a structure matrix, the `in_or_out` string indicates if the structure matrix is for input `"in"` or output `"out"` space (and thus decoded differently)
 """
@@ -1238,6 +1254,17 @@ function decode_and_add_noise(
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
     noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
     return decode_and_add_noise(noise_injector, samples)
+end
+
+## Error helpers
+
+@noinline function _throw_uniform_scaling_elem(i::Int, total::Int)
+    throw(ArgumentError("""
+Structure matrix $i (of $total) is a `UniformScaling` ("λI"), whose dimension cannot be inferred.
+
+Suggestion:
+    Replace `λ * I` with `Diagonal(fill(λ, d))` where `d` is the required matrix dimension.
+"""))
 end
 
 # Processors
