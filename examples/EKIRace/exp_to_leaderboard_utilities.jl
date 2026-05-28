@@ -79,7 +79,7 @@ true_param_arr = fill(NaN, n_rng, n_ens, n_targets, 1, n_params)
 post_mean_arr  = fill(NaN, n_rng, n_ens, n_targets, 1, n_params)
 post_cov_arr   = fill(NaN, n_rng, n_ens, n_targets, 1, n_params, n_params)
 mahal_arr      = fill(NaN, n_rng, n_ens, n_targets, 1)
-logpdf_arr     = fill(NaN, n_rng, n_ens, n_targets, 1)
+logpdf_true_v_map_arr     = fill(NaN, n_rng, n_ens, n_targets, 1)
 n_evals_arr    = fill(NaN, n_rng, n_ens, n_targets, 1)
 
 for (fc, N_ens, rng_idx) in valid_file_items
@@ -117,7 +117,7 @@ for (fc, N_ens, rng_idx) in valid_file_items
         # (m - truth)' C^{-1} (m - truth)
         mahal_arr[i, j, l, 1]          = diff' * (C_reg \ diff)
         # log p(truth | posterior) - log p(mode | posterior)
-        logpdf_arr[i, j, l, 1]         = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
+        logpdf_true_v_map_arr[i, j, l, 1]         = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
         # total forward model evaluations to reach target
         n_evals_arr[i, j, l, 1]        = conv_alg_iters * N_ens
     end
@@ -203,15 +203,15 @@ mahalanobis_v = defVar(
 mahalanobis_v.attrib["description"] = "M = mahalanobis distance: for posterior ≈ N(m,C), it is (m-truth_param)'*C^{-1}*(m-truth_param). Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It is the multidimensional equivalent of `how many standard deviations is the truth away form the posterior mean`. For gaussian -2P = M, if M > -2P => heavy tails"
 mahalanobis_v[:, :, :, :] = mahal_arr
 
-posterior_logpdf_v = defVar(
+posterior_logpdf_true_v_map_v = defVar(
     ds,
-    "posterior_logpdf",
+    "posterior_logpdf_true_v_map",
     Float64,
     ("random_seed", "ensemble_size", "rmse_target", "algorithm_type");
     fillvalue = NaN,
 )
-posterior_logpdf_v.attrib["description"] = "P = posterior_logpdf(truth_param) - posterior_logpdf(mode(posterior)). Ideally -2P Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It asks `How much less probable is the true value compared to the MAP`. For gaussian -2P = M, if M > -2P => heavy tails"
-posterior_logpdf_v[:, :, :, :] = logpdf_arr
+posterior_logpdf_true_v_map_v.attrib["description"] = "P = posterior_logpdf(truth_param) - posterior_logpdf(mode(posterior)). Ideally -2P Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It asks `How much less probable is the true value compared to the MAP`. For gaussian -2P = M, if M > -2P => heavy tails"
+posterior_logpdf_true_v_map_v[:, :, :, :] = logpdf_true_v_map_arr
 
 close(ds)
 @info "Saved leaderboard data to $(nc_save_filename)"
