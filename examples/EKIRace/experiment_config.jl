@@ -4,11 +4,12 @@ using Dates
 ###############  USER TOGGLE  #########################################
 ########################################################################
 # Set EXPERIMENT to one of: :l63, :l96_const, :l96_vec, :l96_flux
-EXPERIMENT = :l63
+EXPERIMENT = :l96_const
 
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).
-calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
+#calibrate_date = Date("2026-05-29", "yyyy-mm-dd")
+calibrate_date = today()
 
 ########################################################################
 ###############  SHARED CONSTANTS  ####################################
