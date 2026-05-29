@@ -50,7 +50,10 @@ end
 first_loaded = JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...)))
 n_params = length(vec(mean(first_loaded["posteriors_by_k"][1])))
 
-n_k = cfg.max_iter  # upper bound for pre-allocation; trimmed after loading
+n_k = maximum(
+    maximum(JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)))["k_values"])
+    for (N_ens, rng_idx) in valid_file_items
+)
 
 n_rng = length(rng_idxs)
 n_ens = length(N_enss)
@@ -63,8 +66,6 @@ post_cov_arr          = fill(NaN, n_rng, n_ens, n_k, n_params, n_params)
 mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
 logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
 
-actual_n_k = 0  # track the maximum k actually written across all files
-
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
     @info "loading case $(post_fn)"
@@ -73,7 +74,6 @@ for (N_ens, rng_idx) in valid_file_items
     posteriors_by_k = loaded["posteriors_by_k"]
     k_values        = loaded["k_values"]
     truth_params    = loaded["truth_params"]
-    actual_n_k = max(actual_n_k, maximum(k_values))
 
     # Load ekpobj for total calibration cost
     ekp_loaded     = JLD2.load(joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)))
@@ -104,13 +104,6 @@ for (N_ens, rng_idx) in valid_file_items
     end
 end
 
-
-# Trim k_iter dimension to the maximum k actually present in the data
-n_k = actual_n_k
-post_mean_arr         = post_mean_arr[:, :, 1:n_k, :]
-post_cov_arr          = post_cov_arr[:, :, 1:n_k, :, :]
-mahal_arr             = mahal_arr[:, :, 1:n_k]
-logpdf_true_v_map_arr = logpdf_true_v_map_arr[:, :, 1:n_k]
 
 ### Saving the data in nc
 
