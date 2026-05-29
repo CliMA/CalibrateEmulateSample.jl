@@ -108,28 +108,19 @@ end
 
 ds = NCDataset(nc_save_filename, "c")
 
-defDim(ds, "random_seed",    n_rng)
-defDim(ds, "ensemble_size",  n_ens)
-defDim(ds, "rmse_target",    n_targets)
-defDim(ds, "algorithm_type", 1)
-defDim(ds, "k_iter",         n_k)
-defDim(ds, "param_dim",      n_params)
-defDim(ds, "param_dim_2",    n_params)
+defDim(ds, "random_seed",   n_rng)
+defDim(ds, "ensemble_size", n_ens)
+defDim(ds, "k_iter",        n_k)
+defDim(ds, "param_dim",     n_params)
+defDim(ds, "param_dim_2",   n_params)
 
 # Coordinate variables
-alg_var = defVar(ds, "algorithm_type", String, ("algorithm_type",))
-alg_var[1] = method_cases_key[method]
-
 rng_var = defVar(ds, "random_seed", Int64, ("random_seed",))
 rng_var[:] = rng_idxs
 
 ens_var = defVar(ds, "ensemble_size", Int64, ("ensemble_size",))
 ens_var.attrib["description"] = "Number of ensemble members"
 ens_var[:] = N_enss
-
-rmse_var = defVar(ds, "rmse_target", Float64, ("rmse_target",); fillvalue = NaN)
-rmse_var.attrib["description"] = "Target accuracy level (root mean square error)"
-rmse_var[:] = targets
 
 k_var = defVar(ds, "k_iter", Int64, ("k_iter",))
 k_var.attrib["description"] = "Number of EKP training iterations used to fit the emulator (1-indexed)"
@@ -139,51 +130,51 @@ k_var[:] = collect(1:n_k)
 
 n_evals_v = defVar(
     ds, "n_evals_to_target", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type");
+    ("random_seed", "ensemble_size");
     fillvalue = NaN,
 )
 n_evals_v.attrib["description"] = "Total calibration cost: conv_alg_iters * ensemble_size."
-n_evals_v[:, :, :, :] = n_evals_arr
+n_evals_v[:, :] = n_evals_arr
 
 true_param_v = defVar(
     ds, "true_param", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type", "param_dim");
+    ("random_seed", "ensemble_size", "param_dim");
     fillvalue = NaN,
 )
 true_param_v.attrib["description"] = "truth_param"
-true_param_v[:, :, :, :, :] = true_param_arr
+true_param_v[:, :, :] = true_param_arr
 
 post_mean_v = defVar(
     ds, "post_mean", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type", "k_iter", "param_dim");
+    ("random_seed", "ensemble_size", "k_iter", "param_dim");
     fillvalue = NaN,
 )
 post_mean_v.attrib["description"] = "mean(posterior) for each emulator training size k"
-post_mean_v[:, :, :, :, :, :] = post_mean_arr
+post_mean_v[:, :, :, :] = post_mean_arr
 
 post_cov_v = defVar(
     ds, "post_cov", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type", "k_iter", "param_dim", "param_dim_2");
+    ("random_seed", "ensemble_size", "k_iter", "param_dim", "param_dim_2");
     fillvalue = NaN,
 )
 post_cov_v.attrib["description"] = "cov(posterior) for each emulator training size k"
-post_cov_v[:, :, :, :, :, :, :] = post_cov_arr
+post_cov_v[:, :, :, :, :] = post_cov_arr
 
 mahalanobis_v = defVar(
     ds, "mahalanobis", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type", "k_iter");
+    ("random_seed", "ensemble_size", "k_iter");
     fillvalue = NaN,
 )
 mahalanobis_v.attrib["description"] = "M = mahalanobis distance: for posterior ≈ N(m,C), it is (m-truth_param)'*C^{-1}*(m-truth_param). Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It is the multidimensional equivalent of `how many standard deviations is the truth away form the posterior mean`. For gaussian -2P = M, if M > -2P => heavy tails"
-mahalanobis_v[:, :, :, :, :] = mahal_arr
+mahalanobis_v[:, :, :] = mahal_arr
 
 posterior_logpdf_true_v_map_v = defVar(
     ds, "posterior_logpdf_true_v_map", Float64,
-    ("random_seed", "ensemble_size", "rmse_target", "algorithm_type", "k_iter");
+    ("random_seed", "ensemble_size", "k_iter");
     fillvalue = NaN,
 )
 posterior_logpdf_true_v_map_v.attrib["description"] = "P = posterior_logpdf(truth_param) - posterior_logpdf(mode(posterior)). Ideally -2P Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It asks `How much less probable is the true value compared to the MAP`. For gaussian -2P = M, if M > -2P => heavy tails"
-posterior_logpdf_true_v_map_v[:, :, :, :, :] = logpdf_true_v_map_arr
+posterior_logpdf_true_v_map_v[:, :, :] = logpdf_true_v_map_arr
 
 close(ds)
 @info "Saved leaderboard data to $(nc_save_filename)"
