@@ -22,10 +22,10 @@ save_all_ekp = true
 ############### Choose problem type and structure ######################
 ########################################################################
 
-N_ens_sizes = [20, 25, 30] # list of number of ensemble members (should be problem dependent)
+N_ens_sizes = [10, 25, 40] # list of number of ensemble members (should be problem dependent)
 N_iter = 20 # maximum number of EKI iterations allowed
 target_rmse = 1.0 # target RMSE
-n_repeats = 4
+n_repeats = 20
 rng_seeds = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running Lorenz 63 problem"
 @info "Maximum number of EKI iterations: $N_iter"
@@ -155,7 +155,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     verbose = verbose_flag,
 #                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DataMisfitController(terminate_at=100),
+                    scheduler = DefaultScheduler(0.1),
                 )
             else
                 ekpobj = EKP.EnsembleKalmanProcess(
@@ -167,7 +167,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     verbose = verbose_flag,
 #                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DataMisfitController(terminate_at=100),
+                    scheduler = DefaultScheduler(0.1),
                 )
             end
             Ne = get_N_ens(ekpobj)

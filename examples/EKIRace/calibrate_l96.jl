@@ -27,7 +27,7 @@ save_all_ekp = true
 
 cases = ["const-force", "vec-force", "flux-force"] # problem types
 # User specifications
-case = cases[1] # choose problem type
+case = cases[2] # choose problem type
 if case == "const-force"
     N_ens_sizes = [5, 15, 30] 
 elseif case == "vec-force" 
@@ -41,7 +41,7 @@ end
 
 N_iter = 20 # maximum number of EKI iterations allowed
 target_rmse = 1.0 # target RMSE
-n_repeats = 4
+n_repeats = 20
 rng_seeds = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running $case case"
 @info "Maximum number of EKI iterations: $N_iter"
@@ -272,6 +272,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     verbose = verbose_flag,
 #                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
+                    #scheduler = DefaultScheduler(0.1),
                     scheduler = DataMisfitController(terminate_at=100),
                 )
             else
@@ -285,6 +286,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
  #                   accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
                     scheduler = DataMisfitController(terminate_at=100),
+#                    scheduler = DefaultScheduler(0.1),
                 )
             end
             Ne = get_N_ens(ekpobj)
