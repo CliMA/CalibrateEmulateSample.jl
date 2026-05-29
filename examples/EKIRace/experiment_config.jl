@@ -4,32 +4,32 @@ using Dates
 ###############  USER TOGGLE  #########################################
 ########################################################################
 # Set EXPERIMENT to one of: :l63, :l96_const, :l96_vec, :l96_flux
-const EXPERIMENT = :l63
+EXPERIMENT = :l63
 
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).
-const calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
+calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
 
 ########################################################################
 ###############  SHARED CONSTANTS  ####################################
 ########################################################################
-const method_cases = ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
+method_cases = ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
 
-const method_names = [
-    ("Inversion(prior)", "TEKI"),
-    ("TransformInversion(prior)", "ETKI"),
-    ("GaussNewtonInversion(prior)", "GNKI"),
-    ("Unscented(prior; impose_prior=true)", "UKI"),
+method_names = [
+    ("Inversion()", "EKI"),
+    ("TransformInversion()", "ETKI"),
+    ("GaussNewtonInversion()", "GNKI"),
+    ("Unscented(prior)", "UKI"),
 ]
 
-const method_cases_key = Dict(
+method_cases_key = Dict(
     "Inversion"            => "ces-eki-dmc",
     "TransformInversion"   => "ces-etki-dmc",
     "Unscented"            => "ces-uki-dmc",
     "GaussNewtonInversion" => "ces-iekf",
 )
 
-const forcing_cases_key = Dict(
+forcing_cases_key = Dict(
     "const-force" => "ensemble_results",
     "vec-force"   => "spatial_forcing_ensemble_results",
     "flux-force"  => "nn_forcing_ensemble_results",
@@ -38,6 +38,12 @@ const forcing_cases_key = Dict(
 ########################################################################
 ###############  PER-CASE CONFIG  #####################################
 ########################################################################
+# Important dials:
+#    terminate_at: psuedotime to terminate. (T=1 is approx posterior for the finite-time method variants)
+#    N_iter: otherwise, maximum iterations
+#    N_ens_sizes: Vector of experiments
+#    n_repeats: number of rng seeds
+
 function experiment_config(case::Symbol)
     if case == :l63
         return (
@@ -45,7 +51,7 @@ function experiment_config(case::Symbol)
             force_case     = nothing,
             N_ens_sizes    = [10, 25, 40],
             N_iter         = 20,
-            target_rmse    = 1.0,
+            terminate_at   = 2.0,   # DataMisfitController end time
             n_repeats      = 20,
             max_iter       = 10,
             retain_var     = 0.99,
@@ -59,7 +65,7 @@ function experiment_config(case::Symbol)
             force_case     = "const-force",
             N_ens_sizes    = [5, 15, 30],
             N_iter         = 20,
-            target_rmse    = 1.0,
+            terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
             retain_var     = 0.95,
@@ -73,7 +79,7 @@ function experiment_config(case::Symbol)
             force_case     = "vec-force",
             N_ens_sizes    = [50, 75, 100],
             N_iter         = 20,
-            target_rmse    = 1.0,
+            terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
             retain_var     = 0.95,
@@ -87,7 +93,7 @@ function experiment_config(case::Symbol)
             force_case     = "flux-force",
             N_ens_sizes    = [50, 75, 100],
             N_iter         = 20,
-            target_rmse    = 1.0,
+            terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
             retain_var     = 0.95,

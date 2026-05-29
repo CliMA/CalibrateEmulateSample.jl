@@ -26,14 +26,13 @@ save_all_ekp = true
 cfg         = experiment_config(:l63)
 N_ens_sizes = cfg.N_ens_sizes
 N_iter      = cfg.N_iter
-target_rmse = cfg.target_rmse
 n_repeats   = cfg.n_repeats
+terminate_at = cfg.terminate_at
 rng_seeds   = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running Lorenz 63 problem"
 @info "Maximum number of EKI iterations: $N_iter"
-@info "RMSE target: $target_rmse"
 configuration =
-    Dict("N_iter" => N_iter, "N_ens_sizes" => N_ens_sizes, "target_rmse" => target_rmse, "rng_seeds" => rng_seeds)
+    Dict("N_iter" => N_iter, "N_ens_sizes" => N_ens_sizes, "terminate_at"=> terminate_at, "rng_seeds" => rng_seeds)
 
 nx = 3  # dimensions of parameter vector
 nu = 2
@@ -118,8 +117,7 @@ ic_cov_sqrt = sqrt(ic_cov)
 ########################### Running EKI Race ###########################
 ########################################################################
 
-# Counters
-conv_alg_iters = zeros(4, length(N_ens_sizes), length(rng_seeds)) #count how many iterations it takes to converge (per algorithm, per rand seed, per ense size)
+conv_alg_iters = fill(NaN, 4, length(N_ens_sizes), length(rng_seeds))
 final_parameters = zeros(4, length(N_ens_sizes), length(rng_seeds), nu)
 final_model_output = zeros(4, length(N_ens_sizes), length(rng_seeds), ny)
 
@@ -134,10 +132,10 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         # initial parameters: N_params x N_ens
         initial_params = construct_initial_ensemble(rng, prior, N_ens)
         methods = [
-            Inversion(prior),
-            TransformInversion(prior),
+            Inversion(),
+            TransformInversion(),
             GaussNewtonInversion(prior),
-            Unscented(prior; impose_prior = true),
+            Unscented(prior),
         ]
 
         @info "Ensemble size: $(N_ens)"
@@ -150,9 +148,8 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-#                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(0.1),
+                    scheduler = DataMisfitController(terminate_at = terminate_at),
                 )
             else
                 ekpobj = EKP.EnsembleKalmanProcess(
@@ -162,18 +159,18 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-#                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
-                    scheduler = DefaultScheduler(0.1),
+                    scheduler = DataMisfitController(terminate_at = terminate_at),
                 )
             end
             Ne = get_N_ens(ekpobj)
 
-            count = 0
+            ens_mean_final = zeros(nu)
+            G_ens_mean_final = zeros(ny)
             for i in 1:N_iter
                 params_i = get_ϕ_final(prior, ekpobj)
 
-                # Calculating RMSE_e
+                # Calculating RMSE_e (diagnostic; not used as stopping criterion)
                 ens_mean = mean(params_i, dims = 2)[:] # in constrained_space
                 G_ens_mean = lorenz_forward(
                     EnsembleMemberConfig(ens_mean),
@@ -183,15 +180,10 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 )
                 RMSE_e = norm(R_inv_var * (y - G_ens_mean[:])) / sqrt(size(y, 1))
                 @info "RMSE (at G(u_mean)): $(RMSE_e)"
-                # Convergence criteria
-                if RMSE_e < target_rmse
-                    conv_alg_iters[kk, ee, rr] = count * Ne
-                    final_parameters[kk, ee, rr, :] = ens_mean
-                    final_model_output[kk, ee, rr, :] = G_ens_mean
-                    break
-                end
 
-                # If RMSE convergence criteria is not satisfied 
+                ens_mean_final = ens_mean
+                G_ens_mean_final = G_ens_mean[:]
+
                 G_ens = hcat(
                     [
                         lorenz_forward(
@@ -202,22 +194,18 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                         ) for j in 1:Ne
                     ]...,
                 )
-                # Update 
-                EKP.update_ensemble!(ekpobj, G_ens)
-                count = count + 1
-
-                # # Calculate RMSE_f to the mean G(u) if desired
-                # RMSE_f = sqrt(get_error_metrics(ekpobj)["loss"][end]) # equivalently
-                # @info "RMSE (at mean(G(u)): $(RMSE_f)"
-                # # Convergence criteria
-                # if RMSE_f < target_rmse
-                #     conv_alg_iters[kk, ee, rr] = count * Ne
-                #     final_parameters[kk, ee, rr, :] = ens_mean
-                #     final_model_output[kk, ee, rr, :] = G_ens_mean
-                #     break
-                # end
+                terminated = EKP.update_ensemble!(ekpobj, G_ens)
+                if !isnothing(terminated)
+                    conv_alg_iters[kk, ee, rr] = i * Ne 
+                    break
+                end
             end
-
+            final_parameters[kk, ee, rr, :] = ens_mean_final
+            final_model_output[kk, ee, rr, :] = G_ens_mean_final
+            if isnan(conv_alg_iters[kk, ee, rr]) # if didnt terminate
+                conv_alg_iters[kk, ee, rr] = N_iter * Ne 
+            end
+            
             final_ensemble = get_ϕ_final(prior, ekpobj)
 
             # save ekp files
