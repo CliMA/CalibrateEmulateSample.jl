@@ -144,7 +144,6 @@ function main()
                     end
                     figpath = joinpath(figure_save_directory, "l96_posterior_hist_$(calib_filename_suffix)_k$(k)")
                     savefig(figpath * ".png")
-                    savefig(figpath * ".pdf")
 
                     posteriors_by_k[k]       = posterior
                     iop_by_k[k]              = input_output_pairs

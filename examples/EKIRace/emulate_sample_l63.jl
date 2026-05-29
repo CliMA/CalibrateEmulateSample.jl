@@ -129,9 +129,8 @@ function main()
                     vline!(sp, [truth_params_constrained[i]], lc = :black, lw = 4)
                     vline!(sp, [final_params_constrained[i]], lc = :magenta, lw = 4)
                 end
-                figpath = joinpath(figure_save_directory, "posterior_hist_$(calib_filename_suffix)_k$(k)")
+                figpath = joinpath(figure_save_directory, "l63_posterior_hist_$(calib_filename_suffix)_k$(k)")
                 savefig(figpath * ".png")
-                savefig(figpath * ".pdf")
 
                 posteriors_by_k[k]       = posterior
                 iop_by_k[k]              = input_output_pairs
