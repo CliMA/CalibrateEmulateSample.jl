@@ -31,13 +31,18 @@ function main()
     #### CHOOSE YOUR CASE: (todo: looped over in some fashion)
     # calib_data_dir
     method=method_cases[1]
-    calibrate_date=Date("2026-05-18", "yyyy-mm-dd")
+    calibrate_date=Date("2026-05-28", "yyyy-mm-dd")
     calib_directory="$(method)_$(calibrate_date)"
 
     # calib_filename_suffix items to loop over
-    force_cases=[force_cases[3]]
-    N_enss = [100] # [5,15,30] #[50,75,100]
-    rng_idxs=[2,3,4]
+    force_cases=[force_cases[2]]
+    N_ens_cases =[
+        [5, 15, 30],
+        [50, 75, 100],
+        [50, 75, 100],
+    ]
+    N_enss = N_ens_cases[2]
+    rng_idxs=collect(1:20)
     
     # emulate_sample cases
     for force_case in force_cases
@@ -155,13 +160,16 @@ function main()
                 println(truth_sample) # what was used as truth
                 println(" ML predicted standard deviation")
                 println(sqrt.(diag(y_var[1], 0)))
-                println("ML MSE (truth): ")
-                println(mean((truth_sample - vec(y_mean)) .^ 2))
+                println("ML weighted-MSE (truth): ")
+                diff = (truth_sample - vec(y_mean))
+                Γypluscov = Symmetric(mean(y_var) + Γy)
+                println(mean(diff' * (Γypluscov\ diff)))
                 if !(N_iter<2)
-                    println("ML MSE (test ensemble): ")
-                    println(mean((get_outputs(input_output_pairs_test) - y_mean_test) .^ 2))
+                    println("ML weighted-MSE (test ensemble): ")
+                    difftest = get_outputs(input_output_pairs_test) - y_mean_test
+                    println(mean(difftest' * (Γypluscov \ difftest)))
                 end
-                
+
                 #end
                 ###
                 ###  Sample: Markov Chain Monte Carlo
@@ -204,13 +212,13 @@ function main()
                     vline!(sp, [truth_params_constrained[i]], lc = :black, lw = 4)
                     vline!(sp, [final_params_constrained[i]], lc = :magenta, lw = 4)
                 end
-                figpath = joinpath(figure_save_directory, "posterior_hist_$(calib_filename_suffix)")
+                figpath = joinpath(figure_save_directory, "l96_posterior_hist_$(calib_filename_suffix)")
                 savefig(figpath * ".png")
                 savefig(figpath * ".pdf")
                 
                 # Save data
                 save(
-                    joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2"),
+                    joinpath(data_save_directory, "l96_posterior_$(calib_filename_suffix).jld2"),
                     "posterior",
                     posterior,
                     "priors",

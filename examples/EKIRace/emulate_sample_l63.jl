@@ -34,8 +34,8 @@ function main()
     calib_directory="$(method)_$(calibrate_date)"
 
     # calib_filename_suffix items to loop over
-    N_enss = [20,25,30] 
-    rng_idxs=[1,2,3,4]
+    N_enss = [10,25,40] 
+    rng_idxs=collect(1:20)
     
     # emulate_sample cases
     for N_ens in N_enss
@@ -84,11 +84,11 @@ function main()
             overrides = Dict(
                 #                    "verbose" => true,
                 "scheduler" => DataMisfitController(terminate_at = 1000.0),
-                "cov_sample_multiplier" => 2.0,
+                "cov_sample_multiplier" => 5.0,
                 "n_iteration" => 10,
-                "n_features_opt" => 160,
+                "n_features_opt" => 60,
             )
-            n_features = 200
+            n_features = 100
             kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
@@ -143,11 +143,14 @@ function main()
             println(truth_sample) # what was used as truth
             println(" ML predicted standard deviation")
             println(sqrt.(diag(y_var[1], 0)))
-            println("ML MSE (truth): ")
-            println(mean((truth_sample - vec(y_mean)) .^ 2))
+            println("ML weighted-MSE (truth): ")
+            diff = (truth_sample - vec(y_mean))
+            Γypluscov = Symmetric(mean(y_var) + Γy)
+            println(mean(diff' * (Γypluscov\ diff)))
             if !(N_iter<2)
-                println("ML MSE (test ensemble): ")
-                println(mean((get_outputs(input_output_pairs_test) - y_mean_test) .^ 2))
+                println("ML weighted-MSE (test ensemble): ")
+                difftest = get_outputs(input_output_pairs_test) - y_mean_test
+                println(mean(difftest' * (Γypluscov \ difftest)))
             end
             
             #end
