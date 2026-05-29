@@ -15,6 +15,7 @@ using EnsembleKalmanProcesses.Localizers
 const EKP = EnsembleKalmanProcesses
 
 include("Lorenz63.jl") # Contains Lorenz 96 source code
+include("experiment_config.jl")
 
 verbose_flag = false
 save_all_ekp = true
@@ -22,11 +23,12 @@ save_all_ekp = true
 ############### Choose problem type and structure ######################
 ########################################################################
 
-N_ens_sizes = [10, 25, 40] # list of number of ensemble members (should be problem dependent)
-N_iter = 20 # maximum number of EKI iterations allowed
-target_rmse = 1.0 # target RMSE
-n_repeats = 20
-rng_seeds = randperm(1_000_000)[1:n_repeats] # list of random seeds
+cfg         = experiment_config(:l63)
+N_ens_sizes = cfg.N_ens_sizes
+N_iter      = cfg.N_iter
+target_rmse = cfg.target_rmse
+n_repeats   = cfg.n_repeats
+rng_seeds   = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running Lorenz 63 problem"
 @info "Maximum number of EKI iterations: $N_iter"
 @info "RMSE target: $target_rmse"
@@ -121,12 +123,7 @@ conv_alg_iters = zeros(4, length(N_ens_sizes), length(rng_seeds)) #count how man
 final_parameters = zeros(4, length(N_ens_sizes), length(rng_seeds), nu)
 final_model_output = zeros(4, length(N_ens_sizes), length(rng_seeds), ny)
 
-method_names = [
-    ("Inversion(prior)", "TEKI"),
-    ("TransformInversion(prior)", "ETKI"),
-    ("GaussNewtonInversion(prior)", "GNKI"),
-    ("Unscented(prior; impose_prior=true)", "UKI"),
-]
+# method_names defined in experiment_config.jl
 
 
 for (rr, rng_seed) in enumerate(rng_seeds)
@@ -224,29 +221,25 @@ for (rr, rng_seed) in enumerate(rng_seeds)
             final_ensemble = get_ϕ_final(prior, ekpobj)
 
             # save ekp files
-            per_method_dir = joinpath(output_dir,"$(nameof(typeof(method)))_$(today())")
-            if rr == 1 && ee == 1 
+            per_method_dir = joinpath(output_dir, calib_directory(nameof(typeof(method)), cfg))
+            if rr == 1 && ee == 1
                 if !isdir(per_method_dir)
                     mkpath(per_method_dir)
                 end
-                prior_filename = joinpath(per_method_dir,"l63_priors.jld2")
-                JLD2.save(prior_filename,"prior", prior)
+                JLD2.save(joinpath(per_method_dir, prior_filename(cfg)), "prior", prior)
             end
             if save_all_ekp
                 # JLD2
-                ekp_filename = joinpath(per_method_dir, "l63_ekp_$(N_ens)_$(rr).jld2")
                 JLD2.save(
-                    ekp_filename,
+                    joinpath(per_method_dir, ekp_filename(cfg, N_ens, rr)),
                     "N_ens", N_ens,
                     "method", method,
                     "ekpobj", ekpobj,
                 )
-                results_filename = joinpath(per_method_dir, "l63_calibrate_results_$(N_ens)_$(rr).jld2")
                 u_stored = get_u(ekpobj, return_array = false)
                 g_stored = get_g(ekpobj, return_array = false)
-                
                 JLD2.save(
-                    results_filename,
+                    joinpath(per_method_dir, results_filename(cfg, N_ens, rr)),
                     "y", y,
                     "R", R,
                     "inputs", u_stored,
@@ -260,7 +253,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
 end
 
 # Saving data:
-data_filename = joinpath(output_dir, "l63_output_$(today()).jld2")
+data_filename = joinpath(output_dir, summary_filename(cfg))
 JLD2.save(
     data_filename,
     "configuration",

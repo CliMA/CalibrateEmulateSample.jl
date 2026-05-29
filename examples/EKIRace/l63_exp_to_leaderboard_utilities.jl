@@ -7,42 +7,31 @@ using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 
+include("experiment_config.jl")
+
 # Step 1, Read and extract the available experiments
-method_cases = ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
 
 #### CHOOSE YOUR CASE:
-# calib_data_dir
-method = method_cases[1]
-calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
-calib_directory = "$(method)_$(calibrate_date)"
+cfg      = experiment_config(:l63)
+method   = method_cases[1]  # method_cases defined in experiment_config.jl
+calib_dir = calib_directory(method, cfg)
+N_enss   = cfg.N_ens_sizes
+rng_idxs = collect(1:cfg.n_repeats)
 
-# calib_filename_suffix items to loop over
-N_enss = [10,25,40]
-rng_idxs = collect(1:20)
-
-### For saving the cases in the leaderboard style
-
-method_cases_key = Dict(
-    "Inversion" => "ces-eki-dmc",
-    "TransformInversion" => "ces-etki-dmc",
-    "Unscented" => "ces-uki-dmc",
-    "GaussNewtonInversion" => "ces-iekf",
-)
-nc_save_filename = "$(method_cases_key[method])_l63_ensemble_results_$(calibrate_date).nc"
+nc_save_filename = nc_filename(cfg, method)
 
 ### determine valid files before we try to load
 
 homedir = joinpath(pwd())
-data_save_directory = joinpath(homedir, "output", calib_directory)
+data_save_directory = joinpath(homedir, "output", calib_dir)
 
 valid_file_items = []
 valid_files = []
 for N_ens in N_enss
     for rng_idx in rng_idxs
-        calib_filename_suffix = "$(N_ens)_$(rng_idx)"
-        data_file = joinpath(data_save_directory, "l63_posterior_$(calib_filename_suffix).jld2")
+        data_file = joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx))
         if isfile(data_file)
-            push!(valid_files, calib_filename_suffix)
+            push!(valid_files, case_suffix(cfg, N_ens, rng_idx))
             push!(valid_file_items, (N_ens, rng_idx))
         end
     end
@@ -58,7 +47,7 @@ end
 ### Load data
 
 # Load first valid file to determine parameter dimension
-first_loaded = JLD2.load(joinpath(data_save_directory, "l63_posterior_$(valid_files[1]).jld2"))
+first_loaded = JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...)))
 n_params = length(vec(mean(first_loaded["posterior"])))
 
 targets = [1.0]
@@ -76,10 +65,9 @@ logpdf_true_v_map_arr     = fill(NaN, n_rng, n_ens, n_targets, 1)
 n_evals_arr    = fill(NaN, n_rng, n_ens, n_targets, 1)
 
 for (N_ens, rng_idx) in valid_file_items
-    calib_filename_suffix = "$(N_ens)_$(rng_idx)"
-    post_filename = "l63_posterior_$(calib_filename_suffix).jld2"
-    @info "loading case $(post_filename)"
-    loaded = JLD2.load(joinpath(data_save_directory, post_filename))
+    post_fn = posterior_filename(cfg, N_ens, rng_idx)
+    @info "loading case $(post_fn)"
+    loaded = JLD2.load(joinpath(data_save_directory, post_fn))
     
     post_dist    = loaded["posterior"]    # ParameterDistribution from MCMC chain (unconstrained space)
     truth_params = loaded["truth_params"] # truth in unconstrained space
@@ -97,7 +85,7 @@ for (N_ens, rng_idx) in valid_file_items
     
 
     # Load ekpobj to compute calibration evaluation count
-    ekp_loaded = JLD2.load(joinpath(data_save_directory, "l63_ekp_$(calib_filename_suffix).jld2"))
+    ekp_loaded = JLD2.load(joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)))
     conv_alg_iters = length(get_g(ekp_loaded["ekpobj"]))  # number of completed EKP update steps
 
     # Array indices

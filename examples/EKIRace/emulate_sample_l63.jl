@@ -20,31 +20,27 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.Localizers
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 
-include("Lorenz63.jl") # Contains Lorenz 96 source code 
+include("Lorenz63.jl") # Contains Lorenz 96 source code
+include("experiment_config.jl")
 
 
 function main()
 
-    method_cases= ["Inversion", "TransformInversion", "Unscented", "GaussNewtonInversion"]
-    
-    #### CHOOSE YOUR CASE: (todo: looped over in some fashion)
-    # calib_data_dir
-    method=method_cases[1]
-    calibrate_date=Date("2026-05-28", "yyyy-mm-dd")
-    calib_directory="$(method)_$(calibrate_date)"
-
-    # calib_filename_suffix items to loop over
-    N_enss = [10,25,40] 
-    rng_idxs=collect(1:20)
+    #### CHOOSE YOUR CASE:
+    cfg      = experiment_config(:l63)
+    method   = method_cases[1]  # method_cases defined in experiment_config.jl
+    calib_dir = calib_directory(method, cfg)
+    N_enss   = cfg.N_ens_sizes
+    rng_idxs = collect(1:cfg.n_repeats)
     
     # emulate_sample cases
     for N_ens in N_enss
         for rng_idx in rng_idxs
-            calib_filename_suffix = "$(N_ens)_$(rng_idx)"
-            @info("Perform emulate-sample for L63: \n method: $(calib_directory) \n experiment: $(calib_filename_suffix)")
+            calib_filename_suffix = case_suffix(cfg, N_ens, rng_idx)
+            @info("Perform emulate-sample for L63: \n method: $(calib_dir) \n experiment: $(calib_filename_suffix)")
             min_iter = 1
             skip_iter = 1
-            max_iter = 10 # number of EKP iterations to use data from is at most this 
+            max_iter = cfg.max_iter
             
             ####
             
@@ -55,12 +51,12 @@ function main()
             # loading relevant data
             homedir = pwd()
             println(homedir)
-            figure_save_directory = joinpath(homedir, "output/", calib_directory)
-            data_save_directory = joinpath(homedir, "output", calib_directory)
+            figure_save_directory = joinpath(homedir, "output/", calib_dir)
+            data_save_directory   = joinpath(homedir, "output",  calib_dir)
             loaded_calib_files = [
-                joinpath(data_save_directory, "l63_ekp_$(calib_filename_suffix).jld2"),
-                joinpath(data_save_directory, "l63_priors.jld2"),
-                joinpath(data_save_directory, "l63_calibrate_results_$(calib_filename_suffix).jld2"),
+                joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)),
+                joinpath(data_save_directory, prior_filename(cfg)),
+                joinpath(data_save_directory, results_filename(cfg, N_ens, rng_idx)),
             ]
             if !isfile(loaded_calib_files[1])
                 throw(ErrorException("data files not found. \n First run: \n > julia --project calibrate_l96.jl"))
@@ -86,9 +82,9 @@ function main()
                 "scheduler" => DataMisfitController(terminate_at = 1000.0),
                 "cov_sample_multiplier" => 5.0,
                 "n_iteration" => 10,
-                "n_features_opt" => 60,
+                "n_features_opt" => cfg.n_features_opt,
             )
-            n_features = 100
+            n_features = cfg.n_features
             kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor())
             mlt = ScalarRandomFeatureInterface(
                 n_features,
@@ -119,7 +115,7 @@ function main()
             end
             
             # data processing configuration
-            retain_var = 0.99
+            retain_var = cfg.retain_var
             encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
             encoder_kwargs = encoder_kwargs_from(ekpobj, priors)
             
@@ -201,7 +197,7 @@ function main()
             
             # Save data
             save(
-                joinpath(data_save_directory, "l63_posterior_$(calib_filename_suffix).jld2"),
+                joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)),
                 "posterior",
                 posterior,
                 "priors",
