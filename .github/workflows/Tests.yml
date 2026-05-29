@@ -24,21 +24,8 @@ jobs:
         version: '1'
         
     - name: Install Julia Project Packages
-      # we add this ENV varaible to force PyCall to download and use Conda rather than
-      # the system python (default on Linux), see the PyCall documentation
-      env:
-        PYTHON: ""
       run: |
-        julia --project -e 'using Pkg; Pkg.instantiate()'
-
-    - name: Install SciKitLearn Conda Package
-      env:
-        PYTHON: ""
-      run: |
-        julia --project -e 'using Conda; Conda.add("python=3.11")' 
-        julia --project -e 'using Conda; Conda.add("scipy=1.14.1")'
-        julia --project -e 'using Conda; Conda.add("scikit-learn=1.5.1")'
-        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall")'     
+        julia --project -e 'using Pkg; Pkg.instantiate()'   
 
     - name: Run Unit Tests
       env:
@@ -86,21 +73,10 @@ jobs:
         PYTHON: ""
       run: |
         julia --project -e 'using Pkg; Pkg.instantiate()'
-
-    - name: Install SciKitLearn Conda Package
-      env:
-        PYTHON: ""
-      run: |
-        julia --project -e 'using Conda; Conda.add("python=3.11")'
-        julia --project -e 'using Conda; Conda.add("scipy=1.14.1")'
-        julia --project -e 'using Conda; Conda.add("scikit-learn=1.5.1")'
-        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall")'
         
     - name: Run Unit Tests
-      env:
-        PYTHON: ""
       run: |
-        LD_LIBRARY_PATH=$HOME/.julia/conda/3/lib julia --project -e 'using Pkg; Pkg.test()'
+        julia --project -e 'using Pkg; Pkg.test()'
 
   test-windows-v1:
     name: test-windows-v1
@@ -129,17 +105,7 @@ jobs:
         PYTHON: ""
       run: |
         julia --project -e 'using Pkg; Pkg.instantiate()'
-
-    - name: Install SciKitLearn Conda Package
-      env:
-        PYTHON: ""
-      run: |
-        julia --project -e 'using Conda; Conda.add("python=3.11")'
-        julia --project -e 'using Conda; Conda.add("scipy=1.14.1")'
-        julia --project -e 'using Conda; Conda.add("scikit-learn=1.5.1")'
-        julia --project -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall")'     
+   
     - name: Run Unit Tests
-      env:
-        PYTHON: ""
       run: |
         julia --project -e 'using Pkg; Pkg.test()'
