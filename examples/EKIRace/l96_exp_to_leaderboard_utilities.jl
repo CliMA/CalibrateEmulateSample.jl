@@ -47,7 +47,7 @@ valid_files = []
 for N_ens in N_enss
     for rng_idx in rng_idxs
         calib_filename_suffix = "$(force_case)_$(N_ens)_$(rng_idx)"
-        data_file = joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2")
+        data_file = joinpath(data_save_directory, "l96_posterior_$(calib_filename_suffix).jld2")
         if isfile(data_file)
             push!(valid_files, calib_filename_suffix)
             push!(valid_file_items, (force_case, N_ens, rng_idx))
@@ -65,7 +65,7 @@ end
 ### Load data
 
 # Load first valid file to determine parameter dimension
-first_loaded = JLD2.load(joinpath(data_save_directory, "posterior_$(valid_files[1]).jld2"))
+first_loaded = JLD2.load(joinpath(data_save_directory, "l96_posterior_$(valid_files[1]).jld2"))
 n_params = length(vec(mean(first_loaded["posterior"])))
 
 targets = [1.0]
@@ -84,7 +84,7 @@ n_evals_arr    = fill(NaN, n_rng, n_ens, n_targets, 1)
 
 for (fc, N_ens, rng_idx) in valid_file_items
     calib_filename_suffix = "$(fc)_$(N_ens)_$(rng_idx)"
-    post_filename = "posterior_$(calib_filename_suffix).jld2"
+    post_filename = "l96_posterior_$(calib_filename_suffix).jld2"
     @info "loading case $(post_filename)"
     loaded = JLD2.load(joinpath(data_save_directory, post_filename))
     

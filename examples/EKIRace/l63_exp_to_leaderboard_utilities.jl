@@ -17,8 +17,8 @@ calibrate_date = Date("2026-05-28", "yyyy-mm-dd")
 calib_directory = "$(method)_$(calibrate_date)"
 
 # calib_filename_suffix items to loop over
-N_enss = [20,25,30]
-rng_idxs = [1, 2, 3, 4]
+N_enss = [10,25,40]
+rng_idxs = collect(1:20)
 
 ### For saving the cases in the leaderboard style
 
@@ -40,7 +40,7 @@ valid_files = []
 for N_ens in N_enss
     for rng_idx in rng_idxs
         calib_filename_suffix = "$(N_ens)_$(rng_idx)"
-        data_file = joinpath(data_save_directory, "posterior_$(calib_filename_suffix).jld2")
+        data_file = joinpath(data_save_directory, "l63_posterior_$(calib_filename_suffix).jld2")
         if isfile(data_file)
             push!(valid_files, calib_filename_suffix)
             push!(valid_file_items, (N_ens, rng_idx))
@@ -58,7 +58,7 @@ end
 ### Load data
 
 # Load first valid file to determine parameter dimension
-first_loaded = JLD2.load(joinpath(data_save_directory, "posterior_$(valid_files[1]).jld2"))
+first_loaded = JLD2.load(joinpath(data_save_directory, "l63_posterior_$(valid_files[1]).jld2"))
 n_params = length(vec(mean(first_loaded["posterior"])))
 
 targets = [1.0]
@@ -77,7 +77,7 @@ n_evals_arr    = fill(NaN, n_rng, n_ens, n_targets, 1)
 
 for (N_ens, rng_idx) in valid_file_items
     calib_filename_suffix = "$(N_ens)_$(rng_idx)"
-    post_filename = "posterior_$(calib_filename_suffix).jld2"
+    post_filename = "l63_posterior_$(calib_filename_suffix).jld2"
     @info "loading case $(post_filename)"
     loaded = JLD2.load(joinpath(data_save_directory, post_filename))
     
