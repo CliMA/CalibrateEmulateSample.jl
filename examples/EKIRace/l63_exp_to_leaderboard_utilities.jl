@@ -50,20 +50,18 @@ end
 first_loaded = JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...)))
 n_params = length(vec(mean(first_loaded["posteriors_by_k"][1])))
 
-targets = [1.0]
 n_k = cfg.max_iter  # maximum number of training-iteration slices
 
-n_rng     = length(rng_idxs)
-n_ens     = length(N_enss)
-n_targets = length(targets)
+n_rng = length(rng_idxs)
+n_ens = length(N_enss)
 
 # Pre-allocate: posterior stats have a k_iter dimension; calibration cost and truth do not
-true_param_arr        = fill(NaN, n_rng, n_ens, n_targets, 1, n_params)
-n_evals_arr           = fill(NaN, n_rng, n_ens, n_targets, 1)
-post_mean_arr         = fill(NaN, n_rng, n_ens, n_targets, 1, n_k, n_params)
-post_cov_arr          = fill(NaN, n_rng, n_ens, n_targets, 1, n_k, n_params, n_params)
-mahal_arr             = fill(NaN, n_rng, n_ens, n_targets, 1, n_k)
-logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_targets, 1, n_k)
+true_param_arr        = fill(NaN, n_rng, n_ens, n_params)
+n_evals_arr           = fill(NaN, n_rng, n_ens)
+post_mean_arr         = fill(NaN, n_rng, n_ens, n_k, n_params)
+post_cov_arr          = fill(NaN, n_rng, n_ens, n_k, n_params, n_params)
+mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
+logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
 
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
@@ -81,10 +79,8 @@ for (N_ens, rng_idx) in valid_file_items
     i = findfirst(==(rng_idx), rng_idxs)
     j = findfirst(==(N_ens), N_enss)
 
-    for l in 1:n_targets
-        true_param_arr[i, j, l, 1, :] = truth_params
-        n_evals_arr[i, j, l, 1]       = conv_alg_iters * N_ens
-    end
+    true_param_arr[i, j, :] = truth_params
+    n_evals_arr[i, j]       = conv_alg_iters * N_ens
 
     for k in k_values
         post_dist = posteriors_by_k[k]
@@ -96,14 +92,12 @@ for (N_ens, rng_idx) in valid_file_items
         pmode        = post_samples[:, argmax(logpdf(post_normal, post_samples))]
         diff         = pm - truth_params
 
-        for l in 1:n_targets
-            post_mean_arr[i, j, l, 1, k, :]   = pm
-            post_cov_arr[i, j, l, 1, k, :, :] = pc
-            # (m - truth)' C^{-1} (m - truth)
-            mahal_arr[i, j, l, 1, k]           = diff' * (C_reg \ diff)
-            # log p(truth | posterior) - log p(mode | posterior)
-            logpdf_true_v_map_arr[i, j, l, 1, k] = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
-        end
+        post_mean_arr[i, j, k, :]   = pm
+        post_cov_arr[i, j, k, :, :] = pc
+        # (m - truth)' C^{-1} (m - truth)
+        mahal_arr[i, j, k]           = diff' * (C_reg \ diff)
+        # log p(truth | posterior) - log p(mode | posterior)
+        logpdf_true_v_map_arr[i, j, k] = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
     end
 end
 
