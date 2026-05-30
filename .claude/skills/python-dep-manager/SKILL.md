@@ -53,12 +53,7 @@ The everyday request ("bump scikit-learn to 1.6", "try python 3.12").
    julia --project -e 'using CondaPkg; CondaPkg.status()'
    ```
    `status()` should report the versions you pinned.
-3. Run the Gaussian-process tests (they exercise the `scikit-learn` path):
-   ```
-   julia --project test/runtests.jl GaussianProcess
-   ```
-   Numeric tolerances can shift slightly between sklearn versions — if a
-   `@test ... atol` fails by a hair, widen the tolerance rather than reverting.
+3. Run the Python-dependent tests (see "Always — run the Python-dependent tests").
 4. **Update the docs** (see "Always — keep the docs in sync") — required, not optional.
 
 ## Task 2 — Resolve CondaPkg / PythonCall (Julia) version conflicts
@@ -93,12 +88,6 @@ Common situations and how to handle them:
   Re-resolve (`CondaPkg.resolve()`); if it's still wrong, delete the generated
   `.CondaPkg/` directory to force a clean rebuild, then resolve again. `.CondaPkg/`
   is generated and gitignored — never commit it.
-
-Always finish by confirming the package still loads and tests pass:
-```
-julia --project -e 'using CalibrateEmulateSample'        # triggers the sklearn import
-julia --project test/runtests.jl GaussianProcess
-```
 
 ## Task 3 — Debug Python import / environment failures
 
@@ -186,6 +175,35 @@ Work through the file list from step 1. Key locations:
 
 Update `docs/src/API/GaussianProcess.md` only if the `@docs` block hard-codes
 type-bound names that reference the old name.
+
+## Always — run the Python-dependent tests
+
+After **any** change covered by this skill — version bump, Julia dep conflict,
+import fix, type rename, or docs-only update — run the Python-dependent test
+suites before declaring the task done. Do not skip this step.
+
+The suites that exercise the Python stack (currently just `GaussianProcess`) are
+identified by inspecting `test/runtests.jl`. Run them with:
+
+```
+julia --project test/runtests.jl GaussianProcess
+```
+
+If you want to confirm the package loads cleanly first (useful after a CondaPkg
+env rebuild):
+
+```
+julia --project -e 'using CalibrateEmulateSample'
+julia --project test/runtests.jl GaussianProcess
+```
+
+**If a numeric `@test … atol` assertion fails by a small amount** after a
+scikit-learn version bump, widen the tolerance in the test rather than reverting
+the version — small numeric drift between sklearn releases is expected.
+
+**If a new Python-dependent test suite is added** to `test/runtests.jl` in the
+future (e.g. one that imports `scipy` directly), add it to the command above so
+this skill stays complete.
 
 ## Always — keep the docs in sync
 
