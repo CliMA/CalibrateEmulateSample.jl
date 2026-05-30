@@ -31,6 +31,7 @@ EMU_JID=$(sbatch --parsable \
 		 -A esm \
 		 --job-name="emu_${LABEL}" \
 		 --dependency=afterok:${CALIB_JID} \
+		 --kill-on-invalid-dep=yes \
 		 --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_flux \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
