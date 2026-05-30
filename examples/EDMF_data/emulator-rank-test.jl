@@ -213,7 +213,7 @@ function main()
 
             if case == "GP"
                 rank_val = 0
-                gppackage = Emulators.SKLJL()
+                gppackage = Emulators.SKLPy()
                 pred_type = Emulators.YType()
                 mlt = GaussianProcess(
                     gppackage;

@@ -27,7 +27,7 @@ and relevant CES packages needed to define the emulators, packages and kernel st
 ```julia
 using CalibrateEmulateSample.Emulators
 # Contains `Emulator`, `GaussianProcess`, `ScalarRandomFeatureInterface`, `VectorRandomFeatureInterface`
-# `GPJL`, `SKLJL`, `SeparablKernel`, `NonSeparableKernel`, `OneDimFactor`, `LowRankFactor`, `DiagonalFactor`
+# `GPJL`, `SKLPy`, `SeparablKernel`, `NonSeparableKernel`, `OneDimFactor`, `LowRankFactor`, `DiagonalFactor`
 using CalibrateEmulateSample.DataContainers # Contains `PairedDataContainer`
 ```
 To play with the hyperparameter optimization of RF, the optimizer options sometimes require `EnsembleKalmanProcesses.jl` structures, so we load this too
@@ -95,7 +95,7 @@ nugget = 1e-12
 We then build the emulators. An example for GP (`gp-skljl`)
 ```julia
 # use scikit learn
-gppackage = SKLJL()
+gppackage = SKLPy()
 # build a GP that learns an additional white noise kernel (along with the default RBF kernel)
 gaussian_process = GaussianProcess(gppackage, noise_learn = true)
 encoder_kwargs = (; prior_cov = prior_cov, obs_noise_cov = Σ), 

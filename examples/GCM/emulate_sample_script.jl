@@ -151,7 +151,7 @@ function main()
     else
         emulator_type == "GPR"
         println("Running Gaussian Process model")
-        gppackage = SKLJL()
+        gppackage = SKLPy()
         mlt = GaussianProcess(gppackage, noise_learn = false)
 
     end

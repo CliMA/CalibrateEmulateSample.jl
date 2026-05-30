@@ -120,7 +120,7 @@ function main()
         @info "Repeat: $(rep_idx)"
         # Build ML tools
         if case == "GP"
-            gppackage = Emulators.SKLJL()
+            gppackage = Emulators.SKLPy()
             pred_type = Emulators.YType()
             mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
 

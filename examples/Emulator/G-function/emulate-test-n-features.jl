@@ -129,7 +129,7 @@ function main()
             @info "Testing #features = $(n_features_opt) \n repeat $(rep_idx) of $(n_repeats)"
             # Build ML tools
             if case == "GP"
-                gppackage = Emulators.SKLJL()
+                gppackage = Emulators.SKLPy()
                 pred_type = Emulators.YType()
                 mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
                 n_cross_val_sets = 0
