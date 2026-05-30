@@ -146,6 +146,22 @@ using CalibrateEmulateSample.Utilities
     em = Emulator(gp, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Γ))
     @test gp.regularization[end] == gp.alg_reg_noise * Γ.λ
 
+    # GaussianProcess 3b: SKLJL (deprecated alias for SKLPy)
+    @testset "SKLJL depwarn" begin
+        # depwarn is emitted
+        @test_logs (:warn, r"`SKLJL` is deprecated, use `SKLPy` instead") match_mode = :any GaussianProcess(
+            SKLJL();
+            kernel = GPkernel,
+            noise_learn = true,
+            prediction_type = YType(),
+        )
+        # result is backed by SKLPy and kwargs are forwarded correctly
+        gp_skljl = GaussianProcess(SKLJL(); kernel = GPkernel, noise_learn = true, prediction_type = YType())
+        @test gp_skljl isa GaussianProcess{SKLPy}
+        @test gp_skljl.kernel === GPkernel
+        @test gp_skljl.noise_learn == true
+    end
+
     # -------------------------------------------------------------------------
     # Test case 2: 2D input, 2D output
     # -------------------------------------------------------------------------
