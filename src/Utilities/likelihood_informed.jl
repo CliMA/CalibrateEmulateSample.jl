@@ -318,8 +318,13 @@ function initialize_processor!(
                 if val / ref ≤ 1 - retain_info
                     @info "    truncating at $k/$output_dim retaining $(100.0*(1-val/ref))% of the KL divergence reduction"
                     break # TODO: Start bisecting?
+                elseif k == output_dim - 1
+                    @info "    any truncation loses <$(100.0*(1-val/ref))% information, setting encoder = I"
+                    Vs = I(output_dim)
+                    break # TODO: Start bisecting?
+                    
                 else
-                    newk = min(2k, output_dim)
+                    newk = min(2k, output_dim-1)
                     @info "      increasing k from $k to $newk"
                     k = newk
                 end
