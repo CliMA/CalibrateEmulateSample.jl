@@ -17,3 +17,5 @@ docs/site/
 *.jld2
 *~
 output*
+# CondaPkg.jl generated environment
+.CondaPkg/
