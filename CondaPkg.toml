@@ -1,0 +1,6 @@
+channels = ["conda-forge"]
+
+[deps]
+python = "=3.11"
+scipy = "=1.14.1"
+scikit-learn = "=1.5.1"
