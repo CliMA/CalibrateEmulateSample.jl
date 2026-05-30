@@ -260,7 +260,7 @@ uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.18.7+0"
 
 [[deps.CalibrateEmulateSample]]
-deps = ["AbstractGPs", "AbstractMCMC", "AdvancedMH", "ChunkSplitters", "CondaPkg", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "ForwardDiff", "GaussianProcesses", "KernelFunctions", "LinearAlgebra", "LinearMaps", "LowRankApprox", "MCMCChains", "Manifolds", "Manopt", "Pkg", "Printf", "ProgressBars", "PythonCall", "Random", "RandomFeatures", "ReverseDiff", "StableRNGs", "Statistics", "StatsBase", "TSVD"]
+deps = ["AbstractGPs", "AbstractMCMC", "AdvancedMH", "ChunkSplitters", "CondaPkg", "Distributions", "DocStringExtensions", "EnsembleKalmanProcesses", "ForwardDiff", "GaussianProcesses", "KernelFunctions", "LinearAlgebra", "LinearMaps", "LowRankApprox", "MCMCChains", "Manifolds", "Manopt", "PDMats", "Pkg", "Printf", "ProgressBars", "PythonCall", "Random", "RandomFeatures", "ReverseDiff", "StableRNGs", "Statistics", "StatsBase", "TSVD"]
 path = ".."
 uuid = "95e48a1f-0bec-4818-9538-3db4340308e3"
 version = "1.0.9"
@@ -1059,9 +1059,9 @@ version = "1.2.0"
 
 [[deps.LoopVectorization]]
 deps = ["ArrayInterface", "CPUSummary", "CloseOpenIntervals", "DocStringExtensions", "HostCPUFeatures", "IfElse", "LayoutPointers", "LinearAlgebra", "OffsetArrays", "PolyesterWeave", "PrecompileTools", "SIMDTypes", "SLEEFPirates", "Static", "StaticArrayInterface", "ThreadingUtilities", "UnPack", "VectorizationBase"]
-git-tree-sha1 = "a9fc7883eb9b5f04f46efb9a540833d1fad974b3"
+git-tree-sha1 = "514e8475e33c6faf3155efee5f3c10d9e65a11ab"
 uuid = "bdcacae8-1622-11e9-2a5c-532679323890"
-version = "0.12.173"
+version = "0.12.174"
 
     [deps.LoopVectorization.extensions]
     ForwardDiffExt = ["ChainRulesCore", "ForwardDiff"]
@@ -1391,9 +1391,9 @@ version = "10.44.0+1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "e4cff168707d441cd6bf3ff7e4832bdf34278e4a"
+git-tree-sha1 = "d922b4d80d1e12c658da7785e754f4796cc1d60d"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
-version = "0.11.37"
+version = "0.11.36"
 weakdeps = ["StatsBase"]
 
     [deps.PDMats.extensions]

@@ -322,9 +322,9 @@ function initialize_processor!(
                     @info "    any truncation loses <$(100.0*(1-val/ref))% information, setting encoder = I"
                     Vs = I(output_dim)
                     break # TODO: Start bisecting?
-                    
+
                 else
-                    newk = min(2k, output_dim-1)
+                    newk = min(2k, output_dim - 1)
                     @info "      increasing k from $k to $newk"
                     k = newk
                 end
