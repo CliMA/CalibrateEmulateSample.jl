@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-module load julia   # pin version as needed, e.g.: module load julia/1.10.4
+module load julia/1.11.2   # pin version as needed, e.g.: module load julia/1.10.4
 
 export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export OPENBLAS_NUM_THREADS=${SLURM_CPUS_PER_TASK}

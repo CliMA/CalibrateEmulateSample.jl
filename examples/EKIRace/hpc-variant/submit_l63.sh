@@ -20,17 +20,19 @@ julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
 echo "=== Submitting calibrate (L63) ==="
 CALIB_JID=$(sbatch --parsable \
-    --job-name="calib_${LABEL}" \
-    --export=ALL,SCRIPT=calibrate_l63.jl \
-    calibrate_array.sbatch)
+		   -A esm \
+		   --job-name="calib_${LABEL}" \
+		   --export=ALL,SCRIPT=calibrate_l63.jl \
+		   calibrate_array.sbatch)
 echo "  calibrate job ID: ${CALIB_JID}"
 
 echo "=== Submitting emulate_sample (L63, after ${CALIB_JID}) ==="
 EMU_JID=$(sbatch --parsable \
-    --job-name="emu_${LABEL}" \
-    --dependency=afterok:${CALIB_JID} \
-    --export=ALL,SCRIPT=emulate_sample_l63.jl \
-    emulate_sample_array.sbatch)
+		 -A esm \
+		 --job-name="emu_${LABEL}" \
+		 --dependency=afterok:${CALIB_JID} \
+		 --export=ALL,SCRIPT=emulate_sample_l63.jl \
+		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
 
 echo "=== Done. Monitor with: squeue -u \$USER ==="
