@@ -9,7 +9,7 @@ env:
  
 
 steps:
-  - label: "Init Julia + Conda + PyCall"
+  - label: "Init Julia + CondaPkg"
     key: "init"
     command: |
       echo $$JULIA_DEPOT_PATH
@@ -19,8 +19,10 @@ steps:
         println("---- Instantiating root project")
         Pkg.instantiate(; verbose=true)
 
-        using PyCall
-        println("PyCall python = ", PyCall.python)
+        using CondaPkg
+        println("---- Resolving CondaPkg environment")
+        CondaPkg.resolve()
+        CondaPkg.status()
       '
       
   - wait
@@ -30,8 +32,6 @@ steps:
     command: |
       mkdir examples/Lorenz/depot
       export JULIA_DEPOT_PATH="$(pwd)/examples/Lorenz/depot:${JULIA_DEPOT_PATH}"
-      echo "PYTHON: $$PYTHON"
-      echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
 
       julia --color=yes --project=examples/Lorenz -e '
@@ -45,10 +45,6 @@ steps:
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
       '
-    env:
-      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
-      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
-
     artifact_paths:
       - "examples/Lorenz/output/*.png"
 
@@ -57,8 +53,6 @@ steps:
     command: |
       mkdir examples/Emulator/Regression_2d_2d/depot
       export JULIA_DEPOT_PATH="$(pwd)/examples/Emulator/Regression_2d_2d/depot:${JULIA_DEPOT_PATH}"
-      echo "PYTHON: $$PYTHON"
-      echo "CONDA_JL_HOME: $$CONDA_JL_HOME"
       echo "JULIA: $$JULIA_DEPOT_PATH"
       
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
@@ -71,9 +65,5 @@ steps:
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
-    env:
-      PYTHON: "${JULIA_DEPOT_PATH}/conda/3/x86_64/bin/python"
-      CONDA_JL_HOME: "${JULIA_DEPOT_PATH}/conda/3/x86_64/"
-
     artifact_paths:
       - "examples/Emulator/Regression_2d_2d/output/*.png"

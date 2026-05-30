@@ -8,16 +8,13 @@ using ..Utilities: get_structure_mat
 import GaussianProcesses: predict, get_params, get_param_names
 using GaussianProcesses
 
-# [2] For SciKitLearn
-using PyCall
-using ScikitLearn
-const pykernels = PyNULL()
-const pyGP = PyNULL()
+# [2] For scikit-learn via PythonCall (versions are pinned in CondaPkg.toml)
+using PythonCall
+const pykernels = PythonCall.pynew()
+const pyGP = PythonCall.pynew()
 function __init__()
-    sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.5.1")
-    @info "Default version: scikit-learn=1.5.1, to override with another installed version set ENV[\"SKLEARN_JL_VERSION\"]=\"new-version\"\n   Running with version $(sklearn_jl_version)"
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=$(sklearn_jl_version)"))
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=$(sklearn_jl_version)"))
+    PythonCall.pycopy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
+    PythonCall.pycopy!(pyGP, pyimport("sklearn.gaussian_process"))
 end
 
 # [3] For AbstractGPs
@@ -27,7 +24,7 @@ using KernelFunctions
 #exports (from Emulator)
 export GaussianProcess
 
-export GPJL, SKLJL, AGPJL
+export GPJL, SKLJL, SKLPy, AGPJL
 export YType, FType
 
 export get_params
@@ -40,11 +37,14 @@ $(TYPEDEF)
 Type to dispatch which GP package to use:
 
  - `GPJL` for GaussianProcesses.jl, [julia - gradient-free only]
- - `SKLJL` for the ScikitLearn GaussianProcessRegressor, [python - gradient-free]
+ - `SKLPy` for the ScikitLearn GaussianProcessRegressor, [python - gradient-free]
  - `AGPJL` for AbstractGPs.jl, [julia - ForwardDiff compatible]
+ - `SKLJL` (deprecated) — alias for `SKLPy`; will be removed in a future release.
 """
 abstract type GaussianProcessesPackage end
 struct GPJL <: GaussianProcessesPackage end
+struct SKLPy <: GaussianProcessesPackage end
+"""Deprecated alias for `SKLPy`. Use `SKLPy` instead."""
 struct SKLJL <: GaussianProcessesPackage end
 struct AGPJL <: GaussianProcessesPackage end
 
@@ -71,9 +71,9 @@ $(TYPEDFIELDS)
 """
 struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
-    models::Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, Nothing}}
+    models::Vector{Union{<:GaussianProcesses.GPE, <:Py, <:AbstractGPs.PosteriorGP, Nothing}}
     "Kernel object."
-    kernel::Union{<:GaussianProcesses.Kernel, <:PyObject, <:AbstractGPs.Kernel, Nothing}
+    kernel::Union{<:GaussianProcesses.Kernel, <:Py, <:AbstractGPs.Kernel, Nothing}
     "Learn the noise with the White Noise kernel explicitly?"
     noise_learn::Bool
     "Additional observational or regularization noise in used in GP algorithms"
@@ -92,7 +92,7 @@ Construct a `GaussianProcess` for the chosen backend `package`.
 
 # Arguments
 
-- `package`: one of `GPJL`, `SKLJL`, or `AGPJL` to select the GP backend.
+- `package`: one of `GPJL`, `SKLPy`, or `AGPJL` to select the GP backend. `SKLJL` is a deprecated alias for `SKLPy`.
 - `kernel`: kernel object compatible with the chosen backend. Defaults to a squared-exponential kernel.
 - `noise_learn`: if `true`, learns additive white noise via the kernel. Default `true`.
 - `alg_reg_noise`: small regularisation added by the fitting algorithm when `noise_learn = true`. Default `1e-3`.
@@ -107,13 +107,27 @@ function GaussianProcess(
 ) where {
     GPPkg <: GaussianProcessesPackage,
     K <: GaussianProcesses.Kernel,
-    KPy <: PyObject,
+    KPy <: Py,
     AGPK <: AbstractGPs.Kernel,
     FT <: AbstractFloat,
 }
 
+    if package isa SKLJL
+        Base.depwarn(
+            "`SKLJL` is deprecated, use `SKLPy` instead.",
+            :GaussianProcess,
+        )
+        return GaussianProcess(
+            SKLPy();
+            kernel = kernel,
+            noise_learn = noise_learn,
+            alg_reg_noise = alg_reg_noise,
+            prediction_type = prediction_type,
+        )
+    end
+
     # Initialize vector for GP models
-    models = Vector{Union{<:GaussianProcesses.GPE, <:PyObject, <:AbstractGPs.PosteriorGP, <:Nothing}}(undef, 0)
+    models = Vector{Union{<:GaussianProcesses.GPE, <:Py, <:AbstractGPs.PosteriorGP, <:Nothing}}(undef, 0)
 
     # the algorithm regularization noise is set to some small value if we are learning noise, else
     # it is fixed to the correct value (1.0)
@@ -306,9 +320,9 @@ function predict(
     return predict(gp, new_inputs, pred_type)
 end
 
-#now we build the SKLJL implementation
+#now we build the SKLPy implementation
 function build_models!(
-    gp::GaussianProcess{SKLJL},
+    gp::GaussianProcess{SKLPy},
     input_output_pairs::PairedDataContainer{FT},
     input_structure_mats,
     output_structure_mats,
@@ -336,7 +350,8 @@ function build_models!(
         kern = var_kern * rbf
         println("Using default squared exponential kernel:", kern)
     else
-        kern = deepcopy(gp.kernel)
+        # sklearn clones the kernel internally on `fit`, so the template can be shared
+        kern = gp.kernel
         println("Using user-defined kernel", kern)
     end
 
@@ -361,15 +376,15 @@ function build_models!(
     regularization_noise_vec = gp.alg_reg_noise .* regularization
     for i in 1:N_models
         regularization_noise_i = regularization_noise_vec[i]
-        kernel_i = deepcopy(kern)
+        kernel_i = kern
         data_i = output_values[i, :]
         m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise_i)
-        # ScikitLearn.fit! arguments:
+        # `m.fit` arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
 
         @info("Training kernel $(i), ")
-        ScikitLearn.fit!(m, input_values, data_i)
+        m.fit(input_values, data_i)
         push!(models, m)
         @info(m.kernel)
     end
@@ -378,24 +393,27 @@ function build_models!(
 end
 
 
-function optimize_hyperparameters!(gp::GaussianProcess{SKLJL}, args...; kwargs...)
+function optimize_hyperparameters!(gp::GaussianProcess{SKLPy}, args...; kwargs...)
     println("SKlearn, already trained. continuing...")
 end
 
-function _SKJL_predict_function(gp_model::PyObject, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
-    # SKJL based on rows not columns; need to transpose inputs
-    μ, σ = gp_model.predict(new_inputs', return_std = true)
+function _SKLPy_predict_function(gp_model::Py, new_inputs::AbstractMatrix{FT}) where {FT <: AbstractFloat}
+    # SKLPy works on rows not columns; transpose inputs to (N_samples × input_dim)
+    py_out = gp_model.predict(permutedims(new_inputs), return_std = true)
+    # PythonCall returns a Python tuple (mean, std); convert back to Julia (0-based indexing on Py)
+    μ = pyconvert(Vector{FT}, py_out[0])
+    σ = pyconvert(Vector{FT}, py_out[1])
     return μ, (σ .* σ)
 end
 function predict(
-    gp::GaussianProcess{SKLJL},
+    gp::GaussianProcess{SKLPy},
     new_inputs::AbstractMatrix{FT};
     add_obs_noise_cov = false,
     mlt_kwargs...,
 ) where {FT <: AbstractFloat}
-    μ, σ2 = _predict(gp, new_inputs, _SKJL_predict_function)
+    μ, σ2 = _predict(gp, new_inputs, _SKLPy_predict_function)
 
-    # for SKLJL does not return the observational noise (even if return_std = true)
+    # SKLPy does not return the observational noise (even if return_std = true)
     # we must add contribution depending on whether we learnt the noise or not.
     if add_obs_noise_cov
         for i in 1:size(σ2, 2)
