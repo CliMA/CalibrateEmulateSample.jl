@@ -5,12 +5,9 @@ using GaussianProcesses
 using Statistics
 using Distributions
 using LinearAlgebra
-using PyCall
-using ScikitLearn
-const pykernels = PyNULL()
-sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.8.0")
-@info "[in test/GaussianProcesses/runtest.jl] Default version: scikit-learn=1.8.0, to override with another installed version set ENV[\"SKLEARN_JL_VERSION\"]=\"new-version\"\n   Running with version $(sklearn_jl_version)"
-copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=$(sklearn_jl_version)"))
+using PythonCall
+const pykernels = PythonCall.pynew()
+PythonCall.pycopy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
 
 
 using CalibrateEmulateSample.Emulators
@@ -45,7 +42,7 @@ using CalibrateEmulateSample.Utilities
     # GaussianProcesses.jl (GPJL) provides two predict functions, predict_y
     # (which predicts the random variable y(θ)) and predict_y (which predicts
     # the latent random variable f(θ)).
-    # ScikitLearn's Gaussian process regression (SKLJL) only offers one
+    # ScikitLearn's Gaussian process regression (SKLPy) only offers one
     # predict function, which predicts y.
 
     ## GaussianProcess 1: GPJL, predict_y unnormalized
@@ -124,9 +121,9 @@ using CalibrateEmulateSample.Utilities
     # predict_y and predict_f should give the same mean
     @test μ2 ≈ μ1 atol = 1e-6
 
-    # GaussianProcess 3: SKLJL
+    # GaussianProcess 3: SKLPy
 
-    gppackage = SKLJL()
+    gppackage = SKLPy()
     pred_type = YType()
     var = pykernels.ConstantKernel(constant_value = 1.0)
     se = pykernels.RBF(1.0)
@@ -148,6 +145,22 @@ using CalibrateEmulateSample.Utilities
     Γ = 0.05I
     em = Emulator(gp, iopairs; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Γ))
     @test gp.regularization[end] == gp.alg_reg_noise * Γ.λ
+
+    # GaussianProcess 3b: SKLJL (deprecated alias for SKLPy)
+    @testset "SKLJL depwarn" begin
+        # depwarn is emitted
+        @test_logs (:warn, r"`SKLJL` is deprecated, use `SKLPy` instead") match_mode = :any GaussianProcess(
+            SKLJL();
+            kernel = GPkernel,
+            noise_learn = true,
+            prediction_type = YType(),
+        )
+        # result is backed by SKLPy and kwargs are forwarded correctly
+        gp_skljl = GaussianProcess(SKLJL(); kernel = GPkernel, noise_learn = true, prediction_type = YType())
+        @test gp_skljl isa GaussianProcess{SKLPy}
+        @test gp_skljl.kernel === GPkernel
+        @test gp_skljl.noise_learn == true
+    end
 
     # -------------------------------------------------------------------------
     # Test case 2: 2D input, 2D output

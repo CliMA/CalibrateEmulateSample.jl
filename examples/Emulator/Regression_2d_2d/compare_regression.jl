@@ -39,7 +39,7 @@ function main()
     end
 
     cases = [
-        "gp-skljl",
+        "gp-sklpy",
         "gp-gpjl", # Very slow prediction...
         "rf-lr-scalar",
         "rf-lr-lr",
@@ -150,8 +150,8 @@ function main()
 
             # data processing schedule
 
-            if case == "gp-skljl"
-                gppackage = SKLJL()
+            if case == "gp-sklpy"
+                gppackage = SKLPy()
                 mlt = GaussianProcess(gppackage, noise_learn = true)
 
             elseif case == "gp-gpjl"

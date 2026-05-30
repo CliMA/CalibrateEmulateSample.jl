@@ -7,9 +7,8 @@ if TEST_PLOT_OUTPUT
     using Plots
 end
 
-ENV["SKLEARN_JL_VERSION"] = "1.5.1"
-sklearn_jl_version = get(ENV, "SKLEARN_JL_VERSION", "1.8.0")
-@info "[in test/runtest.jl], (if running Github actions) this variable must match the scikit learn version in .github/workflows/tests.yml. SKLEARN_JL_VERSION: $(sklearn_jl_version)"
+# Python dependency versions (python, scipy, scikit-learn) are pinned in CondaPkg.toml
+# and provisioned automatically via CondaPkg.jl / PythonCall.jl.
 
 function include_test(_module)
     println("Starting tests for $_module")

@@ -77,7 +77,7 @@ function main()
         # Emulate-sample settings
         # choice of machine-learning tool in the emulation stage
         if case == "GP"
-            #            gppackage = Emulators.SKLJL()
+            #            gppackage = Emulators.SKLPy()
             gppackage = Emulators.GPJL()
             mlt = GaussianProcess(gppackage; noise_learn = false)
         end

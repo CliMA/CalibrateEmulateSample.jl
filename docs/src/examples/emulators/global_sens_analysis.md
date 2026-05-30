@@ -41,7 +41,7 @@ const GSA = GlobalSensitivityAnalysis
 ```
 then the CES packages for the emulators
 ```julia
-using CalibrateEmulateSample.Emulators # for `SKLJL`, `GaussianProcess`, `SeparableKernel`, `LowRankFactor`, `OneDimFactor`, `ScalarRandomFeatureInterface`, `Emulator`
+using CalibrateEmulateSample.Emulators # for `SKLPy`, `GaussianProcess`, `SeparableKernel`, `LowRankFactor`, `OneDimFactor`, `ScalarRandomFeatureInterface`, `Emulator`
 using CalibrateEmulateSample.DataContainers # for `PairedDataContainer`
 using CalibrateEmulateSample.EnsembleKalmanProcesses # for `DataMisfitController`
 ```
@@ -109,7 +109,7 @@ mlt = ScalarRandomFeatureInterface(
 ```
 For the gaussian process case `GP` we use the sci-kit learn package, a default squared exponential kernel with lengthscale learnt in each input dimensions. We do not learn an additional white kernel for the noise.
 ```julia
-gppackage = Emulators.SKLJL()
+gppackage = Emulators.SKLPy()
 pred_type = Emulators.YType()
 mlt = GaussianProcess(
     gppackage;

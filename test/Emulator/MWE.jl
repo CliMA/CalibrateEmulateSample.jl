@@ -1,11 +1,10 @@
-using PyCall
-using ScikitLearn
-const pykernels = PyNULL()
-const pyGP = PyNULL()
+using PythonCall
+const pykernels = PythonCall.pynew()
+const pyGP = PythonCall.pynew()
 
 function init()
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.3.2"))
-    copy!(pyGP, pyimport_conda("sklearn.gaussian_process", "scikit-learn=1.3.2"))
+    PythonCall.pycopy!(pykernels, pyimport("sklearn.gaussian_process.kernels"))
+    PythonCall.pycopy!(pyGP, pyimport("sklearn.gaussian_process"))
 end
 
 function minimal_failing_example()
@@ -20,8 +19,8 @@ function minimal_failing_example()
     # the model
     m = pyGP.GaussianProcessRegressor(kernel = kernel)
 
-    # call fit!
-    ScikitLearn.fit!(m, x, y)
+    # call fit
+    m.fit(x, y)
     @info "fit successful"
 end
 

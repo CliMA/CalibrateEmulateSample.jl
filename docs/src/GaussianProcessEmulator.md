@@ -25,7 +25,7 @@ gppackage = Emulators.GPJL()
 
 To use `ScikitLearn.jl`, define the package type as
 ```julia
-gppackage = Emulators.SKLJL()
+gppackage = Emulators.SKLPy()
 ```
 
 Initialize a basic Gaussian Process with
@@ -95,34 +95,25 @@ gauss_proc = GaussianProcess(
     optimize_hyperparameters!(emulator; kernbounds=(low,high))
     ```
 
-## SKLJL
-Alternatively if you are using the `ScikitLearn.jl` package, you can [find the list of kernels here](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process). 
-These need this preamble, with the latest version of supported scikit-learn:
+## SKLPy
+Alternatively, [scikit-learn kernels](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process) are supported via [PythonCall.jl](https://github.com/JuliaPy/PythonCall.jl). The `pykernels` module handle is initialised automatically when CES loads — no user preamble is required. Kernels are accessible as:
 ```julia
-using PyCall
-using ScikitLearn
-const pykernels = PyNULL()
-function __init__()
-    copy!(pykernels, pyimport_conda("sklearn.gaussian_process.kernels", "scikit-learn=1.8.0")) 
-end
-```
-Then they are accessible, for example, as
-```julia
+using CalibrateEmulateSample.Emulators   # pykernels is exported from here
 my_kernel = pykernels.RBF(length_scale = 1)
 gauss_proc = GaussianProcess(
     gppackage;
     kernel = my_kernel )
 ```
-You can also combine multiple ScikitLearn kernels via linear operations in the same way as above.
+You can also combine multiple scikit-learn kernels via linear operations in the same way as above.
 
-!!! note "Kernel hyperparameter bounds (SKLJL)"
+!!! note "Kernel hyperparameter bounds (SKLPy)"
     Default bounds are provided, however, bounds are adjusted by providing new kernels, for example,
     ```julia
     my_kernel = pykernels.RBF(length_scale = 1, length_scale_bounds=(low_bound, up_bound))
     ```
 
 !!! note "Scikit-Learn versions"
-    Though our code is able to handle different Scikit Learn versions, it is a little cumbersome to update, and therefore we recommend you use the versions specified on the [installation instructions page](@ref install)
+    The scikit-learn version (and Python/scipy) are pinned in `CondaPkg.toml` at the repo root. See the [installation instructions page](@ref install) for how to change them.
 
 ## [AGPJL](@id agpjl)
 

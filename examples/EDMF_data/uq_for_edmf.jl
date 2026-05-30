@@ -188,7 +188,7 @@ function main()
     opt_diagnostics = []
     if case == "GP"
         kernel_rank = 0
-        gppackage = Emulators.SKLJL()
+        gppackage = Emulators.SKLPy()
         pred_type = Emulators.YType()
         mlt = GaussianProcess(
             gppackage;
