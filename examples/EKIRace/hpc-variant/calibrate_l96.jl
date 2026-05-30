@@ -134,15 +134,23 @@ function build_setup(cfg, output_dir)
         cov_solve = lorenz_solve(phi, x0, LorenzConfig(t, covT))
         ic_cov = 0.1 * cov(cov_solve, dims = 2)
         ic_cov_sqrt = sqrt(ic_cov)
+        prelim_tmp = prelim_file * ".tmp.$(getpid())"
         JLD2.save(
-            prelim_file,
+            prelim_tmp,
             "x0", x0, "y", y,
             "lorenz_config_settings", lorenz_config_settings,
             "observation_config", observation_config,
             "ic_cov_sqrt", ic_cov_sqrt,
             "R", R, "R_inv_var", R_inv_var,
         )
-        @info "Saved computed quantities to $(prelim_file)"
+        # Atomic rename: first writer wins; concurrent losers discard their copy.
+        try
+            mv(prelim_tmp, prelim_file)
+            @info "Saved computed quantities to $(prelim_file)"
+        catch
+            rm(prelim_tmp; force = true)
+            @info "Prelim file already written by another task; discarding duplicate"
+        end
     end
 
     configuration = Dict(
@@ -170,7 +178,13 @@ function write_priors(cfg, setup, output_dir)
         mkpath(per_method_dir)
         pf = joinpath(per_method_dir, prior_filename(cfg))
         if !isfile(pf)
-            JLD2.save(pf, "prior", setup.prior)
+            pf_tmp = pf * ".tmp.$(getpid())"
+            JLD2.save(pf_tmp, "prior", setup.prior)
+            try
+                mv(pf_tmp, pf)
+            catch
+                rm(pf_tmp; force = true)
+            end
         end
     end
 end

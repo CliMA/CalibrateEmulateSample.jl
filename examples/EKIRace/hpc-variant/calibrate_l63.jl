@@ -101,7 +101,13 @@ function write_priors(cfg, setup, output_dir)
         mkpath(per_method_dir)
         pf = joinpath(per_method_dir, prior_filename(cfg))
         if !isfile(pf)
-            JLD2.save(pf, "prior", setup.prior)
+            pf_tmp = pf * ".tmp.$(getpid())"
+            JLD2.save(pf_tmp, "prior", setup.prior)
+            try
+                mv(pf_tmp, pf)
+            catch
+                rm(pf_tmp; force = true)
+            end
         end
     end
 end
