@@ -9,12 +9,11 @@ description: >-
   move PythonCall, compat-bound errors, a stale Manifest after a dep bump);
   debug Python import / environment failures ("sklearn could not be imported",
   CondaPkg env out of sync); rename or deprecate a Julia type that wraps the
-  Python backend (e.g. `SKLJL` → `SKLPy`); or update
-  docs/src/installation_instructions.md to match the current Python setup.
-  Trigger it even without the word "CondaPkg" — cues like "bump scikit-learn",
-  "update PythonCall", "the python env is stale", "change the python version",
-  "CES can't find sklearn", "rename SKLJL", or "add a deprecation notice" all
-  apply.
+  Python backend; or update docs/src/installation_instructions.md to match the
+  current Python setup. Trigger it even without the word "CondaPkg" — cues like
+  "bump scikit-learn", "update PythonCall", "the python env is stale", "change
+  the python version", "CES can't find sklearn", or "add a deprecation notice"
+  all apply.
 ---
 
 # Python dependency manager for CalibrateEmulateSample.jl
@@ -23,8 +22,7 @@ CES gets its Python environment (currently `scikit-learn` + `scipy`, used by the
 `SKLPy` Gaussian-process backend) from **CondaPkg.jl + PythonCall.jl**. The
 `CondaPkg.toml` at the repo root is the single declarative source of truth for
 Python package versions; PythonCall provisions and uses that environment
-automatically inside the Julia depot. There is no `Pkg.build`, no `ENV["PYTHON"]`,
-and no `SKLEARN_JL_VERSION` override.
+automatically inside the Julia depot. There is no `Pkg.build` and no `ENV["PYTHON"]`.
 
 This skill covers four recurring jobs:
 1. Changing a Python package version (`CondaPkg.toml`).
@@ -113,15 +111,14 @@ always an unresolved or stale env. Fix order:
 
 ## Task 4 — Rename a Julia type / add a deprecation notice
 
-When a Julia dispatch type that wraps the Python backend needs renaming (e.g.
-`SKLJL` → `SKLPy`), the goal is to introduce the new name as the canonical one
-while keeping the old name working with a deprecation warning. Follow this
-sequence in order.
+When a Julia dispatch type that wraps the Python backend needs renaming, the goal
+is to introduce the new name as the canonical one while keeping the old name
+working with a deprecation warning. Follow this sequence in order.
 
 ### 1. Find every reference first
 
 ```bash
-grep -rn "OldName" . --include="*.jl" --include="*.md" -l
+grep -rn "OldType" . --include="*.jl" --include="*.md" -l
 ```
 
 Review the full list before touching anything — it defines the scope and prevents
@@ -133,23 +130,20 @@ In `src/MachineLearningTools/GaussianProcess.jl`, add the new struct *above* the
 old one in the type block:
 
 ```julia
-struct SKLPy <: GaussianProcessesPackage end
-"""Deprecated alias for `SKLPy`. Use `SKLPy` instead."""
-struct SKLJL <: GaussianProcessesPackage end
+struct NewType <: GaussianProcessesPackage end
+"""Deprecated alias for `NewType`. Use `NewType` instead."""
+struct OldType <: GaussianProcessesPackage end
 ```
 
 Keeping the old struct (rather than deleting it) means code that already holds
-an `SKLJL` value won't get an `UndefVarError` at load time — the deprecation fires
-at construction, not at type resolution.
+an `OldType` value won't get an `UndefVarError` at load time — the deprecation
+fires at construction, not at type resolution.
 
 ### 3. Export both; new name is primary
 
-```julia
-export GPJL, SKLJL, SKLPy, AGPJL   # SKLJL kept for backwards compat
-```
-
-Update the `GaussianProcessesPackage` docstring to list `SKLPy` as the current
-option and mark `SKLJL` as `(deprecated)`.
+Export `NewType` as the primary export; keep `OldType` for backwards compat.
+Update the `GaussianProcessesPackage` docstring to list `NewType` as current and
+mark `OldType` as `(deprecated)`.
 
 ### 4. Add the deprecation check in the constructor
 
@@ -157,18 +151,13 @@ In the `GaussianProcess(package::GPPkg; ...)` body, add this check **before** th
 normal initialization path:
 
 ```julia
-if package isa SKLJL
+if package isa OldType
     Base.depwarn(
-        "`SKLJL` is deprecated, use `SKLPy` instead.",
+        "`OldType` is deprecated, use `NewType` instead.",
         :GaussianProcess,
     )
-    return GaussianProcess(
-        SKLPy();
-        kernel = kernel,
-        noise_learn = noise_learn,
-        alg_reg_noise = alg_reg_noise,
-        prediction_type = prediction_type,
-    )
+    return GaussianProcess(NewType(); kernel = kernel, noise_learn = noise_learn,
+                           alg_reg_noise = alg_reg_noise, prediction_type = prediction_type)
 end
 ```
 
@@ -177,15 +166,11 @@ Use `Base.depwarn` (not `@warn`): it fires once per call site, respects
 
 ### 5. Rename all internal method dispatch
 
-Every method that currently dispatches on `GaussianProcess{SKLJL}` must be
-updated to `GaussianProcess{SKLPy}`. The constructor deprecation funnels all
-`SKLJL()` calls into `SKLPy()` before any model is built, so no `SKLJL`
-overloads are needed for these methods. Check:
-- `build_models!`
-- `optimize_hyperparameters!`
-- `predict`
-- Internal helper functions (e.g. `_SKJL_predict_function` → `_SKLPy_predict_function`)
-- Inline comments that mention the old name
+Every method that dispatches on `GaussianProcess{OldType}` must be updated to
+`GaussianProcess{NewType}`. The constructor deprecation funnels all `OldType()`
+calls into `NewType()` before any model is built, so no `OldType` overloads are
+needed. Check: `build_models!`, `optimize_hyperparameters!`, `predict`, internal
+helper functions, and inline comments.
 
 ### 6. Update docs and examples
 
@@ -193,11 +178,11 @@ Work through the file list from step 1. Key locations:
 
 | File | What to change |
 |------|----------------|
-| `docs/src/GaussianProcessEmulator.md` | Section header (`## SKLPy`), code examples, admonition titles |
+| `docs/src/GaussianProcessEmulator.md` | Section header, code examples, admonition titles |
 | `docs/src/installation_instructions.md` | Backend name mention |
 | `docs/src/examples/emulators/*.md` | Import comments and case-string snippets |
-| `examples/**/*.jl` | `SKLJL()` constructor calls, including commented-out examples |
-| Case-string identifiers | e.g. `"gp-skljl"` → `"gp-sklpy"` in example scripts |
+| `examples/**/*.jl` | Constructor calls, including commented-out examples |
+| Case-string identifiers | e.g. `"gp-oldtype"` → `"gp-newtype"` in example scripts |
 
 Update `docs/src/API/GaussianProcess.md` only if the `@docs` block hard-codes
 type-bound names that reference the old name.
