@@ -67,5 +67,6 @@ if !isempty(get(ENV, "CI", ""))
         repo = "github.com/CliMA/CalibrateEmulateSample.jl.git",
         versions = ["stable" => "v^", "v#.#.#", "dev" => "dev"],
         push_preview = true,
+        devbranch = "main"
     )
 end
