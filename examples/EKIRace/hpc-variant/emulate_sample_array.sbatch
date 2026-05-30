@@ -35,4 +35,6 @@ SCRIPT=${SCRIPT:-emulate_sample_l63.jl}
 
 cd "${SLURM_SUBMIT_DIR}"
 
+export JULIA_PKG_PRECOMPILE_AUTO=0 # already precompiled so should not get all jobs to re-precompile
+
 julia --project=. "${SCRIPT}" "${SLURM_ARRAY_TASK_ID}"
