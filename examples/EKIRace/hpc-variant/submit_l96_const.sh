@@ -15,19 +15,13 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 mkdir -p output/slurm
 
-echo "=== Submitting precompile ==="
-PRECOMPILE_JID=$(sbatch --parsable \
-			-A esm \
-			--job-name="precompile_${LABEL}" \
-			precompile.sbatch)
-echo "  precompile job ID: ${PRECOMPILE_JID}"
+echo "NOTE: This script does not precompile. Run bash submit_precompile.sh first"
+echo "      if you haven't done so recently (e.g. after a fresh checkout or package update)."
 
-echo "=== Submitting calibrate (L96 const-force, after ${PRECOMPILE_JID}) ==="
+echo "=== Submitting calibrate (L96 const-force) ==="
 CALIB_JID=$(sbatch --parsable \
 		   -A esm \
 		   --job-name="calib_${LABEL}" \
-		   --dependency=afterok:${PRECOMPILE_JID} \
-		   --kill-on-invalid-dep=yes \
 		   --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const \
 		   calibrate_array.sbatch)
 echo "  calibrate job ID: ${CALIB_JID}"

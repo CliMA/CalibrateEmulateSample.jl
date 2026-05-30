@@ -17,8 +17,11 @@ All subsequent stages (emulate_sample, leaderboard) read this value to locate
 the right output directory; keeping it fixed avoids mismatches when jobs run
 past midnight or across days.
 
-The submit scripts (`submit_*.sh`) submit a `precompile.sbatch` job first and
-chain calibrate → emulate_sample behind it, so nothing runs on the login node.
+Precompilation is handled by a dedicated `submit_precompile.sh` script that
+queues `precompile.sbatch` as a compute job. Run it once before your experiments
+and again whenever the environment changes (fresh checkout, package updates).
+The `submit_l*.sh` scripts do not precompile — they will remind you at submission
+time.
 
 ## Standalone (serial)
 
@@ -46,19 +49,26 @@ julia --project=. emulate_sample_l63.jl 5   # fifth cell only
 
 ### Submission scripts (recommended)
 
-One script per case submits three chained SLURM jobs:
-`precompile.sbatch` → `calibrate_array.sbatch` → `emulate_sample_array.sbatch`.
-All four cases can be launched simultaneously — output files are case-specific
-so there are no write conflicts. The optional `EXP_ID` argument suffixes SLURM
-job names to keep the queue readable:
+Precompile once (or whenever the environment changes), then submit the cases:
 
 ```bash
+bash submit_precompile.sh [EXP_ID]
+
 bash submit_l63.sh        [EXP_ID]
 bash submit_l96_const.sh  [EXP_ID]
 bash submit_l96_vec.sh    [EXP_ID]
 bash submit_l96_flux.sh   [EXP_ID]
+```
 
-# example: run all four with a shared label
+Each `submit_l*.sh` script chains `calibrate_array.sbatch` → `emulate_sample_array.sbatch`
+for its case. All four cases can be launched simultaneously — output files are
+case-specific so there are no write conflicts. The optional `EXP_ID` argument
+suffixes SLURM job names to keep the queue readable.
+
+If you are launching all four cases together you only need one precompile run:
+
+```bash
+bash submit_precompile.sh run1
 for s in submit_l63.sh submit_l96_const.sh submit_l96_vec.sh submit_l96_flux.sh; do
     bash "$s" run1 &
 done
@@ -67,23 +77,19 @@ wait
 
 ### Manual submission
 
-Precompile first, then chain calibrate and emulate_sample behind it:
+Precompile via `submit_precompile.sh` (or directly), then submit calibrate and
+emulate_sample:
 
 ```bash
-# precompile (shared across all cases — only one run needed per environment change)
-pid=$(sbatch --parsable -A esm precompile.sbatch)
-
 # L63
 cid=$(sbatch --parsable -A esm \
-             --dependency=afterok:$pid --kill-on-invalid-dep=yes \
              --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch)
 sbatch -A esm \
        --dependency=afterok:$cid --kill-on-invalid-dep=yes \
        --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch
 
-# L96 (repeat for each forcing case, reusing the same $pid)
+# L96
 cid=$(sbatch --parsable -A esm \
-             --dependency=afterok:$pid --kill-on-invalid-dep=yes \
              --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const calibrate_array.sbatch)
 sbatch -A esm \
        --dependency=afterok:$cid --kill-on-invalid-dep=yes \
