@@ -113,10 +113,7 @@ function GaussianProcess(
 }
 
     if package isa SKLJL
-        Base.depwarn(
-            "`SKLJL` is deprecated, use `SKLPy` instead.",
-            :GaussianProcess,
-        )
+        Base.depwarn("`SKLJL` is deprecated, use `SKLPy` instead.", :GaussianProcess)
         return GaussianProcess(
             SKLPy();
             kernel = kernel,
