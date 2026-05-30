@@ -306,8 +306,10 @@ end
 
 function main()
     exp = l96_experiment()
-    @assert exp in (:l96_const, :l96_vec, :l96_flux) \
-        "EXPERIMENT must be :l96_const, :l96_vec, or :l96_flux (got $exp)"
+    @assert(
+        exp in (:l96_const, :l96_vec, :l96_flux),
+        "EXPERIMENT must be :l96_const, :l96_vec, or :l96_flux (got $exp)",
+    )
 
     cfg        = experiment_config(exp)
     output_dir = joinpath(@__DIR__, "output")
