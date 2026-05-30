@@ -33,6 +33,6 @@ export OPENBLAS_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
 SCRIPT=${SCRIPT:-emulate_sample_l63.jl}
 
-cd "$(dirname "$0")"
+cd "${SLURM_SUBMIT_DIR}"
 
 julia --project=. "${SCRIPT}" "${SLURM_ARRAY_TASK_ID}"

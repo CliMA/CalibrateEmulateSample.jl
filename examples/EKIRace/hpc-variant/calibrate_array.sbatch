@@ -36,6 +36,6 @@ export OPENBLAS_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 # Default to L63 if SCRIPT not set via --export.
 SCRIPT=${SCRIPT:-calibrate_l63.jl}
 
-cd "$(dirname "$0")"
+cd "${SLURM_SUBMIT_DIR}"
 
 julia --project=. "${SCRIPT}" "${SLURM_ARRAY_TASK_ID}"
