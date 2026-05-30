@@ -15,13 +15,19 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 mkdir -p output/slurm
 
-echo "=== Precompiling ==="
-julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+echo "=== Submitting precompile ==="
+PRECOMPILE_JID=$(sbatch --parsable \
+			-A esm \
+			--job-name="precompile_${LABEL}" \
+			precompile.sbatch)
+echo "  precompile job ID: ${PRECOMPILE_JID}"
 
-echo "=== Submitting calibrate (L63) ==="
+echo "=== Submitting calibrate (L63, after ${PRECOMPILE_JID}) ==="
 CALIB_JID=$(sbatch --parsable \
 		   -A esm \
 		   --job-name="calib_${LABEL}" \
+		   --dependency=afterok:${PRECOMPILE_JID} \
+		   --kill-on-invalid-dep=yes \
 		   --export=ALL,SCRIPT=calibrate_l63.jl \
 		   calibrate_array.sbatch)
 echo "  calibrate job ID: ${CALIB_JID}"

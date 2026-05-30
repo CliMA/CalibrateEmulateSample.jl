@@ -17,8 +17,8 @@ All subsequent stages (emulate_sample, leaderboard) read this value to locate
 the right output directory; keeping it fixed avoids mismatches when jobs run
 past midnight or across days.
 
-The submit scripts (`submit_*.sh`) handle precompilation automatically before
-queuing any jobs.
+The submit scripts (`submit_*.sh`) submit a `precompile.sbatch` job first and
+chain calibrate → emulate_sample behind it, so nothing runs on the login node.
 
 ## Standalone (serial)
 
@@ -46,10 +46,11 @@ julia --project=. emulate_sample_l63.jl 5   # fifth cell only
 
 ### Submission scripts (recommended)
 
-One script per case handles precompilation and chains calibrate → emulate_sample
-automatically. All four can be launched simultaneously — output files are
-case-specific so there are no write conflicts. The optional `EXP_ID` argument
-suffixes SLURM job names to keep the queue readable:
+One script per case submits three chained SLURM jobs:
+`precompile.sbatch` → `calibrate_array.sbatch` → `emulate_sample_array.sbatch`.
+All four cases can be launched simultaneously — output files are case-specific
+so there are no write conflicts. The optional `EXP_ID` argument suffixes SLURM
+job names to keep the queue readable:
 
 ```bash
 bash submit_l63.sh        [EXP_ID]
@@ -66,37 +67,32 @@ wait
 
 ### Manual submission
 
-```bash
-# L63
-sbatch --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch
+Precompile first, then chain calibrate and emulate_sample behind it:
 
-# L96 (submit once per forcing case)
-sbatch --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const calibrate_array.sbatch
-sbatch --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_vec   calibrate_array.sbatch
-sbatch --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_flux  calibrate_array.sbatch
+```bash
+# precompile (shared across all cases — only one run needed per environment change)
+pid=$(sbatch --parsable -A esm precompile.sbatch)
+
+# L63
+cid=$(sbatch --parsable -A esm \
+             --dependency=afterok:$pid --kill-on-invalid-dep=yes \
+             --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch)
+sbatch -A esm \
+       --dependency=afterok:$cid --kill-on-invalid-dep=yes \
+       --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch
+
+# L96 (repeat for each forcing case, reusing the same $pid)
+cid=$(sbatch --parsable -A esm \
+             --dependency=afterok:$pid --kill-on-invalid-dep=yes \
+             --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const calibrate_array.sbatch)
+sbatch -A esm \
+       --dependency=afterok:$cid --kill-on-invalid-dep=yes \
+       --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
+       emulate_sample_array.sbatch
 ```
 
 Each task writes its per-method `ekp` and `results` files, which are consumed
 directly by the emulate_sample stage.
-
-### Emulate-sample
-
-Submit after the calibrate array is complete. Use `--dependency` to chain
-automatically:
-
-```bash
-# L63
-cid=$(sbatch --parsable --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch)
-sbatch --dependency=afterok:$cid \
-       --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch
-
-# L96
-cid=$(sbatch --parsable --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const \
-             calibrate_array.sbatch)
-sbatch --dependency=afterok:$cid \
-       --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
-       emulate_sample_array.sbatch
-```
 
 ### Adjusting array size
 
