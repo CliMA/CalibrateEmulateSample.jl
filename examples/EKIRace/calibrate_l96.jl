@@ -119,7 +119,9 @@ elseif case == "flux-force"
     # ylabel!("y")
     # title!("Offline 1D DNN")
     # display(p)
-    prior_cov = (0.5^2) * I(length(prior_mean))
+
+    #prior_cov = (0.1^2) * I(length(prior_mean)) # original cov
+    prior_cov = (1.0^2) * Diagonal(prior_mean.^2) # scaled to mean
     distribution = Parameterized(MvNormal(prior_mean, prior_cov))
     constraint = repeat([no_constraint()], 61)
     name = "l96_nn_prior"
