@@ -134,7 +134,7 @@ function build_setup(cfg, output_dir)
         cov_solve = lorenz_solve(phi, x0, LorenzConfig(t, covT))
         ic_cov = 0.1 * cov(cov_solve, dims = 2)
         ic_cov_sqrt = sqrt(ic_cov)
-        prelim_tmp = prelim_file * ".tmp.$(getpid())"
+        prelim_tmp = splitext(prelim_file)[1] * ".tmp.$(getpid()).jld2"
         JLD2.save(
             prelim_tmp,
             "x0", x0, "y", y,
@@ -178,7 +178,7 @@ function write_priors(cfg, setup, output_dir)
         mkpath(per_method_dir)
         pf = joinpath(per_method_dir, prior_filename(cfg))
         if !isfile(pf)
-            pf_tmp = pf * ".tmp.$(getpid())"
+            pf_tmp = splitext(pf)[1] * ".tmp.$(getpid()).jld2"
             JLD2.save(pf_tmp, "prior", setup.prior)
             try
                 mv(pf_tmp, pf)
