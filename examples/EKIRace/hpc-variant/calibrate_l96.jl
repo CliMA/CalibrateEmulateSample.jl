@@ -77,7 +77,7 @@ function build_setup(cfg, output_dir)
         prior_sinusoid(x) = 8.02 .+ 6.5 * sin.(1.02 * (4 * pi * x) / 10 + 0.2)
         prior_train = prior_sinusoid.(x_train) .+ 0.2 .* randn(length(x_train))
         prior_model, prior_mean = train_network(deepcopy(phi_structure), x_train, prior_train)
-        prior_cov = (0.1^2) * I(length(prior_mean))
+        prior_cov = (0.5^2) * I(length(prior_mean))
         distribution = Parameterized(MvNormal(prior_mean, prior_cov))
         constraint = repeat([no_constraint()], 61)
         prior = ParameterDistribution(distribution, constraint, "l96_nn_prior")
@@ -201,9 +201,9 @@ function calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
     initial_params = construct_initial_ensemble(rng, setup.prior, N_ens)
     methods = [
         Inversion(),
-        TransformInversion(),
-        GaussNewtonInversion(setup.prior),
-        Unscented(setup.prior),
+#        TransformInversion(),
+#        GaussNewtonInversion(setup.prior),
+#        Unscented(setup.prior),
     ]
 
     conv_cell   = fill(NaN, 4)

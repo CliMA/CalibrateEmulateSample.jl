@@ -123,9 +123,9 @@ function calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
     initial_params = construct_initial_ensemble(rng, setup.prior, N_ens)
     methods = [
         Inversion(),
-        TransformInversion(),
-        GaussNewtonInversion(setup.prior),
-        Unscented(setup.prior),
+#        TransformInversion(),
+#        GaussNewtonInversion(setup.prior),
+#        Unscented(setup.prior),
     ]
 
     conv_cell   = fill(NaN, 4)

@@ -133,9 +133,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         initial_params = construct_initial_ensemble(rng, prior, N_ens)
         methods = [
             Inversion(),
-            TransformInversion(),
-            GaussNewtonInversion(prior),
-            Unscented(prior),
+#            TransformInversion(),
+#            GaussNewtonInversion(prior),
+#            Unscented(prior),
         ]
 
         @info "Ensemble size: $(N_ens)"

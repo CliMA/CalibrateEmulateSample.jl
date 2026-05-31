@@ -119,7 +119,7 @@ elseif case == "flux-force"
     # ylabel!("y")
     # title!("Offline 1D DNN")
     # display(p)
-    prior_cov = (0.1^2) * I(length(prior_mean))
+    prior_cov = (0.5^2) * I(length(prior_mean))
     distribution = Parameterized(MvNormal(prior_mean, prior_cov))
     constraint = repeat([no_constraint()], 61)
     name = "l96_nn_prior"
@@ -239,9 +239,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         initial_params = construct_initial_ensemble(rng, prior, N_ens)
         methods = [
             Inversion(),
-            TransformInversion(),
-            GaussNewtonInversion(prior),
-            Unscented(prior),
+#            TransformInversion(),
+#            GaussNewtonInversion(prior),
+#            Unscented(prior),
         ]
 
         @info "Ensemble size: $(N_ens)"
