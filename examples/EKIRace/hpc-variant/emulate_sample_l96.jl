@@ -104,7 +104,7 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
             mlt,
             input_output_pairs;
             encoder_schedule = deepcopy(encoder_schedule),
-            encoder_kwargs = encoder_kwargs,
+            encoder_kwargs = deepcopy(encoder_kwargs),
         )
         optimize_hyperparameters!(emulator)
 
