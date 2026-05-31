@@ -3,8 +3,9 @@ using Dates
 ########################################################################
 ###############  USER TOGGLE  #########################################
 ########################################################################
-# Set EXPERIMENT to one of: :l63, :l96_const, :l96_vec, :l96_flux
-EXPERIMENT = :l96_const
+# Set EXPERIMENT to one of:
+experiments = [:l63, :l96_const, :l96_vec, :l96_flux]
+EXPERIMENT = experiments[4]
 
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).

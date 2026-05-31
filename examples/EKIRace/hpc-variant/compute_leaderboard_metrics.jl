@@ -2,7 +2,10 @@ using NCDatasets
 using Distributions
 using Statistics
 
-filename = "ces-eki-dmc_l63_ensemble_results_2026-05-29.nc"
+#filename = "ces-eki-dmc_l63_ensemble_results_2026-05-29.nc"
+#filename = "ces-eki-dmc_l96_ensemble_results_2026-05-29.nc"
+#filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_2026-05-29.nc"
+filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_2026-05-29.nc"
 
 # load
 ncd = NCDataset(filename)
