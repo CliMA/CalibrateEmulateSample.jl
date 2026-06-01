@@ -45,6 +45,19 @@ julia --project=. calibrate_l63.jl 1        # first (N_ens, rng_idx) cell only
 julia --project=. emulate_sample_l63.jl 5   # fifth cell only
 ```
 
+After `emulate_sample` completes, push the posteriors forward through the L96
+forward map and save plots:
+
+```bash
+EXPERIMENT=l96_const julia --project=. ensemble_from_posterior.jl
+EXPERIMENT=l96_vec   julia --project=. ensemble_from_posterior.jl
+EXPERIMENT=l96_flux  julia --project=. ensemble_from_posterior.jl
+```
+
+Each call loops over all `(N_ens, rng_idx)` cells, samples 100 points from each
+posterior, runs them through the forward model, and writes `pushforward_from_posterior_*.{png,pdf}`
+plots into the per-case calibration output directory.
+
 ## HPC (Caltech Resnick cluster, SLURM)
 
 ### Submission scripts (recommended)
@@ -99,6 +112,29 @@ sbatch -A esm \
 
 Each task writes its per-method `ekp` and `results` files, which are consumed
 directly by the emulate_sample stage.
+
+### Posterior pushforward (`ensemble_from_posterior`)
+
+After the `emulate_sample` jobs finish, submit a single (non-array) job that
+loops over all `(N_ens, rng_idx)` cells internally:
+
+```bash
+eid=$(sbatch --parsable \
+             --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
+             --export=ALL,EXPERIMENT=l96_const \
+             ensemble_from_posterior.sbatch)
+
+sbatch --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
+       --export=ALL,EXPERIMENT=l96_vec ensemble_from_posterior.sbatch
+
+sbatch --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
+       --export=ALL,EXPERIMENT=l96_flux ensemble_from_posterior.sbatch
+```
+
+Replace `<emu_jobid>` with the job ID returned by the corresponding
+`emulate_sample_array.sbatch` submission.  Each run takes up to 8 h and writes
+`pushforward_from_posterior_*.{png,pdf}` into the same output directory as the
+calibration results.
 
 ### Adjusting array size
 
