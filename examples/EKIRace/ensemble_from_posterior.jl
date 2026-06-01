@@ -142,18 +142,22 @@ for (N_ens, rng_idx) in valid_file_items
                     ]...,
         )
 
-        n_p = length(truth_params_constrained)
         ny  = length(y)
+
+        truth_emc        = build_forcing(truth_params_obj, truth_params_constrained, structure, sample_range)
+        truth_forcing    = forcing(truth_emc, x0)
+        xaxis_forcing    = isnothing(sample_range) ? range(0, length(truth_forcing) - 1, step = 1) : sample_range
+        push_forcings    = hcat([forcing(build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range), x0) for j in 1:n_samples_pushforward]...)
 
         gr(size = (2 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
         p3 = plot(
-            range(0, n_p - 1, step = 1),
-            zeros(n_p),
+            xaxis_forcing,
+            truth_forcing,
             label = "solution",
             color = :black,
             linewidth = 4,
-            xlabel = "Parameter index",
-            ylabel = "Forcing difference (input)",
+            xlabel = "Spatial index",
+            ylabel = "Forcing (input)",
             left_margin = 15mm,
             bottom_margin = 15mm,
         )
@@ -170,24 +174,8 @@ for (N_ens, rng_idx) in valid_file_items
             bottom_margin = 15mm,
         )
 
-        plot!(
-            p3,
-            range(0, n_p - 1, step = 1),
-            constrained_push_ensemble[:, 1] .- truth_params_constrained,
-            label = "posterior samples",
-            color = :lightgreen,
-            linewidth = 4,
-            linealpha = 0.1,
-        )
-        plot!(
-            p3,
-            range(0, n_p - 1, step = 1),
-            constrained_push_ensemble[:, 2:end] .- truth_params_constrained,
-            label = "",
-            color = :lightgreen,
-            linewidth = 4,
-            linealpha = 0.1,
-        )
+        plot!(p3, xaxis_forcing, push_forcings[:, 1],    label = "posterior samples", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        plot!(p3, xaxis_forcing, push_forcings[:, 2:end], label = "",                 color = :lightgreen, linewidth = 4, linealpha = 0.1)
 
         plot!(
             p4,

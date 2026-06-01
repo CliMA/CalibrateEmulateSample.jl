@@ -36,4 +36,14 @@ EMU_JID=$(sbatch --parsable \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
 
+echo "=== Submitting ensemble_from_posterior (L96 vec-force, after ${EMU_JID}) ==="
+POST_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="post_${LABEL}" \
+		 --dependency=afterok:${EMU_JID} \
+		 --kill-on-invalid-dep=yes \
+		 --export=ALL,EXPERIMENT=l96_vec \
+		 ensemble_from_posterior.sbatch)
+echo "  ensemble_from_posterior job ID: ${POST_JID}"
+
 echo "=== Done. Monitor with: squeue -u \$USER ==="
