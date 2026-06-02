@@ -143,13 +143,27 @@ for (N_ens, rng_idx) in valid_file_items
         )
 
         ny  = length(y)
-
+        n_par = length(truth_params_constrained)
         truth_emc        = build_forcing(truth_params_obj, truth_params_constrained, structure, sample_range)
         truth_forcing    = forcing(truth_emc, x0)
         xaxis_forcing    = isnothing(sample_range) ? range(0, length(truth_forcing) - 1, step = 1) : sample_range
-        push_forcings    = hcat([forcing(build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range), x0) for j in 1:n_samples_pushforward]...)
+        push_forcings    = reduce(hcat,[forcing(build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range), x0) for j in 1:n_samples_pushforward])
 
-        gr(size = (2 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
+        param_diffs =  reduce(hcat,[constrained_push_ensemble[:, j]- truth_params_constrained for j in 1:n_samples_pushforward])
+
+        
+        gr(size = (3 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
+        p2 = plot(
+            collect(1:n_par),
+            zeros(n_par),
+            label = "solution",
+            color = :black,
+            linewidth = 4,
+            xlabel = "Spatial index",
+            ylabel = "parameters(input)",
+            left_margin = 15mm,
+            bottom_margin = 15mm,
+        )
         p3 = plot(
             xaxis_forcing,
             truth_forcing,
@@ -157,7 +171,7 @@ for (N_ens, rng_idx) in valid_file_items
             color = :black,
             linewidth = 4,
             xlabel = "Spatial index",
-            ylabel = "Forcing (input)",
+            ylabel = "Forcing (transformed-input)",
             left_margin = 15mm,
             bottom_margin = 15mm,
         )
@@ -169,11 +183,14 @@ for (N_ens, rng_idx) in valid_file_items
             color = :black,
             linewidth = 4,
             xlabel = "Spatial index",
-            ylabel = "State mean/std output",
+            ylabel = "State mean/std (output)",
             left_margin = 15mm,
             bottom_margin = 15mm,
         )
 
+        plot!(p2, collect(1:n_par), param_diffs[:, 1],    label = "posterior samples", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        plot!(p2, collect(1:n_par), param_diffs[:, 2:end], label = "",                 color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        
         plot!(p3, xaxis_forcing, push_forcings[:, 1],    label = "posterior samples", color = :lightgreen, linewidth = 4, linealpha = 0.1)
         plot!(p3, xaxis_forcing, push_forcings[:, 2:end], label = "",                 color = :lightgreen, linewidth = 4, linealpha = 0.1)
 
@@ -188,8 +205,8 @@ for (N_ens, rng_idx) in valid_file_items
         )
         plot!(p4, 1:ny, G_ens[:, 2:end], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
 
-        l = @layout [a b]
-        plt = plot(p3, p4, layout = l)
+        l = @layout [a b c]
+        plt = plot(p2, p3, p4, layout = l)
 
         suffix = case_suffix(cfg, N_ens, rng_idx)
         figure_fn = "pushforward_from_posterior_$(suffix)_k$(k)_full_ens.png"
