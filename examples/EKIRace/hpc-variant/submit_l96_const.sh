@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit calibrate + emulate_sample for the L96 const-force case.
+# Submit calibrate + emulate_sample + diagnostic plots for the L96 const-force case.
 #
 # Usage: bash submit_l96_const.sh [EXP_ID]
 #   EXP_ID (optional): label appended to SLURM job names so the queue stays
@@ -26,6 +26,16 @@ CALIB_JID=$(sbatch --parsable \
 		   calibrate_array.sbatch)
 echo "  calibrate job ID: ${CALIB_JID}"
 
+echo "=== Submitting calibration_diagnostic_plots (L96 const-force, after ${CALIB_JID}) ==="
+CALIB_DIAG_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="calib_diag_${LABEL}" \
+		 --dependency=afterok:${CALIB_JID} \
+		 --kill-on-invalid-dep=yes \
+		 --export=ALL,EXPERIMENT=l96_const \
+		 calibration_diagnostic_plots_l96.sbatch)
+echo "  calibration_diagnostic_plots job ID: ${CALIB_DIAG_JID}"
+
 echo "=== Submitting emulate_sample (L96 const-force, after ${CALIB_JID}) ==="
 EMU_JID=$(sbatch --parsable \
 		 -A esm \
@@ -35,5 +45,15 @@ EMU_JID=$(sbatch --parsable \
 		 --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
+
+echo "=== Submitting posterior_diagnostic_plots (L96 const-force, after ${EMU_JID}) ==="
+POST_DIAG_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="post_diag_${LABEL}" \
+		 --dependency=afterok:${EMU_JID} \
+		 --kill-on-invalid-dep=yes \
+		 --export=ALL,EXPERIMENT=l96_const \
+		 posterior_diagnostic_plots_l96.sbatch)
+echo "  posterior_diagnostic_plots job ID: ${POST_DIAG_JID}"
 
 echo "=== Done. Monitor with: squeue -u \$USER ==="
