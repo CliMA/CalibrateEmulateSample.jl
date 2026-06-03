@@ -10,8 +10,8 @@ EXPERIMENT = experiments[4]
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).
 # PIN this before submitting an array job so all tasks use the same directory.
-calibrate_date = Date("2026-05-29", "yyyy-mm-dd")
-#calibrate_date = today()
+#calibrate_date = Date("2026-05-29", "yyyy-mm-dd")
+calibrate_date = today()
 
 ########################################################################
 ###############  SHARED CONSTANTS  ####################################
