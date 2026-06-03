@@ -4,11 +4,11 @@ using Dates
 ###############  USER TOGGLE  #########################################
 ########################################################################
 # Set EXPERIMENT to one of: :l63, :l96_const, :l96_vec, :l96_flux
-EXPERIMENT = :l96_const
+EXPERIMENT = :l96_flux
 
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).
-#calibrate_date = Date("2026-05-29", "yyyy-mm-dd")
+#calibrate_date = Date("2026-05-31", "yyyy-mm-dd")
 calibrate_date = today()
 
 ########################################################################
@@ -69,7 +69,7 @@ function experiment_config(case::Symbol)
             terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
-            retain_var     = 0.95,
+            retain_var     = 0.99,
             n_features     = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,
@@ -83,7 +83,7 @@ function experiment_config(case::Symbol)
             terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
-            retain_var     = 0.95,
+            retain_var     = 0.99,
             n_features     = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,
@@ -97,7 +97,7 @@ function experiment_config(case::Symbol)
             terminate_at   = 2.0,
             n_repeats      = 20,
             max_iter       = 15,
-            retain_var     = 0.95,
+            retain_var     = 0.99,
             n_features     = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,

@@ -99,7 +99,13 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
             kernel_structure = SeparableKernel(DiagonalFactor(nugget), OneDimFactor()),
             optimizer_options = overrides,
         )
-        encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
+        #                    encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
+        
+        encoder_schedule = [
+            (decorrelate_structure_mat(), "in_and_out"),
+            (likelihood_informed(retain_info=retain_var, iters=1:k),"in"),
+            (likelihood_informed(retain_info=retain_var),"out"), # iters=1:1 for output space
+        ]
         emulator = Emulator(
             mlt,
             input_output_pairs;
@@ -116,7 +122,7 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
 
         ###  Sample: MCMC
         u0 = vec(mean(get_inputs(input_output_pairs), dims = 2))
-        mcmc = MCMCWrapper(RWMHSampling(), truth_sample, priors, emulator; init_params = u0)
+        mcmc = MCMCWrapper(pCNMHSampling(), truth_sample, priors, emulator; init_params = u0)
         new_step = optimize_stepsize(mcmc; init_stepsize = 0.2, N = 2000, discard_initial = 0)
         println("k=$(k) | Begin MCMC - step size ", new_step)
         chain = MarkovChainMonteCarlo.sample(mcmc, 100_000; stepsize = new_step, discard_initial = 2_000)

@@ -78,7 +78,7 @@ function build_setup(cfg, output_dir)
         prior_train = prior_sinusoid.(x_train) .+ 0.2 .* randn(length(x_train))
         prior_model, prior_mean = train_network(deepcopy(phi_structure), x_train, prior_train)
         #prior_cov = (0.1^2) * I(length(prior_mean)) # original cov
-        prior_cov = (1.0^2) * Diagonal(prior_mean.^2) # scaled to mean
+        prior_cov = (0.1^2) * Diagonal(prior_mean.^2) # scaled to mean
         distribution = Parameterized(MvNormal(prior_mean, prior_cov))
         constraint = repeat([no_constraint()], 61)
         prior = ParameterDistribution(distribution, constraint, "l96_nn_prior")
