@@ -12,6 +12,8 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses
 include("experiment_config.jl")
 include("Lorenz96.jl")
 
+EXPERIMENT = l96_experiment()  # respects EXPERIMENT env var / CLI arg
+
 n_pushforward_samples = 1000
 
 # Step 1, Read and extract the available experiments

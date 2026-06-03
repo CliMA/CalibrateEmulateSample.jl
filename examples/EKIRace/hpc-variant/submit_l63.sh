@@ -36,4 +36,12 @@ EMU_JID=$(sbatch --parsable \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
 
+echo "=== Submitting exp_to_leaderboard (L63, after ${EMU_JID}) ==="
+LB_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="leaderboard_${LABEL}" \
+		 --dependency=afterany:${EMU_JID} \
+		 exp_to_leaderboard.sbatch)
+echo "  exp_to_leaderboard job ID: ${LB_JID}"
+
 echo "=== Done. Monitor with: squeue -u \$USER ==="
