@@ -3,11 +3,16 @@ using Dates
 using JLD2
 using Distributions
 using LinearAlgebra
+using Flux
+using Random
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 
 include("experiment_config.jl")
+include("Lorenz96.jl")
+
+n_pushforward_samples = 1000
 
 # Step 1, Read and extract the available experiments
 
@@ -60,6 +65,28 @@ n_k = maximum(
 n_rng = length(rng_idxs)
 n_ens = length(N_enss)
 
+# Load Lorenz preliminaries and truth structure for pushforward
+prelim_file = joinpath(homedir, "output", "l96_computed_preliminaries_$(force_case).jld2")
+isfile(prelim_file) || error("Prelim file not found at $(prelim_file). Run calibrate_l96.jl first.")
+prelim_data            = JLD2.load(prelim_file)
+x0                     = prelim_data["x0"]
+nx                     = length(x0)
+ic_cov_sqrt            = prelim_data["ic_cov_sqrt"]
+lorenz_config_settings = prelim_data["lorenz_config_settings"]
+observation_config     = prelim_data["observation_config"]
+n_output               = 2 * nx
+
+first_calib = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
+(truth_phi, _) = first_calib["truth_params_structure"]
+(phi_structure, sample_range) = if force_case == "const-force"
+    (nothing, nothing)
+elseif force_case == "vec-force"
+    (nothing, nothing)
+elseif force_case == "flux-force"
+    (truth_phi.model, truth_phi.sample_range)
+end
+n_forcing = force_case == "flux-force" ? length(sample_range) : nx
+
 # Pre-allocate: posterior stats have a k_iter dimension; calibration cost and truth do not
 true_param_arr        = fill(NaN, n_rng, n_ens, n_params)
 n_evals_arr           = fill(NaN, n_rng, n_ens)
@@ -67,6 +94,8 @@ post_mean_arr         = fill(NaN, n_rng, n_ens, n_k, n_params)
 post_cov_arr          = fill(NaN, n_rng, n_ens, n_k, n_params, n_params)
 mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
 logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
+forcing_samples_arr   = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_forcing)
+output_samples_arr    = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_output)
 
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
@@ -103,6 +132,21 @@ for (N_ens, rng_idx) in valid_file_items
         mahal_arr[i, j, k]           = diff' * (C_reg \ diff)
         # log p(truth | posterior) - log p(mode | posterior)
         logpdf_true_v_map_arr[i, j, k] = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
+
+        # pushforward ensemble for forcing and output space
+        push_unc = sample(post_dist, n_pushforward_samples)
+        push_con = transform_unconstrained_to_constrained(post_dist, push_unc)
+        @info "Pushforward k=$(k), N_ens=$(N_ens), rng_idx=$(rng_idx): $(n_pushforward_samples) Lorenz forward maps"
+        for s in 1:n_pushforward_samples
+            emc = build_forcing(truth_phi, push_con[:, s], phi_structure, sample_range)
+            forcing_samples_arr[i, j, k, s, :] = forcing(emc, x0)
+            output_samples_arr[i, j, k, s, :]  = lorenz_forward(
+                emc,
+                x0 .+ ic_cov_sqrt * rand(Normal(0.0, 1.0), nx, 1),
+                lorenz_config_settings,
+                observation_config,
+            )
+        end
     end
 end
 
@@ -111,11 +155,14 @@ end
 
 ds = NCDataset(nc_save_filename, "c")
 
-defDim(ds, "random_seed",   n_rng)
-defDim(ds, "ensemble_size", n_ens)
-defDim(ds, "k_iter",        n_k)
-defDim(ds, "param_dim",     n_params)
-defDim(ds, "param_dim_2",   n_params)
+defDim(ds, "random_seed",       n_rng)
+defDim(ds, "ensemble_size",     n_ens)
+defDim(ds, "k_iter",            n_k)
+defDim(ds, "param_dim",         n_params)
+defDim(ds, "param_dim_2",       n_params)
+defDim(ds, "pushforward_sample", n_pushforward_samples)
+defDim(ds, "forcing_dim",       n_forcing)
+defDim(ds, "output_dim",        n_output)
 
 # Coordinate variables
 rng_var = defVar(ds, "random_seed", Int64, ("random_seed",))
@@ -178,6 +225,22 @@ posterior_logpdf_true_v_map_v = defVar(
 )
 posterior_logpdf_true_v_map_v.attrib["description"] = "P = posterior_logpdf(truth_param) - posterior_logpdf(mode(posterior)). Ideally -2P Ideally M ∈ quantile(Chisq(dims), [0.05,0.95]) 90% of the time. It asks `How much less probable is the true value compared to the MAP`. For gaussian -2P = M, if M > -2P => heavy tails"
 posterior_logpdf_true_v_map_v[:, :, :] = logpdf_true_v_map_arr
+
+forcing_samples_v = defVar(
+    ds, "forcing_samples", Float64,
+    ("random_seed", "ensemble_size", "k_iter", "pushforward_sample", "forcing_dim");
+    fillvalue = NaN,
+)
+forcing_samples_v.attrib["description"] = "$(n_pushforward_samples) posterior pushforward samples mapped to forcing space"
+forcing_samples_v[:, :, :, :, :] = forcing_samples_arr
+
+output_samples_v = defVar(
+    ds, "output_samples", Float64,
+    ("random_seed", "ensemble_size", "k_iter", "pushforward_sample", "output_dim");
+    fillvalue = NaN,
+)
+output_samples_v.attrib["description"] = "$(n_pushforward_samples) posterior pushforward samples mapped to Lorenz96 output space (mean/std per spatial point)"
+output_samples_v[:, :, :, :, :] = output_samples_arr
 
 close(ds)
 @info "Saved leaderboard data to $(nc_save_filename)"

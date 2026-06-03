@@ -24,6 +24,19 @@ include("experiment_config.jl")
 ############### Per-cell pushforward ###################################
 ########################################################################
 
+function pushforward_metrics(samples::AbstractMatrix, truth::AbstractVector)
+    m = vec(mean(samples, dims=2))
+    C_raw = cov(samples')
+    λ = max(1e-10, 1e-4 * mean(diag(C_raw)))
+    C = Symmetric(C_raw + λ * I)
+    dist = MvNormal(m, C)
+    pmode = samples[:, argmax(logpdf(dist, samples))]
+    diff = m - truth
+    mah = diff' * (C \ diff)
+    lp  = logpdf(dist, truth) - logpdf(dist, pmode)
+    return mah, lp
+end
+
 function ensemble_from_posterior_one(cfg, N_ens, rng_idx; method = method_cases[1])
     n_samples_pushforward = 100
 
@@ -118,6 +131,17 @@ function ensemble_from_posterior_one(cfg, N_ens, rng_idx; method = method_cases[
         push_forcings = hcat([forcing(build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range), x0) for j in 1:n_samples_pushforward]...)
         param_diffs   = reduce(hcat, [constrained_push_ensemble[:, j] - truth_params_constrained for j in 1:n_samples_pushforward])
 
+        # Mahalanobis and logpdf metrics in parameter, forcing, and output spaces
+        frc_samples_m = is_const ? push_forcings[1:1, :] : push_forcings
+        truth_frc_m   = is_const ? truth_forcing[1:1]    : truth_forcing
+        param_mah,   param_lp   = pushforward_metrics(constrained_push_ensemble, truth_params_constrained)
+        forcing_mah, forcing_lp = pushforward_metrics(frc_samples_m, truth_frc_m)
+        output_mah,  output_lp  = pushforward_metrics(G_ens, y)
+        @info "--- Posterior metrics (N_ens=$(N_ens), rng=$(rng_idx), k=$(k)) ---"
+        @info "  param   [d=$(n_par)]: mahal=$(round(param_mah, digits=2))  logpdf_ratio=$(round(param_lp, digits=2))"
+        @info "  forcing [d=$(length(truth_frc_m))]: mahal=$(round(forcing_mah, digits=2))  logpdf_ratio=$(round(forcing_lp, digits=2))"
+        @info "  output  [d=$(ny)]: mahal=$(round(output_mah, digits=2))  logpdf_ratio=$(round(output_lp, digits=2))"
+
         gr(size = (3 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
 
         # Panel (i): parameters
@@ -181,7 +205,7 @@ function ensemble_from_posterior_one(cfg, N_ens, rng_idx; method = method_cases[
             color = :black,
             linewidth = 4,
             xlabel = "Spatial index",
-            ylabel = "State mean/std output",
+            ylabel = "State mean/std (output)",
             left_margin = 15mm,
             bottom_margin = 15mm,
         )
