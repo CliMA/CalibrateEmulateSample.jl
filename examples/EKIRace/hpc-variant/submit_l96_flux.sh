@@ -57,3 +57,5 @@ POST_DIAG_JID=$(sbatch --parsable \
 echo "  posterior_diagnostic_plots job ID: ${POST_DIAG_JID}"
 
 echo "=== Done. Monitor with: squeue -u \$USER ==="
+
+#sbatch --parsable -A esm --job-name="post_diag_l96_flux" --export=ALL,EXPERIMENT=l96_flux posterior_diagnostic_plots_l96.sbatch

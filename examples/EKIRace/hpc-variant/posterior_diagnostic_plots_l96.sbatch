@@ -11,9 +11,9 @@
 #SBATCH --job-name=post_diag
 #SBATCH --output=output/slurm/post_diag_%j.out
 #SBATCH --error=output/slurm/post_diag_%j.err
-#SBATCH --time=08:00:00
+#SBATCH --time=00:30:00
 #SBATCH --mem=16G
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=1
 #SBATCH --ntasks=1
 
 set -euo pipefail

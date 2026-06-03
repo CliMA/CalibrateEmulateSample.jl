@@ -21,7 +21,7 @@
 #SBATCH --output=output/slurm/calib_%A_%a.out
 #SBATCH --error=output/slurm/calib_%A_%a.err
 #SBATCH --array=1-60%100
-#SBATCH --time=04:00:00
+#SBATCH --time=02:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
 #SBATCH --ntasks=1
