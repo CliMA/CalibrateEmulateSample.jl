@@ -67,3 +67,5 @@ echo "  exp_to_leaderboard job ID: ${LB_JID}"
 echo "=== Done. Monitor with: squeue -u \$USER ==="
 
 # sbatch -A esm --job-name="post_diag_l96_vec" --export=ALL,EXPERIMENT=l96_vec posterior_diagnostic_plots_l96.sbatch
+
+# sbatch -A esm --job-name="leaderboard_l96_vec" --export=ALL,EXPERIMENT=l96_vec exp_to_leaderboard.sbatch
