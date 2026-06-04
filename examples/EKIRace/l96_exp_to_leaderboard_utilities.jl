@@ -126,6 +126,12 @@ for (N_ens, rng_idx) in valid_file_items
         pmode        = post_samples[:, argmax(logpdf(post_normal, post_samples))]
         diff         = pm - truth_params
 
+        num_samples = size(post_samples, 2)
+        r = rank(pc)
+        if r == num_samples - 1 && r < n_params - 1
+            @warn "Posterior covariance rank $(r) = num_samples-1 = $(num_samples-1) < n_params-1 = $(n_params-1). Metric may be inaccurate due to insufficient samples; recommend num_samples > $(n_params)."
+        end
+
         post_mean_arr[i, j, k, :]   = pm
         post_cov_arr[i, j, k, :, :] = pc
         # (m - truth)' C^{-1} (m - truth)

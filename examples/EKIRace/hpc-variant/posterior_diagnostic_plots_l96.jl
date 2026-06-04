@@ -26,7 +26,13 @@ include("experiment_config.jl")
 
 function pushforward_metrics(samples::AbstractMatrix, truth::AbstractVector)
     m = vec(mean(samples, dims=2))
-    C_raw = cov(samples')
+    C_raw = cov(samples, dims=2)
+    num_samples = size(samples, 2)
+    dim_samples = size(samples, 1)
+    r = rank(C_raw)
+    if r == num_samples - 1 && r < dim_samples - 1
+        @warn "Covariance rank $(r) = num_samples-1 = $(num_samples-1) < dim-1 = $(dim_samples-1). Metric may be inaccurate due to insufficient samples; recommend num_samples > $(dim_samples)."
+    end
     λ = max(1e-10, 1e-4 * mean(diag(C_raw)))
     C = Symmetric(C_raw + λ * I)
     dist = MvNormal(m, C)
@@ -38,7 +44,7 @@ function pushforward_metrics(samples::AbstractMatrix, truth::AbstractVector)
 end
 
 function ensemble_from_posterior_one(cfg, N_ens, rng_idx; method = method_cases[1])
-    n_samples_pushforward = 100
+    n_samples_pushforward = 1000
 
     force_case  = cfg.force_case
     calib_dir   = calib_directory(method, cfg)
@@ -137,10 +143,14 @@ function ensemble_from_posterior_one(cfg, N_ens, rng_idx; method = method_cases[
         param_mah,   param_lp   = pushforward_metrics(constrained_push_ensemble, truth_params_constrained)
         forcing_mah, forcing_lp = pushforward_metrics(frc_samples_m, truth_frc_m)
         output_mah,  output_lp  = pushforward_metrics(G_ens, y)
+        n_frc = length(truth_frc_m)
+        lowbd_par, upbd_par = round.(quantile(Chisq(n_par), [0.01, 0.99]), digits=2)
+        lowbd_frc, upbd_frc = round.(quantile(Chisq(n_frc), [0.01, 0.99]), digits=2)
+        lowbd_out, upbd_out = round.(quantile(Chisq(ny),    [0.01, 0.99]), digits=2)
         @info "--- Posterior metrics (N_ens=$(N_ens), rng=$(rng_idx), k=$(k)) ---"
-        @info "  param   [d=$(n_par)]: mahal=$(round(param_mah, digits=2))  logpdf_ratio=$(round(param_lp, digits=2))"
-        @info "  forcing [d=$(length(truth_frc_m))]: mahal=$(round(forcing_mah, digits=2))  logpdf_ratio=$(round(forcing_lp, digits=2))"
-        @info "  output  [d=$(ny)]: mahal=$(round(output_mah, digits=2))  logpdf_ratio=$(round(output_lp, digits=2))"
+        @info "  param   [d=$(n_par)]: target: [$(lowbd_par), $(upbd_par)]  mahal=$(round(param_mah, digits=2))  -2*logpdf_ratio=$(round(-2*param_lp, digits=2))"
+        @info "  forcing [d=$(n_frc)]: target: [$(lowbd_frc), $(upbd_frc)]  mahal=$(round(forcing_mah, digits=2))  -2*logpdf_ratio=$(round(-2*forcing_lp, digits=2))"
+        @info "  output  [d=$(ny)]: target: [$(lowbd_out), $(upbd_out)]  mahal=$(round(output_mah, digits=2))  -2*logpdf_ratio=$(round(-2*output_lp, digits=2))"
 
         gr(size = (3 * 1.6 * 600, 600), guidefontsize = 18, tickfontsize = 16, legendfontsize = 16)
 
