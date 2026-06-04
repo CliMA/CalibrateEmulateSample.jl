@@ -6,57 +6,73 @@ SLURM job array where every `(N_ens, rng_idx)` cell is an independent task.
 
 ## One-time setup
 
-In `experiment_config.jl`, pin the calibrate date to today's date before
-starting a run, e.g.
+In `experiment_config.jl`, pin the calibrate date before starting a run, e.g.
 
 ```julia
-calibrate_date = Date("2026-05-29", "yyyy-mm-dd")
+calibrate_date = Date("2026-06-04", "yyyy-mm-dd")
 ```
 
-All subsequent stages (emulate_sample, leaderboard) read this value to locate
-the right output directory; keeping it fixed avoids mismatches when jobs run
-past midnight or across days.
+All subsequent stages read this value to locate the right output directory;
+keeping it fixed avoids mismatches when jobs run past midnight or across days.
 
 Precompilation is handled by a dedicated `submit_precompile.sh` script that
 queues `precompile.sbatch` as a compute job. Run it once before your experiments
 and again whenever the environment changes (fresh checkout, package updates).
-The `submit_l*.sh` scripts do not precompile — they will remind you at submission
-time.
+The `submit_l*.sh` scripts do not precompile — they will remind you at
+submission time.
+
+## Pipeline
+
+### L63
+
+```
+calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  exp_to_leaderboard
+```
+
+### L96 (const / vec / flux)
+
+```
+                         ┌──afterok──►  calibration_diagnostic_plots_l96
+calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  posterior_diagnostic_plots_l96
+                                                      ──afterany──►  exp_to_leaderboard
+```
+
+`calibration_diagnostic_plots` and `emulate_sample` both start once calibrate
+succeeds (they run in parallel).  `posterior_diagnostic_plots` and
+`exp_to_leaderboard` both start once `emulate_sample` finishes (whether or not
+it succeeded, so partial results are still processed).
 
 ## Standalone (serial)
 
-Run with no arguments to sweep all `(N_ens, rng_idx)` cells sequentially,
-exactly as the original scripts did.
+Run with no arguments to sweep all `(N_ens, rng_idx)` cells sequentially.
 
 ```bash
 # L63
 julia --project=. calibrate_l63.jl
 julia --project=. emulate_sample_l63.jl
 
-# L96 — set EXPERIMENT or edit the toggle in experiment_config.jl
+# L96 — set EXPERIMENT env var or edit the toggle in experiment_config.jl
 EXPERIMENT=l96_const julia --project=. calibrate_l96.jl
+EXPERIMENT=l96_const julia --project=. calibration_diagnostic_plots_l96.jl
 EXPERIMENT=l96_const julia --project=. emulate_sample_l96.jl
+EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl
 ```
 
-You can also run a single cell by passing its 1-based task index:
+You can also run a single cell by passing its 1-based task index for the
+array-capable scripts:
 
 ```bash
-julia --project=. calibrate_l63.jl 1        # first (N_ens, rng_idx) cell only
-julia --project=. emulate_sample_l63.jl 5   # fifth cell only
+julia --project=. calibrate_l63.jl 1         # first (N_ens, rng_idx) cell only
+julia --project=. emulate_sample_l63.jl 5    # fifth cell only
+EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl 3
 ```
 
-After `emulate_sample` completes, push the posteriors forward through the L96
-forward map and save plots:
+Leaderboard conversion runs all cells serially in a single call:
 
 ```bash
-EXPERIMENT=l96_const julia --project=. ensemble_from_posterior.jl
-EXPERIMENT=l96_vec   julia --project=. ensemble_from_posterior.jl
-EXPERIMENT=l96_flux  julia --project=. ensemble_from_posterior.jl
+julia --project=. l63_exp_to_leaderboard_utilities.jl
+EXPERIMENT=l96_const julia --project=. l96_exp_to_leaderboard_utilities.jl
 ```
-
-Each call loops over all `(N_ens, rng_idx)` cells, samples 100 points from each
-posterior, runs them through the forward model, and writes `pushforward_from_posterior_*.{png,pdf}`
-plots into the per-case calibration output directory.
 
 ## HPC (Caltech Resnick cluster, SLURM)
 
@@ -73,10 +89,10 @@ bash submit_l96_vec.sh    [EXP_ID]
 bash submit_l96_flux.sh   [EXP_ID]
 ```
 
-Each `submit_l*.sh` script chains `calibrate_array.sbatch` → `emulate_sample_array.sbatch`
-for its case. All four cases can be launched simultaneously — output files are
-case-specific so there are no write conflicts. The optional `EXP_ID` argument
-suffixes SLURM job names to keep the queue readable.
+Each `submit_l*.sh` script chains the full pipeline for its case automatically.
+All four cases can be launched simultaneously — output files are case-specific
+so there are no write conflicts.  The optional `EXP_ID` argument suffixes SLURM
+job names to keep the queue readable.
 
 If you are launching all four cases together you only need one precompile run:
 
@@ -90,59 +106,59 @@ wait
 
 ### Manual submission
 
-Precompile via `submit_precompile.sh` (or directly), then submit calibrate and
-emulate_sample:
+Precompile via `submit_precompile.sh` (or directly), then submit each stage:
 
 ```bash
 # L63
-cid=$(sbatch --parsable -A esm \
-             --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch)
+CALIB_JID=$(sbatch --parsable -A esm \
+            --export=ALL,SCRIPT=calibrate_l63.jl calibrate_array.sbatch)
+EMU_JID=$(sbatch --parsable -A esm \
+          --dependency=afterok:${CALIB_JID} --kill-on-invalid-dep=yes \
+          --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch)
 sbatch -A esm \
-       --dependency=afterok:$cid --kill-on-invalid-dep=yes \
-       --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch
+       --dependency=afterany:${EMU_JID} \
+       exp_to_leaderboard.sbatch
 
 # L96
-cid=$(sbatch --parsable -A esm \
-             --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const calibrate_array.sbatch)
+CALIB_JID=$(sbatch --parsable -A esm \
+            --export=ALL,SCRIPT=calibrate_l96.jl,EXPERIMENT=l96_const \
+            calibrate_array.sbatch)
 sbatch -A esm \
-       --dependency=afterok:$cid --kill-on-invalid-dep=yes \
-       --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
-       emulate_sample_array.sbatch
+       --dependency=afterok:${CALIB_JID} --kill-on-invalid-dep=yes \
+       --export=ALL,EXPERIMENT=l96_const \
+       calibration_diagnostic_plots_l96.sbatch
+EMU_JID=$(sbatch --parsable -A esm \
+          --dependency=afterok:${CALIB_JID} --kill-on-invalid-dep=yes \
+          --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
+          emulate_sample_array.sbatch)
+sbatch -A esm \
+       --dependency=afterany:${EMU_JID} \
+       --export=ALL,EXPERIMENT=l96_const \
+       posterior_diagnostic_plots_l96.sbatch
+sbatch -A esm \
+       --dependency=afterany:${EMU_JID} \
+       --export=ALL,EXPERIMENT=l96_const \
+       exp_to_leaderboard.sbatch
 ```
 
-Each task writes its per-method `ekp` and `results` files, which are consumed
-directly by the emulate_sample stage.
+### Sbatch files reference
 
-### Posterior pushforward (`ensemble_from_posterior`)
-
-After the `emulate_sample` jobs finish, submit a single (non-array) job that
-loops over all `(N_ens, rng_idx)` cells internally:
-
-```bash
-eid=$(sbatch --parsable \
-             --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
-             --export=ALL,EXPERIMENT=l96_const \
-             ensemble_from_posterior.sbatch)
-
-sbatch --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
-       --export=ALL,EXPERIMENT=l96_vec ensemble_from_posterior.sbatch
-
-sbatch --dependency=afterok:<emu_jobid> --kill-on-invalid-dep=yes \
-       --export=ALL,EXPERIMENT=l96_flux ensemble_from_posterior.sbatch
-```
-
-Replace `<emu_jobid>` with the job ID returned by the corresponding
-`emulate_sample_array.sbatch` submission.  Each run takes up to 8 h and writes
-`pushforward_from_posterior_*.{png,pdf}` into the same output directory as the
-calibration results.
+| File | Type | Description |
+|------|------|-------------|
+| `calibrate_array.sbatch` | array (1–60) | One task per `(N_ens, rng_idx)` cell |
+| `emulate_sample_array.sbatch` | array (1–60) | One task per `(N_ens, rng_idx)` cell |
+| `calibration_diagnostic_plots_l96.sbatch` | single job | Calibration figures, all cells serially (L96) |
+| `posterior_diagnostic_plots_l96.sbatch` | array (1–60) | Pushforward figures, one task per cell (L96) |
+| `exp_to_leaderboard.sbatch` | single job | NetCDF leaderboard file, all cells serially |
+| `precompile.sbatch` | single job | `Pkg.instantiate()` + `Pkg.precompile()` |
 
 ### Adjusting array size
 
 The sbatch files default to `--array=1-60` (3 ensemble sizes × 20 repeats).
 If you change `N_ens_sizes` or `n_repeats` in `experiment_config.jl`, update
-the upper bound to `length(N_ens_sizes) * n_repeats`. The `%20` suffix caps
-concurrent tasks to 20 at a time as a cluster-courtesy limit; raise or remove
-it if you want faster turnaround.
+the upper bound to `length(N_ens_sizes) * n_repeats`.  The `%20` suffix on
+`posterior_diagnostic_plots_l96.sbatch` caps concurrent tasks to 20 at a time
+as a cluster-courtesy limit; raise or remove it if you want faster turnaround.
 
 ### Smoke test
 
