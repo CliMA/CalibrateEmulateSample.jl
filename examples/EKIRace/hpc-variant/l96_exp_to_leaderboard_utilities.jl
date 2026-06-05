@@ -96,8 +96,12 @@ post_mean_arr         = fill(NaN, n_rng, n_ens, n_k, n_params)
 post_cov_arr          = fill(NaN, n_rng, n_ens, n_k, n_params, n_params)
 mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
 logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
-forcing_samples_arr   = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_forcing)
-output_samples_arr    = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_output)
+forcing_samples_arr           = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_forcing)
+output_samples_arr            = fill(NaN, n_rng, n_ens, n_k, n_pushforward_samples, n_output)
+forcing_mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
+forcing_logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
+output_mahal_arr              = fill(NaN, n_rng, n_ens, n_k)
+output_logpdf_true_v_map_arr  = fill(NaN, n_rng, n_ens, n_k)
 
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
@@ -106,7 +110,8 @@ for (N_ens, rng_idx) in valid_file_items
 
     posteriors_by_k = loaded["posteriors_by_k"]
     k_values        = loaded["k_values"]
-    truth_params    = loaded["truth_params"]
+    truth_params             = loaded["truth_params"]
+    truth_params_constrained = loaded["truth_params_constrained"]
 
     # Load ekpobj for total calibration cost
     ekp_loaded     = JLD2.load(joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)))
@@ -117,6 +122,10 @@ for (N_ens, rng_idx) in valid_file_items
 
     true_param_arr[i, j, :] = truth_params
     n_evals_arr[i, j]       = conv_alg_iters * N_ens
+
+    emc_truth         = build_forcing(truth_phi, truth_params_constrained, phi_structure, sample_range)
+    truth_forcing_vec = forcing(emc_truth, x0)
+    truth_output_vec  = lorenz_forward(emc_truth, x0, lorenz_config_settings, observation_config)
 
     for k in k_values
         post_dist = posteriors_by_k[k]
@@ -155,6 +164,28 @@ for (N_ens, rng_idx) in valid_file_items
                 observation_config,
             )
         end
+
+        # forcing-space metrics (empirical distribution of pushforward samples vs truth forcing)
+        fs = forcing_samples_arr[i, j, k, :, :]   # (n_pushforward_samples, n_forcing)
+        fm = vec(mean(fs, dims=1))
+        fc = Symmetric(cov(fs) + 1e-10 * I)
+        f_normal = MvNormal(fm, fc)
+        f_cols = Matrix(fs')
+        f_mode = f_cols[:, argmax(logpdf(f_normal, f_cols))]
+        f_diff = fm - truth_forcing_vec
+        forcing_mahal_arr[i, j, k]             = f_diff' * (fc \ f_diff)
+        forcing_logpdf_true_v_map_arr[i, j, k] = logpdf(f_normal, truth_forcing_vec) - logpdf(f_normal, f_mode)
+
+        # output-space metrics (empirical distribution of pushforward samples vs truth output)
+        os = output_samples_arr[i, j, k, :, :]    # (n_pushforward_samples, n_output)
+        om = vec(mean(os, dims=1))
+        oc = Symmetric(cov(os) + 1e-10 * I)
+        o_normal = MvNormal(om, oc)
+        o_cols = Matrix(os')
+        o_mode = o_cols[:, argmax(logpdf(o_normal, o_cols))]
+        o_diff = om - truth_output_vec
+        output_mahal_arr[i, j, k]             = o_diff' * (oc \ o_diff)
+        output_logpdf_true_v_map_arr[i, j, k] = logpdf(o_normal, truth_output_vec) - logpdf(o_normal, o_mode)
     end
 end
 
@@ -249,6 +280,38 @@ output_samples_v = defVar(
 )
 output_samples_v.attrib["description"] = "$(n_pushforward_samples) posterior pushforward samples mapped to Lorenz96 output space (mean/std per spatial point)"
 output_samples_v[:, :, :, :, :] = output_samples_arr
+
+forcing_mahal_v = defVar(
+    ds, "forcing_mahalanobis", Float64,
+    ("random_seed", "ensemble_size", "k_iter");
+    fillvalue = NaN,
+)
+forcing_mahal_v.attrib["description"] = "Mahalanobis distance in forcing space: (fm - truth_forcing)' Cf^{-1} (fm - truth_forcing), where fm and Cf are the empirical mean/cov of the $(n_pushforward_samples) posterior pushforward forcing samples"
+forcing_mahal_v[:, :, :] = forcing_mahal_arr
+
+forcing_logpdf_true_v_map_v = defVar(
+    ds, "forcing_logpdf_true_v_map", Float64,
+    ("random_seed", "ensemble_size", "k_iter");
+    fillvalue = NaN,
+)
+forcing_logpdf_true_v_map_v.attrib["description"] = "Log PDF ratio in forcing space: logpdf(N(fm,Cf), truth_forcing) - logpdf(N(fm,Cf), mode). Analogue of posterior_logpdf_true_v_map but for the pushforward forcing distribution"
+forcing_logpdf_true_v_map_v[:, :, :] = forcing_logpdf_true_v_map_arr
+
+output_mahal_v = defVar(
+    ds, "output_mahalanobis", Float64,
+    ("random_seed", "ensemble_size", "k_iter");
+    fillvalue = NaN,
+)
+output_mahal_v.attrib["description"] = "Mahalanobis distance in output space: (om - truth_output)' Co^{-1} (om - truth_output), where om and Co are the empirical mean/cov of the $(n_pushforward_samples) posterior pushforward output samples"
+output_mahal_v[:, :, :] = output_mahal_arr
+
+output_logpdf_true_v_map_v = defVar(
+    ds, "output_logpdf_true_v_map", Float64,
+    ("random_seed", "ensemble_size", "k_iter");
+    fillvalue = NaN,
+)
+output_logpdf_true_v_map_v.attrib["description"] = "Log PDF ratio in output space: logpdf(N(om,Co), truth_output) - logpdf(N(om,Co), mode). Analogue of posterior_logpdf_true_v_map but for the pushforward output distribution"
+output_logpdf_true_v_map_v[:, :, :] = output_logpdf_true_v_map_arr
 
 close(ds)
 @info "Saved leaderboard data to $(nc_save_filename)"
