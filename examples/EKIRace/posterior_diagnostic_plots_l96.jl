@@ -142,7 +142,6 @@ for (N_ens, rng_idx) in valid_file_items
             truth_params_obj.sample_range
         )
     end
-    truth_params = transform_constrained_to_unconstrained(priors, truth_params_constrained)
 
     is_const = force_case == "const-force"
 
@@ -191,7 +190,7 @@ for (N_ens, rng_idx) in valid_file_items
         # Mahalanobis and logpdf metrics in parameter, forcing, and output spaces
         frc_samples_m = is_const ? push_forcings[1:1, :] : push_forcings
         truth_frc_m   = is_const ? truth_forcing[1:1]    : truth_forcing
-        param_mah,   param_lp   = pushforward_metrics(constrained_push_ensemble, truth_params_constrained)
+        param_mah,   param_lp   = pushforward_metrics(push_ensemble, truth_params)
         forcing_mah, forcing_lp = pushforward_metrics(frc_samples_m, truth_frc_m)
         output_mah,  output_lp  = pushforward_metrics(G_ens, y)
         n_frc = length(truth_frc_m)

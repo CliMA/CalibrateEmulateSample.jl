@@ -14,7 +14,14 @@ include("Lorenz96.jl")
 
 EXPERIMENT = l96_experiment()  # respects EXPERIMENT env var / CLI arg
 
-n_pushforward_samples = 1000
+###########################################################################
+#################### Metric parameters ###################################
+###########################################################################
+
+n_pushforward_samples         = 1000             # pushforward ensemble size for forcing/output metrics
+n_lowrank_modes               = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
+marginal_coverage_quantiles   = [0.1, 0.5, 0.9] # quantile levels for marginal coverage fraction
+n_marginal_coverage_quantiles = length(marginal_coverage_quantiles)
 
 # Step 1, Read and extract the available experiments
 
@@ -76,6 +83,7 @@ nx                     = length(x0)
 ic_cov_sqrt            = prelim_data["ic_cov_sqrt"]
 lorenz_config_settings = prelim_data["lorenz_config_settings"]
 observation_config     = prelim_data["observation_config"]
+y                      = prelim_data["y"]
 n_output               = 2 * nx
 
 first_calib = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
@@ -102,6 +110,12 @@ forcing_mahal_arr             = fill(NaN, n_rng, n_ens, n_k)
 forcing_logpdf_true_v_map_arr = fill(NaN, n_rng, n_ens, n_k)
 output_mahal_arr              = fill(NaN, n_rng, n_ens, n_k)
 output_logpdf_true_v_map_arr  = fill(NaN, n_rng, n_ens, n_k)
+forcing_plr_mahal_top_arr      = fill(NaN, n_rng, n_ens, n_k)
+forcing_plr_mahal_residual_arr = fill(NaN, n_rng, n_ens, n_k)
+output_plr_mahal_top_arr       = fill(NaN, n_rng, n_ens, n_k)
+output_plr_mahal_residual_arr  = fill(NaN, n_rng, n_ens, n_k)
+forcing_coverage_arr = fill(NaN, n_rng, n_ens, n_k, n_marginal_coverage_quantiles)
+output_coverage_arr  = fill(NaN, n_rng, n_ens, n_k, n_marginal_coverage_quantiles)
 
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
@@ -125,7 +139,6 @@ for (N_ens, rng_idx) in valid_file_items
 
     emc_truth         = build_forcing(truth_phi, truth_params_constrained, phi_structure, sample_range)
     truth_forcing_vec = forcing(emc_truth, x0)
-    truth_output_vec  = lorenz_forward(emc_truth, x0, lorenz_config_settings, observation_config)
 
     for k in k_values
         post_dist = posteriors_by_k[k]
@@ -175,6 +188,16 @@ for (N_ens, rng_idx) in valid_file_items
         f_diff = fm - truth_forcing_vec
         forcing_mahal_arr[i, j, k]             = f_diff' * (fc \ f_diff)
         forcing_logpdf_true_v_map_arr[i, j, k] = logpdf(f_normal, truth_forcing_vec) - logpdf(f_normal, f_mode)
+        Ff     = eigen(fc)
+        a_f    = mean(Ff.values[1:end-n_lowrank_modes])
+        V_f    = Ff.vectors[:, end-n_lowrank_modes+1:end]
+        λ_f    = Ff.values[end-n_lowrank_modes+1:end]
+        proj_f = V_f' * f_diff
+        forcing_plr_mahal_top_arr[i, j, k]      = sum(proj_f.^2 ./ λ_f)
+        forcing_plr_mahal_residual_arr[i, j, k] = (sum(f_diff.^2) - sum(proj_f.^2)) / a_f
+        for (qi, qp) in enumerate(marginal_coverage_quantiles)
+            forcing_coverage_arr[i, j, k, qi] = mean(truth_forcing_vec .<= [quantile(fs[:, d], qp) for d in 1:n_forcing])
+        end
 
         # output-space metrics (empirical distribution of pushforward samples vs truth output)
         os = output_samples_arr[i, j, k, :, :]    # (n_pushforward_samples, n_output)
@@ -183,9 +206,19 @@ for (N_ens, rng_idx) in valid_file_items
         o_normal = MvNormal(om, oc)
         o_cols = Matrix(os')
         o_mode = o_cols[:, argmax(logpdf(o_normal, o_cols))]
-        o_diff = om - truth_output_vec
+        o_diff = om - y
         output_mahal_arr[i, j, k]             = o_diff' * (oc \ o_diff)
-        output_logpdf_true_v_map_arr[i, j, k] = logpdf(o_normal, truth_output_vec) - logpdf(o_normal, o_mode)
+        output_logpdf_true_v_map_arr[i, j, k] = logpdf(o_normal, y) - logpdf(o_normal, o_mode)
+        Fo     = eigen(oc)
+        a_o    = mean(Fo.values[1:end-n_lowrank_modes])
+        V_o    = Fo.vectors[:, end-n_lowrank_modes+1:end]
+        λ_o    = Fo.values[end-n_lowrank_modes+1:end]
+        proj_o = V_o' * o_diff
+        output_plr_mahal_top_arr[i, j, k]      = sum(proj_o.^2 ./ λ_o)
+        output_plr_mahal_residual_arr[i, j, k] = (sum(o_diff.^2) - sum(proj_o.^2)) / a_o
+        for (qi, qp) in enumerate(marginal_coverage_quantiles)
+            output_coverage_arr[i, j, k, qi] = mean(y .<= [quantile(os[:, d], qp) for d in 1:n_output])
+        end
     end
 end
 
@@ -202,6 +235,7 @@ defDim(ds, "param_dim_2",       n_params)
 defDim(ds, "pushforward_sample", n_pushforward_samples)
 defDim(ds, "forcing_dim",       n_forcing)
 defDim(ds, "output_dim",        n_output)
+defDim(ds, "coverage_quantile", n_marginal_coverage_quantiles)
 
 # Coordinate variables
 rng_var = defVar(ds, "random_seed", Int64, ("random_seed",))
@@ -214,6 +248,10 @@ ens_var[:] = N_enss
 k_var = defVar(ds, "k_iter", Int64, ("k_iter",))
 k_var.attrib["description"] = "Number of EKP training iterations used to fit the emulator (1-indexed)"
 k_var[:] = collect(1:n_k)
+
+cov_q_var = defVar(ds, "coverage_quantile", Float64, ("coverage_quantile",))
+cov_q_var.attrib["description"] = "Quantile levels used for marginal coverage fraction metrics"
+cov_q_var[:] = marginal_coverage_quantiles
 
 # Data variables
 
@@ -302,7 +340,7 @@ output_mahal_v = defVar(
     ("random_seed", "ensemble_size", "k_iter");
     fillvalue = NaN,
 )
-output_mahal_v.attrib["description"] = "Mahalanobis distance in output space: (om - truth_output)' Co^{-1} (om - truth_output), where om and Co are the empirical mean/cov of the $(n_pushforward_samples) posterior pushforward output samples"
+output_mahal_v.attrib["description"] = "Mahalanobis distance in output space: (om - y)' Co^{-1} (om - y), where om and Co are the empirical mean/cov of the $(n_pushforward_samples) posterior pushforward output samples, and y is the observations the posterior was fit to"
 output_mahal_v[:, :, :] = output_mahal_arr
 
 output_logpdf_true_v_map_v = defVar(
@@ -310,8 +348,32 @@ output_logpdf_true_v_map_v = defVar(
     ("random_seed", "ensemble_size", "k_iter");
     fillvalue = NaN,
 )
-output_logpdf_true_v_map_v.attrib["description"] = "Log PDF ratio in output space: logpdf(N(om,Co), truth_output) - logpdf(N(om,Co), mode). Analogue of posterior_logpdf_true_v_map but for the pushforward output distribution"
+output_logpdf_true_v_map_v.attrib["description"] = "Log PDF ratio in output space: logpdf(N(om,Co), y) - logpdf(N(om,Co), mode). Analogue of posterior_logpdf_true_v_map but for the pushforward output distribution, with y the observations the posterior was fit to"
 output_logpdf_true_v_map_v[:, :, :] = output_logpdf_true_v_map_arr
+
+forcing_plr_top_v = defVar(ds, "forcing_plr_mahalanobis_top", Float64, ("random_seed", "ensemble_size", "k_iter"); fillvalue=NaN)
+forcing_plr_top_v.attrib["description"] = "Perturbed-low-rank Mahalanobis (top term) in forcing space: sum((Vf'*(fm-truth_forcing))^2 / λf_i), top $(n_lowrank_modes) eigenvectors/values of Cf ≈ a_f*I + Uf*Df*Uf'. Reference distribution: Chisq($(n_lowrank_modes)). Captures miscalibration in the k principal directions. Add forcing_plr_mahalanobis_residual for the full Chisq($(n_forcing)) statistic."
+forcing_plr_top_v[:, :, :] = forcing_plr_mahal_top_arr
+
+forcing_plr_res_v = defVar(ds, "forcing_plr_mahalanobis_residual", Float64, ("random_seed", "ensemble_size", "k_iter"); fillvalue=NaN)
+forcing_plr_res_v.attrib["description"] = "Perturbed-low-rank Mahalanobis (residual term) in forcing space: (||fm-truth_forcing||^2 - ||Vf'*(fm-truth_forcing)||^2) / a_f, where a_f = mean of the bottom $(n_forcing - n_lowrank_modes) eigenvalues of Cf. Reference distribution: Chisq($(n_forcing - n_lowrank_modes)). Captures miscalibration in the noise-floor directions. Add forcing_plr_mahalanobis_top for the full Chisq($(n_forcing)) statistic."
+forcing_plr_res_v[:, :, :] = forcing_plr_mahal_residual_arr
+
+output_plr_top_v = defVar(ds, "output_plr_mahalanobis_top", Float64, ("random_seed", "ensemble_size", "k_iter"); fillvalue=NaN)
+output_plr_top_v.attrib["description"] = "Perturbed-low-rank Mahalanobis (top term) in output space: sum((Vo'*(om-y))^2 / λo_i), top $(n_lowrank_modes) eigenvectors/values of Co ≈ a_o*I + Uo*Do*Uo'. Reference distribution: Chisq($(n_lowrank_modes)). Captures miscalibration in the k principal directions. Add output_plr_mahalanobis_residual for the full Chisq($(n_output)) statistic."
+output_plr_top_v[:, :, :] = output_plr_mahal_top_arr
+
+output_plr_res_v = defVar(ds, "output_plr_mahalanobis_residual", Float64, ("random_seed", "ensemble_size", "k_iter"); fillvalue=NaN)
+output_plr_res_v.attrib["description"] = "Perturbed-low-rank Mahalanobis (residual term) in output space: (||om-y||^2 - ||Vo'*(om-y)||^2) / a_o, where a_o = mean of the bottom $(n_output - n_lowrank_modes) eigenvalues of Co. Reference distribution: Chisq($(n_output - n_lowrank_modes)). Captures miscalibration in the noise-floor directions. Add output_plr_mahalanobis_top for the full Chisq($(n_output)) statistic."
+output_plr_res_v[:, :, :] = output_plr_mahal_residual_arr
+
+forcing_coverage_v = defVar(ds, "forcing_coverage", Float64, ("random_seed", "ensemble_size", "k_iter", "coverage_quantile"); fillvalue=NaN)
+forcing_coverage_v.attrib["description"] = "Marginal coverage in forcing space: fraction of forcing dims where truth_forcing[d] ≤ q_p of the $(n_pushforward_samples) pushforward samples. Expected ≈ p for calibrated marginals."
+forcing_coverage_v[:, :, :, :] = forcing_coverage_arr
+
+output_coverage_v = defVar(ds, "output_coverage", Float64, ("random_seed", "ensemble_size", "k_iter", "coverage_quantile"); fillvalue=NaN)
+output_coverage_v.attrib["description"] = "Marginal coverage in output space: fraction of output dims where y[d] ≤ q_p of the $(n_pushforward_samples) pushforward samples. Expected ≈ p for calibrated marginals."
+output_coverage_v[:, :, :, :] = output_coverage_arr
 
 close(ds)
 @info "Saved leaderboard data to $(nc_save_filename)"
