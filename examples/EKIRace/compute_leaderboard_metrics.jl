@@ -437,17 +437,20 @@ if show_metric(:coverage)
     ]
         (show_space(space_sym) && haskey(ncd, cov_sym)) || continue
 
-        cov    = ncd[cov_sym]          # (n_rng, n_ens_size, n_k_iter, n_cov_q)
-        cov_qs = ncd["coverage_quantile"][:]
+        cov        = ncd[cov_sym]          # (n_rng, n_ens_size, n_k_iter, n_cov_q)
+        cov_qs_all = Float64.(ncd["coverage_quantile"][:])
+        qi_keep    = findall(qp -> any(isapprox(qp, p, atol=1e-8) for p in calibration_check_quantiles), cov_qs_all)
+        cov_qs     = cov_qs_all[qi_keep]
 
         println("\n" * "="^72)
         println("$(space_label)-space marginal coverage fractions")
         println("  (Spatial dims as trials; spatially correlated → effective n < stated n)")
         println("="^72)
         println("Pooled mean coverage across all experiments:")
-        for (qi, qp) in enumerate(cov_qs)
-            pool = collect(skipmissing(vec(Array(cov[:, :, :, qi]))))
-            println(@sprintf("  q = %.1f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
+        for (qi_local, qi_file) in enumerate(qi_keep)
+            qp   = cov_qs[qi_local]
+            pool = collect(skipmissing(vec(Array(cov[:, :, :, qi_file]))))
+            println(@sprintf("  q = %.2f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
         end
 
         df_cov = DataFrame(
@@ -458,8 +461,9 @@ if show_metric(:coverage)
             std_coverage  = Union{Float64,Missing}[],
             n_valid       = Int[],
         )
-        for (qi, qp) in enumerate(cov_qs), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
-            vals = collect(skipmissing(cov[:, ei, ki, qi]))
+        for (qi_local, qi_file) in enumerate(qi_keep), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
+            qp   = cov_qs[qi_local]
+            vals = collect(skipmissing(cov[:, ei, ki, qi_file]))
             push!(df_cov, (q_prob=qp, ens_size=ev, k_iter=kv,
                 mean_coverage = isempty(vals) ? missing : mean(vals),
                 std_coverage  = length(vals) > 1 ? std(vals) : missing,

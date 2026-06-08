@@ -20,7 +20,7 @@ EXPERIMENT = l96_experiment()  # respects EXPERIMENT env var / CLI arg
 
 n_pushforward_samples         = 1000             # pushforward ensemble size for forcing/output metrics
 n_lowrank_modes               = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
-marginal_coverage_quantiles   = [0.1, 0.5, 0.9] # quantile levels for marginal coverage fraction
+marginal_coverage_quantiles   = collect(0.05:0.05:0.95) # quantile levels for marginal coverage fraction
 n_marginal_coverage_quantiles = length(marginal_coverage_quantiles)
 
 # Step 1, Read and extract the available experiments
@@ -116,6 +116,7 @@ output_plr_mahal_top_arr       = fill(NaN, n_rng, n_ens, n_k)
 output_plr_mahal_residual_arr  = fill(NaN, n_rng, n_ens, n_k)
 forcing_coverage_arr = fill(NaN, n_rng, n_ens, n_k, n_marginal_coverage_quantiles)
 output_coverage_arr  = fill(NaN, n_rng, n_ens, n_k, n_marginal_coverage_quantiles)
+truth_forcing_arr    = fill(NaN, n_rng, n_ens, n_forcing)
 
 for (N_ens, rng_idx) in valid_file_items
     post_fn = posterior_filename(cfg, N_ens, rng_idx)
@@ -139,6 +140,7 @@ for (N_ens, rng_idx) in valid_file_items
 
     emc_truth         = build_forcing(truth_phi, truth_params_constrained, phi_structure, sample_range)
     truth_forcing_vec = forcing(emc_truth, x0)
+    truth_forcing_arr[i, j, :] = truth_forcing_vec
 
     for k in k_values
         post_dist = posteriors_by_k[k]
@@ -260,6 +262,14 @@ k_var[:] = collect(1:n_k)
 cov_q_var = defVar(ds, "coverage_quantile", Float64, ("coverage_quantile",))
 cov_q_var.attrib["description"] = "Quantile levels used for marginal coverage fraction metrics"
 cov_q_var[:] = marginal_coverage_quantiles
+
+truth_forcing_v = defVar(ds, "truth_forcing", Float64, ("random_seed", "ensemble_size", "forcing_dim"); fillvalue=NaN)
+truth_forcing_v.attrib["description"] = "True forcing vector for each (random_seed, ensemble_size) pair. Use with forcing_samples to recompute marginal coverage at arbitrary quantile levels."
+truth_forcing_v[:, :, :] = truth_forcing_arr
+
+truth_output_v = defVar(ds, "truth_output", Float64, ("output_dim",); fillvalue=NaN)
+truth_output_v.attrib["description"] = "Observation vector y used as truth in output space. Constant across seeds and ensemble sizes. Use with output_samples to recompute marginal coverage at arbitrary quantile levels."
+truth_output_v[:] = y
 
 # Data variables
 
