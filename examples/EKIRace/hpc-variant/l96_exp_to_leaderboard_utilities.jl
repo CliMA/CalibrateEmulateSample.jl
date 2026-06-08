@@ -188,13 +188,17 @@ for (N_ens, rng_idx) in valid_file_items
         f_diff = fm - truth_forcing_vec
         forcing_mahal_arr[i, j, k]             = f_diff' * (fc \ f_diff)
         forcing_logpdf_true_v_map_arr[i, j, k] = logpdf(f_normal, truth_forcing_vec) - logpdf(f_normal, f_mode)
-        Ff     = eigen(fc)
-        a_f    = mean(Ff.values[1:end-n_lowrank_modes])
-        V_f    = Ff.vectors[:, end-n_lowrank_modes+1:end]
-        λ_f    = Ff.values[end-n_lowrank_modes+1:end]
-        proj_f = V_f' * f_diff
-        forcing_plr_mahal_top_arr[i, j, k]      = sum(proj_f.^2 ./ λ_f)
-        forcing_plr_mahal_residual_arr[i, j, k] = (sum(f_diff.^2) - sum(proj_f.^2)) / a_f
+        Ff  = eigen(fc)
+        a_f = mean(Ff.values[1:end-n_lowrank_modes])
+        V_f = Ff.vectors[:, end-n_lowrank_modes+1:end]
+        λ_f = Ff.values[end-n_lowrank_modes+1:end]
+        if a_f < 1e-8
+            @warn "Forcing-space PLR skipped: noise floor a_f=$(a_f) ≈ regularization level (covariance near-degenerate, e.g. const-force). Entries left as NaN."
+        else
+            proj_f = V_f' * f_diff
+            forcing_plr_mahal_top_arr[i, j, k]      = sum(proj_f.^2 ./ λ_f)
+            forcing_plr_mahal_residual_arr[i, j, k] = (sum(f_diff.^2) - sum(proj_f.^2)) / a_f
+        end
         for (qi, qp) in enumerate(marginal_coverage_quantiles)
             forcing_coverage_arr[i, j, k, qi] = mean(truth_forcing_vec .<= [quantile(fs[:, d], qp) for d in 1:n_forcing])
         end
@@ -209,13 +213,17 @@ for (N_ens, rng_idx) in valid_file_items
         o_diff = om - y
         output_mahal_arr[i, j, k]             = o_diff' * (oc \ o_diff)
         output_logpdf_true_v_map_arr[i, j, k] = logpdf(o_normal, y) - logpdf(o_normal, o_mode)
-        Fo     = eigen(oc)
-        a_o    = mean(Fo.values[1:end-n_lowrank_modes])
-        V_o    = Fo.vectors[:, end-n_lowrank_modes+1:end]
-        λ_o    = Fo.values[end-n_lowrank_modes+1:end]
-        proj_o = V_o' * o_diff
-        output_plr_mahal_top_arr[i, j, k]      = sum(proj_o.^2 ./ λ_o)
-        output_plr_mahal_residual_arr[i, j, k] = (sum(o_diff.^2) - sum(proj_o.^2)) / a_o
+        Fo  = eigen(oc)
+        a_o = mean(Fo.values[1:end-n_lowrank_modes])
+        V_o = Fo.vectors[:, end-n_lowrank_modes+1:end]
+        λ_o = Fo.values[end-n_lowrank_modes+1:end]
+        if a_o < 1e-8
+            @warn "Output-space PLR skipped: noise floor a_o=$(a_o) ≈ regularization level (covariance near-degenerate). Entries left as NaN."
+        else
+            proj_o = V_o' * o_diff
+            output_plr_mahal_top_arr[i, j, k]      = sum(proj_o.^2 ./ λ_o)
+            output_plr_mahal_residual_arr[i, j, k] = (sum(o_diff.^2) - sum(proj_o.^2)) / a_o
+        end
         for (qi, qp) in enumerate(marginal_coverage_quantiles)
             output_coverage_arr[i, j, k, qi] = mean(y .<= [quantile(os[:, d], qp) for d in 1:n_output])
         end
