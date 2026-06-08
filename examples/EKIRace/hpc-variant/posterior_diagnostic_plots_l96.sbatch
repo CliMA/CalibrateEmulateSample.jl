@@ -11,7 +11,7 @@
 #SBATCH --job-name=post_diag
 #SBATCH --output=output/slurm/post_diag_%A_%a.out
 #SBATCH --error=output/slurm/post_diag_%A_%a.err
-#SBATCH --array=1-60%20
+#SBATCH --array=1-60%100
 #SBATCH --time=00:30:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
