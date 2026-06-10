@@ -45,3 +45,5 @@ LB_JID=$(sbatch --parsable \
 echo "  exp_to_leaderboard job ID: ${LB_JID}"
 
 echo "=== Done. Monitor with: squeue -u \$USER ==="
+
+# sbatch -A esm --job-name="leaderboard_l63" --export=ALL, exp_to_leaderboard.sbatch
