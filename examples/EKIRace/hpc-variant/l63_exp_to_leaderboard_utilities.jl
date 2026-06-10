@@ -69,30 +69,41 @@ n_k = maximum(
 n_rng = length(rng_idxs)
 n_ens = length(N_enss)
 
-# Reconstruct deterministic l63 setup for pushforward (same seeds as calibrate_l63.jl)
 nx = 3
 ny = 9
-t_step = 0.01
-T = 40.0
-lorenz_config_settings = LorenzConfig(t_step, T)
-T_start = 30.0
-T_end = T
-observation_config = ObservationConfig(T_start, T_end)
-truth_params_setup = EnsembleMemberConfig([28.0, 8.0 / 3.0])
-rng_seed_init = 11
-rng_i = MersenneTwister(rng_seed_init)
-T_long = 1000.0
-x_initial_setup = rand(rng_i, Normal(0.0, 1.0), nx)
-x_spun_up = lorenz_solve(truth_params_setup, x_initial_setup, LorenzConfig(t_step, T_long))
-x0 = x_spun_up[:, end]
-covT = 2000.0
-cov_solve = lorenz_solve(truth_params_setup, x0, LorenzConfig(t_step, covT))
-ic_cov_sqrt = sqrt(0.1 * cov(cov_solve, dims = 2))
 n_output = ny
 
-# Load y from first valid results file (y is deterministic, same across all cases)
-first_results = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
-y = first_results["y"]
+# Load prelim quantities from calibrate_l63.jl output; fall back to recomputation if absent.
+prelim_file = joinpath(homedir, "output", "l63_computed_preliminaries.jld2")
+if isfile(prelim_file)
+    prelim_data            = JLD2.load(prelim_file)
+    x0                     = prelim_data["x0"]
+    y                      = prelim_data["y"]
+    ic_cov_sqrt            = prelim_data["ic_cov_sqrt"]
+    lorenz_config_settings = prelim_data["lorenz_config_settings"]
+    observation_config     = prelim_data["observation_config"]
+    @info "Loaded L63 preliminaries from $(prelim_file)"
+else
+    @warn "Prelim file not found at $(prelim_file); recomputing deterministically (run calibrate_l63.jl first)"
+    t_step = 0.01
+    T = 40.0
+    lorenz_config_settings = LorenzConfig(t_step, T)
+    T_start = 30.0
+    T_end = T
+    observation_config = ObservationConfig(T_start, T_end)
+    truth_params_setup = EnsembleMemberConfig([28.0, 8.0 / 3.0])
+    rng_seed_init = 11
+    rng_i = MersenneTwister(rng_seed_init)
+    T_long = 1000.0
+    x_initial_setup = rand(rng_i, Normal(0.0, 1.0), nx)
+    x_spun_up = lorenz_solve(truth_params_setup, x_initial_setup, LorenzConfig(t_step, T_long))
+    x0 = x_spun_up[:, end]
+    covT = 2000.0
+    cov_solve = lorenz_solve(truth_params_setup, x0, LorenzConfig(t_step, covT))
+    ic_cov_sqrt = sqrt(0.1 * cov(cov_solve, dims = 2))
+    first_results = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
+    y = first_results["y"]
+end
 
 # Pre-allocate: posterior stats have a k_iter dimension; calibration cost and truth do not
 true_param_arr        = fill(NaN, n_rng, n_ens, n_params)

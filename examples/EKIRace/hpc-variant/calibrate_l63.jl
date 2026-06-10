@@ -248,6 +248,26 @@ function main()
     setup = build_setup(cfg)
     write_priors(cfg, setup, output_dir)
 
+    prelim_file = joinpath(output_dir, "l63_computed_preliminaries.jld2")
+    if !isfile(prelim_file)
+        prelim_tmp = splitext(prelim_file)[1] * ".tmp.$(getpid()).jld2"
+        JLD2.save(
+            prelim_tmp,
+            "x0", setup.x0, "y", setup.y,
+            "lorenz_config_settings", setup.lorenz_config_settings,
+            "observation_config", setup.observation_config,
+            "ic_cov_sqrt", setup.ic_cov_sqrt,
+            "R", setup.R, "R_inv_var", setup.R_inv_var,
+        )
+        try
+            mv(prelim_tmp, prelim_file)
+            @info "Saved computed quantities to $(prelim_file)"
+        catch
+            rm(prelim_tmp; force = true)
+            @info "Prelim file already written by another task; discarding duplicate"
+        end
+    end
+
     tasks = flat_tasks(cfg)
     idx   = task_index_from_args()
 

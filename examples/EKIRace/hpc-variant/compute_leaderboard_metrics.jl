@@ -4,12 +4,14 @@ using Statistics
 using Printf
 using DataFrames
 using Dates
+using JLD2
+using LinearAlgebra
 
 calib_date = Date("2026-06-03", "yyyy-mm-dd")
 indir = joinpath("output","from-hpc_$(calib_date)")
-#filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
+filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
 #filename = "ces-eki-dmc_l96_ensemble_results_$(calib_date).nc"
-filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_$(calib_date).nc"
+#filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_$(calib_date).nc"
 #filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_$(calib_date).nc"
 
 filename = joinpath(indir, filename)
@@ -19,8 +21,17 @@ filename = joinpath(indir, filename)
 #################### Metric parameters ###################################
 ###########################################################################
 
-calibration_check_quantiles = [0.2, 0.5, 0.8] # quantile levels for calibration check scores and coverage
-n_lowrank_modes             = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
+calibration_check_quantiles = [0.15, 0.5, 0.85] # quantile levels for calibration check scores and coverage
+n_lowrank_modes             = 2              # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
+R_variance_retain           = 0.99             # fraction of R variance to retain for R-whitened PCA coverage
+
+# Optional: path to the prelim JLD2 written by calibrate_l96.jl.
+# Enables coverage recomputation at any quantile and R-whitened PCA coverage.
+# e.g. "output/l96_computed_preliminaries_const-force.jld2"
+prelim_jld2_file = "output/from-hpc_2026-06-03/l96_computed_preliminaries_flux-force.jld2"
+
+prelim_filename = joinpath(indir, prelim_jld2_file)
+@info "using precomputed quantities from $(prelim_filename)"
 
 ###########################################################################
 #################### Display filters ####################################
@@ -43,7 +54,7 @@ n_lowrank_modes             = 5                # top EOF modes for perturbed-low
 #  display_ens_sizes — which ensemble-size values (integers) to show in tables.
 
 display_spaces    = [:output]   # e.g. [:param, :forcing]
-display_metrics   = [:coverage]  # e.g. [:mahalanobis, :plr_mahalanobis]
+display_metrics   = [:coverage, :mahalanobis]  # e.g. [:mahalanobis, :plr_mahalanobis]
 display_ens_sizes = nothing   # e.g. [10, 50]
 
 show_metric(m) = isnothing(display_metrics)  || m in display_metrics
@@ -61,13 +72,28 @@ lp = ncd[:posterior_logpdf_true_v_map]
 ens_vals   = try Int.(ncd["ensemble_size"][:]) catch; collect(1:n_ens_size) end
 kiter_vals = try Int.(ncd["k_iter"][:])        catch; collect(1:n_k_iter)   end
 
+# Load truth and observation-noise covariance from the prelim JLD2 (calibrate_l96.jl output).
+# Falls back to truth_output stored in the netcdf (legacy) if JLD2 is not configured.
+if !isnothing(prelim_jld2_file) && isfile(prelim_jld2_file)
+    _pd     = JLD2.load(prelim_jld2_file)
+    y_truth = Float64.(_pd["y"])
+    R_obs   = Float64.(_pd["R"])
+    @info "Loaded y and R from $(prelim_jld2_file)"
+elseif haskey(ncd, "truth_output")
+    y_truth = Float64.(ncd["truth_output"][:])
+    R_obs   = nothing
+else
+    y_truth = nothing
+    R_obs   = nothing
+end
+
 # Discover what is actually present in this file
 avail_spaces  = Symbol[:param]
 avail_metrics = Symbol[:mahalanobis, :logratio]
-(haskey(ncd, "forcing_mahalanobis") || haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "forcing_coverage")) && push!(avail_spaces, :forcing)
-(haskey(ncd, "output_mahalanobis")  || haskey(ncd, "output_plr_mahalanobis_top")  || haskey(ncd, "output_coverage"))  && push!(avail_spaces, :output)
+(haskey(ncd, "forcing_mahalanobis") || haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "forcing_coverage") || (haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing"))) && push!(avail_spaces, :forcing)
+(haskey(ncd, "output_mahalanobis")  || haskey(ncd, "output_plr_mahalanobis_top")  || haskey(ncd, "output_coverage")  || (haskey(ncd, "output_samples") && !isnothing(y_truth)))          && push!(avail_spaces, :output)
 (haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "output_plr_mahalanobis_top")) && push!(avail_metrics, :plr_mahalanobis)
-(haskey(ncd, "forcing_coverage") || haskey(ncd, "output_coverage"))                        && push!(avail_metrics, :coverage)
+((haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing")) || (haskey(ncd, "output_samples") && !isnothing(y_truth)) || haskey(ncd, "forcing_coverage") || haskey(ncd, "output_coverage")) && push!(avail_metrics, :coverage)
 
 println("="^72)
 println("File: $(filename)")
@@ -431,52 +457,143 @@ end
 ###########################################################################
 #################### Marginal coverage fractions #########################
 ###########################################################################
+# Coverage is computed on-the-fly from raw pushforward samples and truth,
+# allowing any quantile level.  When R_obs is loaded from the prelim JLD2,
+# an additional R-whitened (PCA) coverage is computed: each coordinate is
+# decorrelated by the eigenvectors of R and scaled by the inverse sqrt of
+# the corresponding eigenvalue, making dimensions more independent.
 
 if show_metric(:coverage)
-    for (space_label, space_sym, cov_sym) in [
-        ("Forcing", :forcing, :forcing_coverage),
-        ("Output",  :output,  :output_coverage),
-    ]
-        (show_space(space_sym) && haskey(ncd, cov_sym)) || continue
 
-        cov        = ncd[cov_sym]          # (n_rng, n_ens_size, n_k_iter, n_cov_q)
-        cov_qs_all = Float64.(ncd["coverage_quantile"][:])
-        qi_keep    = findall(qp -> any(isapprox(qp, p, atol=1e-8) for p in calibration_check_quantiles), cov_qs_all)
-        cov_qs     = cov_qs_all[qi_keep]
+    # ── Output-space coverage ──────────────────────────────────────────────
+    if show_space(:output) && haskey(ncd, "output_samples") && !isnothing(y_truth)
+
+        n_out  = ncd.dim["output_dim"]
+        os_all = coalesce.(Array(ncd["output_samples"]), NaN)   # (n_rng, n_ens_size, n_k_iter, n_ps, n_out)
+        actual_out_dim = size(os_all, 5)
+        actual_out_dim != n_out && @warn "output_samples trailing dim ($actual_out_dim) ≠ output_dim ($n_out); raw coverage uses actual dim, R-whitened coverage disabled"
+
+        do_whiten = !isnothing(R_obs)
+        if do_whiten
+            eig_R   = eigen(Symmetric(R_obs))
+            ord     = sortperm(eig_R.values; rev=true)   # descending eigenvalue order
+            λ_all   = eig_R.values[ord]
+            V_all   = eig_R.vectors[:, ord]
+            cum_var = cumsum(λ_all) ./ sum(λ_all)
+            k_R     = something(findfirst(>=(R_variance_retain), cum_var), length(λ_all))
+            V_R     = V_all[:, 1:k_R]
+            λ_R     = λ_all[1:k_R]
+            yw      = V_R' * y_truth ./ sqrt.(λ_R)
+            println(@sprintf("\nR eigenvalue truncation: %d / %d modes retained  (threshold %.1f%% → %.4f%% variance)",
+                             k_R, n_out, 100*R_variance_retain, 100*cum_var[k_R]))
+        end
+
+        for (label, do_white) in [("raw", false), ("R-whitened PCA", true)]
+            (do_white && !do_whiten) && continue
+
+            local cov_arr = fill(NaN, n_rng, n_ens_size, n_k_iter, length(calibration_check_quantiles))
+            for ri in 1:n_rng, ei in 1:n_ens_size, ki in 1:n_k_iter
+                os = os_all[ri, ei, ki, :, :]   # (n_ps, n_out)
+                all(isnan.(os)) && continue
+                if do_white
+                    size(os, 2) != size(V_R, 1) && continue   # dim mismatch; leave cov_arr[ri,ei,ki,:] as NaN
+                    sw        = Matrix((V_R' * Matrix(os')) ./ sqrt.(λ_R))'   # (n_ps, k_R)
+                    truth_vec = yw
+                    n_cov_dim = k_R
+                else
+                    sw        = os
+                    truth_vec = y_truth
+                    n_cov_dim = actual_out_dim
+                end
+                for (qi, qp) in enumerate(calibration_check_quantiles)
+                    cov_arr[ri, ei, ki, qi] = mean(truth_vec[d] <= quantile(sw[:, d], qp) for d in 1:n_cov_dim)
+                end
+            end
+
+            println("\n" * "="^72)
+            println("Output-space marginal coverage fractions  [$(label)]")
+            if do_white
+                println("  x̃_d = (Vᵀx)_d / √λ_d  (R = VΛVᵀ, top $(k_R)/$(n_out) modes, $(round(Int, 100*R_variance_retain))% var threshold)")
+                println("  Coverage evaluated over effective dimension = $(k_R)  (full output dim = $(n_out))")
+            end
+            println("  (dims as trials; expected mean_coverage ≈ q_prob for calibrated posterior)")
+            println("="^72)
+            println("Pooled mean coverage across all experiments:")
+            for (qi, qp) in enumerate(calibration_check_quantiles)
+                pool = collect(filter(!isnan, vec(cov_arr[:, :, :, qi])))
+                isempty(pool) && continue
+                println(@sprintf("  q = %.2f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
+            end
+
+            local df_cov = DataFrame(
+                q_prob=Float64[], ens_size=Int[], k_iter=Int[],
+                mean_coverage=Union{Float64,Missing}[], std_coverage=Union{Float64,Missing}[], n_valid=Int[],
+            )
+            for (qi, qp) in enumerate(calibration_check_quantiles), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
+                vals = filter(!isnan, vec(cov_arr[:, ei, ki, qi]))
+                push!(df_cov, (q_prob=qp, ens_size=ev, k_iter=kv,
+                    mean_coverage = isempty(vals) ? missing : mean(vals),
+                    std_coverage  = length(vals) > 1 ? std(vals) : missing,
+                    n_valid       = length(vals)))
+            end
+
+            println("\nOutput-space coverage by ens_size and k_iter:")
+            for ens in filter(show_ens, sort(unique(df_cov.ens_size)))
+                println("\n=== ens_size = $(ens) ===")
+                for (qi, qp) in enumerate(calibration_check_quantiles)
+                    sub = sort(filter(r -> r.ens_size == ens && r.q_prob == qp, df_cov), :k_iter)
+                    println("  q = $(qp)  (expected ≈ $(qp))")
+                    show(stdout, select(sub, :k_iter, :mean_coverage, :std_coverage, :n_valid), allrows=true)
+                    println()
+                end
+            end
+        end
+    end
+
+    # ── Forcing-space coverage ─────────────────────────────────────────────
+    if show_space(:forcing) && haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing")
+
+        n_for       = ncd.dim["forcing_dim"]
+        fs_all      = coalesce.(Array(ncd["forcing_samples"]), NaN)   # (n_rng, n_ens_size, n_k_iter, n_ps, n_for)
+        tf_all      = coalesce.(Array(ncd["truth_forcing"]), NaN)     # (n_rng, n_ens_size, n_for)
+
+        cov_arr = fill(NaN, n_rng, n_ens_size, n_k_iter, length(calibration_check_quantiles))
+        for ri in 1:n_rng, ei in 1:n_ens_size, ki in 1:n_k_iter
+            fs      = fs_all[ri, ei, ki, :, :]
+            truth_f = tf_all[ri, ei, :]
+            all(isnan.(fs)) && continue
+            for (qi, qp) in enumerate(calibration_check_quantiles)
+                cov_arr[ri, ei, ki, qi] = mean(truth_f[d] <= quantile(fs[:, d], qp) for d in 1:n_for)
+            end
+        end
 
         println("\n" * "="^72)
-        println("$(space_label)-space marginal coverage fractions")
-        println("  (Spatial dims as trials; spatially correlated → effective n < stated n)")
+        println("Forcing-space marginal coverage fractions  [raw]")
+        println("  (dims as trials; expected mean_coverage ≈ q_prob for calibrated posterior)")
         println("="^72)
         println("Pooled mean coverage across all experiments:")
-        for (qi_local, qi_file) in enumerate(qi_keep)
-            qp   = cov_qs[qi_local]
-            pool = collect(skipmissing(vec(Array(cov[:, :, :, qi_file]))))
+        for (qi, qp) in enumerate(calibration_check_quantiles)
+            pool = collect(filter(!isnan, vec(cov_arr[:, :, :, qi])))
+            isempty(pool) && continue
             println(@sprintf("  q = %.2f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
         end
 
         df_cov = DataFrame(
-            q_prob        = Float64[],
-            ens_size      = Int[],
-            k_iter        = Int[],
-            mean_coverage = Union{Float64,Missing}[],
-            std_coverage  = Union{Float64,Missing}[],
-            n_valid       = Int[],
+            q_prob=Float64[], ens_size=Int[], k_iter=Int[],
+            mean_coverage=Union{Float64,Missing}[], std_coverage=Union{Float64,Missing}[], n_valid=Int[],
         )
-        for (qi_local, qi_file) in enumerate(qi_keep), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
-            qp   = cov_qs[qi_local]
-            vals = collect(skipmissing(cov[:, ei, ki, qi_file]))
+        for (qi, qp) in enumerate(calibration_check_quantiles), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
+            vals = filter(!isnan, vec(cov_arr[:, ei, ki, qi]))
             push!(df_cov, (q_prob=qp, ens_size=ev, k_iter=kv,
                 mean_coverage = isempty(vals) ? missing : mean(vals),
                 std_coverage  = length(vals) > 1 ? std(vals) : missing,
                 n_valid       = length(vals)))
         end
 
-        println("\n$(space_label)-space coverage by ens_size and k_iter:")
-        println("  (Expected: mean_coverage ≈ q_prob for calibrated marginals)")
+        println("\nForcing-space coverage by ens_size and k_iter:")
         for ens in filter(show_ens, sort(unique(df_cov.ens_size)))
             println("\n=== ens_size = $(ens) ===")
-            for (qi, qp) in enumerate(cov_qs)
+            for (qi, qp) in enumerate(calibration_check_quantiles)
                 sub = sort(filter(r -> r.ens_size == ens && r.q_prob == qp, df_cov), :k_iter)
                 println("  q = $(qp)  (expected ≈ $(qp))")
                 show(stdout, select(sub, :k_iter, :mean_coverage, :std_coverage, :n_valid), allrows=true)
@@ -485,5 +602,3 @@ if show_metric(:coverage)
         end
     end
 end
-
-@info calibration_check_quantiles
