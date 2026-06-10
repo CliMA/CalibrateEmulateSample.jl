@@ -267,10 +267,6 @@ truth_forcing_v = defVar(ds, "truth_forcing", Float64, ("random_seed", "ensemble
 truth_forcing_v.attrib["description"] = "True forcing vector for each (random_seed, ensemble_size) pair. Use with forcing_samples to recompute marginal coverage at arbitrary quantile levels."
 truth_forcing_v[:, :, :] = truth_forcing_arr
 
-truth_output_v = defVar(ds, "truth_output", Float64, ("output_dim",); fillvalue=NaN)
-truth_output_v.attrib["description"] = "Observation vector y used as truth in output space. Constant across seeds and ensemble sizes. Use with output_samples to recompute marginal coverage at arbitrary quantile levels."
-truth_output_v[:] = y
-
 # Data variables
 
 n_evals_v = defVar(
