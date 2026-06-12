@@ -3,19 +3,16 @@ using Dates
 using JLD2
 using Distributions
 using LinearAlgebra
-using Random
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 
 include("experiment_config.jl")
-include("Lorenz63.jl")
 
 ###########################################################################
 #################### Metric parameters ###################################
 ###########################################################################
 
-n_pushforward_samples         = 1000             # pushforward ensemble size for output metrics
 n_lowrank_modes               = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
 marginal_coverage_quantiles   = collect(0.05:0.05:0.95) # quantile levels for marginal coverage fraction
 n_marginal_coverage_quantiles = length(marginal_coverage_quantiles)
@@ -57,9 +54,16 @@ end
 
 ### Load data
 
-# Load first valid file to determine parameter dimension and max k
-first_loaded = JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...)))
-n_params = length(vec(mean(first_loaded["posteriors_by_k"][1])))
+# Load first valid file to determine parameter dimension, pushforward dimensions, and max k
+first_post_fn = joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...))
+first_loaded  = JLD2.load(first_post_fn)
+if !haskey(first_loaded, "pushforward_output_samples")
+    error("Pushforward data not found in $(first_post_fn). Run push_forward_from_posterior.sbatch first.")
+end
+
+n_params              = length(vec(mean(first_loaded["posteriors_by_k"][1])))
+n_pushforward_samples = first_loaded["pushforward_n_samples"]
+n_output              = size(first_loaded["pushforward_output_samples"], 2)
 
 n_k = maximum(
     maximum(JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)))["k_values"])
@@ -69,41 +73,10 @@ n_k = maximum(
 n_rng = length(rng_idxs)
 n_ens = length(N_enss)
 
-nx = 3
-ny = 9
-n_output = ny
-
-# Load prelim quantities from calibrate_l63.jl output; fall back to recomputation if absent.
+# y is needed for output-space metrics; load from the shared prelim file
 prelim_file = joinpath(homedir, "output", "l63_computed_preliminaries.jld2")
-if isfile(prelim_file)
-    prelim_data            = JLD2.load(prelim_file)
-    x0                     = prelim_data["x0"]
-    y                      = prelim_data["y"]
-    ic_cov_sqrt            = prelim_data["ic_cov_sqrt"]
-    lorenz_config_settings = prelim_data["lorenz_config_settings"]
-    observation_config     = prelim_data["observation_config"]
-    @info "Loaded L63 preliminaries from $(prelim_file)"
-else
-    @warn "Prelim file not found at $(prelim_file); recomputing deterministically (run calibrate_l63.jl first)"
-    t_step = 0.01
-    T = 40.0
-    lorenz_config_settings = LorenzConfig(t_step, T)
-    T_start = 30.0
-    T_end = T
-    observation_config = ObservationConfig(T_start, T_end)
-    truth_params_setup = EnsembleMemberConfig([28.0, 8.0 / 3.0])
-    rng_seed_init = 11
-    rng_i = MersenneTwister(rng_seed_init)
-    T_long = 1000.0
-    x_initial_setup = rand(rng_i, Normal(0.0, 1.0), nx)
-    x_spun_up = lorenz_solve(truth_params_setup, x_initial_setup, LorenzConfig(t_step, T_long))
-    x0 = x_spun_up[:, end]
-    covT = 2000.0
-    cov_solve = lorenz_solve(truth_params_setup, x0, LorenzConfig(t_step, covT))
-    ic_cov_sqrt = sqrt(0.1 * cov(cov_solve, dims = 2))
-    first_results = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
-    y = first_results["y"]
-end
+isfile(prelim_file) || error("Prelim file not found at $(prelim_file). Run calibrate_l63.jl first.")
+y = JLD2.load(prelim_file, "y")
 
 # Pre-allocate: posterior stats have a k_iter dimension; calibration cost and truth do not
 true_param_arr        = fill(NaN, n_rng, n_ens, n_params)
@@ -124,9 +97,17 @@ for (N_ens, rng_idx) in valid_file_items
     @info "loading case $(post_fn)"
     loaded = JLD2.load(joinpath(data_save_directory, post_fn))
 
+    if !haskey(loaded, "pushforward_output_samples")
+        @warn "Pushforward data missing for $(post_fn); skipping. Run push_forward_from_posterior.sbatch first."
+        continue
+    end
+
     posteriors_by_k = loaded["posteriors_by_k"]
     k_values        = loaded["k_values"]
     truth_params    = loaded["truth_params"]
+
+    pf_output   = loaded["pushforward_output_samples"]   # (n_samples, n_output, n_k_pos)
+    pf_k_values = loaded["pushforward_k_values"]
 
     # Load ekpobj for total calibration cost
     ekp_loaded     = JLD2.load(joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)))
@@ -161,18 +142,9 @@ for (N_ens, rng_idx) in valid_file_items
         # log p(truth | posterior) - log p(mode | posterior)
         logpdf_true_v_map_arr[i, j, k] = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
 
-        # pushforward ensemble for output space
-        push_unc = sample(post_dist, n_pushforward_samples)
-        push_con = transform_unconstrained_to_constrained(post_dist, push_unc)
-        @info "Pushforward k=$(k), N_ens=$(N_ens), rng_idx=$(rng_idx): $(n_pushforward_samples) Lorenz forward maps"
-        for s in 1:n_pushforward_samples
-            output_samples_arr[i, j, k, s, :] = lorenz_forward(
-                EnsembleMemberConfig(push_con[:, s]),
-                x0 .+ ic_cov_sqrt * rand(Normal(0.0, 1.0), nx, 1),
-                lorenz_config_settings,
-                observation_config,
-            )
-        end
+        # load precomputed pushforward samples (produced by pushforward_from_posterior_l63.jl)
+        ki = findfirst(==(k), pf_k_values)
+        output_samples_arr[i, j, k, :, :] = pf_output[:, :, ki]
 
         # output-space metrics (empirical distribution of pushforward samples vs truth output)
         os = output_samples_arr[i, j, k, :, :]    # (n_pushforward_samples, n_output)

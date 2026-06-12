@@ -3,20 +3,16 @@ using Dates
 using JLD2
 using Distributions
 using LinearAlgebra
-using Flux
-using Random
 using CalibrateEmulateSample.ParameterDistributions
 using CalibrateEmulateSample.DataContainers
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 
 include("experiment_config.jl")
-include("Lorenz96.jl")
 
 ###########################################################################
 #################### Metric parameters ###################################
 ###########################################################################
 
-n_pushforward_samples         = 1000             # pushforward ensemble size for forcing/output metrics
 n_lowrank_modes               = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
 marginal_coverage_quantiles   = collect(0.05:0.05:0.95) # quantile levels for marginal coverage fraction
 n_marginal_coverage_quantiles = length(marginal_coverage_quantiles)
@@ -60,9 +56,17 @@ end
 
 ### Load data
 
-# Load first valid file to determine parameter dimension and max k
-first_loaded = JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...)))
-n_params = length(vec(mean(first_loaded["posteriors_by_k"][1])))
+# Load first valid file to determine parameter dimension, pushforward dimensions, and max k
+first_post_fn = joinpath(data_save_directory, posterior_filename(cfg, valid_file_items[1]...))
+first_loaded  = JLD2.load(first_post_fn)
+if !haskey(first_loaded, "pushforward_output_samples")
+    error("Pushforward data not found in $(first_post_fn). Run pushforward_from_posterior_l96.jl first.")
+end
+
+n_params              = length(vec(mean(first_loaded["posteriors_by_k"][1])))
+n_pushforward_samples = first_loaded["pushforward_n_samples"]
+n_output              = size(first_loaded["pushforward_output_samples"], 2)
+n_forcing             = size(first_loaded["pushforward_forcing_samples"], 2)
 
 n_k = maximum(
     maximum(JLD2.load(joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)))["k_values"])
@@ -72,28 +76,10 @@ n_k = maximum(
 n_rng = length(rng_idxs)
 n_ens = length(N_enss)
 
-# Load Lorenz preliminaries and truth structure for pushforward
+# y is needed for output-space metrics; load once from the shared prelim file
 prelim_file = joinpath(homedir, "output", "l96_computed_preliminaries_$(force_case).jld2")
 isfile(prelim_file) || error("Prelim file not found at $(prelim_file). Run calibrate_l96.jl first.")
-prelim_data            = JLD2.load(prelim_file)
-x0                     = prelim_data["x0"]
-nx                     = length(x0)
-ic_cov_sqrt            = prelim_data["ic_cov_sqrt"]
-lorenz_config_settings = prelim_data["lorenz_config_settings"]
-observation_config     = prelim_data["observation_config"]
-y                      = prelim_data["y"]
-n_output               = 2 * nx
-
-first_calib = JLD2.load(joinpath(data_save_directory, results_filename(cfg, valid_file_items[1]...)))
-(truth_phi, _) = first_calib["truth_params_structure"]
-(phi_structure, sample_range) = if force_case == "const-force"
-    (nothing, nothing)
-elseif force_case == "vec-force"
-    (nothing, nothing)
-elseif force_case == "flux-force"
-    (truth_phi.model, truth_phi.sample_range)
-end
-n_forcing = force_case == "flux-force" ? length(sample_range) : nx
+y = JLD2.load(prelim_file, "y")
 
 # Pre-allocate: posterior stats have a k_iter dimension; calibration cost and truth do not
 true_param_arr        = fill(NaN, n_rng, n_ens, n_params)
@@ -121,10 +107,19 @@ for (N_ens, rng_idx) in valid_file_items
     @info "loading case $(post_fn)"
     loaded = JLD2.load(joinpath(data_save_directory, post_fn))
 
+    if !haskey(loaded, "pushforward_output_samples")
+        @warn "Pushforward data missing for $(post_fn); skipping. Run pushforward_from_posterior_l96.jl first."
+        continue
+    end
+
     posteriors_by_k = loaded["posteriors_by_k"]
     k_values        = loaded["k_values"]
-    truth_params             = loaded["truth_params"]
-    truth_params_constrained = loaded["truth_params_constrained"]
+    truth_params    = loaded["truth_params"]
+
+    pf_forcing        = loaded["pushforward_forcing_samples"]  # (n_samples, n_forcing, n_k_pos)
+    pf_output         = loaded["pushforward_output_samples"]   # (n_samples, n_output,  n_k_pos)
+    pf_k_values       = loaded["pushforward_k_values"]
+    truth_forcing_vec = loaded["truth_forcing"]
 
     # Load ekpobj for total calibration cost
     ekp_loaded     = JLD2.load(joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)))
@@ -133,11 +128,8 @@ for (N_ens, rng_idx) in valid_file_items
     i = findfirst(==(rng_idx), rng_idxs)
     j = findfirst(==(N_ens), N_enss)
 
-    true_param_arr[i, j, :] = truth_params
-    n_evals_arr[i, j]       = conv_alg_iters * N_ens
-
-    emc_truth         = build_forcing(truth_phi, truth_params_constrained, phi_structure, sample_range)
-    truth_forcing_vec = forcing(emc_truth, x0)
+    true_param_arr[i, j, :]    = truth_params
+    n_evals_arr[i, j]          = conv_alg_iters * N_ens
     truth_forcing_arr[i, j, :] = truth_forcing_vec
 
     for k in k_values
@@ -163,20 +155,10 @@ for (N_ens, rng_idx) in valid_file_items
         # log p(truth | posterior) - log p(mode | posterior)
         logpdf_true_v_map_arr[i, j, k] = logpdf(post_normal, truth_params) - logpdf(post_normal, pmode)
 
-        # pushforward ensemble for forcing and output space
-        push_unc = sample(post_dist, n_pushforward_samples)
-        push_con = transform_unconstrained_to_constrained(post_dist, push_unc)
-        @info "Pushforward k=$(k), N_ens=$(N_ens), rng_idx=$(rng_idx): $(n_pushforward_samples) Lorenz forward maps"
-        for s in 1:n_pushforward_samples
-            emc = build_forcing(truth_phi, push_con[:, s], phi_structure, sample_range)
-            forcing_samples_arr[i, j, k, s, :] = forcing(emc, x0)
-            output_samples_arr[i, j, k, s, :]  = lorenz_forward(
-                emc,
-                x0 .+ ic_cov_sqrt * rand(Normal(0.0, 1.0), nx, 1),
-                lorenz_config_settings,
-                observation_config,
-            )
-        end
+        # load precomputed pushforward samples (produced by pushforward_from_posterior_l96.jl)
+        ki = findfirst(==(k), pf_k_values)
+        forcing_samples_arr[i, j, k, :, :] = pf_forcing[:, :, ki]
+        output_samples_arr[i, j, k, :, :]  = pf_output[:, :, ki]
 
         # forcing-space metrics (empirical distribution of pushforward samples vs truth forcing)
         fs = forcing_samples_arr[i, j, k, :, :]   # (n_pushforward_samples, n_forcing)

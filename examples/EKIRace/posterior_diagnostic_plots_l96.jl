@@ -122,10 +122,18 @@ for (N_ens, rng_idx) in valid_file_items
     loaded_p = JLD2.load(joinpath(data_save_directory, post_fn))
     loaded_c = JLD2.load(joinpath(data_save_directory, calib_fn))
 
+    if !haskey(loaded_p, "pushforward_output_samples")
+        error("Pushforward data not found in $(post_fn). Run pushforward_from_posterior_l96.jl first.")
+    end
+
     posteriors_by_k = loaded_p["posteriors_by_k"]
     priors          = loaded_p["priors"]
     k_values        = loaded_p["k_values"]
     truth_params    = loaded_p["truth_params"]
+
+    pf_output   = loaded_p["pushforward_output_samples"]   # (n_samples, n_output, n_k_pos)
+    pf_forcing  = loaded_p["pushforward_forcing_samples"]  # (n_samples, n_forcing, n_k_pos)
+    pf_k_values = loaded_p["pushforward_k_values"]
 
     (truth_params_obj, _) = loaded_c["truth_params_structure"]
 
@@ -167,25 +175,19 @@ for (N_ens, rng_idx) in valid_file_items
 
     for k in k_values
         post_dist = posteriors_by_k[k]
-        push_ensemble = sample(post_dist, n_samples_pushforward)
-        # note: push_ensemble is unconstrained
+
+        # sample posterior for parameter-space analysis (no forward map needed)
+        push_ensemble             = sample(post_dist, n_samples_pushforward)
         constrained_push_ensemble = transform_unconstrained_to_constrained(post_dist, push_ensemble)
 
-        G_ens = hcat(
-            [
-                lorenz_forward(
-                    build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range),
-                    x0 .+ ic_cov_sqrt * rand(Normal(0.0, 1.0), nx, 1),
-                    lorenz_config_settings,
-                    observation_config,
-                ) for j in 1:n_samples_pushforward
-                    ]...,
-        )
+        # load precomputed posterior pushforward (produced by pushforward_from_posterior_l96.jl)
+        ki            = findfirst(==(k), pf_k_values)
+        G_ens         = pf_output[:, :, ki]'    # (n_output,  n_samples)
+        push_forcings = pf_forcing[:, :, ki]'   # (n_forcing, n_samples)
 
         ny    = length(y)
         n_par = length(truth_params_constrained)
-        push_forcings = hcat([forcing(build_forcing(truth_params_obj, constrained_push_ensemble[:, j], structure, sample_range), x0) for j in 1:n_samples_pushforward]...)
-        param_diffs   = reduce(hcat, [constrained_push_ensemble[:, j] - truth_params_constrained for j in 1:n_samples_pushforward])
+        param_diffs = reduce(hcat, [constrained_push_ensemble[:, j] - truth_params_constrained for j in 1:n_samples_pushforward])
 
         # Mahalanobis and logpdf metrics in parameter, forcing, and output spaces
         frc_samples_m = is_const ? push_forcings[1:1, :] : push_forcings

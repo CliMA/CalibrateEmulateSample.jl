@@ -36,11 +36,19 @@ EMU_JID=$(sbatch --parsable \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
 
-echo "=== Submitting exp_to_leaderboard (L63, after ${EMU_JID}) ==="
+echo "=== Submitting pushforward_from_posterior (L63, after ${EMU_JID}) ==="
+PUSHFWD_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="pushfwd_${LABEL}" \
+		 --dependency=afterany:${EMU_JID} \
+		 pushforward_from_posterior.sbatch)
+echo "  pushforward_from_posterior job ID: ${PUSHFWD_JID}"
+
+echo "=== Submitting exp_to_leaderboard (L63, after ${PUSHFWD_JID}) ==="
 LB_JID=$(sbatch --parsable \
 		 -A esm \
 		 --job-name="leaderboard_${LABEL}" \
-		 --dependency=afterany:${EMU_JID} \
+		 --dependency=afterany:${PUSHFWD_JID} \
 		 exp_to_leaderboard.sbatch)
 echo "  exp_to_leaderboard job ID: ${LB_JID}"
 

@@ -46,20 +46,29 @@ EMU_JID=$(sbatch --parsable \
 		 emulate_sample_array.sbatch)
 echo "  emulate_sample job ID: ${EMU_JID}"
 
-echo "=== Submitting posterior_diagnostic_plots (L96 flux-force, after ${EMU_JID}) ==="
+echo "=== Submitting pushforward_from_posterior (L96 flux-force, after ${EMU_JID}) ==="
+PUSHFWD_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="pushfwd_${LABEL}" \
+		 --dependency=afterany:${EMU_JID} \
+		 --export=ALL,EXPERIMENT=l96_flux \
+		 pushforward_from_posterior.sbatch)
+echo "  pushforward_from_posterior job ID: ${PUSHFWD_JID}"
+
+echo "=== Submitting posterior_diagnostic_plots (L96 flux-force, after ${PUSHFWD_JID}) ==="
 POST_DIAG_JID=$(sbatch --parsable \
 		 -A esm \
 		 --job-name="post_diag_${LABEL}" \
-		 --dependency=afterany:${EMU_JID} \
+		 --dependency=afterany:${PUSHFWD_JID} \
 		 --export=ALL,EXPERIMENT=l96_flux \
 		 posterior_diagnostic_plots_l96.sbatch)
 echo "  posterior_diagnostic_plots job ID: ${POST_DIAG_JID}"
 
-echo "=== Submitting exp_to_leaderboard (L96 flux-force, after ${EMU_JID}) ==="
+echo "=== Submitting exp_to_leaderboard (L96 flux-force, after ${PUSHFWD_JID}) ==="
 LB_JID=$(sbatch --parsable \
 		 -A esm \
 		 --job-name="leaderboard_${LABEL}" \
-		 --dependency=afterany:${EMU_JID} \
+		 --dependency=afterany:${PUSHFWD_JID} \
 		 --export=ALL,EXPERIMENT=l96_flux \
 		 exp_to_leaderboard.sbatch)
 echo "  exp_to_leaderboard job ID: ${LB_JID}"

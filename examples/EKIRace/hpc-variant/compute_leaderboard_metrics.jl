@@ -7,15 +7,34 @@ using Dates
 using JLD2
 using LinearAlgebra
 
-calib_date = Date("2026-06-03", "yyyy-mm-dd")
+calib_date = Date("2026-06-11", "yyyy-mm-dd")
 indir = joinpath("output","from-hpc_$(calib_date)")
-filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
-#filename = "ces-eki-dmc_l96_ensemble_results_$(calib_date).nc"
-#filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_$(calib_date).nc"
-#filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_$(calib_date).nc"
+
+experiment_list = [:l63, :l96_const, :l96_vec, :l96_flux ]
+experiment = experiment_list[1] 
+if experiment == :l63
+    filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l63_computed_preliminaries.jld2"
+elseif experiment == :l96_const
+    filename = "ces-eki-dmc_l96_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_const-force.jld2"
+elseif experiment == :l96_vec
+    filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_vec-force.jld2"
+elseif experiment == :l96_flux
+    filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_flux-force.jld2"
+else
+    throw(ArgumentError("Expected Experiment from $(experiment_list). Got $(experiment)."))
+end
 
 filename = joinpath(indir, filename)
-@info "computing leaderboard metrics from $(filename)"
+prelim_filename = joinpath(indir, prelim_jld2_file)
+# Optional: path to the prelim JLD2 written by calibrate_l96.jl.
+# Enables coverage recomputation at any quantile and R-whitened PCA coverage.
+# e.g. "output/l96_computed_preliminaries_const-force.jld2"
+
+
 
 ###########################################################################
 #################### Metric parameters ###################################
@@ -25,13 +44,6 @@ calibration_check_quantiles = [0.15, 0.5, 0.85] # quantile levels for calibratio
 n_lowrank_modes             = 2              # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
 R_variance_retain           = 0.99             # fraction of R variance to retain for R-whitened PCA coverage
 
-# Optional: path to the prelim JLD2 written by calibrate_l96.jl.
-# Enables coverage recomputation at any quantile and R-whitened PCA coverage.
-# e.g. "output/l96_computed_preliminaries_const-force.jld2"
-prelim_jld2_file = "output/from-hpc_2026-06-03/l96_computed_preliminaries_flux-force.jld2"
-
-prelim_filename = joinpath(indir, prelim_jld2_file)
-@info "using precomputed quantities from $(prelim_filename)"
 
 ###########################################################################
 #################### Display filters ####################################
@@ -65,6 +77,7 @@ show_ens(e)    = isnothing(display_ens_sizes) || e in display_ens_sizes
 #################### Load file and report available options ##############
 ###########################################################################
 
+@info "computing leaderboard metrics from $(filename)"
 ncd = NCDataset(filename)
 mh = ncd[:mahalanobis]
 lp = ncd[:posterior_logpdf_true_v_map]
@@ -74,8 +87,9 @@ kiter_vals = try Int.(ncd["k_iter"][:])        catch; collect(1:n_k_iter)   end
 
 # Load truth and observation-noise covariance from the prelim JLD2 (calibrate_l96.jl output).
 # Falls back to truth_output stored in the netcdf (legacy) if JLD2 is not configured.
-if !isnothing(prelim_jld2_file) && isfile(prelim_jld2_file)
-    _pd     = JLD2.load(prelim_jld2_file)
+if !isnothing(prelim_jld2_file) && isfile(prelim_filename)
+    @info "using precomputed quantities from $(prelim_filename)"
+    _pd     = JLD2.load(prelim_filename)
     y_truth = Float64.(_pd["y"])
     R_obs   = Float64.(_pd["R"])
     @info "Loaded y and R from $(prelim_jld2_file)"
@@ -83,6 +97,7 @@ elseif haskey(ncd, "truth_output")
     y_truth = Float64.(ncd["truth_output"][:])
     R_obs   = nothing
 else
+    @error "precomputed quantities NOT FOUND at $(prelim_filename)"
     y_truth = nothing
     R_obs   = nothing
 end
@@ -466,6 +481,9 @@ end
 if show_metric(:coverage)
 
     # ── Output-space coverage ──────────────────────────────────────────────
+    @info show_space(:output)
+    @info haskey(ncd, "output_samples")
+    @info !isnothing(y_truth)
     if show_space(:output) && haskey(ncd, "output_samples") && !isnothing(y_truth)
 
         n_out  = ncd.dim["output_dim"]
