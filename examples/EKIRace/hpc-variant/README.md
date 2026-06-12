@@ -26,21 +26,24 @@ submission time.
 ### L63
 
 ```
-calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  exp_to_leaderboard
+calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  pushforward_from_posterior  ──afterany──►  exp_to_leaderboard
 ```
 
 ### L96 (const / vec / flux)
 
 ```
                          ┌──afterok──►  calibration_diagnostic_plots_l96
-calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  posterior_diagnostic_plots_l96
-                                                      ──afterany──►  exp_to_leaderboard
+calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  pushforward_from_posterior  ──afterany──►  posterior_diagnostic_plots_l96
+                                                                                                 ──afterany──►  exp_to_leaderboard
 ```
 
 `calibration_diagnostic_plots` and `emulate_sample` both start once calibrate
-succeeds (they run in parallel).  `posterior_diagnostic_plots` and
-`exp_to_leaderboard` both start once `emulate_sample` finishes (whether or not
-it succeeded, so partial results are still processed).
+succeeds (they run in parallel).  `pushforward_from_posterior` starts once
+`emulate_sample` finishes and runs the Lorenz forward map for every posterior
+cell in parallel, saving forcing and output samples back into each posterior
+JLD2 file.  `posterior_diagnostic_plots` and `exp_to_leaderboard` both start
+once `pushforward_from_posterior` finishes — they simply load the precomputed
+samples rather than re-running the forward map.
 
 ## Standalone (serial)
 
@@ -50,11 +53,13 @@ Run with no arguments to sweep all `(N_ens, rng_idx)` cells sequentially.
 # L63
 julia --project=. calibrate_l63.jl
 julia --project=. emulate_sample_l63.jl
+julia --project=. pushforward_from_posterior_l63.jl
 
 # L96 — set EXPERIMENT env var or edit the toggle in experiment_config.jl
 EXPERIMENT=l96_const julia --project=. calibrate_l96.jl
 EXPERIMENT=l96_const julia --project=. calibration_diagnostic_plots_l96.jl
 EXPERIMENT=l96_const julia --project=. emulate_sample_l96.jl
+EXPERIMENT=l96_const julia --project=. pushforward_from_posterior_l96.jl
 EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl
 ```
 
@@ -62,12 +67,15 @@ You can also run a single cell by passing its 1-based task index for the
 array-capable scripts:
 
 ```bash
-julia --project=. calibrate_l63.jl 1         # first (N_ens, rng_idx) cell only
-julia --project=. emulate_sample_l63.jl 5    # fifth cell only
+julia --project=. calibrate_l63.jl 1                    # first (N_ens, rng_idx) cell only
+julia --project=. emulate_sample_l63.jl 5               # fifth cell only
+julia --project=. pushforward_from_posterior_l63.jl 5   # fifth cell only
+EXPERIMENT=l96_const julia --project=. pushforward_from_posterior_l96.jl 3
 EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl 3
 ```
 
-Leaderboard conversion runs all cells serially in a single call:
+Leaderboard conversion runs all cells serially in a single call (requires
+pushforward to have been run first):
 
 ```bash
 julia --project=. l63_exp_to_leaderboard_utilities.jl
@@ -115,8 +123,11 @@ CALIB_JID=$(sbatch --parsable -A esm \
 EMU_JID=$(sbatch --parsable -A esm \
           --dependency=afterok:${CALIB_JID} --kill-on-invalid-dep=yes \
           --export=ALL,SCRIPT=emulate_sample_l63.jl emulate_sample_array.sbatch)
+PUSHFWD_JID=$(sbatch --parsable -A esm \
+              --dependency=afterany:${EMU_JID} \
+              pushforward_from_posterior.sbatch)
 sbatch -A esm \
-       --dependency=afterany:${EMU_JID} \
+       --dependency=afterany:${PUSHFWD_JID} \
        exp_to_leaderboard.sbatch
 
 # L96
@@ -131,12 +142,16 @@ EMU_JID=$(sbatch --parsable -A esm \
           --dependency=afterok:${CALIB_JID} --kill-on-invalid-dep=yes \
           --export=ALL,SCRIPT=emulate_sample_l96.jl,EXPERIMENT=l96_const \
           emulate_sample_array.sbatch)
+PUSHFWD_JID=$(sbatch --parsable -A esm \
+              --dependency=afterany:${EMU_JID} \
+              --export=ALL,EXPERIMENT=l96_const \
+              pushforward_from_posterior.sbatch)
 sbatch -A esm \
-       --dependency=afterany:${EMU_JID} \
+       --dependency=afterany:${PUSHFWD_JID} \
        --export=ALL,EXPERIMENT=l96_const \
        posterior_diagnostic_plots_l96.sbatch
 sbatch -A esm \
-       --dependency=afterany:${EMU_JID} \
+       --dependency=afterany:${PUSHFWD_JID} \
        --export=ALL,EXPERIMENT=l96_const \
        exp_to_leaderboard.sbatch
 ```
@@ -145,20 +160,21 @@ sbatch -A esm \
 
 | File | Type | Description |
 |------|------|-------------|
-| `calibrate_array.sbatch` | array (1–60) | One task per `(N_ens, rng_idx)` cell |
-| `emulate_sample_array.sbatch` | array (1–60) | One task per `(N_ens, rng_idx)` cell |
+| `calibrate_array.sbatch` | array (1–180) | One task per `(N_ens, rng_idx)` cell |
+| `emulate_sample_array.sbatch` | array (1–180) | One task per `(N_ens, rng_idx)` cell |
+| `pushforward_from_posterior.sbatch` | array (1–180) | Posterior pushforward (forcing + output), one task per cell; saves results into the posterior JLD2 |
 | `calibration_diagnostic_plots_l96.sbatch` | single job | Calibration figures, all cells serially (L96) |
-| `posterior_diagnostic_plots_l96.sbatch` | array (1–60) | Pushforward figures, one task per cell (L96) |
-| `exp_to_leaderboard.sbatch` | single job | NetCDF leaderboard file, all cells serially |
+| `posterior_diagnostic_plots_l96.sbatch` | array (1–180) | Posterior ribbon/scatter figures, one task per cell (L96); loads pushforward from JLD2 |
+| `exp_to_leaderboard.sbatch` | single job | NetCDF leaderboard file, all cells serially; loads pushforward from JLD2 |
 | `precompile.sbatch` | single job | `Pkg.instantiate()` + `Pkg.precompile()` |
 
 ### Adjusting array size
 
-The sbatch files default to `--array=1-60` (3 ensemble sizes × 20 repeats).
+The sbatch files default to `--array=1-180` (9 ensemble sizes × 20 repeats).
 If you change `N_ens_sizes` or `n_repeats` in `experiment_config.jl`, update
-the upper bound to `length(N_ens_sizes) * n_repeats`.  The `%20` suffix on
-`posterior_diagnostic_plots_l96.sbatch` caps concurrent tasks to 20 at a time
-as a cluster-courtesy limit; raise or remove it if you want faster turnaround.
+the upper bound to `length(N_ens_sizes) * n_repeats` in every array sbatch file,
+including `pushforward_from_posterior.sbatch`.  The `%100` suffix caps concurrent
+tasks as a cluster-courtesy limit; raise or remove it if you want faster turnaround.
 
 ### Smoke test
 
