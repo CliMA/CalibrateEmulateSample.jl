@@ -49,6 +49,7 @@ LB_JID=$(sbatch --parsable \
 		 -A esm \
 		 --job-name="leaderboard_${LABEL}" \
 		 --dependency=afterany:${PUSHFWD_JID} \
+		 --export=ALL,EXPERIMENT=l63 \
 		 exp_to_leaderboard.sbatch)
 echo "  exp_to_leaderboard job ID: ${LB_JID}"
 
@@ -57,4 +58,4 @@ echo "=== Done. Monitor with: squeue -u \$USER ==="
 # sbatch --parsable -A esm --job-name="pushfwd_l63" --export=ALL pushforward_from_posterior.sbatch
 
 
-# sbatch -A esm --job-name="leaderboard_l63" --export=ALL, exp_to_leaderboard.sbatch
+# sbatch -A esm --job-name="leaderboard_l63" --export=ALL,EXPERIMENT=l63 exp_to_leaderboard.sbatch

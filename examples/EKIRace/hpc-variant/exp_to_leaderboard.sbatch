@@ -27,8 +27,4 @@ cd "${SLURM_SUBMIT_DIR}"
 
 export JULIA_PKG_PRECOMPILE_AUTO=0
 
-if [[ -z "${EXPERIMENT:-}" || "${EXPERIMENT}" == "l63" ]]; then
-    julia --project=. l63_exp_to_leaderboard_utilities.jl
-else
-    julia --project=. l96_exp_to_leaderboard_utilities.jl
-fi
+julia --project=. exp_to_leaderboard.jl
