@@ -248,17 +248,17 @@ end
 # budget_to_target = N_ens · k,  iters_to_target = k.
 # NaN when the target was not reached within the k_iter range.
 
-output_budget_to_target = fill(NaN, n_rng, n_ens, n_target_scalings)
-output_iters_to_target  = fill(NaN, n_rng, n_ens, n_target_scalings)
+output_budget_to_target = fill(NaN, n_rng, n_ens, n_target_scalings, n_marginal_coverage_quantiles)
+output_iters_to_target  = fill(NaN, n_rng, n_ens, n_target_scalings, n_marginal_coverage_quantiles)
 for (si, c) in enumerate(budget_target_scalings)
     tol = c .* sqrt.(marginal_coverage_quantiles .* (1 .- marginal_coverage_quantiles) ./ n_output)
-    for ri in 1:n_rng, ei in 1:n_ens
+    for ri in 1:n_rng, ei in 1:n_ens, (qi, qp) in enumerate(marginal_coverage_quantiles)
         for k in 1:n_k
-            s_q = output_coverage_arr[ri, ei, k, :]
-            all(isnan.(s_q)) && continue
-            if all(abs.(s_q .- marginal_coverage_quantiles) .<= tol)
-                output_budget_to_target[ri, ei, si] = N_enss[ei] * k
-                output_iters_to_target[ri, ei, si]  = k
+            s = output_coverage_arr[ri, ei, k, qi]
+            isnan(s) && continue
+            if abs(s - qp) <= tol[qi]
+                output_budget_to_target[ri, ei, si, qi] = N_enss[ei] * k
+                output_iters_to_target[ri, ei, si, qi]  = k
                 break
             end
         end
@@ -266,17 +266,17 @@ for (si, c) in enumerate(budget_target_scalings)
 end
 
 if has_forcing
-    forcing_budget_to_target = fill(NaN, n_rng, n_ens, n_target_scalings)
-    forcing_iters_to_target  = fill(NaN, n_rng, n_ens, n_target_scalings)
+    forcing_budget_to_target = fill(NaN, n_rng, n_ens, n_target_scalings, n_marginal_coverage_quantiles)
+    forcing_iters_to_target  = fill(NaN, n_rng, n_ens, n_target_scalings, n_marginal_coverage_quantiles)
     for (si, c) in enumerate(budget_target_scalings)
         tol = c .* sqrt.(marginal_coverage_quantiles .* (1 .- marginal_coverage_quantiles) ./ n_forcing)
-        for ri in 1:n_rng, ei in 1:n_ens
+        for ri in 1:n_rng, ei in 1:n_ens, (qi, qp) in enumerate(marginal_coverage_quantiles)
             for k in 1:n_k
-                s_q = forcing_coverage_arr[ri, ei, k, :]
-                all(isnan.(s_q)) && continue
-                if all(abs.(s_q .- marginal_coverage_quantiles) .<= tol)
-                    forcing_budget_to_target[ri, ei, si] = N_enss[ei] * k
-                    forcing_iters_to_target[ri, ei, si]  = k
+                s = forcing_coverage_arr[ri, ei, k, qi]
+                isnan(s) && continue
+                if abs(s - qp) <= tol[qi]
+                    forcing_budget_to_target[ri, ei, si, qi] = N_enss[ei] * k
+                    forcing_iters_to_target[ri, ei, si, qi]  = k
                     break
                 end
             end
@@ -380,13 +380,13 @@ output_coverage_v = defVar(ds, "output_coverage", Float64, ("random_seed", "ense
 output_coverage_v.attrib["description"] = "Marginal coverage in output space: fraction of output dims where y[d] ≤ q_p of the $(n_pushforward_samples) pushforward samples."
 output_coverage_v[:, :, :, :] = output_coverage_arr
 
-output_budget_v = defVar(ds, "output_budget_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling"); fillvalue=NaN)
-output_budget_v.attrib["description"] = "Budget (N_ens·k_iter) to first reach |S(q)−q| ≤ c·√(q(1−q)/N_y) for all q in output space. NaN = not reached."
-output_budget_v[:, :, :] = output_budget_to_target
+output_budget_v = defVar(ds, "output_budget_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling", "coverage_quantile"); fillvalue=NaN)
+output_budget_v.attrib["description"] = "Budget (N_ens·k_iter) to first reach |S(q)−q| ≤ c·√(q(1−q)/N_y) per quantile q in output space. NaN = not reached. Take max over quantiles for the all-quantile condition."
+output_budget_v[:, :, :, :] = output_budget_to_target
 
-output_iters_v = defVar(ds, "output_iters_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling"); fillvalue=NaN)
-output_iters_v.attrib["description"] = "Iterations k_iter to first reach coverage target in output space. NaN = not reached."
-output_iters_v[:, :, :] = output_iters_to_target
+output_iters_v = defVar(ds, "output_iters_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling", "coverage_quantile"); fillvalue=NaN)
+output_iters_v.attrib["description"] = "Iterations k_iter to first reach coverage target per quantile in output space. NaN = not reached."
+output_iters_v[:, :, :, :] = output_iters_to_target
 
 # ── Forcing-space metrics (L96 only) ─────────────────────────────────
 if has_forcing
@@ -414,13 +414,13 @@ if has_forcing
     forcing_coverage_v.attrib["description"] = "Marginal coverage in forcing space: fraction of forcing dims where truth_forcing[d] ≤ q_p of the $(n_pushforward_samples) pushforward samples."
     forcing_coverage_v[:, :, :, :] = forcing_coverage_arr
 
-    forcing_budget_v = defVar(ds, "forcing_budget_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling"); fillvalue=NaN)
-    forcing_budget_v.attrib["description"] = "Budget (N_ens·k_iter) to first reach |S(q)−q| ≤ c·√(q(1−q)/N_y) for all q in forcing space. NaN = not reached."
-    forcing_budget_v[:, :, :] = forcing_budget_to_target
+    forcing_budget_v = defVar(ds, "forcing_budget_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling", "coverage_quantile"); fillvalue=NaN)
+    forcing_budget_v.attrib["description"] = "Budget (N_ens·k_iter) to first reach |S(q)−q| ≤ c·√(q(1−q)/N_y) per quantile q in forcing space. NaN = not reached. Take max over quantiles for the all-quantile condition."
+    forcing_budget_v[:, :, :, :] = forcing_budget_to_target
 
-    forcing_iters_v = defVar(ds, "forcing_iters_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling"); fillvalue=NaN)
-    forcing_iters_v.attrib["description"] = "Iterations k_iter to first reach coverage target in forcing space. NaN = not reached."
-    forcing_iters_v[:, :, :] = forcing_iters_to_target
+    forcing_iters_v = defVar(ds, "forcing_iters_to_target", Float64, ("random_seed", "ensemble_size", "target_scaling", "coverage_quantile"); fillvalue=NaN)
+    forcing_iters_v.attrib["description"] = "Iterations k_iter to first reach coverage target per quantile in forcing space. NaN = not reached."
+    forcing_iters_v[:, :, :, :] = forcing_iters_to_target
 end
 
 close(ds)
