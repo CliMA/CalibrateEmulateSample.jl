@@ -7,11 +7,11 @@ using Dates
 using JLD2
 using LinearAlgebra
 
-calib_date = Date("2026-06-11", "yyyy-mm-dd")
+calib_date = Date("2026-06-15", "yyyy-mm-dd")
 indir = joinpath("output","from-hpc_$(calib_date)")
 
 experiment_list = [:l63, :l96_const, :l96_vec, :l96_flux ]
-experiment = experiment_list[4] 
+experiment = experiment_list[2] 
 if experiment == :l63
     filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
     prelim_jld2_file = "l63_computed_preliminaries.jld2"
@@ -114,6 +114,8 @@ avail_metrics = Symbol[:mahalanobis, :logratio]
 ((haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing")) || (haskey(ncd, "output_samples") && !isnothing(y_truth)) || haskey(ncd, "forcing_coverage") || haskey(ncd, "output_coverage")) && push!(avail_metrics, :coverage)
 (haskey(ncd, "output_coverage") || haskey(ncd, "forcing_coverage")) && push!(avail_metrics, :budget_for_coverage)
 
+avail_quantiles = haskey(ncd, "coverage_quantile") ? Float64.(ncd["coverage_quantile"][:]) : nothing
+
 println("="^72)
 println("File: $(filename)")
 println()
@@ -121,11 +123,13 @@ println("All available options:")
 println("  display_spaces    — $(avail_spaces)")
 println("  display_metrics   — $(avail_metrics)")
 println("  display_ens_sizes — $(ens_vals)")
+isnothing(avail_quantiles) || println("  coverage_quantile — $(avail_quantiles)  ($(length(avail_quantiles)) levels)")
 println()
 println("Currently selected (edit display_* variables above to filter):")
 println("  display_spaces    = $(isnothing(display_spaces)    ? "nothing  →  $(avail_spaces)"  : display_spaces)")
 println("  display_metrics   = $(isnothing(display_metrics)   ? "nothing  →  $(avail_metrics)" : display_metrics)")
 println("  display_ens_sizes = $(isnothing(display_ens_sizes) ? "nothing  →  $(ens_vals)"       : display_ens_sizes)")
+isnothing(avail_quantiles) || println("  calibration_check_quantiles = $(calibration_check_quantiles)  (used to select quantile subset for budget metric)")
 println("="^72)
 
 mh_nonmiss  = sum(.!ismissing.(mh), dims=1)[1,:,:]
@@ -793,35 +797,58 @@ if show_metric(:budget_for_coverage)
     kiter_plot_data  = []   # [(label, n_dim_label, kiters_mat), ...]
 
     # ── Raw coverage from stored NC variables ──────────────────────────────
-    for (space_label, space_sym, cov_key, dim_key) in [
-        ("Output-space raw",  :output,  "output_coverage",  "output_dim"),
-        ("Forcing-space raw", :forcing, "forcing_coverage", "forcing_dim"),
+    for (space_label, space_sym, cov_key, dim_key, budget_nc_key, iters_nc_key) in [
+        ("Output-space raw",  :output,  "output_coverage",  "output_dim",  "output_budget_to_target",  "output_iters_to_target"),
+        ("Forcing-space raw", :forcing, "forcing_coverage", "forcing_dim", "forcing_budget_to_target", "forcing_iters_to_target"),
     ]
         (show_space(space_sym) && haskey(ncd, cov_key) && haskey(ncd, dim_key)) || continue
 
         n_dim_bud = ncd.dim[dim_key]
-        cov_nc_full = Array(ncd[cov_key])   # (n_rng, n_ens_size, n_k_iter, n_cov_q)
-        # Subset to calibration_check_quantiles indices within the stored grid
-        if haskey(ncd, "coverage_quantile")
+
+        # Subset coverage to the requested quantiles; fall back to full grid when
+        # coverage_quantile coordinate is absent (old files).
+        can_load = haskey(ncd, "coverage_quantile")
+        bq_idx = nothing
+        if can_load
             bq_nc  = Float64.(ncd["coverage_quantile"][:])
-            bq_idx = [something(findfirst(q -> abs(q - qc) < 1e-10, bq_nc), 0) for qc in bq_vals]
-            cov_nc = all(>(0), bq_idx) ? cov_nc_full[:, :, :, bq_idx] : cov_nc_full
-        else
-            cov_nc = cov_nc_full
+            bq_idx = [findfirst(q -> abs(q - qc) < 1e-10, bq_nc) for qc in bq_vals]
+            can_load = all(!isnothing, bq_idx)
         end
 
-        budgets_raw = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
-        kiters_raw  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
-        for (si, c) in enumerate(budget_target_scalings)
-            tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_bud)
-            for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
-                for (ki, kv) in enumerate(kiter_vals)
-                    s_q = cov_nc[ri, ei, ki, :]
-                    all(isnan.(s_q)) && continue
-                    if all(abs.(s_q .- bq_vals) .<= tol)
-                        budgets_raw[ri, ei, si] = ev * kv
-                        kiters_raw[ri, ei, si]  = kv
-                        break
+        if can_load
+            @info "Computing $(space_label) budget from NC  (quantile subset: $(bq_vals))"
+            cov_bq = Array(ncd[cov_key])[:, :, :, bq_idx]   # (n_rng, n_ens, n_k, n_bq)
+            budgets_raw = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            kiters_raw  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            for (si, c) in enumerate(budget_target_scalings)
+                tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_bud)
+                for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
+                    for (ki, kv) in enumerate(kiter_vals)
+                        s_q = coalesce.(cov_bq[ri, ei, ki, :], NaN)
+                        all(isnan.(s_q)) && continue
+                        if all(abs.(s_q .- bq_vals) .<= tol)
+                            budgets_raw[ri, ei, si] = ev * kv
+                            kiters_raw[ri, ei, si]  = kv
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            cov_nc = Array(ncd[cov_key])   # (n_rng, n_ens_size, n_k_iter, n_cov_q)
+            budgets_raw = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            kiters_raw  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            for (si, c) in enumerate(budget_target_scalings)
+                tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_bud)
+                for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
+                    for (ki, kv) in enumerate(kiter_vals)
+                        s_q = coalesce.(cov_nc[ri, ei, ki, :], NaN)
+                        all(isnan.(s_q)) && continue
+                        if all(abs.(s_q .- bq_vals) .<= tol)
+                            budgets_raw[ri, ei, si] = ev * kv
+                            kiters_raw[ri, ei, si]  = kv
+                            break
+                        end
                     end
                 end
             end

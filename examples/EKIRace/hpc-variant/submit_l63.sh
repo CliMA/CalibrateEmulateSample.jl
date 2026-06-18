@@ -44,6 +44,14 @@ PUSHFWD_JID=$(sbatch --parsable \
 		 pushforward_from_posterior.sbatch)
 echo "  pushforward_from_posterior job ID: ${PUSHFWD_JID}"
 
+echo "=== Submitting posterior_diagnostic_plots (L63, after ${PUSHFWD_JID}) ==="
+POST_DIAG_JID=$(sbatch --parsable \
+		 -A esm \
+		 --job-name="post_diag_${LABEL}" \
+		 --dependency=afterany:${PUSHFWD_JID} \
+		 posterior_diagnostic_plots_l63.sbatch)
+echo "  posterior_diagnostic_plots job ID: ${POST_DIAG_JID}"
+
 echo "=== Submitting exp_to_leaderboard (L63, after ${PUSHFWD_JID}) ==="
 LB_JID=$(sbatch --parsable \
 		 -A esm \
@@ -57,5 +65,6 @@ echo "=== Done. Monitor with: squeue -u \$USER ==="
 
 # sbatch --parsable -A esm --job-name="pushfwd_l63" --export=ALL pushforward_from_posterior.sbatch
 
+# sbatch -A esm --job-name="post_diag_l63" posterior_diagnostic_plots_l63.sbatch
 
 # sbatch -A esm --job-name="leaderboard_l63" --export=ALL,EXPERIMENT=l63 exp_to_leaderboard.sbatch
