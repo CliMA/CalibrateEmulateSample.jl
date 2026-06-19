@@ -15,6 +15,7 @@
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
 #SBATCH --ntasks=1
+#SBATCH --constraint=cascadelake
 
 set -euo pipefail
 

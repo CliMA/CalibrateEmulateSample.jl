@@ -23,10 +23,11 @@
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
 #SBATCH --ntasks=1
+#SBATCH --constraint=cascadelake
 
 set -euo pipefail
 
-module load julia/1.12.2   # pin version as needed, e.g.: module load julia/1.10.4
+module load julia/1.12.2   
 
 export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export OPENBLAS_NUM_THREADS=${SLURM_CPUS_PER_TASK}
