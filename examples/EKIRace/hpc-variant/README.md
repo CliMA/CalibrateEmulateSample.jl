@@ -26,7 +26,9 @@ submission time.
 ### L63
 
 ```
-calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  pushforward_from_posterior  ──afterany──►  exp_to_leaderboard
+                                                                                                ┌──afterany──►  posterior_diagnostic_plots_l63
+calibrate_array  ──afterok──►  emulate_sample_array  ──afterany──►  pushforward_from_posterior ─┤
+                                                                                                └──afterany──►  exp_to_leaderboard
 ```
 
 ### L96 (const / vec / flux)
@@ -37,12 +39,12 @@ calibrate_array  ──afterok──►  emulate_sample_array  ──afterany─
                                                                                                  ──afterany──►  exp_to_leaderboard
 ```
 
-`calibration_diagnostic_plots` and `emulate_sample` both start once calibrate
-succeeds (they run in parallel).  `pushforward_from_posterior` starts once
-`emulate_sample` finishes and runs the Lorenz forward map for every posterior
-cell in parallel, saving forcing and output samples back into each posterior
-JLD2 file.  `posterior_diagnostic_plots` and `exp_to_leaderboard` both start
-once `pushforward_from_posterior` finishes — they simply load the precomputed
+For L96, `calibration_diagnostic_plots` and `emulate_sample` both start once
+calibrate succeeds (they run in parallel).  For all cases, `pushforward_from_posterior`
+starts once `emulate_sample` finishes and runs the Lorenz forward map for every
+posterior cell in parallel, saving forcing and output samples back into each
+posterior JLD2 file.  `posterior_diagnostic_plots` and `exp_to_leaderboard` both
+start once `pushforward_from_posterior` finishes — they load the precomputed
 samples rather than re-running the forward map.
 
 ## Standalone (serial)
@@ -54,6 +56,8 @@ Run with no arguments to sweep all `(N_ens, rng_idx)` cells sequentially.
 julia --project=. calibrate_l63.jl
 julia --project=. emulate_sample_l63.jl
 julia --project=. pushforward_from_posterior_l63.jl
+julia --project=. posterior_diagnostic_plots_l63.jl
+julia --project=. exp_to_leaderboard.jl
 
 # L96 — set EXPERIMENT env var or edit the toggle in experiment_config.jl
 EXPERIMENT=l96_const julia --project=. calibrate_l96.jl
@@ -61,25 +65,27 @@ EXPERIMENT=l96_const julia --project=. calibration_diagnostic_plots_l96.jl
 EXPERIMENT=l96_const julia --project=. emulate_sample_l96.jl
 EXPERIMENT=l96_const julia --project=. pushforward_from_posterior_l96.jl
 EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl
+EXPERIMENT=l96_const julia --project=. exp_to_leaderboard.jl
 ```
 
 You can also run a single cell by passing its 1-based task index for the
 array-capable scripts:
 
 ```bash
-julia --project=. calibrate_l63.jl 1                    # first (N_ens, rng_idx) cell only
-julia --project=. emulate_sample_l63.jl 5               # fifth cell only
-julia --project=. pushforward_from_posterior_l63.jl 5   # fifth cell only
+julia --project=. calibrate_l63.jl 1                         # first (N_ens, rng_idx) cell only
+julia --project=. emulate_sample_l63.jl 5                    # fifth cell only
+julia --project=. pushforward_from_posterior_l63.jl 5        # fifth cell only
+julia --project=. posterior_diagnostic_plots_l63.jl 5        # fifth cell only
 EXPERIMENT=l96_const julia --project=. pushforward_from_posterior_l96.jl 3
 EXPERIMENT=l96_const julia --project=. posterior_diagnostic_plots_l96.jl 3
 ```
 
-Leaderboard conversion runs all cells serially in a single call (requires
+`exp_to_leaderboard.jl` runs all cells serially in a single call (requires
 pushforward to have been run first):
 
 ```bash
-julia --project=. l63_exp_to_leaderboard_utilities.jl
-EXPERIMENT=l96_const julia --project=. l96_exp_to_leaderboard_utilities.jl
+julia --project=. exp_to_leaderboard.jl
+EXPERIMENT=l96_const julia --project=. exp_to_leaderboard.jl
 ```
 
 ## HPC (Caltech Resnick cluster, SLURM)
@@ -128,6 +134,10 @@ PUSHFWD_JID=$(sbatch --parsable -A esm \
               pushforward_from_posterior.sbatch)
 sbatch -A esm \
        --dependency=afterany:${PUSHFWD_JID} \
+       posterior_diagnostic_plots_l63.sbatch
+sbatch -A esm \
+       --dependency=afterany:${PUSHFWD_JID} \
+       --export=ALL,EXPERIMENT=l63 \
        exp_to_leaderboard.sbatch
 
 # L96
@@ -163,7 +173,8 @@ sbatch -A esm \
 | `calibrate_array.sbatch` | array (1–180) | One task per `(N_ens, rng_idx)` cell |
 | `emulate_sample_array.sbatch` | array (1–180) | One task per `(N_ens, rng_idx)` cell |
 | `pushforward_from_posterior.sbatch` | array (1–180) | Posterior pushforward (forcing + output), one task per cell; saves results into the posterior JLD2 |
-| `calibration_diagnostic_plots_l96.sbatch` | single job | Calibration figures, all cells serially (L96) |
+| `calibration_diagnostic_plots_l96.sbatch` | single job | Calibration figures, all cells serially (L96 only) |
+| `posterior_diagnostic_plots_l63.sbatch` | array (1–180) | Posterior ribbon/scatter figures, one task per cell (L63); loads pushforward from JLD2 |
 | `posterior_diagnostic_plots_l96.sbatch` | array (1–180) | Posterior ribbon/scatter figures, one task per cell (L96); loads pushforward from JLD2 |
 | `exp_to_leaderboard.sbatch` | single job | NetCDF leaderboard file, all cells serially; loads pushforward from JLD2 |
 | `precompile.sbatch` | single job | `Pkg.instantiate()` + `Pkg.precompile()` |
