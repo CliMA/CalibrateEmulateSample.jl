@@ -18,7 +18,8 @@ In `experiment_config.jl`, set `EXPERIMENT` to the case you want to run and pin
 `calibrate_date` before starting a run, e.g.
 
 ```julia
-EXPERIMENT     = :l96_vec
+experiments    = [:l63, :l96_const, :l96_vec, :l96_flux]
+EXPERIMENT     = experiments[3]   # :l96_vec
 calibrate_date = Date("2026-06-04", "yyyy-mm-dd")
 ```
 
@@ -48,8 +49,11 @@ julia --project -e 'include("calibrate_l63.jl")'
 julia --project -e 'include("calibrate_l96.jl")'
 ```
 
-The L96 calibration also writes a `l96_computed_preliminaries_<force_case>.jld2`
-file to `output/` that the later stages require.
+Each calibration script also writes a shared preliminaries file to `output/`
+that all later stages require:
+
+- `calibrate_l63.jl` → `output/l63_computed_preliminaries.jld2`
+- `calibrate_l96.jl` → `output/l96_computed_preliminaries_<force_case>.jld2`
 
 ### 2. Calibration diagnostic plots (L96 only)
 
@@ -75,17 +79,32 @@ Reads the calibration output for each `(N_ens, rng_idx)` cell, trains an
 emulator, runs MCMC, and writes per-cell posterior `.jld2` files to the
 calibration output directory.
 
-### 4. Posterior diagnostic plots (L96 only)
+### 4. Pushforward from posterior
+
+```bash
+# L63
+julia --project -e 'include("pushforward_from_posterior_l63.jl")'
+
+# L96
+julia --project -e 'include("pushforward_from_posterior_l96.jl")'
+```
+
+For each posterior `.jld2`, draws samples from the fitted posterior and runs
+them through the Lorenz forward map, saving the resulting forcing and output
+sample arrays back into the same `.jld2` file.  This step is required before
+running stage 5 (posterior diagnostics) or stage 6 (leaderboard).
+
+### 5. Posterior diagnostic plots (L96 only)
 
 ```bash
 julia --project -e 'include("posterior_diagnostic_plots_l96.jl")'
 ```
 
-Reads each posterior `.jld2`, pushes 400 samples through the Lorenz 96
-forward map, and writes pushforward and posterior-ribbon diagnostic plots
-into the calibration output directory.
+Reads each posterior `.jld2` (including the pushforward samples written in
+stage 4) and writes pushforward and posterior-ribbon diagnostic plots into
+the calibration output directory.
 
-### 5. Leaderboard
+### 6. Leaderboard
 
 Convert the per-cell posterior files into a leaderboard NetCDF file:
 
@@ -97,22 +116,28 @@ julia --project -e 'include("l63_exp_to_leaderboard_utilities.jl")'
 julia --project -e 'include("l96_exp_to_leaderboard_utilities.jl")'
 ```
 
-To compute summary metrics from the resulting netCDF file, edit the `filename`
-variable at the top of `compute_leaderboard_metrics.jl` to point to the target
-file, then run:
+These scripts require the pushforward samples from stage 4 to be present in
+each posterior `.jld2`.
+
+To compute summary metrics from the resulting NetCDF file, pair the `filename`
+and `prelim_jld2_file` variables at the top of `compute_leaderboard_metrics.jl`
+to point to the target file and its prelim JLD2, then run:
 
 ```bash
 julia --project -e 'include("compute_leaderboard_metrics.jl")'
 ```
 
-This prints per-ensemble-size Mahalanobis and log-posterior scores against
-chi-squared reference quantiles.
+This prints per-ensemble-size calibration scores (Mahalanobis, log-posterior
+ratio, marginal coverage) against chi-squared reference quantiles, and saves
+budget-for-coverage figures to `indir/`.  The prelim JLD2 is needed for
+R-whitened PCA coverage; without it, only raw coverage is reported.
 
 ## Full run example (L96 vector forcing)
 
 ```julia
 # In experiment_config.jl:
-EXPERIMENT     = :l96_vec
+experiments    = [:l63, :l96_const, :l96_vec, :l96_flux]
+EXPERIMENT     = experiments[3]   # :l96_vec
 calibrate_date = Date("2026-06-04", "yyyy-mm-dd")
 ```
 
@@ -120,6 +145,7 @@ calibrate_date = Date("2026-06-04", "yyyy-mm-dd")
 julia --project -e 'include("calibrate_l96.jl")'
 julia --project -e 'include("calibration_diagnostic_plots_l96.jl")'   # optional
 julia --project -e 'include("emulate_sample_l96.jl")'
+julia --project -e 'include("pushforward_from_posterior_l96.jl")'
 julia --project -e 'include("posterior_diagnostic_plots_l96.jl")'     # optional
 julia --project -e 'include("l96_exp_to_leaderboard_utilities.jl")'
 ```

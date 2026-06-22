@@ -113,6 +113,23 @@ cov_solve = lorenz_solve(truth_params, x0, LorenzConfig(t, covT))
 ic_cov = 0.1 * cov(cov_solve, dims = 2)
 ic_cov_sqrt = sqrt(ic_cov)
 
+prelim_file = joinpath(output_dir, "l63_computed_preliminaries.jld2")
+if !isfile(prelim_file)
+    prelim_tmp = splitext(prelim_file)[1] * ".tmp.$(getpid()).jld2"
+    JLD2.save(
+        prelim_tmp,
+        "x0", x0,
+        "y", y,
+        "lorenz_config_settings", lorenz_config_settings,
+        "observation_config", observation_config,
+        "ic_cov_sqrt", ic_cov_sqrt,
+        "R", R,
+        "R_inv_var", R_inv_var,
+    )
+    mv(prelim_tmp, prelim_file)
+    @info "Saved computed quantities to $(prelim_file)"
+end
+
 ########################################################################
 ########################### Running EKI Race ###########################
 ########################################################################

@@ -3,22 +3,31 @@ using Distributions
 using Statistics
 using Printf
 using DataFrames
+using JLD2
+using LinearAlgebra
 
 indir = "." #joinpath("output","from-hpc_2026-05-31")
 #filename = "ces-eki-dmc_l63_ensemble_results_2026-05-29.nc"
+#prelim_jld2_file = "l63_computed_preliminaries.jld2"
 #filename = "ces-eki-dmc_l96_ensemble_results_2026-05-29.nc"
+#prelim_jld2_file = "l96_computed_preliminaries_const-force.jld2"
 #filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_2026-05-29.nc"
-filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_2026-05-31.nc"
+#prelim_jld2_file = "l96_computed_preliminaries_vec-force.jld2"
+filename         = "ces-eki-dmc_l96_nn_forcing_ensemble_results_2026-05-31.nc"
+prelim_jld2_file = "l96_computed_preliminaries_flux-force.jld2"
 
-filename = joinpath(indir, filename)
+filename        = joinpath(indir, filename)
+prelim_filename = joinpath(indir, prelim_jld2_file)
 @info "computing leaderboard metrics from $(filename)"
 
 ###########################################################################
 #################### Metric parameters ###################################
 ###########################################################################
 
-calibration_check_quantiles = [0.1, 0.5, 0.9] # quantile levels for calibration check scores and coverage
-n_lowrank_modes             = 5                # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
+calibration_check_quantiles = [0.15, 0.5, 0.85] # quantile levels for calibration check scores and coverage
+n_lowrank_modes             = 2              # top EOF modes for perturbed-low-rank (aI+UDU') Mahalanobis
+R_variance_retain           = 0.99             # fraction of R variance to retain for R-whitened PCA coverage
+budget_target_scalings      = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]  # c values for α_c(q) = c·√(q(1−q)/N_y)
 
 ###########################################################################
 #################### Display filters ####################################
@@ -33,15 +42,17 @@ n_lowrank_modes             = 5                # top EOF modes for perturbed-low
 #    :output   — output space      (pushforward posterior vs observations)
 #
 #  display_metrics — which metric types to display:
-#    :mahalanobis     — full Mahalanobis distance  M = (m−truth)ᵀ C⁻¹ (m−truth)
-#    :logratio        — log PDF ratio              L = log p(truth|post) − log p(mode|post)
-#    :plr_mahalanobis — perturbed-low-rank M        (top / residual / total; forcing and output only)
-#    :coverage        — marginal coverage fractions (forcing and output only)
+#    :mahalanobis        — full Mahalanobis distance  M = (m−truth)ᵀ C⁻¹ (m−truth)
+#    :logratio           — log PDF ratio              L = log p(truth|post) − log p(mode|post)
+#    :plr_mahalanobis    — perturbed-low-rank M        (top / residual / total; forcing and output only)
+#    :coverage           — marginal coverage fractions (forcing and output only)
+#    :budget_for_coverage — per-repeat budget (N_ens·k_iter) to reach c·√(q(1-q)/N_y) tolerance
+#                           for each (c, N_ens) pair; reports mean/median/IQR/min/max across repeats
 #
 #  display_ens_sizes — which ensemble-size values (integers) to show in tables.
 
 display_spaces    = [:output]   # e.g. [:param, :forcing]
-display_metrics   = [:coverage]  # e.g. [:mahalanobis, :plr_mahalanobis]
+display_metrics   = [:coverage, :budget_for_coverage]  # e.g. [:mahalanobis, :plr_mahalanobis]
 display_ens_sizes = nothing   # e.g. [10, 50]
 
 show_metric(m) = isnothing(display_metrics)  || m in display_metrics
@@ -52,6 +63,7 @@ show_ens(e)    = isnothing(display_ens_sizes) || e in display_ens_sizes
 #################### Load file and report available options ##############
 ###########################################################################
 
+@info "computing leaderboard metrics from $(filename)"
 ncd = NCDataset(filename)
 mh = ncd[:mahalanobis]
 lp = ncd[:posterior_logpdf_true_v_map]
@@ -59,13 +71,33 @@ lp = ncd[:posterior_logpdf_true_v_map]
 ens_vals   = try Int.(ncd["ensemble_size"][:]) catch; collect(1:n_ens_size) end
 kiter_vals = try Int.(ncd["k_iter"][:])        catch; collect(1:n_k_iter)   end
 
+# Load truth and observation-noise covariance from the prelim JLD2 (calibrate output).
+# Falls back gracefully if the file is absent.
+if isfile(prelim_filename)
+    @info "using precomputed quantities from $(prelim_filename)"
+    _pd     = JLD2.load(prelim_filename)
+    y_truth = Float64.(_pd["y"])
+    R_obs   = Float64.(_pd["R"])
+    @info "Loaded y and R from $(prelim_jld2_file)"
+elseif haskey(ncd, "truth_output")
+    y_truth = Float64.(ncd["truth_output"][:])
+    R_obs   = nothing
+else
+    @warn "Prelim file not found at $(prelim_filename) and truth_output absent from NC; R-whitened coverage disabled."
+    y_truth = nothing
+    R_obs   = nothing
+end
+
 # Discover what is actually present in this file
 avail_spaces  = Symbol[:param]
 avail_metrics = Symbol[:mahalanobis, :logratio]
-(haskey(ncd, "forcing_mahalanobis") || haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "forcing_coverage")) && push!(avail_spaces, :forcing)
-(haskey(ncd, "output_mahalanobis")  || haskey(ncd, "output_plr_mahalanobis_top")  || haskey(ncd, "output_coverage"))  && push!(avail_spaces, :output)
+(haskey(ncd, "forcing_mahalanobis") || haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "forcing_coverage") || (haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing"))) && push!(avail_spaces, :forcing)
+(haskey(ncd, "output_mahalanobis")  || haskey(ncd, "output_plr_mahalanobis_top")  || haskey(ncd, "output_coverage")  || (haskey(ncd, "output_samples") && !isnothing(y_truth)))          && push!(avail_spaces, :output)
 (haskey(ncd, "forcing_plr_mahalanobis_top") || haskey(ncd, "output_plr_mahalanobis_top")) && push!(avail_metrics, :plr_mahalanobis)
-(haskey(ncd, "forcing_coverage") || haskey(ncd, "output_coverage"))                        && push!(avail_metrics, :coverage)
+((haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing")) || (haskey(ncd, "output_samples") && !isnothing(y_truth)) || haskey(ncd, "forcing_coverage") || haskey(ncd, "output_coverage")) && push!(avail_metrics, :coverage)
+(haskey(ncd, "output_coverage") || haskey(ncd, "forcing_coverage")) && push!(avail_metrics, :budget_for_coverage)
+
+avail_quantiles = haskey(ncd, "coverage_quantile") ? Float64.(ncd["coverage_quantile"][:]) : nothing
 
 println("="^72)
 println("File: $(filename)")
@@ -74,11 +106,13 @@ println("All available options:")
 println("  display_spaces    — $(avail_spaces)")
 println("  display_metrics   — $(avail_metrics)")
 println("  display_ens_sizes — $(ens_vals)")
+isnothing(avail_quantiles) || println("  coverage_quantile — $(avail_quantiles)  ($(length(avail_quantiles)) levels)")
 println()
 println("Currently selected (edit display_* variables above to filter):")
 println("  display_spaces    = $(isnothing(display_spaces)    ? "nothing  →  $(avail_spaces)"  : display_spaces)")
 println("  display_metrics   = $(isnothing(display_metrics)   ? "nothing  →  $(avail_metrics)" : display_metrics)")
 println("  display_ens_sizes = $(isnothing(display_ens_sizes) ? "nothing  →  $(ens_vals)"       : display_ens_sizes)")
+isnothing(avail_quantiles) || println("  calibration_check_quantiles = $(calibration_check_quantiles)  (used to select quantile subset for budget metric)")
 println("="^72)
 
 mh_nonmiss  = sum(.!ismissing.(mh), dims=1)[1,:,:]
@@ -429,57 +463,439 @@ end
 ###########################################################################
 #################### Marginal coverage fractions #########################
 ###########################################################################
+# Coverage is computed on-the-fly from raw pushforward samples and truth,
+# allowing any quantile level.  When R_obs is loaded from the prelim JLD2,
+# an additional R-whitened (PCA) coverage is computed: each coordinate is
+# decorrelated by the eigenvectors of R and scaled by the inverse sqrt of
+# the corresponding eigenvalue, making dimensions more independent.
 
 if show_metric(:coverage)
-    for (space_label, space_sym, cov_sym) in [
-        ("Forcing", :forcing, :forcing_coverage),
-        ("Output",  :output,  :output_coverage),
-    ]
-        (show_space(space_sym) && haskey(ncd, cov_sym)) || continue
 
-        cov        = ncd[cov_sym]          # (n_rng, n_ens_size, n_k_iter, n_cov_q)
-        cov_qs_all = Float64.(ncd["coverage_quantile"][:])
-        qi_keep    = findall(qp -> any(isapprox(qp, p, atol=1e-8) for p in calibration_check_quantiles), cov_qs_all)
-        cov_qs     = cov_qs_all[qi_keep]
+    # ── Output-space coverage ──────────────────────────────────────────────
+    if show_space(:output) && haskey(ncd, "output_samples") && !isnothing(y_truth)
+
+        n_out  = ncd.dim["output_dim"]
+        os_all = coalesce.(Array(ncd["output_samples"]), NaN)   # (n_rng, n_ens_size, n_k_iter, n_ps, n_out)
+        actual_out_dim = size(os_all, 5)
+        actual_out_dim != n_out && @warn "output_samples trailing dim ($actual_out_dim) ≠ output_dim ($n_out); raw coverage uses actual dim, R-whitened coverage disabled"
+
+        do_whiten = !isnothing(R_obs)
+        if do_whiten
+            eig_R   = eigen(Symmetric(R_obs))
+            ord     = sortperm(eig_R.values; rev=true)   # descending eigenvalue order
+            λ_all   = eig_R.values[ord]
+            V_all   = eig_R.vectors[:, ord]
+            cum_var = cumsum(λ_all) ./ sum(λ_all)
+            k_R     = something(findfirst(>=(R_variance_retain), cum_var), length(λ_all))
+            V_R     = V_all[:, 1:k_R]
+            λ_R     = λ_all[1:k_R]
+            yw      = V_R' * y_truth ./ sqrt.(λ_R)
+            println(@sprintf("\nR eigenvalue truncation: %d / %d modes retained  (threshold %.1f%% → %.4f%% variance)",
+                             k_R, n_out, 100*R_variance_retain, 100*cum_var[k_R]))
+        end
+
+        for (label, do_white) in [("raw", false), ("R-whitened PCA", true)]
+            (do_white && !do_whiten) && continue
+
+            local cov_arr = fill(NaN, n_rng, n_ens_size, n_k_iter, length(calibration_check_quantiles))
+            for ri in 1:n_rng, ei in 1:n_ens_size, ki in 1:n_k_iter
+                os = os_all[ri, ei, ki, :, :]   # (n_ps, n_out)
+                all(isnan.(os)) && continue
+                if do_white
+                    size(os, 2) != size(V_R, 1) && continue
+                    sw        = Matrix((V_R' * Matrix(os')) ./ sqrt.(λ_R))'   # (n_ps, k_R)
+                    truth_vec = yw
+                    n_cov_dim = k_R
+                else
+                    sw        = os
+                    truth_vec = y_truth
+                    n_cov_dim = actual_out_dim
+                end
+                for (qi, qp) in enumerate(calibration_check_quantiles)
+                    cov_arr[ri, ei, ki, qi] = mean(truth_vec[d] <= quantile(sw[:, d], qp) for d in 1:n_cov_dim)
+                end
+            end
+
+            println("\n" * "="^72)
+            println("Output-space marginal coverage fractions  [$(label)]")
+            if do_white
+                println("  x̃_d = (Vᵀx)_d / √λ_d  (R = VΛVᵀ, top $(k_R)/$(n_out) modes, $(round(Int, 100*R_variance_retain))% var threshold)")
+                println("  Coverage evaluated over effective dimension = $(k_R)  (full output dim = $(n_out))")
+            end
+            println("  (dims as trials; expected mean_coverage ≈ q_prob for calibrated posterior)")
+            println("="^72)
+            println("Pooled mean coverage across all experiments:")
+            for (qi, qp) in enumerate(calibration_check_quantiles)
+                pool = collect(filter(!isnan, vec(cov_arr[:, :, :, qi])))
+                isempty(pool) && continue
+                println(@sprintf("  q = %.2f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
+            end
+
+            local df_cov = DataFrame(
+                q_prob=Float64[], ens_size=Int[], k_iter=Int[],
+                mean_coverage=Union{Float64,Missing}[], std_coverage=Union{Float64,Missing}[], n_valid=Int[],
+            )
+            for (qi, qp) in enumerate(calibration_check_quantiles), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
+                vals = filter(!isnan, vec(cov_arr[:, ei, ki, qi]))
+                push!(df_cov, (q_prob=qp, ens_size=ev, k_iter=kv,
+                    mean_coverage = isempty(vals) ? missing : mean(vals),
+                    std_coverage  = length(vals) > 1 ? std(vals) : missing,
+                    n_valid       = length(vals)))
+            end
+
+            println("\nOutput-space coverage by ens_size and k_iter:")
+            for ens in filter(show_ens, sort(unique(df_cov.ens_size)))
+                println("\n=== ens_size = $(ens) ===")
+                for (qi, qp) in enumerate(calibration_check_quantiles)
+                    sub = sort(filter(r -> r.ens_size == ens && r.q_prob == qp, df_cov), :k_iter)
+                    println("  q = $(qp)  (expected ≈ $(qp))")
+                    show(stdout, select(sub, :k_iter, :mean_coverage, :std_coverage, :n_valid), allrows=true)
+                    println()
+                end
+            end
+        end
+    end
+
+    # ── Forcing-space coverage ─────────────────────────────────────────────
+    if show_space(:forcing) && haskey(ncd, "forcing_samples") && haskey(ncd, "truth_forcing")
+
+        n_for       = ncd.dim["forcing_dim"]
+        fs_all      = coalesce.(Array(ncd["forcing_samples"]), NaN)   # (n_rng, n_ens_size, n_k_iter, n_ps, n_for)
+        tf_all      = coalesce.(Array(ncd["truth_forcing"]), NaN)     # (n_rng, n_ens_size, n_for)
+
+        cov_arr = fill(NaN, n_rng, n_ens_size, n_k_iter, length(calibration_check_quantiles))
+        for ri in 1:n_rng, ei in 1:n_ens_size, ki in 1:n_k_iter
+            fs      = fs_all[ri, ei, ki, :, :]
+            truth_f = tf_all[ri, ei, :]
+            all(isnan.(fs)) && continue
+            for (qi, qp) in enumerate(calibration_check_quantiles)
+                cov_arr[ri, ei, ki, qi] = mean(truth_f[d] <= quantile(fs[:, d], qp) for d in 1:n_for)
+            end
+        end
 
         println("\n" * "="^72)
-        println("$(space_label)-space marginal coverage fractions")
-        println("  (Spatial dims as trials; spatially correlated → effective n < stated n)")
+        println("Forcing-space marginal coverage fractions  [raw]")
+        println("  (dims as trials; expected mean_coverage ≈ q_prob for calibrated posterior)")
         println("="^72)
         println("Pooled mean coverage across all experiments:")
-        for (qi_local, qi_file) in enumerate(qi_keep)
-            qp   = cov_qs[qi_local]
-            pool = collect(skipmissing(vec(Array(cov[:, :, :, qi_file]))))
+        for (qi, qp) in enumerate(calibration_check_quantiles)
+            pool = collect(filter(!isnan, vec(cov_arr[:, :, :, qi])))
+            isempty(pool) && continue
             println(@sprintf("  q = %.2f  mean = %.3f  (expected %.3f)", qp, mean(pool), qp))
         end
 
         df_cov = DataFrame(
-            q_prob        = Float64[],
-            ens_size      = Int[],
-            k_iter        = Int[],
-            mean_coverage = Union{Float64,Missing}[],
-            std_coverage  = Union{Float64,Missing}[],
-            n_valid       = Int[],
+            q_prob=Float64[], ens_size=Int[], k_iter=Int[],
+            mean_coverage=Union{Float64,Missing}[], std_coverage=Union{Float64,Missing}[], n_valid=Int[],
         )
-        for (qi_local, qi_file) in enumerate(qi_keep), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
-            qp   = cov_qs[qi_local]
-            vals = collect(skipmissing(cov[:, ei, ki, qi_file]))
+        for (qi, qp) in enumerate(calibration_check_quantiles), (ei, ev) in enumerate(ens_vals), (ki, kv) in enumerate(kiter_vals)
+            vals = filter(!isnan, vec(cov_arr[:, ei, ki, qi]))
             push!(df_cov, (q_prob=qp, ens_size=ev, k_iter=kv,
                 mean_coverage = isempty(vals) ? missing : mean(vals),
                 std_coverage  = length(vals) > 1 ? std(vals) : missing,
                 n_valid       = length(vals)))
         end
 
-        println("\n$(space_label)-space coverage by ens_size and k_iter:")
-        println("  (Expected: mean_coverage ≈ q_prob for calibrated marginals)")
+        println("\nForcing-space coverage by ens_size and k_iter:")
         for ens in filter(show_ens, sort(unique(df_cov.ens_size)))
             println("\n=== ens_size = $(ens) ===")
-            for (qi, qp) in enumerate(cov_qs)
+            for (qi, qp) in enumerate(calibration_check_quantiles)
                 sub = sort(filter(r -> r.ens_size == ens && r.q_prob == qp, df_cov), :k_iter)
                 println("  q = $(qp)  (expected ≈ $(qp))")
                 show(stdout, select(sub, :k_iter, :mean_coverage, :std_coverage, :n_valid), allrows=true)
                 println()
             end
         end
+    end
+end
+
+###########################################################################
+#################### Budget for coverage #################################
+###########################################################################
+# For each (c, N_ens) pair: smallest k_iter (per repeat) such that
+#   |S(q) − q| ≤ α_c(q) = c·√(q(1−q)/N_y) for ALL quantiles q.
+# Budget = N_ens·k_iter.  NaN = target never reached within the k_iter range.
+# Prints mean/median/IQR/min/max; reports 0 for all stats when n_conv = 0.
+# Saves one figure per space with one panel per c, box-and-whisker per N_ens.
+
+if show_metric(:budget_for_coverage)
+
+    ENV["GKSwstype"] = "100"
+    using Plots
+    using Plots.Measures
+
+    bq_vals = calibration_check_quantiles
+
+    # ── Table printer ──────────────────────────────────────────────────────
+    function _bfcov_print_table(budgets_mat, label, n_dim_label)
+        println("\n$(label)  (N_y = $(n_dim_label))")
+        println(@sprintf("  %-10s  %-6s  %8s  %8s  %14s  %8s  %8s  %s",
+                         "N_ens", "c", "mean", "median", "IQR[25,75]", "min", "max", "conv"))
+        for (ei, ev) in enumerate(ens_vals)
+            show_ens(ev) || continue
+            for (si, c) in enumerate(budget_target_scalings)
+                b      = filter(!isnan, vec(budgets_mat[:, ei, si]))
+                n_conv = length(b)
+                if n_conv == 0
+                    println(@sprintf("  %-10d  %-6.2f  %8.1f  %8.1f  [%5.0f,%5.0f]  %8.1f  %8.1f  %d/%d",
+                                     ev, c, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, n_rng))
+                else
+                    q25, q75 = quantile(b, [0.25, 0.75])
+                    println(@sprintf("  %-10d  %-6.2f  %8.1f  %8.1f  [%5.0f,%5.0f]  %8.1f  %8.1f  %d/%d",
+                                     ev, c, mean(b), median(b), q25, q75, minimum(b), maximum(b), n_conv, n_rng))
+                end
+            end
+        end
+    end
+
+    # ── Figure builder ─────────────────────────────────────────────────────
+    function _bfcov_make_figure(budgets_mat, label, n_dim_label;
+                                ylabel_str   = "budget  (N_ens · k_iter)",
+                                title_prefix = "Budget for coverage")
+        n_c      = length(budget_target_scalings)
+        n_cols   = n_c <= 4 ? n_c : 4
+        n_rows   = ceil(Int, n_c / n_cols)
+        dx       = 0.20   # half-width of whisker cap ticks in x-index space
+
+        filt_ens = [(ei, ev) for (ei, ev) in enumerate(ens_vals) if show_ens(ev)]
+        n_x      = length(filt_ens)
+
+        p = plot(layout = (2 * n_rows, n_cols),
+                 size   = (max(560 * n_cols, 1120), max(640 * n_rows, 700)),
+                 plot_title = "$(title_prefix) — $(label)  (N_y = $(n_dim_label))",
+                 plot_titlefontsize = 10,
+                 margin = 6mm)
+
+        # ── Top tier: budget whiskers ──────────────────────────────────────
+        for (si, c) in enumerate(budget_target_scalings)
+            b_all_panel = filter(!isnan, vec(budgets_mat[:, :, si]))
+            y_ref       = isempty(b_all_panel) ? 1.0 : max(maximum(b_all_panel), 1.0)
+
+            for (xi, (ei, ev)) in enumerate(filt_ens)
+                b_all  = vec(budgets_mat[:, ei, si])
+                b_conv = filter(!isnan, b_all)
+                n_conv = length(b_conv)
+                n_tot  = n_rng
+
+                if n_conv == 0
+                    scatter!(p, [xi], [0.0]; subplot = si, color = :red,
+                             marker = :x, markersize = 8, markerstrokewidth = 2, label = false)
+                    y_ann = 0.06 * y_ref
+
+                elseif n_conv == 1
+                    scatter!(p, [xi], b_conv; subplot = si, color = :steelblue,
+                             marker = :circle, markersize = 6, label = false)
+                    y_ann = b_conv[1]
+
+                elseif n_conv == 2
+                    mn, mx = minimum(b_conv), maximum(b_conv)
+                    plot!(p,  [xi, xi],       [mn, mx]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    plot!(p,  [xi-dx, xi+dx], [mn, mn]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    plot!(p,  [xi-dx, xi+dx], [mx, mx]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    y_ann = mx
+
+                else  # n_conv ≥ 3
+                    mn, mx, med = minimum(b_conv), maximum(b_conv), median(b_conv)
+                    plot!(p,    [xi, xi],       [mn, mx]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    plot!(p,    [xi-dx, xi+dx], [mn, mn]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    plot!(p,    [xi-dx, xi+dx], [mx, mx]; subplot = si, color = :steelblue, linewidth = 2, label = false)
+                    scatter!(p, [xi], [med]; subplot = si, color = :steelblue,
+                             marker = :circle, markersize = 7, markerstrokecolor = :white, label = false)
+                    y_ann = mx
+                end
+
+                ann_y = y_ann + 0.07 * y_ref
+                annotate!(p, [xi], [ann_y],
+                          [Plots.text("$(n_conv)/$(n_tot)", 7, :center, :black)]; subplot = si)
+            end
+
+            is_left = mod(si - 1, n_cols) == 0
+            plot!(p; subplot = si,
+                  title         = @sprintf("c = %.2f", c),
+                  titlefontsize = 9,
+                  xlabel        = "N_ens",
+                  ylabel        = is_left ? ylabel_str : "",
+                  xticks        = (collect(1:n_x), string.(last.(filt_ens))),
+                  xlims         = (0.5, n_x + 0.5),
+                  xrotation     = 30,
+                  legend        = false)
+        end
+
+        # ── Bottom tier: failure-fraction bars ─────────────────────────────
+        for (si, c) in enumerate(budget_target_scalings)
+            si_frac   = si + n_rows * n_cols
+            is_left   = mod(si - 1, n_cols) == 0
+
+            frac_fail_vec = [(n_rng - count(!isnan, budgets_mat[:, ei, si])) / n_rng
+                             for (ei, _ev) in filt_ens]
+
+            bar!(p, collect(1:n_x), frac_fail_vec; subplot = si_frac,
+                 bar_width   = 0.6,
+                 color       = :tomato,
+                 alpha       = 0.75,
+                 label       = false,
+                 xlabel      = "N_ens",
+                 ylabel      = is_left ? "frac. failed" : "",
+                 xticks      = (collect(1:n_x), string.(last.(filt_ens))),
+                 xlims       = (0.5, n_x + 0.5),
+                 ylims       = (0.0, 1.05),
+                 yticks      = [0.0, 0.5, 1.0],
+                 xrotation   = 30,
+                 legend      = false)
+        end
+
+        # ── Hide unused subplots in both tiers ────────────────────────────
+        for si in (n_c + 1):(n_rows * n_cols)
+            plot!(p; subplot = si,                    axis = false, grid = false, showaxis = false, framestyle = :none)
+            plot!(p; subplot = si + n_rows * n_cols,  axis = false, grid = false, showaxis = false, framestyle = :none)
+        end
+
+        return p
+    end
+
+    println("\n" * "="^72)
+    println("Budget for coverage")
+    println("  α_c(q) = c·√(q(1−q)/N_y),  budget = N_ens·k_iter")
+    println("  Find min k_iter per repeat where |S(q) − q| ≤ α_c(q) for ALL q")
+    println("  Quantile grid: $(length(bq_vals)) levels  [$(bq_vals[1]), …, $(bq_vals[end])]")
+    println("  target_scalings c = $(budget_target_scalings)")
+    println("="^72)
+
+    budget_plot_data = []   # [(label, n_dim_label, budgets_mat), ...]
+    kiter_plot_data  = []   # [(label, n_dim_label, kiters_mat), ...]
+    nc_tag           = splitext(basename(filename))[1]
+
+    # ── Raw coverage from stored NC variables ──────────────────────────────
+    for (space_label, space_sym, cov_key, dim_key) in [
+        ("Output-space raw",  :output,  "output_coverage",  "output_dim"),
+        ("Forcing-space raw", :forcing, "forcing_coverage", "forcing_dim"),
+    ]
+        (show_space(space_sym) && haskey(ncd, cov_key) && haskey(ncd, dim_key)) || continue
+
+        n_dim_bud = ncd.dim[dim_key]
+
+        # Subset coverage to the requested quantiles; fall back to full grid when
+        # coverage_quantile coordinate is absent (old files).
+        can_load = haskey(ncd, "coverage_quantile")
+        bq_idx = nothing
+        if can_load
+            bq_nc  = Float64.(ncd["coverage_quantile"][:])
+            bq_idx = [findfirst(q -> abs(q - qc) < 1e-10, bq_nc) for qc in bq_vals]
+            can_load = all(!isnothing, bq_idx)
+        end
+
+        if can_load
+            @info "Computing $(space_label) budget from NC  (quantile subset: $(bq_vals))"
+            cov_bq = Array(ncd[cov_key])[:, :, :, bq_idx]   # (n_rng, n_ens, n_k, n_bq)
+            budgets_raw = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            kiters_raw  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            for (si, c) in enumerate(budget_target_scalings)
+                tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_bud)
+                for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
+                    for (ki, kv) in enumerate(kiter_vals)
+                        s_q = coalesce.(cov_bq[ri, ei, ki, :], NaN)
+                        all(isnan.(s_q)) && continue
+                        if all(abs.(s_q .- bq_vals) .<= tol)
+                            budgets_raw[ri, ei, si] = ev * kv
+                            kiters_raw[ri, ei, si]  = kv
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            cov_nc = Array(ncd[cov_key])   # (n_rng, n_ens_size, n_k_iter, n_cov_q)
+            budgets_raw = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            kiters_raw  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+            for (si, c) in enumerate(budget_target_scalings)
+                tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_bud)
+                for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
+                    for (ki, kv) in enumerate(kiter_vals)
+                        s_q = coalesce.(cov_nc[ri, ei, ki, :], NaN)
+                        all(isnan.(s_q)) && continue
+                        if all(abs.(s_q .- bq_vals) .<= tol)
+                            budgets_raw[ri, ei, si] = ev * kv
+                            kiters_raw[ri, ei, si]  = kv
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        _bfcov_print_table(budgets_raw, space_label, n_dim_bud)
+        push!(budget_plot_data, (space_label, string(n_dim_bud), budgets_raw))
+        push!(kiter_plot_data,  (space_label, string(n_dim_bud), kiters_raw))
+    end
+
+    # ── R-whitened output coverage (recomputed from raw samples) ──────────
+    if show_space(:output) && haskey(ncd, "output_samples") && !isnothing(y_truth) && !isnothing(R_obs)
+        n_out_bud  = ncd.dim["output_dim"]
+        os_all_bud = coalesce.(Array(ncd["output_samples"]), NaN)
+
+        eig_Rb    = eigen(Symmetric(R_obs))
+        ord_b     = sortperm(eig_Rb.values; rev=true)
+        λ_all_b   = eig_Rb.values[ord_b]
+        V_all_b   = eig_Rb.vectors[:, ord_b]
+        cum_var_b = cumsum(λ_all_b) ./ sum(λ_all_b)
+        k_Rb      = something(findfirst(>=(R_variance_retain), cum_var_b), length(λ_all_b))
+        V_Rb      = V_all_b[:, 1:k_Rb]
+        λ_Rb      = λ_all_b[1:k_Rb]
+        yw_b      = V_Rb' * y_truth ./ sqrt.(λ_Rb)
+        n_dim_wb  = k_Rb
+
+        n_bq     = length(bq_vals)
+        wh_cov_b = fill(NaN, n_rng, n_ens_size, n_k_iter, n_bq)
+        for ri in 1:n_rng, (ei, _ev) in enumerate(ens_vals), ki in 1:n_k_iter
+            os = os_all_bud[ri, ei, ki, :, :]
+            all(isnan.(os)) && continue
+            size(os, 2) != size(V_Rb, 1) && continue
+            sw = Matrix((V_Rb' * Matrix(os')) ./ sqrt.(λ_Rb))'   # (n_ps, k_Rb)
+            for (qi, qp) in enumerate(bq_vals)
+                wh_cov_b[ri, ei, ki, qi] = mean(yw_b[d] <= quantile(sw[:, d], qp) for d in 1:n_dim_wb)
+            end
+        end
+
+        budgets_wh = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+        kiters_wh  = fill(NaN, n_rng, n_ens_size, length(budget_target_scalings))
+        for (si, c) in enumerate(budget_target_scalings)
+            tol = c .* sqrt.(bq_vals .* (1 .- bq_vals) ./ n_dim_wb)
+            for (ei, ev) in enumerate(ens_vals), ri in 1:n_rng
+                for (ki, kv) in enumerate(kiter_vals)
+                    s_q = wh_cov_b[ri, ei, ki, :]
+                    all(isnan.(s_q)) && continue
+                    if all(abs.(s_q .- bq_vals) .<= tol)
+                        budgets_wh[ri, ei, si] = ev * kv
+                        kiters_wh[ri, ei, si]  = kv
+                        break
+                    end
+                end
+            end
+        end
+        wh_label = "Output-space R-whitened"
+        wh_ndim  = "$(n_dim_wb) eff. dims ($(round(Int, 100*R_variance_retain))% var of R)"
+        _bfcov_print_table(budgets_wh, wh_label, wh_ndim)
+        push!(budget_plot_data, (wh_label, wh_ndim, budgets_wh))
+        push!(kiter_plot_data,  (wh_label, wh_ndim, kiters_wh))
+    end
+
+    # ── Generate and save figures ──────────────────────────────────────────
+    for (label, n_dim_label, bmat) in budget_plot_data
+        p_fig = _bfcov_make_figure(bmat, label, n_dim_label)
+        tag   = replace(lowercase(label), r"[^a-z0-9]+" => "_")
+        base  = joinpath(indir, "budget_for_coverage_$(tag)_$(nc_tag)")
+        savefig(p_fig, base * ".pdf")
+        savefig(p_fig, base * ".png")
+        @info "Saved: $(base).pdf"
+    end
+
+    for (label, n_dim_label, kmat) in kiter_plot_data
+        p_fig = _bfcov_make_figure(kmat, label, n_dim_label;
+                                   ylabel_str   = "k_iter",
+                                   title_prefix = "Iterations for coverage")
+        tag   = replace(lowercase(label), r"[^a-z0-9]+" => "_")
+        base  = joinpath(indir, "iters_for_coverage_$(tag)_$(nc_tag)")
+        savefig(p_fig, base * ".pdf")
+        savefig(p_fig, base * ".png")
+        @info "Saved: $(base).pdf"
     end
 end

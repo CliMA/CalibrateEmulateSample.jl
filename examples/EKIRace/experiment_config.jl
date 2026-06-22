@@ -3,12 +3,14 @@ using Dates
 ########################################################################
 ###############  USER TOGGLE  #########################################
 ########################################################################
-# Set EXPERIMENT to one of: :l63, :l96_const, :l96_vec, :l96_flux
-EXPERIMENT = :l96_flux
+# Set EXPERIMENT to one of:
+experiments = [:l63, :l96_const, :l96_vec, :l96_flux]
+EXPERIMENT = experiments[4]
 
 # Date identifying this calibration run — written by calibrate, read by
 # emulate_sample and exp_to_leaderboard (so all stages stay in sync).
-#calibrate_date = Date("2026-05-31", "yyyy-mm-dd")
+# PIN this to reproduce a specific run directory.
+#calibrate_date = Date("2026-06-03", "yyyy-mm-dd")
 calibrate_date = today()
 
 ########################################################################
@@ -46,14 +48,17 @@ forcing_cases_key = Dict(
 #    n_repeats: number of rng seeds
 
 function experiment_config(case::Symbol)
+    n_ens_step = 8
+    n_repeats = 20
     if case == :l63
+        ens_step = 2
         return (
             model          = "l63",
             force_case     = nothing,
-            N_ens_sizes    = [10, 25, 40],
+            N_ens_sizes    = collect(4:ens_step:4+n_ens_step*ens_step),
             N_iter         = 20,
             terminate_at   = 2.0,   # DataMisfitController end time
-            n_repeats      = 20,
+            n_repeats      = n_repeats,
             max_iter       = 10,
             retain_var     = 0.99,
             n_features     = 100,
@@ -61,13 +66,14 @@ function experiment_config(case::Symbol)
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_const
+        ens_step_const = 2
         return (
             model          = "l96",
             force_case     = "const-force",
-            N_ens_sizes    = [5, 15, 30],
+            N_ens_sizes    = collect(4:ens_step_const:4+n_ens_step*ens_step_const),
             N_iter         = 20,
             terminate_at   = 2.0,
-            n_repeats      = 20,
+            n_repeats      = n_repeats,
             max_iter       = 15,
             retain_var     = 0.99,
             n_features     = 200,
@@ -75,13 +81,14 @@ function experiment_config(case::Symbol)
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_vec
+        ens_step_vec = 5
         return (
             model          = "l96",
             force_case     = "vec-force",
-            N_ens_sizes    = [50, 75, 100],
+            N_ens_sizes    = collect(40:ens_step_vec:40+n_ens_step*ens_step_vec),
             N_iter         = 20,
             terminate_at   = 2.0,
-            n_repeats      = 20,
+            n_repeats      = n_repeats,
             max_iter       = 15,
             retain_var     = 0.99,
             n_features     = 200,
@@ -89,13 +96,14 @@ function experiment_config(case::Symbol)
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_flux
+        ens_step_flux = 5
         return (
             model          = "l96",
             force_case     = "flux-force",
-            N_ens_sizes    = [50, 75, 100],
+            N_ens_sizes    = collect(30:ens_step_flux:30+n_ens_step*ens_step_flux),
             N_iter         = 20,
             terminate_at   = 2.0,
-            n_repeats      = 20,
+            n_repeats      = n_repeats,
             max_iter       = 15,
             retain_var     = 0.99,
             n_features     = 200,
@@ -148,3 +156,4 @@ function nc_filename(cfg, method)
         return "$(key)_$(cfg.model)_$(forcing_cases_key[cfg.force_case])_$(cfg.calibrate_date).nc"
     end
 end
+
