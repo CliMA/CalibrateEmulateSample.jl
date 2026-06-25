@@ -20,12 +20,12 @@ include("Lorenz96.jl")  # provides Flux.destructure for flux-force truth_params 
 #### CHOOSE YOUR CASE:
 exp = l96_experiment()
 @assert exp in (:l96_const, :l96_vec, :l96_flux) "For plot_l96_forcing.jl, set EXPERIMENT to :l96_const, :l96_vec, or :l96_flux in experiment_config.jl"
-cfg        = experiment_config(exp)
-method     = method_cases[1]
-calib_dir  = calib_directory(method, cfg)
+cfg = experiment_config(exp)
+method = method_cases[1]
+calib_dir = calib_directory(method, cfg)
 force_cases = [cfg.force_case]
-N_enss     = cfg.N_ens_sizes
-rng_idxs   = collect(1:cfg.n_repeats)
+N_enss = cfg.N_ens_sizes
+rng_idxs = collect(1:(cfg.n_repeats))
 
 homedir = pwd()
 
@@ -60,7 +60,7 @@ for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_item
 
     @info("Plotting for L96: \n method: $(calib_dir) \n experiment: $(calib_filename_suffix)")
 
-    data_save_directory   = joinpath(homedir, "output", calib_dir)
+    data_save_directory = joinpath(homedir, "output", calib_dir)
     figure_save_directory = data_save_directory
 
     # --- load calibrate outputs ---
@@ -69,7 +69,7 @@ for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_item
     pri_file = joinpath(data_save_directory, prior_filename(cfg))
 
     ekpobj = load(ekp_file)["ekpobj"]
-    prior  = load(pri_file)["prior"]
+    prior = load(pri_file)["prior"]
 
     (truth_params_obj, _) = load(res_file)["truth_params_structure"]
     (truth_params_constrained, structure, sample_range) = if force_case == "const-force"
@@ -85,15 +85,15 @@ for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_item
 
     N_ens = get_N_ens(ekpobj)
     n_par = length(truth_params_constrained)
-    y     = get_obs(ekpobj)
-    ny    = length(y)
+    y = get_obs(ekpobj)
+    ny = length(y)
 
     # --- compute forcing quantities ---
-    is_const      = force_case == "const-force"
-    truth_emc     = build_forcing(truth_params_obj, truth_params_constrained, structure, sample_range)
+    is_const = force_case == "const-force"
+    truth_emc = build_forcing(truth_params_obj, truth_params_constrained, structure, sample_range)
     truth_forcing = forcing(truth_emc, x0)
     xaxis_forcing = isnothing(sample_range) ? range(0, length(truth_forcing) - 1, step = 1) : sample_range
-    final_emc     = build_forcing(truth_params_obj, final_params_constrained, structure, sample_range)
+    final_emc = build_forcing(truth_params_obj, final_params_constrained, structure, sample_range)
     final_forcing = forcing(final_emc, x0)
 
     # --- data plot ---
@@ -236,15 +236,28 @@ for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_item
         bottom_margin = 15mm,
     )
 
-    p3     = deepcopy(p1)
+    p3 = deepcopy(p1)
     p_mid3 = deepcopy(p_mid)
-    p4     = deepcopy(p2)
+    p4 = deepcopy(p2)
 
     if is_const
-        hline!(p1, [final_params_constrained[1] - truth_params_constrained[1]], label = "mean ensemble input", color = :lightgreen, linewidth = 4)
+        hline!(
+            p1,
+            [final_params_constrained[1] - truth_params_constrained[1]],
+            label = "mean ensemble input",
+            color = :lightgreen,
+            linewidth = 4,
+        )
         hline!(p_mid, [final_forcing[1]], label = "mean ensemble forcing", color = :lightgreen, linewidth = 4)
     else
-        plot!(p1, range(0, n_par - 1, step = 1), final_params_constrained .- truth_params_constrained, label = "mean ensemble input", color = :lightgreen, linewidth = 4)
+        plot!(
+            p1,
+            range(0, n_par - 1, step = 1),
+            final_params_constrained .- truth_params_constrained,
+            label = "mean ensemble input",
+            color = :lightgreen,
+            linewidth = 4,
+        )
         plot!(p_mid, xaxis_forcing, final_forcing, label = "mean ensemble forcing", color = :lightgreen, linewidth = 4)
     end
     plot!(p2, 1:length(y), get_g_mean_final(ekpobj), label = "mean ensemble output", color = :lightgreen, linewidth = 4)
@@ -254,33 +267,151 @@ for ((force_case, N_ens, rng_idx), calib_filename_suffix) in zip(valid_file_item
     savefig(plt, joinpath(figure_save_directory, "solution_$(calib_filename_suffix).pdf"))
 
     # --- full ensemble plot ---
-    ens_final_params   = get_ϕ_final(prior, ekpobj)
-    ens_init_params    = get_ϕ(prior, ekpobj, 1)
-    ens_final_forcings = hcat([forcing(build_forcing(truth_params_obj, ens_final_params[:, j], structure, sample_range), x0) for j in axes(ens_final_params, 2)]...)
-    ens_init_forcings  = hcat([forcing(build_forcing(truth_params_obj, ens_init_params[:, j], structure, sample_range), x0) for j in axes(ens_init_params, 2)]...)
+    ens_final_params = get_ϕ_final(prior, ekpobj)
+    ens_init_params = get_ϕ(prior, ekpobj, 1)
+    ens_final_forcings = hcat(
+        [
+            forcing(build_forcing(truth_params_obj, ens_final_params[:, j], structure, sample_range), x0) for
+            j in axes(ens_final_params, 2)
+        ]...,
+    )
+    ens_init_forcings = hcat(
+        [
+            forcing(build_forcing(truth_params_obj, ens_init_params[:, j], structure, sample_range), x0) for
+            j in axes(ens_init_params, 2)
+        ]...,
+    )
 
     if is_const
-        hline!(p3, [ens_final_params[1, 1] - truth_params_constrained[1]], label = "ensemble inputs", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        hline!(p3, ens_final_params[1, 2:end] .- truth_params_constrained[1], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        hline!(p3, ens_init_params[1, :] .- truth_params_constrained[1], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        hline!(
+            p3,
+            [ens_final_params[1, 1] - truth_params_constrained[1]],
+            label = "ensemble inputs",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        hline!(
+            p3,
+            ens_final_params[1, 2:end] .- truth_params_constrained[1],
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        hline!(
+            p3,
+            ens_init_params[1, :] .- truth_params_constrained[1],
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
 
-        hline!(p_mid3, [ens_final_forcings[1, 1]], label = "ensemble forcings", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        hline!(
+            p_mid3,
+            [ens_final_forcings[1, 1]],
+            label = "ensemble forcings",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
         hline!(p_mid3, ens_final_forcings[1, 2:end], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
         hline!(p_mid3, ens_init_forcings[1, :], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
     else
-        plot!(p3, range(0, n_par - 1, step = 1), ens_final_params[:, 1] .- truth_params_constrained, label = "ensemble inputs", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p3, range(0, n_par - 1, step = 1), ens_final_params[:, 2:end] .- truth_params_constrained, label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p3, range(0, n_par - 1, step = 1), ens_init_params[:, 1] .- truth_params_constrained, label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p3, range(0, n_par - 1, step = 1), ens_init_params[:, 2:end] .- truth_params_constrained, label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        plot!(
+            p3,
+            range(0, n_par - 1, step = 1),
+            ens_final_params[:, 1] .- truth_params_constrained,
+            label = "ensemble inputs",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p3,
+            range(0, n_par - 1, step = 1),
+            ens_final_params[:, 2:end] .- truth_params_constrained,
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p3,
+            range(0, n_par - 1, step = 1),
+            ens_init_params[:, 1] .- truth_params_constrained,
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p3,
+            range(0, n_par - 1, step = 1),
+            ens_init_params[:, 2:end] .- truth_params_constrained,
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
 
-        plot!(p_mid3, xaxis_forcing, ens_final_forcings[:, 1], label = "ensemble forcings", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p_mid3, xaxis_forcing, ens_final_forcings[:, 2:end], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p_mid3, xaxis_forcing, ens_init_forcings[:, 1], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
-        plot!(p_mid3, xaxis_forcing, ens_init_forcings[:, 2:end], label = "", color = :lightgreen, linewidth = 4, linealpha = 0.1)
+        plot!(
+            p_mid3,
+            xaxis_forcing,
+            ens_final_forcings[:, 1],
+            label = "ensemble forcings",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p_mid3,
+            xaxis_forcing,
+            ens_final_forcings[:, 2:end],
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p_mid3,
+            xaxis_forcing,
+            ens_init_forcings[:, 1],
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
+        plot!(
+            p_mid3,
+            xaxis_forcing,
+            ens_init_forcings[:, 2:end],
+            label = "",
+            color = :lightgreen,
+            linewidth = 4,
+            linealpha = 0.1,
+        )
     end
 
-    plot!(p4, 1:length(y), get_g_final(ekpobj)[:, 1], color = :lightgreen, label = "ensemble outputs", linewidth = 4, linealpha = 0.1)
-    plot!(p4, 1:length(y), get_g_final(ekpobj)[:, 2:end], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
+    plot!(
+        p4,
+        1:length(y),
+        get_g_final(ekpobj)[:, 1],
+        color = :lightgreen,
+        label = "ensemble outputs",
+        linewidth = 4,
+        linealpha = 0.1,
+    )
+    plot!(
+        p4,
+        1:length(y),
+        get_g_final(ekpobj)[:, 2:end],
+        color = :lightgreen,
+        label = "",
+        linewidth = 4,
+        linealpha = 0.1,
+    )
     plot!(p4, 1:length(y), get_g(ekpobj, 1)[:, 1], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
     plot!(p4, 1:length(y), get_g(ekpobj, 1)[:, 2:end], color = :lightgreen, label = "", linewidth = 4, linealpha = 0.1)
 

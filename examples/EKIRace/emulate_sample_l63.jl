@@ -27,12 +27,12 @@ include("experiment_config.jl")
 function main()
 
     #### CHOOSE YOUR CASE:
-    cfg      = experiment_config(:l63)
-    method   = method_cases[1]  # method_cases defined in experiment_config.jl
+    cfg = experiment_config(:l63)
+    method = method_cases[1]  # method_cases defined in experiment_config.jl
     calib_dir = calib_directory(method, cfg)
-    N_enss   = cfg.N_ens_sizes
-    rng_idxs = collect(1:cfg.n_repeats)
-    
+    N_enss = cfg.N_ens_sizes
+    rng_idxs = collect(1:(cfg.n_repeats))
+
     # emulate_sample cases
     for N_ens in N_enss
         for rng_idx in rng_idxs
@@ -42,7 +42,7 @@ function main()
             # loading relevant data
             homedir = pwd()
             figure_save_directory = joinpath(homedir, "output/", calib_dir)
-            data_save_directory   = joinpath(homedir, "output",  calib_dir)
+            data_save_directory = joinpath(homedir, "output", calib_dir)
             loaded_calib_files = [
                 joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)),
                 joinpath(data_save_directory, prior_filename(cfg)),
@@ -74,8 +74,8 @@ function main()
             end
             @info "Running emulate-sample for k = 1:$(K) training iterations"
 
-            posteriors_by_k       = Dict{Int, Any}()
-            iop_by_k              = Dict{Int, Any}()
+            posteriors_by_k = Dict{Int, Any}()
+            iop_by_k = Dict{Int, Any}()
             encoder_schedule_by_k = Dict{Int, Any}()
 
             for k in 1:K
@@ -132,22 +132,30 @@ function main()
                 figpath = joinpath(figure_save_directory, "l63_posterior_hist_$(calib_filename_suffix)_k$(k)")
                 savefig(figpath * ".png")
 
-                posteriors_by_k[k]       = posterior
-                iop_by_k[k]              = input_output_pairs
+                posteriors_by_k[k] = posterior
+                iop_by_k[k] = input_output_pairs
                 encoder_schedule_by_k[k] = get_encoder_schedule(emulator)
             end
 
             # one file per EKI experiment, containing all k posteriors
             save(
                 joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)),
-                "posteriors_by_k",          posteriors_by_k,
-                "input_output_pairs_by_k",  iop_by_k,
-                "encoder_schedules_by_k",   encoder_schedule_by_k,
-                "priors",                   priors,
-                "truth_params_constrained", truth_params_constrained,
-                "final_params_constrained", final_params_constrained,
-                "truth_params",             truth_params,
-                "k_values",                 collect(1:K),
+                "posteriors_by_k",
+                posteriors_by_k,
+                "input_output_pairs_by_k",
+                iop_by_k,
+                "encoder_schedules_by_k",
+                encoder_schedule_by_k,
+                "priors",
+                priors,
+                "truth_params_constrained",
+                truth_params_constrained,
+                "final_params_constrained",
+                final_params_constrained,
+                "truth_params",
+                truth_params,
+                "k_values",
+                collect(1:K),
             )
         end
     end

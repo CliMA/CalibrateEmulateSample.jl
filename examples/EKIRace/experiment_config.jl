@@ -26,16 +26,16 @@ method_names = [
 ]
 
 method_cases_key = Dict(
-    "Inversion"            => "ces-eki-dmc",
-    "TransformInversion"   => "ces-etki-dmc",
-    "Unscented"            => "ces-uki-dmc",
+    "Inversion" => "ces-eki-dmc",
+    "TransformInversion" => "ces-etki-dmc",
+    "Unscented" => "ces-uki-dmc",
     "GaussNewtonInversion" => "ces-iekf",
 )
 
 forcing_cases_key = Dict(
     "const-force" => "ensemble_results",
-    "vec-force"   => "spatial_forcing_ensemble_results",
-    "flux-force"  => "nn_forcing_ensemble_results",
+    "vec-force" => "spatial_forcing_ensemble_results",
+    "flux-force" => "nn_forcing_ensemble_results",
 )
 
 ########################################################################
@@ -53,60 +53,60 @@ function experiment_config(case::Symbol)
     if case == :l63
         ens_step = 2
         return (
-            model          = "l63",
-            force_case     = nothing,
-            N_ens_sizes    = collect(4:ens_step:4+n_ens_step*ens_step),
-            N_iter         = 20,
-            terminate_at   = 2.0,   # DataMisfitController end time
-            n_repeats      = n_repeats,
-            max_iter       = 10,
-            retain_var     = 0.99,
-            n_features     = 100,
+            model = "l63",
+            force_case = nothing,
+            N_ens_sizes = collect(4:ens_step:(4 + n_ens_step * ens_step)),
+            N_iter = 20,
+            terminate_at = 2.0,   # DataMisfitController end time
+            n_repeats = n_repeats,
+            max_iter = 10,
+            retain_var = 0.99,
+            n_features = 100,
             n_features_opt = 60,
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_const
         ens_step_const = 2
         return (
-            model          = "l96",
-            force_case     = "const-force",
-            N_ens_sizes    = collect(4:ens_step_const:4+n_ens_step*ens_step_const),
-            N_iter         = 20,
-            terminate_at   = 2.0,
-            n_repeats      = n_repeats,
-            max_iter       = 15,
-            retain_var     = 0.99,
-            n_features     = 200,
+            model = "l96",
+            force_case = "const-force",
+            N_ens_sizes = collect(4:ens_step_const:(4 + n_ens_step * ens_step_const)),
+            N_iter = 20,
+            terminate_at = 2.0,
+            n_repeats = n_repeats,
+            max_iter = 15,
+            retain_var = 0.99,
+            n_features = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_vec
         ens_step_vec = 5
         return (
-            model          = "l96",
-            force_case     = "vec-force",
-            N_ens_sizes    = collect(40:ens_step_vec:40+n_ens_step*ens_step_vec),
-            N_iter         = 20,
-            terminate_at   = 2.0,
-            n_repeats      = n_repeats,
-            max_iter       = 15,
-            retain_var     = 0.99,
-            n_features     = 200,
+            model = "l96",
+            force_case = "vec-force",
+            N_ens_sizes = collect(40:ens_step_vec:(40 + n_ens_step * ens_step_vec)),
+            N_iter = 20,
+            terminate_at = 2.0,
+            n_repeats = n_repeats,
+            max_iter = 15,
+            retain_var = 0.99,
+            n_features = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,
         )
     elseif case == :l96_flux
         ens_step_flux = 5
         return (
-            model          = "l96",
-            force_case     = "flux-force",
-            N_ens_sizes    = collect(30:ens_step_flux:30+n_ens_step*ens_step_flux),
-            N_iter         = 20,
-            terminate_at   = 2.0,
-            n_repeats      = n_repeats,
-            max_iter       = 15,
-            retain_var     = 0.99,
-            n_features     = 200,
+            model = "l96",
+            force_case = "flux-force",
+            N_ens_sizes = collect(30:ens_step_flux:(30 + n_ens_step * ens_step_flux)),
+            N_iter = 20,
+            terminate_at = 2.0,
+            n_repeats = n_repeats,
+            max_iter = 15,
+            retain_var = 0.99,
+            n_features = 200,
             n_features_opt = 160,
             calibrate_date = calibrate_date,
         )
@@ -136,8 +136,8 @@ function prior_filename(cfg)
     end
 end
 
-ekp_filename(cfg, N_ens, rng_idx)      = "$(cfg.model)_ekp_$(case_suffix(cfg, N_ens, rng_idx)).jld2"
-results_filename(cfg, N_ens, rng_idx)  = "$(cfg.model)_calibrate_results_$(case_suffix(cfg, N_ens, rng_idx)).jld2"
+ekp_filename(cfg, N_ens, rng_idx) = "$(cfg.model)_ekp_$(case_suffix(cfg, N_ens, rng_idx)).jld2"
+results_filename(cfg, N_ens, rng_idx) = "$(cfg.model)_calibrate_results_$(case_suffix(cfg, N_ens, rng_idx)).jld2"
 posterior_filename(cfg, N_ens, rng_idx) = "$(cfg.model)_posterior_$(case_suffix(cfg, N_ens, rng_idx)).jld2"
 
 function summary_filename(cfg)
@@ -156,4 +156,3 @@ function nc_filename(cfg, method)
         return "$(key)_$(cfg.model)_$(forcing_cases_key[cfg.force_case])_$(cfg.calibrate_date).nc"
     end
 end
-

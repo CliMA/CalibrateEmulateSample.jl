@@ -23,16 +23,16 @@ save_all_ekp = true
 ############### Choose problem type and structure ######################
 ########################################################################
 
-cfg         = experiment_config(:l63)
+cfg = experiment_config(:l63)
 N_ens_sizes = cfg.N_ens_sizes
-N_iter      = cfg.N_iter
-n_repeats   = cfg.n_repeats
+N_iter = cfg.N_iter
+n_repeats = cfg.n_repeats
 terminate_at = cfg.terminate_at
-rng_seeds   = randperm(1_000_000)[1:n_repeats] # list of random seeds
+rng_seeds = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running Lorenz 63 problem"
 @info "Maximum number of EKI iterations: $N_iter"
 configuration =
-    Dict("N_iter" => N_iter, "N_ens_sizes" => N_ens_sizes, "terminate_at"=> terminate_at, "rng_seeds" => rng_seeds)
+    Dict("N_iter" => N_iter, "N_ens_sizes" => N_ens_sizes, "terminate_at" => terminate_at, "rng_seeds" => rng_seeds)
 
 nx = 3  # dimensions of parameter vector
 nu = 2
@@ -52,7 +52,7 @@ prior = ParameterDistribution(distribution, constraint, name)
 =#
 
 prior_r = constrained_gaussian("rho", exp(3.3), 4.153, 0, Inf)
-prior_b = constrained_gaussian("beta", exp(1.2), 2.016, 0 ,Inf)
+prior_b = constrained_gaussian("beta", exp(1.2), 2.016, 0, Inf)
 prior = combine_distributions([prior_r, prior_b])
 #Creating prior distribution
 T = 40.0
@@ -118,13 +118,20 @@ if !isfile(prelim_file)
     prelim_tmp = splitext(prelim_file)[1] * ".tmp.$(getpid()).jld2"
     JLD2.save(
         prelim_tmp,
-        "x0", x0,
-        "y", y,
-        "lorenz_config_settings", lorenz_config_settings,
-        "observation_config", observation_config,
-        "ic_cov_sqrt", ic_cov_sqrt,
-        "R", R,
-        "R_inv_var", R_inv_var,
+        "x0",
+        x0,
+        "y",
+        y,
+        "lorenz_config_settings",
+        lorenz_config_settings,
+        "observation_config",
+        observation_config,
+        "ic_cov_sqrt",
+        ic_cov_sqrt,
+        "R",
+        R,
+        "R_inv_var",
+        R_inv_var,
     )
     mv(prelim_tmp, prelim_file)
     @info "Saved computed quantities to $(prelim_file)"
@@ -150,9 +157,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         initial_params = construct_initial_ensemble(rng, prior, N_ens)
         methods = [
             Inversion(),
-#            TransformInversion(),
-#            GaussNewtonInversion(prior),
-#            Unscented(prior),
+            #            TransformInversion(),
+            #            GaussNewtonInversion(prior),
+            #            Unscented(prior),
         ]
 
         @info "Ensemble size: $(N_ens)"
@@ -213,16 +220,16 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 )
                 terminated = EKP.update_ensemble!(ekpobj, G_ens)
                 if !isnothing(terminated)
-                    conv_alg_iters[kk, ee, rr] = i * Ne 
+                    conv_alg_iters[kk, ee, rr] = i * Ne
                     break
                 end
             end
             final_parameters[kk, ee, rr, :] = ens_mean_final
             final_model_output[kk, ee, rr, :] = G_ens_mean_final
             if isnan(conv_alg_iters[kk, ee, rr]) # if didnt terminate
-                conv_alg_iters[kk, ee, rr] = N_iter * Ne 
+                conv_alg_iters[kk, ee, rr] = N_iter * Ne
             end
-            
+
             final_ensemble = get_ϕ_final(prior, ekpobj)
 
             # save ekp files
@@ -237,22 +244,30 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 # JLD2
                 JLD2.save(
                     joinpath(per_method_dir, ekp_filename(cfg, N_ens, rr)),
-                    "N_ens", N_ens,
-                    "method", method,
-                    "ekpobj", ekpobj,
+                    "N_ens",
+                    N_ens,
+                    "method",
+                    method,
+                    "ekpobj",
+                    ekpobj,
                 )
                 u_stored = get_u(ekpobj, return_array = false)
                 g_stored = get_g(ekpobj, return_array = false)
                 JLD2.save(
                     joinpath(per_method_dir, results_filename(cfg, N_ens, rr)),
-                    "y", y,
-                    "R", R,
-                    "inputs", u_stored,
-                    "outputs", g_stored,
-                    "truth_params_structure", truth_params, # EnsembleMemberConfig
+                    "y",
+                    y,
+                    "R",
+                    R,
+                    "inputs",
+                    u_stored,
+                    "outputs",
+                    g_stored,
+                    "truth_params_structure",
+                    truth_params, # EnsembleMemberConfig
                 )
             end
-            
+
         end
     end
 end

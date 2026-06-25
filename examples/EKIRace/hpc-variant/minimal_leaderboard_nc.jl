@@ -4,20 +4,32 @@ using LinearAlgebra
 using Statistics
 using Dates
 
-include("experiment_config.jl")
+calib_date = Date("2026-06-15", "yyyy-mm-dd")
+indir = joinpath("output", "from-hpc_$(calib_date)")
 
-cfg = experiment_config(EXPERIMENT)
-method = method_cases[1]
-
-in_filename = nc_filename(cfg, method)
-out_filename = replace(in_filename, r"\.nc$" => "_minimal.nc")
-prelim_filename = if cfg.force_case === nothing
-    joinpath(pwd(), "output", "$(cfg.model)_computed_preliminaries.jld2")
+experiment_list = [:l63, :l96_const, :l96_vec, :l96_flux]
+experiment = experiment_list[4]
+if experiment == :l63
+    filename = "ces-eki-dmc_l63_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l63_computed_preliminaries.jld2"
+elseif experiment == :l96_const
+    filename = "ces-eki-dmc_l96_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_const-force.jld2"
+elseif experiment == :l96_vec
+    filename = "ces-eki-dmc_l96_spatial_forcing_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_vec-force.jld2"
+elseif experiment == :l96_flux
+    filename = "ces-eki-dmc_l96_nn_forcing_ensemble_results_$(calib_date).nc"
+    prelim_jld2_file = "l96_computed_preliminaries_flux-force.jld2"
 else
-    joinpath(pwd(), "output", "$(cfg.model)_computed_preliminaries_$(cfg.force_case).jld2")
+    throw(ArgumentError("Expected experiment from $(experiment_list). Got $(experiment)."))
 end
 
 R_variance_retain = 0.99   # fraction of R eigenvalue variance retained for whitened PCA coverage
+
+in_filename = joinpath(indir, filename)
+out_filename = joinpath(indir, replace(filename, r"\.nc$" => "_minimal.nc"))
+prelim_filename = joinpath(indir, prelim_jld2_file)
 
 ###########################################################################
 #################### Read required fields from input NC ##################

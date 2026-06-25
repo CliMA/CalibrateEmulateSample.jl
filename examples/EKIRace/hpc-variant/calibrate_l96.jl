@@ -28,11 +28,11 @@ save_all_ekp = true
 
 function build_setup(cfg, output_dir)
     case = cfg.force_case
-    N_iter      = cfg.N_iter
+    N_iter = cfg.N_iter
     N_ens_sizes = cfg.N_ens_sizes
     terminate_at = cfg.terminate_at
     # Seeded so every array task sees the same rng_seeds list.
-    rng_seeds = randperm(MersenneTwister(20260529), 1_000_000)[1:cfg.n_repeats]
+    rng_seeds = randperm(MersenneTwister(20260529), 1_000_000)[1:(cfg.n_repeats)]
 
     if case == "const-force"
         nx = 40
@@ -78,7 +78,7 @@ function build_setup(cfg, output_dir)
         prior_train = prior_sinusoid.(x_train) .+ 0.2 .* randn(length(x_train))
         prior_model, prior_mean = train_network(deepcopy(phi_structure), x_train, prior_train)
         #prior_cov = (0.1^2) * I(length(prior_mean)) # original cov
-        prior_cov = (0.1^2) * Diagonal(prior_mean.^2) # scaled to mean
+        prior_cov = (0.1^2) * Diagonal(prior_mean .^ 2) # scaled to mean
         distribution = Parameterized(MvNormal(prior_mean, prior_cov))
         constraint = repeat([no_constraint()], 61)
         prior = ParameterDistribution(distribution, constraint, "l96_nn_prior")
@@ -96,13 +96,13 @@ function build_setup(cfg, output_dir)
     prelim_file = joinpath(output_dir, "l96_computed_preliminaries_$(case).jld2")
     if isfile(prelim_file)
         loaded = JLD2.load(prelim_file)
-        x0                   = loaded["x0"]
-        y                    = loaded["y"]
-        ic_cov_sqrt          = loaded["ic_cov_sqrt"]
-        R                    = loaded["R"]
-        R_inv_var            = loaded["R_inv_var"]
+        x0 = loaded["x0"]
+        y = loaded["y"]
+        ic_cov_sqrt = loaded["ic_cov_sqrt"]
+        R = loaded["R"]
+        R_inv_var = loaded["R_inv_var"]
         lorenz_config_settings = loaded["lorenz_config_settings"]
-        observation_config   = loaded["observation_config"]
+        observation_config = loaded["observation_config"]
         @info "Loaded precomputed preliminaries from $(prelim_file)"
     else
         t = 0.01
@@ -139,11 +139,20 @@ function build_setup(cfg, output_dir)
         prelim_tmp = splitext(prelim_file)[1] * ".tmp.$(getpid()).jld2"
         JLD2.save(
             prelim_tmp,
-            "x0", x0, "y", y,
-            "lorenz_config_settings", lorenz_config_settings,
-            "observation_config", observation_config,
-            "ic_cov_sqrt", ic_cov_sqrt,
-            "R", R, "R_inv_var", R_inv_var,
+            "x0",
+            x0,
+            "y",
+            y,
+            "lorenz_config_settings",
+            lorenz_config_settings,
+            "observation_config",
+            observation_config,
+            "ic_cov_sqrt",
+            ic_cov_sqrt,
+            "R",
+            R,
+            "R_inv_var",
+            R_inv_var,
         )
         # Atomic rename: first writer wins; concurrent losers discard their copy.
         try
@@ -156,20 +165,32 @@ function build_setup(cfg, output_dir)
     end
 
     configuration = Dict(
-        "case"         => case,
-        "N_iter"       => N_iter,
-        "N_ens_sizes"  => N_ens_sizes,
-        "rng_seeds"    => rng_seeds,
+        "case" => case,
+        "N_iter" => N_iter,
+        "N_ens_sizes" => N_ens_sizes,
+        "rng_seeds" => rng_seeds,
         "terminate_at" => terminate_at,
     )
 
     return (;
-        nx, nu, ny,
-        phi, phi_structure, sample_range, prior,
-        x0, y, R, R_inv_var,
-        lorenz_config_settings, observation_config, ic_cov_sqrt,
-        rng_seeds, configuration,
-        N_iter, terminate_at,
+        nx,
+        nu,
+        ny,
+        phi,
+        phi_structure,
+        sample_range,
+        prior,
+        x0,
+        y,
+        R,
+        R_inv_var,
+        lorenz_config_settings,
+        observation_config,
+        ic_cov_sqrt,
+        rng_seeds,
+        configuration,
+        N_iter,
+        terminate_at,
     )
 end
 
@@ -202,12 +223,12 @@ function calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
     initial_params = construct_initial_ensemble(rng, setup.prior, N_ens)
     methods = [
         Inversion(),
-#        TransformInversion(),
-#        GaussNewtonInversion(setup.prior),
-#        Unscented(setup.prior),
+        #        TransformInversion(),
+        #        GaussNewtonInversion(setup.prior),
+        #        Unscented(setup.prior),
     ]
 
-    conv_cell   = fill(NaN, 4)
+    conv_cell = fill(NaN, 4)
     params_cell = zeros(4, setup.nu)
     output_cell = zeros(4, setup.ny)
 
@@ -239,7 +260,7 @@ function calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
 
         ens_mean_final = zeros(setup.nu)
         G_ens_mean_final = zeros(setup.ny)
-        for i in 1:setup.N_iter
+        for i in 1:(setup.N_iter)
             params_i = get_ϕ_final(setup.prior, ekpobj)
             ens_mean = mean(params_i, dims = 2)[:]
             forcing = build_forcing(setup.phi, ens_mean, setup.phi_structure, setup.sample_range)
@@ -279,19 +300,27 @@ function calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
             per_method_dir = joinpath(output_dir, calib_directory(nameof(typeof(method)), cfg))
             JLD2.save(
                 joinpath(per_method_dir, ekp_filename(cfg, N_ens, rng_idx)),
-                "N_ens", N_ens,
-                "method", method,
-                "ekpobj", ekpobj,
+                "N_ens",
+                N_ens,
+                "method",
+                method,
+                "ekpobj",
+                ekpobj,
             )
             u_stored = get_u(ekpobj, return_array = false)
             g_stored = get_g(ekpobj, return_array = false)
             JLD2.save(
                 joinpath(per_method_dir, results_filename(cfg, N_ens, rng_idx)),
-                "y", setup.y,
-                "R", setup.R,
-                "inputs", u_stored,
-                "outputs", g_stored,
-                "truth_params_structure", (setup.phi, setup.phi_structure),
+                "y",
+                setup.y,
+                "R",
+                setup.R,
+                "inputs",
+                u_stored,
+                "outputs",
+                g_stored,
+                "truth_params_structure",
+                (setup.phi, setup.phi_structure),
             )
         end
     end
@@ -307,11 +336,16 @@ function save_combined_summary(cfg, setup, output_dir, conv, pars, outs)
     data_filename = joinpath(output_dir, summary_filename(cfg))
     JLD2.save(
         data_filename,
-        "configuration",      setup.configuration,
-        "method_names",       method_names,
-        "conv_alg_iters",     conv,
-        "final_parameters",   pars,
-        "final_model_output", outs,
+        "configuration",
+        setup.configuration,
+        "method_names",
+        method_names,
+        "conv_alg_iters",
+        conv,
+        "final_parameters",
+        pars,
+        "final_model_output",
+        outs,
     )
     @info "Saved summary to $(data_filename)"
 end
@@ -327,7 +361,7 @@ function main()
         "EXPERIMENT must be :l96_const, :l96_vec, or :l96_flux (got $exp)",
     )
 
-    cfg        = experiment_config(exp)
+    cfg = experiment_config(exp)
     output_dir = joinpath(@__DIR__, "output")
     mkpath(output_dir)
 
@@ -335,20 +369,20 @@ function main()
     write_priors(cfg, setup, output_dir)
 
     tasks = flat_tasks(cfg)
-    idx   = task_index_from_args()
+    idx = task_index_from_args()
 
     if isnothing(idx)
         # Serial mode: run every cell, assemble and write combined summary.
         n_ens = length(cfg.N_ens_sizes)
         n_rep = cfg.n_repeats
-        conv  = fill(NaN, 4, n_ens, n_rep)
-        pars  = zeros(4, n_ens, n_rep, setup.nu)
-        outs  = zeros(4, n_ens, n_rep, setup.ny)
+        conv = fill(NaN, 4, n_ens, n_rep)
+        pars = zeros(4, n_ens, n_rep, setup.nu)
+        outs = zeros(4, n_ens, n_rep, setup.ny)
         for (t, (N_ens, rng_idx)) in enumerate(tasks)
             ee = (t - 1) ÷ n_rep + 1
             rr = (t - 1) % n_rep + 1
             c, p, o = calibrate_one(cfg, setup, N_ens, rng_idx, output_dir)
-            conv[:, ee, rr]    = c
+            conv[:, ee, rr] = c
             pars[:, ee, rr, :] = p
             outs[:, ee, rr, :] = o
         end

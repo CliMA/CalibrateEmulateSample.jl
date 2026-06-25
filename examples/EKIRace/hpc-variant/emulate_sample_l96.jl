@@ -33,7 +33,7 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
 
     homedir = pwd()
     figure_save_directory = joinpath(homedir, "output/", calib_dir)
-    data_save_directory   = joinpath(homedir, "output",  calib_dir)
+    data_save_directory = joinpath(homedir, "output", calib_dir)
     loaded_calib_files = [
         joinpath(data_save_directory, ekp_filename(cfg, N_ens, rng_idx)),
         joinpath(data_save_directory, prior_filename(cfg)),
@@ -75,8 +75,8 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
     end
     @info "Running emulate-sample for k = 1:$(K) training iterations"
 
-    posteriors_by_k       = Dict{Int, Any}()
-    iop_by_k              = Dict{Int, Any}()
+    posteriors_by_k = Dict{Int, Any}()
+    iop_by_k = Dict{Int, Any}()
     encoder_schedule_by_k = Dict{Int, Any}()
 
     for k in 1:K
@@ -100,11 +100,11 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
             optimizer_options = overrides,
         )
         #                    encoder_schedule = [(decorrelate_structure_mat(retain_var = retain_var), "in_and_out")]
-        
+
         encoder_schedule = [
             (decorrelate_structure_mat(), "in_and_out"),
-            (likelihood_informed(retain_info=retain_var, iters=1:k),"in"),
-            (likelihood_informed(retain_info=retain_var),"out"), # iters=1:1 for output space
+            (likelihood_informed(retain_info = retain_var, iters = 1:k), "in"),
+            (likelihood_informed(retain_info = retain_var), "out"), # iters=1:1 for output space
         ]
         emulator = Emulator(
             mlt,
@@ -140,21 +140,29 @@ function emulate_sample_one(cfg, N_ens, rng_idx; method = method_cases[1])
         figpath = joinpath(figure_save_directory, "l96_posterior_hist_$(calib_filename_suffix)_k$(k)")
         savefig(figpath * ".png")
 
-        posteriors_by_k[k]       = posterior
-        iop_by_k[k]              = input_output_pairs
+        posteriors_by_k[k] = posterior
+        iop_by_k[k] = input_output_pairs
         encoder_schedule_by_k[k] = get_encoder_schedule(emulator)
     end
 
     save(
         joinpath(data_save_directory, posterior_filename(cfg, N_ens, rng_idx)),
-        "posteriors_by_k",          posteriors_by_k,
-        "input_output_pairs_by_k",  iop_by_k,
-        "encoder_schedules_by_k",   encoder_schedule_by_k,
-        "priors",                   priors,
-        "truth_params_constrained", truth_params_constrained,
-        "final_params_constrained", final_params_constrained,
-        "truth_params",             truth_params,
-        "k_values",                 collect(1:K),
+        "posteriors_by_k",
+        posteriors_by_k,
+        "input_output_pairs_by_k",
+        iop_by_k,
+        "encoder_schedules_by_k",
+        encoder_schedule_by_k,
+        "priors",
+        priors,
+        "truth_params_constrained",
+        truth_params_constrained,
+        "final_params_constrained",
+        final_params_constrained,
+        "truth_params",
+        truth_params,
+        "k_values",
+        collect(1:K),
     )
 end
 
@@ -168,9 +176,9 @@ function main()
         exp in (:l96_const, :l96_vec, :l96_flux),
         "EXPERIMENT must be :l96_const, :l96_vec, or :l96_flux (got $exp)",
     )
-    cfg   = experiment_config(exp)
+    cfg = experiment_config(exp)
     tasks = flat_tasks(cfg)
-    idx   = task_index_from_args()
+    idx = task_index_from_args()
 
     if isnothing(idx)
         for (N_ens, rng_idx) in tasks

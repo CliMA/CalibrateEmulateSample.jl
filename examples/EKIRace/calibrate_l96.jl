@@ -27,13 +27,13 @@ save_all_ekp = true
 ########################################################################
 
 @assert EXPERIMENT in (:l96_const, :l96_vec, :l96_flux) "For calibrate_l96.jl, set EXPERIMENT to :l96_const, :l96_vec, or :l96_flux in experiment_config.jl"
-cfg         = experiment_config(EXPERIMENT)
-case        = cfg.force_case  # "const-force", "vec-force", or "flux-force"
+cfg = experiment_config(EXPERIMENT)
+case = cfg.force_case  # "const-force", "vec-force", or "flux-force"
 N_ens_sizes = cfg.N_ens_sizes
-N_iter      = cfg.N_iter
-n_repeats   = cfg.n_repeats
+N_iter = cfg.N_iter
+n_repeats = cfg.n_repeats
 terminate_at = cfg.terminate_at
-rng_seeds   = randperm(1_000_000)[1:n_repeats] # list of random seeds
+rng_seeds = randperm(1_000_000)[1:n_repeats] # list of random seeds
 @info "Running $case case"
 @info "Maximum number of EKI iterations: $N_iter"
 # saved and loaded for plotting etc.
@@ -42,7 +42,7 @@ configuration = Dict(
     "N_iter" => N_iter,
     "N_ens_sizes" => N_ens_sizes,
     "rng_seeds" => rng_seeds,
-    "terminate_at" => terminate_at
+    "terminate_at" => terminate_at,
 )
 
 if case == "const-force"
@@ -121,7 +121,7 @@ elseif case == "flux-force"
     # display(p)
 
     #prior_cov = (0.1^2) * I(length(prior_mean)) # original cov
-    prior_cov = (0.1^2) * Diagonal(prior_mean.^2) # scaled to mean
+    prior_cov = (0.1^2) * Diagonal(prior_mean .^ 2) # scaled to mean
     distribution = Parameterized(MvNormal(prior_mean, prior_cov))
     constraint = repeat([no_constraint()], 61)
     name = "l96_nn_prior"
@@ -241,9 +241,9 @@ for (rr, rng_seed) in enumerate(rng_seeds)
         initial_params = construct_initial_ensemble(rng, prior, N_ens)
         methods = [
             Inversion(),
-#            TransformInversion(),
-#            GaussNewtonInversion(prior),
-#            Unscented(prior),
+            #            TransformInversion(),
+            #            GaussNewtonInversion(prior),
+            #            Unscented(prior),
         ]
 
         @info "Ensemble size: $(N_ens)"
@@ -257,7 +257,7 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
-#                    accelerator = DefaultAccelerator(),
+                    #                    accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
                     #scheduler = DefaultScheduler(0.1),
                     scheduler = DataMisfitController(terminate_at = terminate_at),
@@ -270,10 +270,10 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                     deepcopy(method);
                     rng = copy(rng),
                     verbose = verbose_flag,
- #                   accelerator = DefaultAccelerator(),
+                    #                   accelerator = DefaultAccelerator(),
                     localization_method = NoLocalization(),
                     scheduler = DataMisfitController(terminate_at = terminate_at),
-#                    scheduler = DefaultScheduler(0.1),
+                    #                    scheduler = DefaultScheduler(0.1),
                 )
             end
             Ne = get_N_ens(ekpobj)
@@ -309,14 +309,14 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 )
                 terminated = EKP.update_ensemble!(ekpobj, G_ens)
                 if !isnothing(terminated)
-                    conv_alg_iters[kk, ee, rr] = i * Ne 
-                    break                    
+                    conv_alg_iters[kk, ee, rr] = i * Ne
+                    break
                 end
             end
             final_parameters[kk, ee, rr, :] = ens_mean_final
             final_model_output[kk, ee, rr, :] = G_ens_mean_final
             if isnan(conv_alg_iters[kk, ee, rr]) # if didnt terminate
-                conv_alg_iters[kk, ee, rr] = N_iter * Ne 
+                conv_alg_iters[kk, ee, rr] = N_iter * Ne
             end
 
             final_ensemble = get_ϕ_final(prior, ekpobj)
@@ -333,24 +333,32 @@ for (rr, rng_seed) in enumerate(rng_seeds)
                 # JLD2
                 JLD2.save(
                     joinpath(per_method_dir, ekp_filename(cfg, N_ens, rr)),
-                    "N_ens", N_ens,
-                    "method", method,
-                    "ekpobj", ekpobj,
+                    "N_ens",
+                    N_ens,
+                    "method",
+                    method,
+                    "ekpobj",
+                    ekpobj,
                 )
                 u_stored = get_u(ekpobj, return_array = false)
                 g_stored = get_g(ekpobj, return_array = false)
                 JLD2.save(
                     joinpath(per_method_dir, results_filename(cfg, N_ens, rr)),
-                    "y", y,
-                    "R", R,
-                    "inputs", u_stored,
-                    "outputs", g_stored,
-                    "truth_params_structure", (phi, phi_structure)
+                    "y",
+                    y,
+                    "R",
+                    R,
+                    "inputs",
+                    u_stored,
+                    "outputs",
+                    g_stored,
+                    "truth_params_structure",
+                    (phi, phi_structure),
                 )
             end
-            
+
         end
-        
+
     end
 end
 
