@@ -717,8 +717,8 @@ end
     end
     n_iters = 2
 
-    # ---- flatten_minibatch_pairs: shape ----
-    u_flat, g_flat = flatten_minibatch_pairs(ekp_mb, 1:n_iters)
+    # ---- get_flat_pairs: shape ----
+    u_flat, g_flat = get_flat_pairs(ekp_mb, 1:n_iters)
     total_cols = n_iters * batch_size * n_ens
     @test size(u_flat) == (dim_par, total_cols)
     @test size(g_flat) == (gdim, total_cols)
@@ -732,20 +732,20 @@ end
     @test all(isapprox.(g_flat[:, 1:n_ens], g_stored[1][1:gdim, :], atol = 1e-12))
     @test all(isapprox.(g_flat[:, (n_ens + 1):(2n_ens)], g_stored[1][(gdim + 1):(2gdim), :], atol = 1e-12))
 
-    # integer shorthand: flatten_minibatch_pairs(ekp, 2) == flatten_minibatch_pairs(ekp, 1:2)
-    u_flat2, g_flat2 = flatten_minibatch_pairs(ekp_mb, n_iters)
+    # integer shorthand: get_flat_pairs(ekp, 2) == get_flat_pairs(ekp, 1:2)
+    u_flat2, g_flat2 = get_flat_pairs(ekp_mb, n_iters)
     @test all(isapprox.(u_flat2, u_flat, atol = 1e-12))
     @test all(isapprox.(g_flat2, g_flat, atol = 1e-12))
 
     # include_dt: length and first batch_size entries are 0 (initial ensemble)
-    u_flat3, g_flat3, dt_flat = flatten_minibatch_pairs(ekp_mb, 1:n_iters; include_dt = true)
+    u_flat3, g_flat3, dt_flat = get_flat_pairs(ekp_mb, 1:n_iters; include_dt = true)
     @test all(isapprox.(u_flat3, u_flat, atol = 1e-12))
     @test all(isapprox.(g_flat3, g_flat, atol = 1e-12))
     @test length(dt_flat) == total_cols ÷ n_ens
     @test all(dt_flat[1:batch_size] .== 0)
 
     # error: iter_range references an iteration with no stored output
-    @test_throws ArgumentError flatten_minibatch_pairs(ekp_mb, 1:5)
+    @test_throws ArgumentError get_flat_pairs(ekp_mb, 1:5)
 
     # ---- get_training_points: minibatch path ----
     tp = get_training_points(ekp_mb, n_iters)

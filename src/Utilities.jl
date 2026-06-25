@@ -17,7 +17,7 @@ using TSVD
 import LinearAlgebra: norm
 
 export get_training_points
-export flatten_minibatch_pairs
+export get_flat_pairs
 export create_compact_linear_map
 export PairedDataContainerProcessor, DataContainerProcessor
 export create_encoder_schedule,
@@ -83,8 +83,8 @@ function get_training_points(
     g_len = length(get_g(ekp))
     paired_range = [ir for ir in iter_range if ir <= g_len]
 
-    # flatten_minibatch_pairs handles any batch size, including 1 (no-op for batch_size=1)
-    u_tp, g_tp = flatten_minibatch_pairs(ekp, paired_range)
+    # get_flat_pairs handles any batch size, including 1 (no-op for batch_size=1)
+    u_tp, g_tp = get_flat_pairs(ekp, paired_range)
 
     if !isnothing(g_final)
         isa(g_final, AbstractMatrix) ||
@@ -189,7 +189,7 @@ and `get_algorithm_time(ekp)[ir - 1]` for subsequent iterations, each replicated
 Used internally by `get_training_points` and `encoder_kwargs_from` whenever a batch
 size > 1 is detected, so most users will not need to call this directly.
 """
-function flatten_minibatch_pairs(
+function get_flat_pairs(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
     iter_range::Union{IT, AbstractVector{IT}};
     include_dt::Bool = false,
@@ -337,7 +337,7 @@ function encoder_kwargs_from(
        any(length(get_minibatch(observation_series, ir)) > 1 for ir in 1:orig_g_len)
 
         # delegate u/g/dt splitting to the public helper; rebuild per-pair lists from the result
-        u_flat, g_flat, flat_dt = flatten_minibatch_pairs(ekp, 1:orig_g_len; include_dt = true)
+        u_flat, g_flat, flat_dt = get_flat_pairs(ekp, 1:orig_g_len; include_dt = true)
         n_ens_per = size(get_u(ekp, 1), 2)
         n_pairs = size(u_flat, 2) ÷ n_ens_per   # = Σ bs_k over stored iterations
         flat_si = [u_flat[:, ((k - 1) * n_ens_per + 1):(k * n_ens_per)] for k in 1:n_pairs]
