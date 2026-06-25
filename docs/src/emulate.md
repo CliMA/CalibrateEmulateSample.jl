@@ -11,6 +11,12 @@ First, obtain data in a `PairedDataContainer`, for example, get this from an `En
 using CalibrateEmulateSample.Utilities
 input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iterations as data
 ```
+
+!!! note "Minibatched calibration"
+    When the `EnsembleKalmanProcess` is built with an `ObservationSeries` and a minibatcher, each iteration uses a batch ``B_1, \ldots, B_n`` (``n \leq N``) drawn as a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. Minibatching is a technique for accelerating the calibration stage; it does not change the inverse problem being solved.
+
+    `get_training_points` and `encoder_kwargs_from` therefore break the stacked batch outputs back into their per-observation components automatically, so the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the full distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N`` is used and batch structure is ignored.
+
 Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc`, the `Emulator` can then be built:
 
 ```julia
