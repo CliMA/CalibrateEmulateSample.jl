@@ -13,9 +13,11 @@ input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iter
 ```
 
 !!! note "Minibatched calibration"
-    When the `EnsembleKalmanProcess` is built with an `ObservationSeries` and a minibatcher, each iteration uses a batch ``B_1, \ldots, B_n`` (``n \leq N``) drawn as a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. Minibatching is a technique for accelerating the calibration stage; it does not change the inverse problem being solved.
+    When the `EnsembleKalmanProcess` is built with an `ObservationSeries` and a minibatcher, each iteration uses a batch ``B_1, \ldots, B_n`` (``n \leq N``): a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. The batching can aid the calibration stage but does not effect the emulate-sample stages.
 
-    `get_training_points` and `encoder_kwargs_from` therefore break the stacked batch outputs back into their per-observation components automatically, so the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the full distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N`` is used and batch structure is ignored.
+    Internally `get_training_points` and `encoder_kwargs_from` reduce outputs/noise from the `EnsembleKalmanProcess` to thei per-observation components, thus the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N`` is used and batch structure is ignored.
+
+    Warning: using training data with several `(identical-input)->(different-output)` pairs, will induce more sensitivity on the `obs_noise_cov`. It is recommended to ensure it is well estimated (or well-regularized with white noise) to help training; one can also use the `noise_learn=true` flag but this is known to cause slow-downs in training.
 
 Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc`, the `Emulator` can then be built:
 
