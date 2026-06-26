@@ -752,12 +752,6 @@ end
     @test all(isapprox.(get_inputs(tp), u_flat, atol = 1e-12))
     @test all(isapprox.(get_outputs(tp), g_flat, atol = 1e-12))
 
-    # g_final in per-element (unbatched) form: one extra column group appended
-    g_final_flat = randn(rng_mb, gdim, n_ens)
-    tp_f = get_training_points(ekp_mb, n_iters, g_final = g_final_flat)
-    @test size(get_inputs(tp_f), 2) == total_cols + n_ens
-    @test all(isapprox.(get_outputs(tp_f)[:, (total_cols + 1):end], g_final_flat, atol = 1e-12))
-
     # g_final in batched (stacked) form: split into batch_size groups
     g_final_batched = randn(rng_mb, gdim * batch_size, n_ens)
     tp_fb = get_training_points(ekp_mb, n_iters, g_final = g_final_batched)
@@ -777,8 +771,12 @@ end
         ),
     )
 
-    # wrong g_final size
-    @test_throws ArgumentError get_training_points(ekp_mb, n_iters, g_final = randn(rng_mb, gdim + 1, n_ens))
+    # wrong g_final size: not divisible by batch_size
+    @test_throws ArgumentError get_training_points(
+        ekp_mb,
+        n_iters,
+        g_final = randn(rng_mb, gdim * batch_size + 1, n_ens),
+    )
 
     # ---- encoder_kwargs_from: minibatch path ----
     ekp_kw = encoder_kwargs_from(ekp_mb, prior_mb)
@@ -798,10 +796,6 @@ end
     # dt: first batch_size entries correspond to the initial distribution (time = 0)
     flat_dt_kw = ekp_kw[:input_structure_vecs][:dt]
     @test all(flat_dt_kw[1:batch_size] .== 0)
-
-    # final_samples_out in per-element form → one extra pair appended
-    ekp_kw_f = encoder_kwargs_from(ekp_mb, prior_mb, final_samples_out = g_final_flat)
-    @test length(ekp_kw_f[:output_structure_vecs][:samples_out]) == n_iters * batch_size + 1
 
     # final_samples_out in batched form → split into batch_size extra pairs
     ekp_kw_fb = encoder_kwargs_from(ekp_mb, prior_mb, final_samples_out = g_final_batched)

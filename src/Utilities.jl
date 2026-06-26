@@ -84,30 +84,8 @@ function get_training_points(
     paired_range = [ir for ir in iter_range if ir <= g_len]
 
     # get_flat_pairs handles any batch size, including 1 (no-op for batch_size=1)
-    u_tp, g_tp = get_flat_pairs(ekp, paired_range)
-
-    if !isnothing(g_final)
-        isa(g_final, AbstractMatrix) ||
-            throw(ArgumentError("Expected `g_final` to be type `<:AbstractMatrix`, received $(typeof(g_final))."))
-        final_u = get_u(ekp, maximum(iter_range))
-        gdim = size(g_tp, 1)              # per-element output dimension
-        last_bs = length(get_minibatch(os, last(paired_range)))
-
-        if size(g_final, 1) == gdim
-            # g_final is in per-element (unbatched) form
-            u_tp = hcat(u_tp, final_u)
-            g_tp = hcat(g_tp, g_final)
-        elseif last_bs > 1 && size(g_final, 1) == gdim * last_bs
-            # g_final is stacked over batch elements — split it
-            for b in 1:last_bs
-                idx = (gdim * (b - 1) + 1):(gdim * b)
-                u_tp = hcat(u_tp, final_u)
-                g_tp = hcat(g_tp, g_final[idx, :])
-            end
-        else
-            throw(ArgumentError("Expected `g_final` size: $((gdim, size(final_u, 2))), received $(size(g_final))."))
-        end
-    end
+    # final_samples_out appends the final ensemble output in per-element or batched form
+    u_tp, g_tp = get_flat_pairs(ekp, paired_range; final_samples_out = g_final)
 
     return PairedDataContainer(u_tp, g_tp, data_are_columns = true)
 end
@@ -164,39 +142,52 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Flatten the paired parameter and batched-output ensembles from an
-`EnsembleKalmanProcess` with minibatching into individual
-(parameter, single-observation) pairs.
+Flatten the paired parameter and forward-model output ensembles from a minibatched
+`EnsembleKalmanProcess` into individual `(parameter, single-observation)` column pairs.
 
-In a minibatched EKP run each stored output has row dimension `batch_size × gdim`,
-where `gdim` is the dimension of a single observation.  This function splits those
-stacked outputs into `batch_size` blocks of `gdim` rows and replicates the
-corresponding parameter ensemble, treating each batch element as an independent
-(parameter, observation) sample.
+In each stored EKP iteration the output matrix `g` has `batch_size × gdim` rows, where
+`gdim` is the single-observation dimension. This function splits each `g` into
+`batch_size` blocks of `gdim` rows and replicates the corresponding parameter ensemble
+so that each batch element becomes an independent `(u, g)` training pair. For
+non-minibatched runs (`batch_size = 1`) the function is a no-op.
 
-`iter_range` must be a subset of `1:length(get_g(ekp))`.  An integer `n` is
-interpreted as `1:n` (clamped to the number of stored outputs).
+# Arguments
 
-Returns `(u_flat, g_flat)` where
-- `u_flat` is `dim_par × (Σ_k bs_k × N_ens)` — parameters repeated per batch element.
-- `g_flat` is `gdim × (Σ_k bs_k × N_ens)` — outputs split to single-observation blocks.
+- `ekp`: `EnsembleKalmanProcess` holding the parameter ensembles and forward-model outputs.
+- `iter_range`: iterations to include — an integer `n` is interpreted as `1:n`
+  (clamped to the number of stored outputs); a vector selects specific iterations,
+  which must be a subset of `1:length(get_g(ekp))`.
+- `include_dt` (keyword, default `false`): when `true`, also return `dt_flat`, a
+  `Vector{Float64}` of per-pair algorithm times (`0` for iteration 1, then
+  `get_algorithm_time(ekp)[ir - 1]` repeated `batch_size` times per iteration).
+- `final_samples_out` (keyword, default `nothing`): optional `AbstractMatrix` of
+  forward-model outputs for the final parameter ensemble `get_u_final(ekp)` (not yet
+  stored in `ekp`). Must be stacked as `[g_b1; g_b2; …]` matching the minibatch
+  structure of the next observation-series cycle.
 
-When `include_dt = true`, returns `(u_flat, g_flat, dt_flat)` where `dt_flat` is a
-`Vector{Float64}` of per-pair algorithm times: 0 for iteration 1 (the initial ensemble),
-and `get_algorithm_time(ekp)[ir - 1]` for subsequent iterations, each replicated
-`batch_size` times.
+# Returns
 
-Used internally by `get_training_points` and `encoder_kwargs_from` whenever a batch
-size > 1 is detected, so most users will not need to call this directly.
+- `(u_flat, g_flat)` — matrices of size `dim_par × (Σ_k bs_k × N_ens)` and
+  `gdim × (Σ_k bs_k × N_ens)`, with parameters repeated once per batch element.
+- `(u_flat, g_flat, dt_flat)` — as above, plus the algorithm-time vector, when
+  `include_dt = true`.
 """
 function get_flat_pairs(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
     iter_range::Union{IT, AbstractVector{IT}};
     include_dt::Bool = false,
+    final_samples_out = nothing,
 ) where {FT, IT, P}
     if !isa(iter_range, AbstractVector)
         iter_range = 1:min(iter_range, length(get_g(ekp)))
     end
+    !isnothing(final_samples_out) &&
+        !isa(final_samples_out, AbstractMatrix) &&
+        throw(
+            ArgumentError(
+                "Expected `final_samples_out` to be an `AbstractMatrix`, received $(typeof(final_samples_out)).",
+            ),
+        )
 
     os = get_observation_series(ekp)
     g_len = length(get_g(ekp))
@@ -206,17 +197,23 @@ function get_flat_pairs(
     g_out = []
     dt_out = include_dt ? Float64[] : nothing
 
-    for ir in iter_range
+    # if a final output is provided, treat it as one extra iteration beyond g_len
+    full_range = isnothing(final_samples_out) ? iter_range : [collect(iter_range); g_len + 1]
+
+    for ir in full_range
         if ir > g_len
-            throw(
+            # extra iteration: use the caller-supplied output instead of get_g
+            isnothing(final_samples_out) && throw(
                 ArgumentError(
                     "iter_range contains iteration $ir, but EKP only stores $g_len " *
                     "outputs. iter_range must be a subset of 1:length(get_g(ekp)).",
                 ),
             )
+            gg = final_samples_out
+        else
+            gg = get_g(ekp, ir)
         end
         uu = get_u(ekp, ir)
-        gg = get_g(ekp, ir)
         batch = get_minibatch(os, ir)
         bs = length(batch)
 
@@ -229,6 +226,14 @@ function get_flat_pairs(
             ),
         )
         gdim = ndim ÷ bs
+        if ir > g_len && !isempty(g_out) && gdim != size(g_out[1], 1)
+            throw(
+                ArgumentError(
+                    "final_samples_out has per-element output dimension $gdim, " *
+                    "but existing outputs have dimension $(size(g_out[1], 1)).",
+                ),
+            )
+        end
 
         for b in 1:bs
             idx = (gdim * (b - 1) + 1):(gdim * b)
@@ -306,21 +311,36 @@ function encoder_kwargs_from(
     final_samples_out = nothing,
 ) where {PD <: ParameterDistribution, EKP <: EnsembleKalmanProcess}
     observation_series = isnothing(observation_series) ? get_observation_series(ekp) : observation_series
-    # track whether samples were user-supplied (don't auto-flatten those)
     auto_flatten_io = isnothing(samples_in) && isnothing(samples_out)
     samples_in = isnothing(samples_in) ? get_u(ekp) : samples_in
     samples_out = isnothing(samples_out) ? get_g(ekp) : samples_out
     dt = isnothing(dt) ? get_algorithm_time(ekp) : dt
-    # a common setting is you have one-less samples_out than (samples_in, dt) so we extend g
-    if !isnothing(final_samples_out)
-        if (isa(final_samples_out, AbstractMatrix)) # add one matrix
+
+    orig_g_len = length(get_g(ekp))
+    is_minibatched =
+        auto_flatten_io &&
+        orig_g_len > 0 &&
+        any(length(get_minibatch(observation_series, ir)) > 1 for ir in 1:orig_g_len)
+
+    if is_minibatched
+        # delegate all splitting (including final_samples_out) to get_flat_pairs
+        u_flat, g_flat, flat_dt =
+            get_flat_pairs(ekp, 1:orig_g_len; include_dt = true, final_samples_out = final_samples_out)
+        n_ens_per = size(get_u(ekp, 1), 2)
+        n_pairs = size(u_flat, 2) ÷ n_ens_per
+        samples_in = [u_flat[:, ((k - 1) * n_ens_per + 1):(k * n_ens_per)] for k in 1:n_pairs]
+        samples_out = [g_flat[:, ((k - 1) * n_ens_per + 1):(k * n_ens_per)] for k in 1:n_pairs]
+        dt = flat_dt
+    elseif !isnothing(final_samples_out)
+        # non-minibatch path: append final_samples_out directly
+        if isa(final_samples_out, AbstractMatrix)
             if length(samples_out) > 0
                 size(samples_out[1]) == size(final_samples_out) || error(
                     "size of final_samples_out ($(size(final_samples_out))) does not match existing samples_out entries ($(size(samples_out[1])))",
                 )
             end
             push!(samples_out, final_samples_out)
-        else # add a vector of matrices
+        else
             if length(samples_out) > 0
                 all(size(samples_out[1]) == size(so) for so in final_samples_out) || error(
                     "not all final_samples_out entries have size $(size(samples_out[1])) to match existing samples_out",
@@ -328,49 +348,6 @@ function encoder_kwargs_from(
             end
             samples_out = reduce(vcat, [samples_out, final_samples_out])
         end
-    end
-
-    # when samples were derived from ekp, flatten any minibatched outputs
-    orig_g_len = length(get_g(ekp))
-    if auto_flatten_io &&
-       orig_g_len > 0 &&
-       any(length(get_minibatch(observation_series, ir)) > 1 for ir in 1:orig_g_len)
-
-        # delegate u/g/dt splitting to the public helper; rebuild per-pair lists from the result
-        u_flat, g_flat, flat_dt = get_flat_pairs(ekp, 1:orig_g_len; include_dt = true)
-        n_ens_per = size(get_u(ekp, 1), 2)
-        n_pairs = size(u_flat, 2) ÷ n_ens_per   # = Σ bs_k over stored iterations
-        flat_si = [u_flat[:, ((k - 1) * n_ens_per + 1):(k * n_ens_per)] for k in 1:n_pairs]
-        flat_so = [g_flat[:, ((k - 1) * n_ens_per + 1):(k * n_ens_per)] for k in 1:n_pairs]
-
-        # handle final_samples_out that was appended beyond orig_g_len
-        if length(samples_out) > orig_g_len
-            final_so = samples_out[orig_g_len + 1]
-            gdim_ref = size(flat_so[1], 1)
-            last_bs = length(get_minibatch(observation_series, orig_g_len))
-            final_si = samples_in[min(orig_g_len + 1, length(samples_in))]
-            final_di = Float64(dt[min(orig_g_len, length(dt))])
-            if size(final_so, 1) == gdim_ref
-                push!(flat_si, final_si)
-                push!(flat_so, final_so)
-                push!(flat_dt, final_di)
-            elseif size(final_so, 1) == gdim_ref * last_bs
-                for b in 1:last_bs
-                    idx = (gdim_ref * (b - 1) + 1):(gdim_ref * b)
-                    push!(flat_si, final_si)
-                    push!(flat_so, final_so[idx, :])
-                    push!(flat_dt, final_di)
-                end
-            else
-                push!(flat_si, final_si)
-                push!(flat_so, final_so)
-                push!(flat_dt, final_di)
-            end
-        end
-
-        samples_in = flat_si
-        samples_out = flat_so
-        dt = flat_dt
     end
 
     prior_kwargs = encoder_kwargs_from(prior)
