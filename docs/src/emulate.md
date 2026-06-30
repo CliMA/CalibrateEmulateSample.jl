@@ -13,9 +13,9 @@ input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iter
 ```
 
 !!! note "Minibatched calibration"
-    When the `EnsembleKalmanProcess` is built with an `ObservationSeries` and a minibatcher, each iteration uses a batch ``B_1, \ldots, B_n`` (``n \leq N``): a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. The batching can aid the calibration stage but does not affect the emulate-sample stages.
+    The `EnsembleKalmanProcess` can be built with an `ObservationSeries` of `N` samples and a minibatcher with `n` batches. In this case, each iteration fits the ensemble to one of the batches ``B_1, \ldots, B_n`` (``n \leq N``) that form a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. The batching can aid the calibration stage but does not affect the emulate-sample stages.
 
-    Internally `get_training_points` and `encoder_kwargs_from` reduce outputs/noise from the `EnsembleKalmanProcess` to thei per-observation components, thus the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N`` is used and batch structure is ignored.
+    Internally `get_training_points` and `encoder_kwargs_from` reduce outputs/noise from the `EnsembleKalmanProcess` to their per-observation components, thus the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N \sim \rho`` is used and batch structure is ignored.
 
     Warning: using training data with several `(identical-input)->(different-output)` pairs, will induce more sensitivity on the `obs_noise_cov`. It is recommended to ensure it is well estimated (or well-regularized with white noise) to help training; one can also use the `noise_learn=true` flag but this is known to cause slow-downs in training.
 
