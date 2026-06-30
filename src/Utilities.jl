@@ -55,6 +55,26 @@ Extract and flatten the training data from an `EnsembleKalmanProcess` into a
 - `train_iterations`: integer `n` (uses iterations `1:n`) or an index vector such as `3:2:9`.
 - `g_final` (keyword, default `nothing`): optional `AbstractMatrix` of forward-model outputs
   for the final parameter ensemble (not yet stored in `ekp`), sized as `get_g(ekp, 1)`.
+
+To ensure consistency in `g_final`, we recommend that, given the `ekp::EnsembleKalmanProcess`
+and `prior::ParameterDistribution` used to generate it, the user evaluates the forward map `G`
+on the parameters returned by `get_ϕ_final`:
+
+```julia
+params = get_ϕ_final(prior, ekp)
+g_final = reduce(hcat, [G(param) for param in eachcol(params)])
+```
+
+If `ekp` is using minibatching, `G` must be evaluated on the same minibatch that `ekp` is
+currently on:
+
+```julia
+params = get_ϕ_final(prior, ekp)
+batch_final = get_current_minibatch(ekp)
+g_final = reduce(hcat, [G(param, batch_final) for param in eachcol(params)])
+```
+
+See `EnsembleKalmanProcesses.Observations` for more on minibatching and `ObservationSeries`.
 """
 function get_training_points(
     ekp::EKP.EnsembleKalmanProcess{FT, IT, P},
