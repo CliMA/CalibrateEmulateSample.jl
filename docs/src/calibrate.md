@@ -23,7 +23,7 @@ One draw of our approach is that it does not require the forward map to be writt
 
 Two helper functions from `CalibrateEmulateSample.Utilities` simplify passing the calibration results to the emulator.
 
-**`get_training_points(ekp, n)`** collects the stored parameter ensembles and forward-model outputs into a [`PairedDataContainer`](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl) ready for emulator training. The argument `n` can be an integer (uses iterations `1:n`) or an index vector.  An optional keyword `g_final` accepts the forward-model outputs at the final, not-yet-stored parameter ensemble.
+**`get_training_points(ekp, n; g_final = nothing)`** collects the stored parameter ensembles and forward-model outputs into a [`PairedDataContainer`](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl) ready for emulator training. The argument `n` can be an integer (which uses iterations `1:n`) or an index vector.  An optional keyword `g_final` accepts the forward-model outputs at the final, not-yet-stored parameter ensemble.
 
 ```julia
 using CalibrateEmulateSample.Utilities
