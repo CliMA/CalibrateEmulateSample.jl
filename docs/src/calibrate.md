@@ -23,13 +23,13 @@ One draw of our approach is that it does not require the forward map to be writt
 
 Two helper functions from `CalibrateEmulateSample.Utilities` simplify passing the calibration results to the emulator.
 
-[`get_training_points(ekp, n; g_final = nothing)`](@ref CalibrateEmulateSample.Utilities.get_training_points) collects the stored parameter ensembles and forward-model outputs into a [`PairedDataContainer`](https://github.com/CliMA/EnsembleKalmanProcesses.jl/blob/main/src/DataContainers.jl) ready for emulator training. The argument `n` can be an integer (which uses iterations `1:n`) or an index vector.  An optional keyword `g_final` accepts the forward-model outputs at the final, not-yet-stored parameter ensemble.
+[`get_training_points(ekp, n; g_final = nothing)`](@ref CalibrateEmulateSample.Utilities.get_training_points) collects the stored parameter ensembles and forward-model outputs into a [`PairedDataContainer`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/internal_data_representation/) ready for emulator training. The argument `n` can be an integer (which uses iterations `1:n`) or an index vector.  An optional keyword `g_final` accepts the forward-model outputs at the final, not-yet-stored parameter ensemble.
 
 ```julia
 using CalibrateEmulateSample.Utilities
 input_output_pairs = get_training_points(ekp, 5)              # first 5 iterations
-input_output_pairs = get_training_points(ekp, 1:2:9)          # odd iterations 1,3,5,7,9
-input_output_pairs = get_training_points(ekp, 5; g_final = G(get_ϕ_final(prior, ekp)))
+input_output_pairs = get_training_points(ekp, 1:2:9)          # odd iterations 
+input_output_pairs = get_training_points(ekp, 5; g_final = G.(get_ϕ_final(prior, ekp)))  # an additional iteration pairing (u_final, g_final) 
 ```
 
 [`encoder_kwargs_from(ekp, prior)`](@ref CalibrateEmulateSample.Utilities.encoder_kwargs_from) collects additional information from the calibration — the prior covariance, the observational noise covariance, and the sequence of parameter and output sample distributions across EKP iterations — into a named tuple that can be passed directly as the `encoder_kwargs` argument of the `Emulator`. This enables data-adaptive preprocessing such as likelihood-informed subspace reduction.
