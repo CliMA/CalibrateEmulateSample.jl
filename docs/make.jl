@@ -66,7 +66,10 @@ if !isempty(get(ENV, "CI", ""))
     deploydocs(
         repo = "github.com/CliMA/CalibrateEmulateSample.jl.git",
         versions = ["stable" => "v^", "v#.#.#", "dev" => "dev"],
-        push_preview = true,
+        push_preview = all(
+            !isempty,
+            (get(ENV, "GITHUB_TOKEN", ""), get(ENV, "DOCUMENTER_KEY", "")),
+        ),
         devbranch = "main",
     )
 end
