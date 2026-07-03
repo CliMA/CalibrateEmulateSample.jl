@@ -11,6 +11,14 @@ First, obtain data in a `PairedDataContainer`, for example, get this from an `En
 using CalibrateEmulateSample.Utilities
 input_output_pairs = Utilities.get_training_points(ekpobj, 5) # use first 5 iterations as data
 ```
+
+!!! note "Minibatched calibration"
+    The `EnsembleKalmanProcess` can be built with an `ObservationSeries` of `N` samples and a minibatcher with `n` batches. In this case, each iteration fits the ensemble to one of the batches ``B_1, \ldots, B_n`` (``n \leq N``) that form a disjoint partition of statistically similar observations ``y_1, \ldots, y_N \sim \rho``. The batching can aid the calibration stage but does not affect the emulate-sample stages.
+
+    Internally `get_training_points` and `encoder_kwargs_from` reduce outputs/noise from the `EnsembleKalmanProcess` to their per-observation components, thus the emulator is trained on ``(\theta, \mathcal{G}(\theta))`` pairs representative of the distribution ``\rho``. In the Sampling stage the full observation set ``y_1, \ldots, y_N \sim \rho`` is used and batch structure is ignored.
+
+    Warning: using training data with several `(identical-input)->(different-output)` pairs, will induce more sensitivity on the `obs_noise_cov`. It is recommended to ensure it is well estimated (or well-regularized with white noise) to help training; one can also use the `noise_learn=true` flag but this is known to cause slow-downs in training.
+
 Wrapping a predefined machine learning tool, e.g. a Gaussian process `gauss_proc`, the `Emulator` can then be built:
 
 ```julia

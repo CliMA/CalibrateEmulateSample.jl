@@ -689,6 +689,124 @@ end
 
 
 
+@testset "Minibatch flattening" begin
+    rng_mb = Random.MersenneTwister(77)
+
+    gdim = 3        # dimension of one observation
+    n_obs = 4       # total observations in the series
+    dim_par = 2
+    n_ens = 5
+    batch_size = 2  # two batch elements per EKP iteration
+
+    obs_vec = [Observation(randn(rng_mb, gdim), Matrix{Float64}(I, gdim, gdim), "obs_$i") for i in 1:n_obs]
+    given_batches = [[1, 2], [3, 4]]
+    obs_series_mb = ObservationSeries(obs_vec, FixedMinibatcher(given_batches))
+
+    prior_mb = constrained_gaussian("test", 0.0, 1.0, -Inf, Inf, repeats = dim_par)
+    initial_ensemble_mb = construct_initial_ensemble(rng_mb, prior_mb, n_ens)
+    ekp_mb =
+        EnsembleKalmanProcesses.EnsembleKalmanProcess(initial_ensemble_mb, obs_series_mb, Inversion(); rng = rng_mb)
+
+    # store the raw stacked outputs for 2 iterations (one per FixedMinibatcher batch)
+    g_stored = Matrix{Float64}[]
+    for _ in 1:2
+        bs = length(get_current_minibatch(ekp_mb))
+        g_batch = randn(rng_mb, gdim * bs, n_ens)
+        push!(g_stored, copy(g_batch))
+        EnsembleKalmanProcesses.update_ensemble!(ekp_mb, g_batch)
+    end
+    n_iters = 2
+
+    # ---- get_flat_pairs: shape ----
+    u_flat, g_flat = get_flat_pairs(ekp_mb, 1:n_iters)
+    total_cols = n_iters * batch_size * n_ens
+    @test size(u_flat) == (dim_par, total_cols)
+    @test size(g_flat) == (gdim, total_cols)
+
+    # both batch-element copies of u at iteration 1 must equal get_u(ekp_mb, 1)
+    u1 = get_u(ekp_mb, 1)
+    @test all(isapprox.(u_flat[:, 1:n_ens], u1, atol = 1e-12))
+    @test all(isapprox.(u_flat[:, (n_ens + 1):(2n_ens)], u1, atol = 1e-12))
+
+    # g_flat slices match the two gdim-row blocks of the stored batched output
+    @test all(isapprox.(g_flat[:, 1:n_ens], g_stored[1][1:gdim, :], atol = 1e-12))
+    @test all(isapprox.(g_flat[:, (n_ens + 1):(2n_ens)], g_stored[1][(gdim + 1):(2gdim), :], atol = 1e-12))
+
+    # integer shorthand: get_flat_pairs(ekp, 2) == get_flat_pairs(ekp, 1:2)
+    u_flat2, g_flat2 = get_flat_pairs(ekp_mb, n_iters)
+    @test all(isapprox.(u_flat2, u_flat, atol = 1e-12))
+    @test all(isapprox.(g_flat2, g_flat, atol = 1e-12))
+
+    # include_dt: length and first batch_size entries are 0 (initial ensemble)
+    u_flat3, g_flat3, dt_flat = get_flat_pairs(ekp_mb, 1:n_iters; include_dt = true)
+    @test all(isapprox.(u_flat3, u_flat, atol = 1e-12))
+    @test all(isapprox.(g_flat3, g_flat, atol = 1e-12))
+    @test length(dt_flat) == total_cols ÷ n_ens
+    @test all(dt_flat[1:batch_size] .== 0)
+
+    # error: iter_range references an iteration with no stored output
+    @test_throws ArgumentError get_flat_pairs(ekp_mb, 1:5)
+
+    # ---- get_training_points: minibatch path ----
+    tp = get_training_points(ekp_mb, n_iters)
+    @test all(isapprox.(get_inputs(tp), u_flat, atol = 1e-12))
+    @test all(isapprox.(get_outputs(tp), g_flat, atol = 1e-12))
+
+    # g_final in batched (stacked) form: split into batch_size groups
+    g_final_batched = randn(rng_mb, gdim * batch_size, n_ens)
+    tp_fb = get_training_points(ekp_mb, n_iters, g_final = g_final_batched)
+    @test size(get_inputs(tp_fb), 2) == total_cols + batch_size * n_ens
+    @test all(
+        isapprox.(
+            get_outputs(tp_fb)[:, (total_cols + 1):(total_cols + n_ens)],
+            g_final_batched[1:gdim, :],
+            atol = 1e-12,
+        ),
+    )
+    @test all(
+        isapprox.(
+            get_outputs(tp_fb)[:, (total_cols + n_ens + 1):end],
+            g_final_batched[(gdim + 1):(2gdim), :],
+            atol = 1e-12,
+        ),
+    )
+
+    # wrong g_final size: not divisible by batch_size
+    @test_throws ArgumentError get_training_points(
+        ekp_mb,
+        n_iters,
+        g_final = randn(rng_mb, gdim * batch_size + 1, n_ens),
+    )
+
+    # ---- encoder_kwargs_from: minibatch path ----
+    ekp_kw = encoder_kwargs_from(ekp_mb, prior_mb)
+
+    # prior and obs kwargs are structurally unchanged
+    @test ekp_kw[:obs_noise_cov] == encoder_kwargs_from(obs_series_mb)[:obs_noise_cov]
+    @test all(isapprox.(ekp_kw[:prior_cov], encoder_kwargs_from(prior_mb)[:prior_cov], atol = 1e-12))
+
+    # samples_in/out lists reflect per-element (flattened) structure
+    flat_si_list = ekp_kw[:input_structure_vecs][:samples_in]
+    flat_so_list = ekp_kw[:output_structure_vecs][:samples_out]
+    @test length(flat_si_list) == n_iters * batch_size
+    @test length(flat_so_list) == n_iters * batch_size
+    @test size(flat_si_list[1]) == (dim_par, n_ens)
+    @test size(flat_so_list[1]) == (gdim, n_ens)
+
+    # dt: first batch_size entries correspond to the initial distribution (time = 0)
+    flat_dt_kw = ekp_kw[:input_structure_vecs][:dt]
+    @test all(flat_dt_kw[1:batch_size] .== 0)
+
+    # final_samples_out in batched form → split into batch_size extra pairs
+    ekp_kw_fb = encoder_kwargs_from(ekp_mb, prior_mb, final_samples_out = g_final_batched)
+    @test length(ekp_kw_fb[:output_structure_vecs][:samples_out]) == n_iters * batch_size + batch_size
+
+    # user-supplied samples_in/out are NOT auto-flattened
+    ekp_kw_custom = encoder_kwargs_from(ekp_mb, prior_mb; samples_in = get_u(ekp_mb), samples_out = get_g(ekp_mb))
+    @test size(ekp_kw_custom[:output_structure_vecs][:samples_out][1], 1) == gdim * batch_size
+
+end
+
 @testset "Decorrelator: Large observational covariance" begin
 
     # loop over output dim
