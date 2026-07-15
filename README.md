@@ -6,17 +6,13 @@
 
 Implements a derivative-free machine-learning-accelerated pipeline for uncertainty quantification.
 
-|||
-|------------------:|:------------------------------------------------------------|
-| **Documentation** | [![stable][docs-stable-img]][docs-stable-url] [![dev][docs-dev-img]][docs-dev-url] |
-| **Version**       | [![version][version-img]][version-url]                      |
-| **License**       | [![license][license-img]][license-url]                      |
-| **Docs Build**    | [![docs build][docs-bld-img]][docs-bld-url]                 |
-| **Tests**         | [![unit tests][unit-tests-img]][unit-tests-url]              |
-| **Code Coverage** | [![codecov][codecov-img]][codecov-url]                      |
-| **Downloads**     | [![Downloads][dlt-img]][dlt-url]                            |
-| **JOSS**          | [![DOI][joss-img]][joss-url]                                 |
-| **DOI**           | [![zenodo][zenodo-img]][zenodo-url]                          |
+|                    |                                                                                    |                    |                                         |
+|-------------------:|:-----------------------------------------------------------------------------------|-------------------:|:----------------------------------------|
+| **Documentation** | [![stable][docs-stable-img]][docs-stable-url] [![dev][docs-dev-img]][docs-dev-url] | **Version** | [![version][version-img]][version-url] |
+| **License** | [![license][license-img]][license-url] | **Docs Build** | [![docs build][docs-bld-img]][docs-bld-url] |
+| **Tests** | [![unit tests][unit-tests-img]][unit-tests-url] | **Code Coverage** | [![codecov][codecov-img]][codecov-url] |
+| **Downloads** | [![Downloads][dlt-img]][dlt-url] | **JOSS** | [![DOI][joss-img]][joss-url] |
+| **DOI** | [![zenodo][zenodo-img]][zenodo-url] |  |  |
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://CliMA.github.io/CalibrateEmulateSample.jl/stable/
