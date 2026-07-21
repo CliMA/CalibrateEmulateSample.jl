@@ -3,6 +3,8 @@ using LinearAlgebra
 using Distributions
 using GaussianProcesses
 using Test
+using AdvancedMH
+using AbstractMCMC
 
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
@@ -15,6 +17,10 @@ using CalibrateEmulateSample.Utilities
 
 # range 0->2, with lengthscale of transition 0.5, and y=1 at x=2
 G(x) = 5 * (tanh.((x .- 2) ./ 0.5) .+ 1)
+
+# A minimal MHSampler that deliberately does not implement log_transition_density, used to check
+# that the shared interface errors loudly instead of silently falling back to a wrong value.
+struct _DummyMHSampler <: AdvancedMH.MHSampler end
 
 function test_data(prior; rng_seed = 41, n = 80, var_y = 0.05, rest...)
     # Seed for pseudo-random number generator
@@ -680,6 +686,88 @@ end
             @testset "Sine GP & ForwardDiff variant:$(typeof(alg))" begin
                 @test isapprox(posterior_mean, mle; atol = 1e-1)
             end
+        end
+    end
+
+    @testset "Sampler transition-density interface (pCN Hastings-term fix)" begin
+        # Regression tests for: pCN's (and Barker's) log_transition_density must reflect the
+        # *actual* asymmetric proposal kernel, not the symmetric additive random-walk kernel.
+        # Constructed directly at the sampler level (bypassing Emulator/MCMCWrapper) so the
+        # underlying transition-density math can be checked against closed-form references.
+        rng = Random.MersenneTwister(2026)
+        n = 3
+        # A genuinely correlated (non-diagonal) covariance, so the tests exercise the
+        # whitening/off-diagonal structure, not just a diagonal special case.
+        C = [2.0 0.5 0.1; 0.5 1.5 0.3; 0.1 0.3 1.0]
+        L = cholesky(Symmetric(C)).L
+        prior_dist = MvNormal(zeros(n), Symmetric(C))
+
+        a = randn(rng, n)
+        b = randn(rng, n)
+        dummy_model = AdvancedMH.DensityModel(θ -> 0.0)
+
+        @testset "RW: transition density is symmetric" begin
+            rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            for s in (0.1, 1.0, 2.5)
+                @test isapprox(
+                    MCMC.log_transition_density(rw, dummy_model, a, b; stepsize = s),
+                    MCMC.log_transition_density(rw, dummy_model, b, a; stepsize = s),
+                )
+            end
+        end
+
+        @testset "pCN: Hastings term exactly cancels the prior ratio" begin
+            # This is the core bug: reverse - forward must equal logprior(a) - logprior(b)
+            # for every stepsize (every ρ), not silently 0.
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            prev_state = MCMC.MCMCState(a, 0.0, true)
+            for s in (0.05, 0.5, 1.5, 3.9)
+                hastings = AdvancedMH.logratio_proposal_density(pcn, dummy_model, prev_state, b; stepsize = s)
+                @test isapprox(hastings, logpdf(prior_dist, a) - logpdf(prior_dist, b); atol = 1e-8)
+            end
+        end
+
+        @testset "pCN: flat-likelihood chain always accepts" begin
+            # If the "likelihood" is constant, the full posterior log-density is just the prior,
+            # and the correct pCN acceptance log-ratio is then EXACTLY 0 for every proposal
+            # (loglik cancels trivially, and the Hastings term cancels the prior ratio). Under
+            # the pre-fix code (Hastings term silently 0), this would instead fluctuate with the
+            # prior ratio and cause spurious rejections.
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            flat_model = AdvancedMH.DensityModel(θ -> logpdf(prior_dist, θ))
+            θ0 = zeros(n)
+            state = MCMC.MCMCState(θ0, AdvancedMH.logdensity(flat_model, θ0), true)
+            for i in 1:200
+                state, _ = AbstractMCMC.step(rng, flat_model, pcn, state; stepsize = 0.6)
+                @test state.accepted
+            end
+        end
+
+        @testset "Barker: transition density matches closed-form gradient formula" begin
+            # Target chosen as the same Gaussian, so ∇log π(θ) = -C⁻¹θ is known in closed form,
+            # letting us check the whitened, flip-sign transition density against hand-derived
+            # algebra rather than trusting the autodiff call alone.
+            target_logdensity(θ) = -0.5 * dot(θ, C \ θ)
+            barker_model = AdvancedMH.DensityModel(target_logdensity)
+            barker = MCMC.BarkerMetropolisHastings{typeof(L), MCMC.ForwardDiffProtocol}(L)
+            prev_state = MCMC.MCMCState(a, 0.0, true)
+            for s in (0.3, 1.0, 2.0)
+                hastings = AdvancedMH.logratio_proposal_density(barker, barker_model, prev_state, b; stepsize = s)
+
+                gw_a = L' * (-(C \ a))
+                gw_b = L' * (-(C \ b))
+                e = (L \ (b .- a)) ./ s
+                sigmoid(x) = 1 / (1 + exp(-x))
+                manual = sum(log.(sigmoid.(-gw_b .* e)) .- log.(sigmoid.(gw_a .* e)))
+                @test isapprox(hastings, manual; atol = 1e-8)
+            end
+        end
+
+        @testset "log_transition_density errors loudly for an unimplemented sampler" begin
+            # A hypothetical new sampler that forgets to implement log_transition_density must
+            # fail loudly (ArgumentError) rather than silently falling back to a symmetric,
+            # possibly-wrong correction — this is what the shared interface guards against.
+            @test_throws ArgumentError MCMC.log_transition_density(_DummyMHSampler(), dummy_model, a, b)
         end
     end
 end

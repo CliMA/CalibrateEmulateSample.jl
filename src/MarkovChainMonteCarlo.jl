@@ -84,13 +84,14 @@ abstract type ZygoteProtocol <: AutodiffProtocol end
 abstract type EnzymeProtocol <: AutodiffProtocol end
 =#
 
-function _get_proposal(encoded_prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
-    # We use the prior covariance to shape the proposal (in the encoded space), 
-    # as proposals are based on increments we do not need to shift the mean too
+function _get_cholesky_factor(encoded_prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
+    # We use the prior covariance to shape the proposal (in the encoded space),
+    # as proposals are based on increments we do not need to shift the mean too.
+    # The Cholesky factor L (C = LL') is the single source of truth every sampler below
+    # uses both to draw its noise and to evaluate its transition (log-)density, so the
+    # two can never drift apart.
     C = cov(encoded_prior)
-    Σ = cholesky(Symmetric(C))
-
-    return AdvancedMH.RandomWalkProposal(Σ.L * MvNormal(zeros(size(Σ, 1)), I))
+    return cholesky(Symmetric(C)).L
 end
 
 
@@ -112,15 +113,10 @@ struct RWMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 
 RWMHSampling() = RWMHSampling{GradFreeProtocol}()
 
-struct RWMetropolisHastings{PT, ADT <: AutodiffProtocol} <: AdvancedMH.MHSampler
-    proposal::PT
+struct RWMetropolisHastings{LT, ADT <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
+    cholesky_L::LT
 end
-# Define method needed by AdvancedMH for new Sampler
-AdvancedMH.logratio_proposal_density(
-    sampler::RWMetropolisHastings,
-    transition_prev::AdvancedMH.AbstractTransition,
-    candidate,
-) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
 """
 $(TYPEDSIGNATURES)
@@ -142,8 +138,8 @@ function MetropolisHastingsSampler(
     encoded_prior::ParameterDistribution,
     encoder_schedule::VV,
 ) where {T <: AutodiffProtocol, VV <: AbstractVector}
-    proposal = _get_proposal(encoded_prior, encoder_schedule)
-    return RWMetropolisHastings{typeof(proposal), T}(proposal)
+    L = _get_cholesky_factor(encoded_prior, encoder_schedule)
+    return RWMetropolisHastings{typeof(L), T}(L)
 end
 
 """
@@ -157,22 +153,17 @@ on the covariance of `prior`.
 struct pCNMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 pCNMHSampling() = pCNMHSampling{GradFreeProtocol}()
 
-struct pCNMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
-    proposal::D
+struct pCNMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
+    cholesky_L::LT
 end
-# Define method needed by AdvancedMH for new Sampler
-AdvancedMH.logratio_proposal_density(
-    sampler::pCNMetropolisHastings,
-    transition_prev::AdvancedMH.AbstractTransition,
-    candidate,
-) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 function MetropolisHastingsSampler(
     ::pCNMHSampling{T},
     encoded_prior::ParameterDistribution,
     encoder_schedule::VV,
 ) where {T <: AutodiffProtocol, VV <: AbstractVector}
-    proposal = _get_proposal(encoded_prior, encoder_schedule)
-    return pCNMetropolisHastings{typeof(proposal), T}(proposal)
+    L = _get_cholesky_factor(encoded_prior, encoder_schedule)
+    return pCNMetropolisHastings{typeof(L), T}(L)
 end
 
 #------ The following are gradient-based samplers
@@ -186,23 +177,65 @@ new parameters according to the Barker proposal.
 struct BarkerSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 BarkerSampling() = BarkerSampling{ForwardDiffProtocol}()
 
-struct BarkerMetropolisHastings{D, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
-    proposal::D
+struct BarkerMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
+    cholesky_L::LT
 end
-# Define method needed by AdvancedMH for new Sampler
-AdvancedMH.logratio_proposal_density(
-    sampler::BarkerMetropolisHastings,
-    transition_prev::AdvancedMH.AbstractTransition,
-    candidate,
-) = AdvancedMH.logratio_proposal_density(sampler.proposal, transition_prev.params, candidate)
 
 function MetropolisHastingsSampler(
     ::BarkerSampling{T},
     encoded_prior::ParameterDistribution,
     encoder_schedule::VV,
 ) where {T <: AutodiffProtocol, VV <: AbstractVector}
-    proposal = _get_proposal(encoded_prior, encoder_schedule)
-    return BarkerMetropolisHastings{typeof(proposal), T}(proposal)
+    L = _get_cholesky_factor(encoded_prior, encoder_schedule)
+    return BarkerMetropolisHastings{typeof(L), T}(L)
+end
+
+# ------------------------------------------------------------------------------------------
+# Shared Metropolis-Hastings transition-density interface.
+#
+# Every sampler above is required to implement ONE function, log_transition_density(sampler,
+# model, θ_from, θ_to; stepsize) = log q(θ_to | θ_from) — the honest forward transition
+# log-density of whatever Markov kernel that sampler's `propose` actually draws from. There is
+# no default/fallback implementation: a sampler that doesn't implement it errors loudly instead
+# of silently inheriting a (possibly wrong) symmetric random-walk correction.
+#
+# AdvancedMH.logratio_proposal_density, which feeds directly into the MH acceptance ratio, is
+# then defined ONCE, generically over every AdvancedMH.MHSampler (so it applies automatically to
+# any sampler added to this module in future, not just the three below), as the textbook
+# Hastings correction log q(θ_from | θ_to) − log q(θ_to | θ_from)  (reverse − forward), by
+# evaluating log_transition_density in both directions. A sampler can never update its `propose`
+# without also updating the quantity that determines its acceptance ratio, because there is only
+# one function (log_transition_density) doing double duty for both.
+function log_transition_density(
+    sampler::MHS,
+    model,
+    θ_from,
+    θ_to;
+    stepsize::FT = 1.0,
+) where {MHS <: AdvancedMH.MHSampler, FT <: AbstractFloat}
+    throw(
+        ArgumentError(
+            "log_transition_density not implemented for $(MHS). Every MHSampler in this module " *
+            "must implement its own log_transition_density(sampler, model, θ_from, θ_to; stepsize) " *
+            "= log q(θ_to | θ_from); there is no generic/symmetric fallback, since silently assuming " *
+            "one caused the prior-double-counting bug this interface replaces.",
+        ),
+    )
+end
+
+function AdvancedMH.logratio_proposal_density(
+    sampler::MHS,
+    model::AdvancedMH.DensityModel,
+    transition_prev::AdvancedMH.AbstractTransition,
+    candidate;
+    stepsize::FT = 1.0,
+) where {MHS <: AdvancedMH.MHSampler, FT <: AbstractFloat}
+    θ_from = transition_prev.params
+    θ_to = candidate
+    log_q_forward = log_transition_density(sampler, model, θ_from, θ_to; stepsize = stepsize)
+    log_q_reverse = log_transition_density(sampler, model, θ_to, θ_from; stepsize = stepsize)
+    return log_q_reverse - log_q_forward
 end
 
 
@@ -336,7 +369,20 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    return current_state.params + stepsize * rand(rng, sampler.proposal)
+    L = sampler.cholesky_L
+    return current_state.params .+ stepsize .* (L * randn(rng, size(L, 1)))
+end
+
+# θ_to | θ_from ~ N(θ_from, stepsize² C), the symmetric kernel that propose() above draws from.
+function log_transition_density(
+    sampler::RWMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    θ_from,
+    θ_to;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    L = sampler.cholesky_L
+    return logpdf(MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L'))), θ_to)
 end
 
 # method extending AdvancedMH.propose() for preconditioned Crank-Nicholson
@@ -347,10 +393,27 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional 
+    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional
     # inverse problems." for relating ρ to Euler stepsize:
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
-    return ρ * current_state.params .+ sqrt(1 - ρ^2) * rand(rng, sampler.proposal)
+    L = sampler.cholesky_L
+    return ρ .* current_state.params .+ sqrt(1 - ρ^2) .* (L * randn(rng, size(L, 1)))
+end
+
+# θ_to | θ_from ~ N(ρθ_from, (1-ρ²)C), the asymmetric kernel that propose() above draws from.
+# Evaluating this honestly in both directions (via the generic logratio_proposal_density) is
+# what recovers the pCN cancellation log q(θ_from|θ_to) - log q(θ_to|θ_from) = logprior(θ_from) -
+# logprior(θ_to), instead of the silently-symmetric 0 the previous implementation returned.
+function log_transition_density(
+    sampler::pCNMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    θ_from,
+    θ_to;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    L = sampler.cholesky_L
+    return logpdf(MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L'))), θ_to)
 end
 
 # method extending AdvancedMH.propose() for the Barker proposal
@@ -361,12 +424,41 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    # Livingstone and Zanella (2022)
-    # Compute the gradient of the log-density at the current state
-    n = length(current_state.params)
-    log_gradient = autodiff_gradient(model, current_state.params, sampler)
-    xi = rand(rng, sampler.proposal)
-    return current_state.params .+ (stepsize .* ((rand(rng, n) .< 1 ./ (1 .+ exp.(-log_gradient .* xi))) .* xi))
+    # Livingstone and Zanella (2022). The elementwise sigmoid selection that defines the Barker
+    # proposal is only reversible for *independent* coordinates, so we apply it in the whitened
+    # coordinate system u = L⁻¹θ (where the prior-covariance preconditioning L is decorrelated
+    # to the identity) and map the increment back with L: the gradient is rotated into whitened
+    # coordinates via L'∇log π(θ) (chain rule for θ = θ₀ + Lu). We also flip the sign of the
+    # whitened noise η rather than zeroing it out — the standard Barker kernel moves by ±η, never
+    # by exactly 0, so its transition density (below) is an ordinary, atom-free density; zeroing
+    # out (keep-or-drop) instead creates a mixed discrete/continuous kernel with no closed form.
+    θ = current_state.params
+    n = length(θ)
+    L = sampler.cholesky_L
+    grad_white = L' * autodiff_gradient(model, θ, sampler)
+    η = randn(rng, n)
+    flip_prob = 1 ./ (1 .+ exp.(-grad_white .* η))
+    sign = 2 .* (rand(rng, n) .< flip_prob) .- 1
+    ζ = stepsize .* sign .* η
+    return θ .+ L * ζ
+end
+
+# For a symmetric noise density g (here standard normal) and whitened increment e = ζ/stepsize,
+# the marginal density of the ± flip-sign move is q(e | θ_from) = 2 g(e) σ(grad_white·e) (Barker,
+# 1965; Livingstone & Zanella, 2022): summing the probability that e itself was kept (w.p.
+# σ(grad_white·e)) with the probability that -e was drawn and flipped (w.p. σ(grad_white·e) too,
+# since g(-e) = g(e)). See propose() above for how θ_to is generated from θ_from.
+function log_transition_density(
+    sampler::BarkerMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    θ_from,
+    θ_to;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    L = sampler.cholesky_L
+    grad_white = L' * autodiff_gradient(model, θ_from, sampler)
+    e = (L \ (θ_to .- θ_from)) ./ stepsize
+    return sum(log(2) .+ logpdf.(Normal(), e) .+ log.(1 ./ (1 .+ exp.(-grad_white .* e)))) - length(e) * log(stepsize)
 end
 
 # Copy a MCMCState and set accepted = false
@@ -393,7 +485,8 @@ function AbstractMCMC.step(
         AdvancedMH.logdensity(model, current_state)
 
     log_α =
-        new_log_density - current_log_density + AdvancedMH.logratio_proposal_density(sampler, current_state, new_params)
+        new_log_density - current_log_density +
+        AdvancedMH.logratio_proposal_density(sampler, model, current_state, new_params; stepsize = stepsize)
 
     # Decide whether to return the previous params or the new one.
     new_state = if -Random.randexp(rng) < log_α
