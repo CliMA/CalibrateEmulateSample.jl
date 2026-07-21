@@ -194,19 +194,15 @@ end
 # ------------------------------------------------------------------------------------------
 # Shared Metropolis-Hastings transition-density interface.
 #
-# Every sampler above is required to implement ONE function, log_transition_density(sampler,
-# model, θ_from, θ_to; stepsize) = log q(θ_to | θ_from) — the honest forward transition
-# log-density of whatever Markov kernel that sampler's `propose` actually draws from. There is
-# no default/fallback implementation: a sampler that doesn't implement it errors loudly instead
-# of silently inheriting a (possibly wrong) symmetric random-walk correction.
-#
-# AdvancedMH.logratio_proposal_density, which feeds directly into the MH acceptance ratio, is
-# then defined ONCE, generically over every AdvancedMH.MHSampler (so it applies automatically to
-# any sampler added to this module in future, not just the three below), as the textbook
-# Hastings correction log q(θ_from | θ_to) − log q(θ_to | θ_from)  (reverse − forward), by
-# evaluating log_transition_density in both directions. A sampler can never update its `propose`
-# without also updating the quantity that determines its acceptance ratio, because there is only
-# one function (log_transition_density) doing double duty for both.
+# Every sampler above is required to implement a function,
+# log_transition_density(sampler, model, θ_from, θ_to; stepsize) = log q(θ_to | θ_from)
+# the forward transition log-density that sampler's `propose` draws from.
+# there is no fallback
+
+# AdvancedMH.logratio_proposal_density, fed into the MH acceptance ratio, is
+# a shared logic among all AdvancedMH.MHSamplers. Applying the Hastings correction
+# log q(θ_from | θ_to) − log q(θ_to | θ_from)  (reverse − forward), by
+# evaluating log_transition_density in both directions. 
 function log_transition_density(
     sampler::MHS,
     model,
@@ -361,59 +357,65 @@ function AdvancedMH.transition(
     return MCMCState(params, log_density, true)
 end
 
-# method extending AdvancedMH.propose() to vanilla random walk with explicitly given stepsize
+# ------------------------------------------------------------------------------------------
+# Markov transition kernels as Distributions.jl objects.
+#
+# For samplers whose transition kernel q(·|θ_from) is an ordinary Distributions.jl
+# distribution, we go one step further than log_transition_density: rather than hand-writing
+# `propose` (a sample) and `log_transition_density` (a logpdf) as two separate expressions that
+# merely happen to describe the same kernel, we build the kernel ONCE as a Distributions.jl
+# object and derive both `rand` and `logpdf` from it generically. The mean/covariance/ρ formulas
+# then exist in exactly one place (`transition_kernel`) instead of two, so they cannot drift
+# apart even in principle — this is strictly stronger than the log_transition_density interface
+# above, which only guarantees forward/reverse agree with *each other*, not that `propose`
+# agrees with either.
+const DistributionKernelSampler = Union{RWMetropolisHastings, pCNMetropolisHastings}
+
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
-    sampler::RWMetropolisHastings,
+    sampler::MHS,
     model::AdvancedMH.DensityModel,
     current_state::MCMCState;
     stepsize::FT = 1.0,
-) where {FT <: AbstractFloat}
-    L = sampler.cholesky_L
-    return current_state.params .+ stepsize .* (L * randn(rng, size(L, 1)))
+) where {MHS <: DistributionKernelSampler, FT <: AbstractFloat}
+    return rand(rng, transition_kernel(sampler, model, current_state.params; stepsize = stepsize))
 end
 
-# θ_to | θ_from ~ N(θ_from, stepsize² C), the symmetric kernel that propose() above draws from.
 function log_transition_density(
-    sampler::RWMetropolisHastings,
+    sampler::MHS,
     model::AdvancedMH.DensityModel,
     θ_from,
     θ_to;
     stepsize::FT = 1.0,
-) where {FT <: AbstractFloat}
-    L = sampler.cholesky_L
-    return logpdf(MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L'))), θ_to)
+) where {MHS <: DistributionKernelSampler, FT <: AbstractFloat}
+    return logpdf(transition_kernel(sampler, model, θ_from; stepsize = stepsize), θ_to)
 end
 
-# method extending AdvancedMH.propose() for preconditioned Crank-Nicholson
-function AdvancedMH.propose(
-    rng::Random.AbstractRNG,
-    sampler::pCNMetropolisHastings,
+# θ_to | θ_from ~ N(θ_from, stepsize² C) — the symmetric random-walk kernel.
+function transition_kernel(
+    sampler::RWMetropolisHastings,
     model::AdvancedMH.DensityModel,
-    current_state::MCMCState;
+    θ_from;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    # Use prescription in Beskos et al (2017) "Geometric MCMC for infinite-dimensional
-    # inverse problems." for relating ρ to Euler stepsize:
-    ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     L = sampler.cholesky_L
-    return ρ .* current_state.params .+ sqrt(1 - ρ^2) .* (L * randn(rng, size(L, 1)))
+    return MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L')))
 end
 
-# θ_to | θ_from ~ N(ρθ_from, (1-ρ²)C), the asymmetric kernel that propose() above draws from.
-# Evaluating this honestly in both directions (via the generic logratio_proposal_density) is
-# what recovers the pCN cancellation log q(θ_from|θ_to) - log q(θ_to|θ_from) = logprior(θ_from) -
-# logprior(θ_to), instead of the silently-symmetric 0 the previous implementation returned.
-function log_transition_density(
+# θ_to | θ_from ~ N(ρθ_from, (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017 for the
+# ρ-vs-Euler-stepsize relation). Evaluating this honestly in both directions (via the generic
+# logratio_proposal_density) is what recovers the pCN cancellation log q(θ_from|θ_to) -
+# log q(θ_to|θ_from) = logprior(θ_from) - logprior(θ_to), instead of the silently-symmetric 0
+# the previous implementation returned.
+function transition_kernel(
     sampler::pCNMetropolisHastings,
     model::AdvancedMH.DensityModel,
-    θ_from,
-    θ_to;
+    θ_from;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
     L = sampler.cholesky_L
-    return logpdf(MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L'))), θ_to)
+    return MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L')))
 end
 
 # method extending AdvancedMH.propose() for the Barker proposal
