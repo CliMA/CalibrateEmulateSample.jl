@@ -210,14 +210,7 @@ function log_transition_density(
     θ_to;
     stepsize::FT = 1.0,
 ) where {MHS <: AdvancedMH.MHSampler, FT <: AbstractFloat}
-    throw(
-        ArgumentError(
-            "log_transition_density not implemented for $(MHS). Every MHSampler in this module " *
-            "must implement its own log_transition_density(sampler, model, θ_from, θ_to; stepsize) " *
-            "= log q(θ_to | θ_from); there is no generic/symmetric fallback, since silently assuming " *
-            "one caused the prior-double-counting bug this interface replaces.",
-        ),
-    )
+    _throw_log_transition_density_not_implemented(MHS)
 end
 
 function AdvancedMH.logratio_proposal_density(
@@ -819,11 +812,8 @@ $(TYPEDSIGNATURES)
 Fraction of MC proposals in `chain` which were accepted (according to Metropolis-Hastings.)
 """
 function accept_ratio(chain::MCMCChains.Chains)
-    if :accepted in names(chain, :internals)
-        return mean(chain, :accepted)
-    else
-        error("MH `:accepted` not recorded in MCMC chain — available internals: $(names(chain, :internals)).")
-    end
+    :accepted in names(chain, :internals) || _throw_accepted_not_recorded(chain)
+    return mean(chain, :accepted)
 end
 
 function _find_mcmc_step_log(mcmc::MCMCWrapper)
@@ -886,12 +876,7 @@ function optimize_stepsize(
     n_evals = 0
     function acc_at(stepsize)
         n_evals += 1
-        if n_evals > max_iter
-            error(
-                "optimize_stepsize: acceptance rate did not reach target $(target_acc) ± $(tol) " *
-                "within $(max_iter) iterations — last stepsize tried: $(round(stepsize; sigdigits = 3)).",
-            )
-        end
+        n_evals <= max_iter || _throw_max_iter_exceeded(n_evals, max_iter, target_acc, tol, stepsize)
         trial_chain = sample(rng, mcmc, N; stepsize = stepsize, sample_kwargs...)
         acc_ratio = accept_ratio(trial_chain)
         _find_mcmc_step_log(n_evals, stepsize, acc_ratio, trial_chain)
@@ -919,14 +904,8 @@ function optimize_stepsize(
         n_expand = 0
         while acc_hi > target_acc
             n_expand += 1
-            if n_expand > max_expansions
-                error(
-                    "optimize_stepsize: acceptance rate stayed above target $(target_acc) ± $(tol) " *
-                    "after $(max_expansions) doublings (up to stepsize $(round(hi; sigdigits = 3))) " *
-                    "without crossing it — the acceptance-vs-stepsize relationship may not be monotonic " *
-                    "in this range rather than simply needing a larger stepsize.",
-                )
-            end
+            n_expand <= max_expansions ||
+                _throw_max_expansions_exceeded(:above, n_expand, max_expansions, target_acc, tol, hi)
             lo = hi
             hi *= 2
             acc_hi = acc_at(hi)
@@ -938,15 +917,8 @@ function optimize_stepsize(
         n_expand = 0
         while acc_lo < target_acc
             n_expand += 1
-            if n_expand > max_expansions
-                error(
-                    "optimize_stepsize: acceptance rate stayed below target $(target_acc) ± $(tol) " *
-                    "after $(max_expansions) halvings (down to stepsize $(round(lo; sigdigits = 3))) " *
-                    "without crossing it — the acceptance-vs-stepsize relationship may not be monotonic " *
-                    "in this range (e.g. a numerically noisy log-density at very small stepsizes) rather " *
-                    "than simply needing a smaller stepsize.",
-                )
-            end
+            n_expand <= max_expansions ||
+                _throw_max_expansions_exceeded(:below, n_expand, max_expansions, target_acc, tol, lo)
             hi = lo
             lo /= 2
             acc_lo = acc_at(lo)
@@ -1055,6 +1027,83 @@ Got:
 
 Suggestion:
     Select a protocol with a $(op) implementation, e.g. `ForwardDiffProtocol`.
+"""))
+end
+
+@noinline function _throw_log_transition_density_not_implemented(sampler_type)
+    throw(ArgumentError("""
+`log_transition_density` is not implemented for sampler type $(sampler_type).
+
+Expected:
+    Every `AdvancedMH.MHSampler` used with this module must implement its own
+    `log_transition_density(sampler, model, θ_from, θ_to; stepsize)`, returning
+    `log q(θ_to | θ_from)`. There is no generic/symmetric fallback, since silently
+    assuming one previously caused a prior-double-counting bug.
+
+Got:
+    typeof(sampler) = $(sampler_type)
+
+Suggestion:
+    Define `log_transition_density(sampler::$(sampler_type), model, θ_from, θ_to; stepsize = 1.0)`
+    for your sampler type.
+"""))
+end
+
+@noinline function _throw_accepted_not_recorded(chain::MCMCChains.Chains)
+    throw(ArgumentError("""
+Chain is missing the `:accepted` internal required by `accept_ratio`.
+
+Expected:
+    A `Chains` object produced by this module's `sample`/`optimize_stepsize`, which always
+    records `:accepted` as an internal.
+
+Got:
+    available internals = $(names(chain, :internals))
+
+Suggestion:
+    Only pass `Chains` objects returned by this module's `sample`/`optimize_stepsize`; do
+    not construct or filter the internals section by hand.
+"""))
+end
+
+@noinline function _throw_max_iter_exceeded(n_evals, max_iter, target_acc, tol, stepsize)
+    throw(ArgumentError("""
+optimize_stepsize did not reach the target acceptance rate within the iteration budget.
+
+Expected:
+    Acceptance rate within target_acc ± tol = $(target_acc) ± $(tol), reached within
+    max_iter = $(max_iter) `sample()` calls.
+
+Loop context:
+    n_evals = $(n_evals) (max_iter = $(max_iter))
+    last stepsize tried = $(round(stepsize; sigdigits = 3))
+
+Suggestion:
+    Increase `max_iter`, or widen `tol` if a looser acceptance-rate window is acceptable.
+"""))
+end
+
+@noinline function _throw_max_expansions_exceeded(direction::Symbol, n_expand, max_expansions, target_acc, tol, bound_stepsize)
+    above = direction == :above
+    action = above ? "doublings" : "halvings"
+    stayed = above ? "stayed above" : "stayed below"
+    monotonic_note =
+        above ? "rather than simply needing a larger stepsize" :
+        "(e.g. a numerically noisy log-density at very small stepsizes) rather than simply needing a smaller stepsize"
+    throw(ArgumentError("""
+optimize_stepsize: acceptance rate $(stayed) target $(target_acc) ± $(tol) after $(max_expansions) $(action) without crossing it.
+
+Expected:
+    Acceptance rate to cross target_acc ± tol = $(target_acc) ± $(tol) within
+    max_expansions = $(max_expansions) $(action).
+
+Loop context:
+    n_expand = $(n_expand) (max_expansions = $(max_expansions))
+    stepsize reached = $(round(bound_stepsize; sigdigits = 3))
+
+Suggestion:
+    Increase `max_expansions` to search farther. Otherwise, the acceptance-vs-stepsize
+    relationship may not be monotonic in this range, $(monotonic_note).
 """))
 end
 

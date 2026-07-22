@@ -5,6 +5,7 @@ using GaussianProcesses
 using Test
 using AdvancedMH
 using AbstractMCMC
+using MCMCChains
 
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
@@ -693,6 +694,90 @@ end
         end
     end
 
+    @testset "optimize_stepsize: branch coverage" begin
+        # optimize_stepsize's bracket-and-bisect search has several distinct code paths 
+        mcmc = MCMCWrapper(RWMHSampling(), mcmc_params[:obs_sample], prior, em_1; init_params = vec(collect(mcmc_params[:init_params])))
+
+        @testset "returns immediately if the initial stepsize is already within tolerance" begin
+            step = optimize_stepsize(Random.MersenneTwister(1), mcmc; init_stepsize = 0.125, N = 800, target_acc = 0.25)
+            @test isapprox(step, 0.125; atol = 1e-8) # no expansion/bisection needed at all
+        end
+
+        @testset "phase 1, 'acceptance too high' branch (expands stepsize upward)" begin
+            step = optimize_stepsize(Random.MersenneTwister(2), mcmc; init_stepsize = 0.001, N = 800, target_acc = 0.25)
+            @test 0.15 <= accept_ratio(MCMC.sample(Random.MersenneTwister(2), mcmc, 800; stepsize = step)) <= 0.35
+        end
+
+        @testset "phase 1, 'acceptance too low' branch (expands stepsize downward)" begin
+            step = optimize_stepsize(Random.MersenneTwister(3), mcmc; init_stepsize = 4.0, N = 800, target_acc = 0.25)
+            @test 0.15 <= accept_ratio(MCMC.sample(Random.MersenneTwister(3), mcmc, 800; stepsize = step)) <= 0.35
+        end
+
+        @testset "phase 2: bisection is actually reached" begin
+           
+            step = optimize_stepsize(
+                Random.MersenneTwister(4),
+                mcmc;
+                init_stepsize = 0.0625,
+                N = 1500,
+                target_acc = 0.33,
+                tol = 0.05,
+            )
+            @test 0.0625 < step < 0.125 # strictly inside the bracket -> bisection ran, not just phase 1
+        end
+
+        @testset "max_expansions exceeded: 'stayed above target' (expand-up) branch" begin
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(5),
+                    mcmc;
+                    init_stepsize = 0.25,
+                    N = 300,
+                    target_acc = -0.5,
+                    tol = 0.05,
+                    max_expansions = 3,
+                )
+                @test contains(thrown.value.msg, "stayed above")
+                @test contains(thrown.value.msg, "doublings")
+                @test contains(thrown.value.msg, "max_expansions")
+                @test contains(thrown.value.msg, "-0.5")
+            end
+        end
+
+        @testset "max_expansions exceeded: 'stayed below target' (expand-down) branch" begin
+            # target_acc set above the achievable range (>1), symmetric to the case above.
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(6),
+                    mcmc;
+                    init_stepsize = 0.25,
+                    N = 300,
+                    target_acc = 1.5,
+                    tol = 0.05,
+                    max_expansions = 3,
+                )
+                @test contains(thrown.value.msg, "stayed below")
+                @test contains(thrown.value.msg, "halvings")
+                @test contains(thrown.value.msg, "max_expansions")
+                @test contains(thrown.value.msg, "1.5")
+            end
+        end
+
+        @testset "overall max_iter budget exhausted" begin
+            # A reachable target, but with only 1 sample() call allowed in total: the very first
+            # (non-converging) phase-1 expansion step must hit the n_evals > max_iter guard.
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(7),
+                    mcmc;
+                    init_stepsize = 4.0,
+                    N = 300,
+                    target_acc = 0.25,
+                    max_iter = 1,
+                )
+                @test contains(thrown.value.msg, "iteration budget")
+                @test contains(thrown.value.msg, "max_iter")
+            end
+        end
+    end
+
     @testset "Sampler transition-density interface (pCN Hastings-term fix)" begin
         # Regression tests for: pCN's (and Barker's) log_transition_density must reflect the
         # *actual* asymmetric proposal kernel, not the symmetric additive random-walk kernel.
@@ -819,7 +904,20 @@ end
             # A hypothetical new sampler that forgets to implement log_transition_density must
             # fail loudly (ArgumentError) rather than silently falling back to a symmetric,
             # possibly-wrong correction — this is what the shared interface guards against.
-            @test_throws ArgumentError MCMC.log_transition_density(_DummyMHSampler(), dummy_model, a, b)
+            let thrown = @test_throws ArgumentError MCMC.log_transition_density(_DummyMHSampler(), dummy_model, a, b)
+                @test contains(thrown.value.msg, "_DummyMHSampler")
+                @test contains(thrown.value.msg, "log_transition_density")
+            end
+        end
+    end
+
+    @testset "accept_ratio errors on a chain missing the :accepted internal" begin
+        # A Chains object not produced by this module's sample()/optimize_stepsize() (e.g. hand-built,
+        # or with internals filtered out) must fail loudly rather than silently mis-reporting.
+        bad_chain = MCMCChains.Chains(rand(5, 3, 1), [:a, :b, :other_internal], (parameters = [:a, :b], internals = [:other_internal]))
+        let thrown = @test_throws ArgumentError accept_ratio(bad_chain)
+            @test contains(thrown.value.msg, "accept_ratio")
+            @test contains(thrown.value.msg, "other_internal")
         end
     end
 end
