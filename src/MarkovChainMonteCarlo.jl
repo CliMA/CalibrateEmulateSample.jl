@@ -847,11 +847,19 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Uses a heuristic to return a stepsize for the `mh_proposal_sampler` element of 
+Uses a bracket-and-bisect search to return a stepsize for the `mh_proposal_sampler` element of
 [`MCMCWrapper`](@ref) which yields fast convergence of the Markov chain.
 
-The criterion used is that Metropolis-Hastings proposals should be accepted between 15% and 
-35% of the time.
+The criterion used is that Metropolis-Hastings proposals should be accepted between
+`target_acc - tol` and `target_acc + tol` of the time (`tol = 0.1` by default). Acceptance rate
+is assumed to (eventually) decrease as `stepsize` increases, but is not assumed to do so at any
+particular rate: some proposals (e.g. gradient-informed ones such as the Barker proposal) can
+have a much steeper acceptance-vs-stepsize transition than a vanilla random walk. The search
+therefore first exponentially expands a bracket `[lo, hi]` around `init_stepsize` until `target_acc`
+is known to lie strictly between the two trial acceptance rates, then bisects (in log-stepsize
+space, i.e. by geometric mean) within that bracket. Bisection halves the bracket every iteration
+regardless of how steep the transition is, so this converges reliably in cases where a fixed-factor
+doubling/halving search can overshoot the target window and fail to converge within `max_iter`.
 """
 function optimize_stepsize(
     rng::Random.AbstractRNG,
@@ -860,50 +868,69 @@ function optimize_stepsize(
     N = 2000,
     max_iter = 20,
     target_acc = 0.25,
+    tol = 0.1,
     sample_kwargs...,
 )
-    increase = false
-    decrease = false
-    stepsize = init_stepsize
-    factor = [1.0]
-    step_history = [true, true]
     _find_mcmc_step_log(mcmc)
-    for it in 1:max_iter
+
+    n_evals = 0
+    function acc_at(stepsize)
+        n_evals += 1
+        if n_evals > max_iter
+            error(
+                "optimize_stepsize: acceptance rate did not reach target $(target_acc) ± $(tol) " *
+                "within $(max_iter) iterations — last stepsize tried: $(round(stepsize; sigdigits = 3)).",
+            )
+        end
         trial_chain = sample(rng, mcmc, N; stepsize = stepsize, sample_kwargs...)
         acc_ratio = accept_ratio(trial_chain)
-        _find_mcmc_step_log(it, stepsize, acc_ratio, trial_chain)
+        _find_mcmc_step_log(n_evals, stepsize, acc_ratio, trial_chain)
+        return acc_ratio
+    end
 
-        change_step = true
-        if acc_ratio < target_acc - 0.1
-            decrease = true
-        elseif acc_ratio > target_acc + 0.1
-            increase = true
-        else
-            change_step = false
+    function done(stepsize)
+        @printf "Returning optimized stepsize: %.3g\n" stepsize
+        return stepsize
+    end
+    within_tol(acc) = abs(acc - target_acc) <= tol
+
+    stepsize = init_stepsize
+    acc = acc_at(stepsize)
+    within_tol(acc) && return done(stepsize)
+
+    # Phase 1: exponentially expand a bracket [lo, hi] around init_stepsize, keeping the tightest
+    # known too-high-acceptance point (lo) and too-low-acceptance point (hi), until both are known.
+    if acc > target_acc
+        lo, hi = stepsize, stepsize
+        acc_hi = acc
+        while acc_hi > target_acc
+            lo = hi
+            hi *= 2
+            acc_hi = acc_at(hi)
+            within_tol(acc_hi) && return done(hi)
         end
-
-        if increase && decrease
-            factor[1] /= 2
-            increase = false
-            decrease = false
-        end
-
-        if acc_ratio < target_acc - 0.1
-            stepsize *= 2^(-factor[1])
-        elseif acc_ratio > target_acc + 0.1
-            stepsize *= 2^(factor[1])
-        end
-
-        if change_step
-            @printf "Set sampler to new stepsize: %.3g\n" stepsize
-        else
-            @printf "Returning optimized stepsize: %.3g\n" stepsize
-            return stepsize
+    else
+        lo, hi = stepsize, stepsize
+        acc_lo = acc
+        while acc_lo < target_acc
+            hi = lo
+            lo /= 2
+            acc_lo = acc_at(lo)
+            within_tol(acc_lo) && return done(lo)
         end
     end
-    error(
-        "optimize_stepsize: acceptance rate $(round(acc_ratio; sigdigits = 3)) did not reach target $(target_acc) ± 0.1 within $(max_iter) iterations — last stepsize: $(round(stepsize; sigdigits = 3)).",
-    )
+
+    # Phase 2: bisect within [lo, hi] (geometric mean, since stepsize tuning is multiplicative).
+    while true
+        mid = sqrt(lo * hi)
+        acc_mid = acc_at(mid)
+        within_tol(acc_mid) && return done(mid)
+        if acc_mid > target_acc
+            lo = mid
+        else
+            hi = mid
+        end
+    end
 end
 # use default rng if none given
 optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBAL_RNG, mcmc; kwargs...)
