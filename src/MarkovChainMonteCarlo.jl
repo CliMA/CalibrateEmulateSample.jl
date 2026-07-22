@@ -418,6 +418,60 @@ function transition_kernel(
     return MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L')))
 end
 
+# The Barker transition kernel q(·|θ_from), as a lightweight (non-Distributions.jl) struct: the
+# whitened-coordinate machinery (Livingstone & Zanella, 2022) needs a state- and model-dependent
+# gradient computed once, so we bundle exactly what _barker_rand/_barker_logpdf need to stay
+# consistent, and no more — unlike RW/pCN this isn't a Distributions.jl distribution (its density
+# isn't a standard family), so we write the two functions directly instead of reimplementing
+# Distributions.jl's dispatch machinery (_rand!/_logpdf/insupport/...) for a one-off type.
+struct BarkerKernel{VT, MT, FT <: AbstractFloat}
+    "Current point θ_from that the kernel proposes away from."
+    θ_from::VT
+    "Gradient of the target log-density at θ_from, rotated into whitened coordinates: L'∇log π(θ_from)."
+    grad_white::VT
+    "Cholesky factor L of the prior covariance (C = LL'), used to whiten/unwhiten."
+    L::MT
+    stepsize::FT
+end
+
+function transition_kernel(
+    sampler::BarkerMetropolisHastings,
+    model::AdvancedMH.DensityModel,
+    θ_from;
+    stepsize::FT = 1.0,
+) where {FT <: AbstractFloat}
+    L = sampler.cholesky_L
+    grad_white = L' * autodiff_gradient(model, θ_from, sampler)
+    return BarkerKernel(θ_from, grad_white, L, stepsize)
+end
+
+# Livingstone and Zanella (2022). The elementwise sigmoid selection that defines the Barker
+# proposal is only reversible for *independent* coordinates, so we apply it in the whitened
+# coordinate system u = L⁻¹θ (where the prior-covariance preconditioning L is decorrelated to the
+# identity) and map the increment back with L. We also flip the sign of the whitened noise η
+# rather than zeroing it out — the standard Barker kernel moves by ±η, never by exactly 0, so its
+# transition density (_barker_logpdf below) is an ordinary, atom-free density; zeroing out
+# (keep-or-drop) instead creates a mixed discrete/continuous kernel with no closed form.
+function _barker_rand(rng::Random.AbstractRNG, kernel::BarkerKernel)
+    n = length(kernel.θ_from)
+    η = randn(rng, n)
+    flip_prob = 1 ./ (1 .+ exp.(-kernel.grad_white .* η))
+    sign = 2 .* (rand(rng, n) .< flip_prob) .- 1
+    ζ = kernel.stepsize .* sign .* η
+    return kernel.θ_from .+ kernel.L * ζ
+end
+
+# For a symmetric noise density g (here standard normal) and whitened increment e = ζ/stepsize,
+# the marginal density of the ± flip-sign move is q(e | θ_from) = 2 g(e) σ(grad_white·e) (Barker,
+# 1965; Livingstone & Zanella, 2022): summing the probability that e itself was kept (w.p.
+# σ(grad_white·e)) with the probability that -e was drawn and flipped (w.p. σ(grad_white·e) too,
+# since g(-e) = g(e)). See _barker_rand above for how θ_to is generated from θ_from.
+function _barker_logpdf(kernel::BarkerKernel, θ_to)
+    e = (kernel.L \ (θ_to .- kernel.θ_from)) ./ kernel.stepsize
+    return sum(log(2) .+ logpdf.(Normal(), e) .+ log.(1 ./ (1 .+ exp.(-kernel.grad_white .* e)))) -
+           length(e) * log(kernel.stepsize)
+end
+
 # method extending AdvancedMH.propose() for the Barker proposal
 function AdvancedMH.propose(
     rng::Random.AbstractRNG,
@@ -426,30 +480,9 @@ function AdvancedMH.propose(
     current_state::MCMCState;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    # Livingstone and Zanella (2022). The elementwise sigmoid selection that defines the Barker
-    # proposal is only reversible for *independent* coordinates, so we apply it in the whitened
-    # coordinate system u = L⁻¹θ (where the prior-covariance preconditioning L is decorrelated
-    # to the identity) and map the increment back with L: the gradient is rotated into whitened
-    # coordinates via L'∇log π(θ) (chain rule for θ = θ₀ + Lu). We also flip the sign of the
-    # whitened noise η rather than zeroing it out — the standard Barker kernel moves by ±η, never
-    # by exactly 0, so its transition density (below) is an ordinary, atom-free density; zeroing
-    # out (keep-or-drop) instead creates a mixed discrete/continuous kernel with no closed form.
-    θ = current_state.params
-    n = length(θ)
-    L = sampler.cholesky_L
-    grad_white = L' * autodiff_gradient(model, θ, sampler)
-    η = randn(rng, n)
-    flip_prob = 1 ./ (1 .+ exp.(-grad_white .* η))
-    sign = 2 .* (rand(rng, n) .< flip_prob) .- 1
-    ζ = stepsize .* sign .* η
-    return θ .+ L * ζ
+    return _barker_rand(rng, transition_kernel(sampler, model, current_state.params; stepsize = stepsize))
 end
 
-# For a symmetric noise density g (here standard normal) and whitened increment e = ζ/stepsize,
-# the marginal density of the ± flip-sign move is q(e | θ_from) = 2 g(e) σ(grad_white·e) (Barker,
-# 1965; Livingstone & Zanella, 2022): summing the probability that e itself was kept (w.p.
-# σ(grad_white·e)) with the probability that -e was drawn and flipped (w.p. σ(grad_white·e) too,
-# since g(-e) = g(e)). See propose() above for how θ_to is generated from θ_from.
 function log_transition_density(
     sampler::BarkerMetropolisHastings,
     model::AdvancedMH.DensityModel,
@@ -457,10 +490,7 @@ function log_transition_density(
     θ_to;
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
-    L = sampler.cholesky_L
-    grad_white = L' * autodiff_gradient(model, θ_from, sampler)
-    e = (L \ (θ_to .- θ_from)) ./ stepsize
-    return sum(log(2) .+ logpdf.(Normal(), e) .+ log.(1 ./ (1 .+ exp.(-grad_white .* e)))) - length(e) * log(stepsize)
+    return _barker_logpdf(transition_kernel(sampler, model, θ_from; stepsize = stepsize), θ_to)
 end
 
 # Copy a MCMCState and set accepted = false
