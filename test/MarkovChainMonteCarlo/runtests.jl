@@ -743,6 +743,27 @@ end
             end
         end
 
+        @testset "RW/pCN: propose draws agree with transition_kernel's analytic mean" begin
+            # propose() and log_transition_density() are now both derived from the single
+            # transition_kernel(...) object (a Distributions.jl MvNormal), so this is really a
+            # sanity check that rand(transition_kernel(...)) behaves as documented, rather than a
+            # check that two independent formulas happen to agree.
+            #
+            # n_draws and atol are chosen together for a ~5σ-safe check (not flaky, but tight
+            # enough to catch a real scaling bug), via the Monte Carlo mean's norm-error RMS
+            # sqrt(tr(Var)/n_draws): RW's Var = stepsize²C gives 5·RMS ≈ 0.053; pCN's Var =
+            # (1-ρ²)C gives 5·RMS ≈ 0.067 (both at stepsize=0.5, n_draws=10_000).
+            rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            state = MCMC.MCMCState(a, 0.0, true)
+            n_draws = 10_000
+            rw_draws = [AdvancedMH.propose(rng, rw, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
+            pcn_draws = [AdvancedMH.propose(rng, pcn, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
+            @test isapprox(mean(rw_draws), a; atol = 0.06)
+            ρ = (1 - 0.5 / 4) / (1 + 0.5 / 4)
+            @test isapprox(mean(pcn_draws), ρ .* a; atol = 0.07)
+        end
+
         @testset "Barker: transition density matches closed-form gradient formula" begin
             # Target chosen as the same Gaussian, so ∇log π(θ) = -C⁻¹θ is known in closed form,
             # letting us check the whitened, flip-sign transition density against hand-derived
@@ -760,6 +781,33 @@ end
                 sigmoid(x) = 1 / (1 + exp(-x))
                 manual = sum(log.(sigmoid.(-gw_b .* e)) .- log.(sigmoid.(gw_a .* e)))
                 @test isapprox(hastings, manual; atol = 1e-8)
+            end
+        end
+
+        @testset "Barker: _barker_rand's marginal matches the 2φ(e)σ(d·e) density" begin
+            # Unlike the Hastings-term check above (which only tests reversibility), this checks
+            # that _barker_rand's actual empirical distribution matches the closed-form q(e) =
+            # 2φ(e)σ(d·e) claimed in its docstring, via a fine-grid quadrature reference — an
+            # independent numerical check, not just internal self-consistency.
+            d = 1.3
+            L1 = reshape([1.0], 1, 1)
+            kernel = MCMC.BarkerKernel([0.0], [d], L1, 1.0)
+
+            grid = -12:0.001:12
+            dx = step(grid)
+            q(e) = 2 * pdf(Normal(), e) * (1 / (1 + exp(-d * e)))
+            total_mass = sum(q(e) for e in grid) * dx
+            mean_theory = sum(e * q(e) for e in grid) * dx / total_mass
+            @test isapprox(total_mass, 1.0; atol = 1e-6)
+
+            # n_draws/atol chosen for a ~5σ-safe check: Var[e] under q (via the same quadrature)
+            # is ≈0.76, so SE(n_draws=10_000) ≈ 0.0087 and 5·SE ≈ 0.044.
+            n_draws = 10_000
+            draws = [MCMC._barker_rand(rng, kernel)[1] for _ in 1:n_draws]
+            @test isapprox(mean_theory, sum(draws) / n_draws; atol = 0.05)
+
+            for etest in (-2.0, -0.5, 0.0, 0.7, 3.0)
+                @test isapprox(exp(MCMC._barker_logpdf(kernel, [etest])), q(etest); atol = 1e-8)
             end
         end
 
