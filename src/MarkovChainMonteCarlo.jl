@@ -860,6 +860,15 @@ is known to lie strictly between the two trial acceptance rates, then bisects (i
 space, i.e. by geometric mean) within that bracket. Bisection halves the bracket every iteration
 regardless of how steep the transition is, so this converges reliably in cases where a fixed-factor
 doubling/halving search can overshoot the target window and fail to converge within `max_iter`.
+
+The exponential expansion phase is capped separately at `max_expansions` doublings/halvings
+(default 10, i.e. a ~1000x range around `init_stepsize`). Acceptance rate computed from a noisy,
+numerically-evaluated log-density (e.g. from an emulator) need not actually decrease monotonically
+all the way to stepsize → 0 — very small proposals can be dominated by the log-density's own
+floating-point noise floor rather than its true (smooth) small-stepsize limit, degrading rather
+than improving acceptance. If expansion hasn't bracketed `target_acc` within `max_expansions`
+steps, that is reported directly (`target_acc` may not be achievable in this range) rather than
+continuing to shrink/grow the stepsize toward a pathological value.
 """
 function optimize_stepsize(
     rng::Random.AbstractRNG,
@@ -867,6 +876,7 @@ function optimize_stepsize(
     init_stepsize = 1.0,
     N = 2000,
     max_iter = 20,
+    max_expansions = 10,
     target_acc = 0.25,
     tol = 0.1,
     sample_kwargs...,
@@ -900,10 +910,23 @@ function optimize_stepsize(
 
     # Phase 1: exponentially expand a bracket [lo, hi] around init_stepsize, keeping the tightest
     # known too-high-acceptance point (lo) and too-low-acceptance point (hi), until both are known.
+    # Capped at max_expansions: if acceptance hasn't crossed target_acc by then, it likely isn't
+    # monotonic in this range (rather than simply needing one more doubling/halving), so we stop
+    # and report that clearly instead of continuing toward a pathological stepsize.
     if acc > target_acc
         lo, hi = stepsize, stepsize
         acc_hi = acc
+        n_expand = 0
         while acc_hi > target_acc
+            n_expand += 1
+            if n_expand > max_expansions
+                error(
+                    "optimize_stepsize: acceptance rate stayed above target $(target_acc) ± $(tol) " *
+                    "after $(max_expansions) doublings (up to stepsize $(round(hi; sigdigits = 3))) " *
+                    "without crossing it — the acceptance-vs-stepsize relationship may not be monotonic " *
+                    "in this range rather than simply needing a larger stepsize.",
+                )
+            end
             lo = hi
             hi *= 2
             acc_hi = acc_at(hi)
@@ -912,7 +935,18 @@ function optimize_stepsize(
     else
         lo, hi = stepsize, stepsize
         acc_lo = acc
+        n_expand = 0
         while acc_lo < target_acc
+            n_expand += 1
+            if n_expand > max_expansions
+                error(
+                    "optimize_stepsize: acceptance rate stayed below target $(target_acc) ± $(tol) " *
+                    "after $(max_expansions) halvings (down to stepsize $(round(lo; sigdigits = 3))) " *
+                    "without crossing it — the acceptance-vs-stepsize relationship may not be monotonic " *
+                    "in this range (e.g. a numerically noisy log-density at very small stepsizes) rather " *
+                    "than simply needing a smaller stepsize.",
+                )
+            end
             hi = lo
             lo /= 2
             acc_lo = acc_at(lo)
