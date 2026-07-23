@@ -45,7 +45,7 @@ export EmulatorPosteriorModel,
 # Sampler extensions to differentiate vanilla RW and pCN algorithms
 #
 # (Strictly speaking the difference between RW and pCN should be implemented at the level of
-# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the 
+# the MH Sampler's Proposal, not by defining a new Sampler, since the former is where the
 # only change is made. We do the latter here because doing the former would require more
 # boilerplate code (repeating AdvancedMH/src/proposal.jl for the new Proposals)).
 
@@ -54,7 +54,7 @@ export EmulatorPosteriorModel,
 """
 $(TYPEDEF)
 
-Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages 
+Type used to dispatch different autodifferentiation methods where different emulators have a different compatability with autodiff packages
 """
 abstract type AutodiffProtocol end
 
@@ -84,12 +84,15 @@ abstract type ZygoteProtocol <: AutodiffProtocol end
 abstract type EnzymeProtocol <: AutodiffProtocol end
 =#
 
+"""
+$(TYPEDSIGNATURES)
+
+Return the lower Cholesky factor `L` (with `C = LL'`) of the covariance of `encoded_prior`.
+Proposals are based on increments, so only the covariance (not the mean) of the prior is
+needed to shape them. `L` is the single source of truth every sampler below uses both to
+draw its noise and to evaluate its transition (log-)density, so the two can never drift apart.
+"""
 function _get_cholesky_factor(encoded_prior::ParameterDistribution, encoder_schedule::VV) where {VV <: AbstractVector}
-    # We use the prior covariance to shape the proposal (in the encoded space),
-    # as proposals are based on increments we do not need to shift the mean too.
-    # The Cholesky factor L (C = LL') is the single source of truth every sampler below
-    # uses both to draw its noise and to evaluate its transition (log-)density, so the
-    # two can never drift apart.
     C = cov(encoded_prior)
     return cholesky(Symmetric(C)).L
 end
@@ -98,21 +101,35 @@ end
 """
 $(TYPEDEF)
 
-Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref) 
+Type used to dispatch different methods of the [`MetropolisHastingsSampler`](@ref)
 constructor, corresponding to different sampling algorithms.
 """
 abstract type MCMCProtocol end
 
 """
 $(TYPEDEF)
-    
-[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters as as vanilla random walk, based on the covariance of `prior`.
+
+# Constructors
+
+$(METHODLIST)
 """
 struct RWMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 
 RWMHSampling() = RWMHSampling{GradFreeProtocol}()
 
+"""
+$(TYPEDEF)
+
+`AdvancedMH.MHSampler` used for vanilla random-walk Metropolis-Hastings, constructed via
+[`MetropolisHastingsSampler`](@ref) applied to a [`RWMHSampling`](@ref) protocol.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
 struct RWMetropolisHastings{LT, ADT <: AutodiffProtocol} <: AdvancedMH.MHSampler
     "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
     cholesky_L::LT
@@ -124,13 +141,13 @@ $(TYPEDSIGNATURES)
 Constructor for all `Sampler` objects, with one method for each supported MCMC algorithm.
 
 !!! warning
-    Both currently implemented Samplers use a Gaussian approximation to the prior: 
-    specifically, new Metropolis-Hastings proposals are a scaled combination of the old 
+    Both currently implemented Samplers use a Gaussian approximation to the prior:
+    specifically, new Metropolis-Hastings proposals are a scaled combination of the old
     parameter values and a random shift distributed as a Gaussian with the same covariance
-    as the `prior`. 
-    
+    as the `prior`.
+
     This suffices for our current use case, in which our priors are Gaussian
-    (possibly in a transformed space) and we assume enough fidelity in the Emulator that 
+    (possibly in a transformed space) and we assume enough fidelity in the Emulator that
     inference isn't prior-dominated.
 """
 function MetropolisHastingsSampler(
@@ -144,15 +161,29 @@ end
 
 """
 $(TYPEDEF)
-    
-[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for 
-new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is 
-usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based 
+
+[`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
+new parameters according to the preconditioned Crank-Nicholson (pCN) algorithm, which is
+usable for MCMC in the *stepsize → 0* limit, unlike the vanilla random walk. Steps are based
 on the covariance of `prior`.
+
+# Constructors
+
+$(METHODLIST)
 """
 struct pCNMHSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 pCNMHSampling() = pCNMHSampling{GradFreeProtocol}()
 
+"""
+$(TYPEDEF)
+
+`AdvancedMH.MHSampler` used for preconditioned Crank-Nicholson Metropolis-Hastings, constructed
+via [`MetropolisHastingsSampler`](@ref) applied to a [`pCNMHSampling`](@ref) protocol.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
 struct pCNMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
     cholesky_L::LT
@@ -173,10 +204,24 @@ $(TYPEDEF)
 
 [`MCMCProtocol`](@ref) which uses Metropolis-Hastings sampling that generates proposals for
 new parameters according to the Barker proposal.
+
+# Constructors
+
+$(METHODLIST)
 """
 struct BarkerSampling{T <: AutodiffProtocol} <: MCMCProtocol end
 BarkerSampling() = BarkerSampling{ForwardDiffProtocol}()
 
+"""
+$(TYPEDEF)
+
+`AdvancedMH.MHSampler` used for the (gradient-based) Barker proposal, constructed via
+[`MetropolisHastingsSampler`](@ref) applied to a [`BarkerSampling`](@ref) protocol.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
 struct BarkerMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
     "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
     cholesky_L::LT
@@ -192,17 +237,18 @@ function MetropolisHastingsSampler(
 end
 
 # ------------------------------------------------------------------------------------------
-# Shared Metropolis-Hastings transition-density interface.
-#
-# Every sampler above is required to implement a function,
-# log_transition_density(sampler, model, θ_from, θ_to; stepsize) = log q(θ_to | θ_from)
-# the forward transition log-density that sampler's `propose` draws from.
-# there is no fallback
+# Metropolis-Hastings transition-density interface.
 
-# AdvancedMH.logratio_proposal_density, fed into the MH acceptance ratio, is
-# a shared logic among all AdvancedMH.MHSamplers. Applying the Hastings correction
-# log q(θ_from | θ_to) − log q(θ_to | θ_from)  (reverse − forward), by
-# evaluating log_transition_density in both directions. 
+"""
+$(TYPEDSIGNATURES)
+
+Return `log q(θ_to | θ_from)`, the forward transition log-density that `sampler`'s `propose`
+draws from. This is the required extension point for adding a new `AdvancedMH.MHSampler` to
+this module: every sampler must implement its own method of this function (there is no
+generic/symmetric fallback, since silently assuming one previously caused a
+prior-double-counting bug). It is combined with its reverse-direction evaluation in
+`AdvancedMH.logratio_proposal_density` to form the Hastings correction.
+"""
 function log_transition_density(
     sampler::MHS,
     model,
@@ -222,6 +268,7 @@ function AdvancedMH.logratio_proposal_density(
 ) where {MHS <: AdvancedMH.MHSampler, FT <: AbstractFloat}
     θ_from = transition_prev.params
     θ_to = candidate
+    # Hastings correction: log q(θ_from | θ_to) − log q(θ_to | θ_from)  (reverse − forward)
     log_q_forward = log_transition_density(sampler, model, θ_from, θ_to; stepsize = stepsize)
     log_q_reverse = log_transition_density(sampler, model, θ_to, θ_from; stepsize = stepsize)
     return log_q_reverse - log_q_forward
@@ -230,6 +277,12 @@ end
 
 ## -------- Autodifferentiation procedures ------ ##
 
+"""
+$(TYPEDSIGNATURES)
+
+Return the gradient of `model`'s log-density at `params`, computed with the autodiff package
+selected by `autodiff_protocol` (a [`ForwardDiffProtocol`](@ref) or [`ReverseDiffProtocol`](@ref)).
+"""
 function autodiff_gradient(model::AdvancedMH.DensityModel, params, autodiff_protocol)
     if autodiff_protocol == ForwardDiffProtocol
         return ForwardDiff.gradient(x -> AdvancedMH.logdensity(model, x), params)
@@ -268,12 +321,11 @@ $(TYPEDSIGNATURES)
 
 Defines the internal log-density function over a vector of observation samples using an assumed conditionally indepedent likelihood, that is with a log-likelihood of `ℓ(y,θ) = sum^n_i log( p(y_i|θ) )`.
 
-Inputs:
-=======
-- θ: Parameters in unconstrained, and encoded coordinates.
-- encoded_prior: Encoded prior distribution as a ParameterDistribution (defined on the unconstrained, and encoded coordinates)
-- em_or_fmw: `Emulator` or `ForwardMapWrapper` object with predict(.) method
-- obs_vec: encoded data vector sample(s)
+# Arguments
+- `θ`: Parameters in unconstrained, and encoded coordinates.
+- `encoded_prior`: Encoded prior distribution as a `ParameterDistribution` (defined on the unconstrained, and encoded coordinates).
+- `em_or_fmw`: `Emulator` or `ForwardMapWrapper` object with a `predict(.)` method.
+- `obs_vec`: encoded data vector sample(s).
 """
 function emulator_log_density_model(
     θ,
@@ -296,9 +348,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Factory which constructs `AdvancedMH.DensityModel` objects given an (Encoded) prior on the model 
-parameters (`encoded_prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given 
-parameters. Together these yield the log posterior density we're attempting to sample from 
+Factory which constructs `AdvancedMH.DensityModel` objects given an (Encoded) prior on the model
+parameters (`encoded_prior`) and an [`Emulator`](@ref) of the log-likelihood of the data given
+parameters. Together these yield the log posterior density we're attempting to sample from
 with the MCMC, which is the role of the `DensityModel` class in the `AbstractMCMC` interface.
 """
 function EmulatorPosteriorModel(
@@ -322,6 +374,10 @@ Metropolis-Hastings proposal) or old (from rejecting a proposal).
 
 # Fields
 $(TYPEDFIELDS)
+
+# Constructors
+
+$(METHODLIST)
 """
 struct MCMCState{T, L <: Real} <: AdvancedMH.AbstractTransition
     "Sampled value of the parameters at the current state of the MCMC chain."
@@ -332,7 +388,6 @@ struct MCMCState{T, L <: Real} <: AdvancedMH.AbstractTransition
     accepted::Bool
 end
 
-# Boilerplate from AdvancedMH:
 # Store the new draw and its log density.
 MCMCState(model::AdvancedMH.DensityModel, params, accepted = true) =
     MCMCState(params, logdensity(model, params), accepted)
@@ -351,17 +406,16 @@ function AdvancedMH.transition(
 end
 
 # ------------------------------------------------------------------------------------------
-# Markov transition kernels as Distributions.jl objects.
-#
-# For samplers whose transition kernel q(·|θ_from) is an ordinary Distributions.jl
-# distribution, we go one step further than log_transition_density: rather than hand-writing
-# `propose` (a sample) and `log_transition_density` (a logpdf) as two separate expressions that
-# merely happen to describe the same kernel, we build the kernel ONCE as a Distributions.jl
-# object and derive both `rand` and `logpdf` from it generically. The mean/covariance/ρ formulas
-# then exist in exactly one place (`transition_kernel`) instead of two, so they cannot drift
-# apart even in principle — this is strictly stronger than the log_transition_density interface
-# above, which only guarantees forward/reverse agree with *each other*, not that `propose`
-# agrees with either.
+# Markov transition kernels for Distributions.jl
+
+"""
+Union of sampler types whose transition kernel `q(·|θ_from)` is an ordinary Distributions.jl
+object. For these samplers, `AdvancedMH.propose` and `log_transition_density` are both derived
+generically (via `rand` and `logpdf` respectively) from a single `transition_kernel` method, so
+a new Distributions.jl-based sampler can be added by adding its type to this `Union` and
+implementing `transition_kernel` alone, rather than `propose` and `log_transition_density`
+separately.
+"""
 const DistributionKernelSampler = Union{RWMetropolisHastings, pCNMetropolisHastings}
 
 function AdvancedMH.propose(
@@ -384,7 +438,14 @@ function log_transition_density(
     return logpdf(transition_kernel(sampler, model, θ_from; stepsize = stepsize), θ_to)
 end
 
-# θ_to | θ_from ~ N(θ_from, stepsize² C) — the symmetric random-walk kernel.
+"""
+$(TYPEDSIGNATURES)
+
+Return the Distributions.jl transition kernel `q(·|θ_from)` for `sampler` at the given
+`stepsize`, i.e. `θ_to | θ_from ~ N(θ_from, stepsize² C)`, the symmetric random-walk kernel.
+This is the required extension point for adding a new `DistributionKernelSampler`:
+`AdvancedMH.propose` and `log_transition_density` are both derived from this method generically.
+"""
 function transition_kernel(
     sampler::RWMetropolisHastings,
     model::AdvancedMH.DensityModel,
@@ -411,12 +472,21 @@ function transition_kernel(
     return MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L')))
 end
 
-# The Barker transition kernel q(·|θ_from), as a lightweight (non-Distributions.jl) struct: the
-# whitened-coordinate machinery (Livingstone & Zanella, 2022) needs a state- and model-dependent
-# gradient computed once, so we bundle exactly what _barker_rand/_barker_logpdf need to stay
-# consistent, and no more — unlike RW/pCN this isn't a Distributions.jl distribution (its density
-# isn't a standard family), so we write the two functions directly instead of reimplementing
-# Distributions.jl's dispatch machinery (_rand!/_logpdf/insupport/...) for a one-off type.
+"""
+$(TYPEDEF)
+
+The Barker transition kernel `q(·|θ_from)`, as a lightweight (non-Distributions.jl) struct: the
+whitened-coordinate machinery (Livingstone & Zanella, 2022) needs a state- and model-dependent
+gradient computed once, so this bundles exactly what `_barker_rand`/`_barker_logpdf` need to
+stay consistent, and no more. Unlike RW/pCN this isn't a Distributions.jl distribution (its
+density isn't a standard family), so `_barker_rand`/`_barker_logpdf` are written directly
+instead of reimplementing Distributions.jl's dispatch machinery (`_rand!`/`_logpdf`/`insupport`/...)
+for a one-off type.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
 struct BarkerKernel{VT, MT, FT <: AbstractFloat}
     "Current point θ_from that the kernel proposes away from."
     θ_from::VT
@@ -424,6 +494,7 @@ struct BarkerKernel{VT, MT, FT <: AbstractFloat}
     grad_white::VT
     "Cholesky factor L of the prior covariance (C = LL'), used to whiten/unwhiten."
     L::MT
+    "Scale applied to the whitened noise increment before the Barker flip decision."
     stepsize::FT
 end
 
@@ -438,19 +509,24 @@ function transition_kernel(
     return BarkerKernel(θ_from, grad_white, L, stepsize)
 end
 
-# Livingstone and Zanella (2022). The elementwise sigmoid selection that defines the Barker
-# proposal is only reversible for *independent* coordinates, so we apply it in the whitened
-# coordinate system u = L⁻¹θ (where the prior-covariance preconditioning L is decorrelated to the
-# identity) and map the increment back with L. We also flip the sign of the whitened noise z
-# rather than zeroing it out — the standard Barker kernel moves by ±z, never by exactly 0, so its
-# transition density (_barker_logpdf below) is an ordinary, atom-free density; zeroing out
-# (keep-or-drop) instead creates a mixed discrete/continuous kernel with no closed form.
-#
-# The flip decision must use the *actual* proposed whitened increment z = stepsize * η, not the
-# unscaled η: the Barker flip probability is P(keep sign | z) = σ(grad_white · z). Using η instead
-# of z here would leave the flip probability insensitive to `stepsize`, which defeats the
-# stepsize-robustness that is this proposal's whole point (Barker's acceptance-vs-stepsize
-# behaviour should be governed by the same z that appears in the increment).
+"""
+$(TYPEDSIGNATURES)
+
+Draw a proposal `θ_to` from `kernel` (Livingstone and Zanella, 2022). The elementwise sigmoid
+selection that defines the Barker proposal is only reversible for *independent* coordinates, so
+we apply it in the whitened coordinate system u = L⁻¹θ (where the prior-covariance
+preconditioning L is decorrelated to the identity) and map the increment back with L. We also
+flip the sign of the whitened noise z rather than zeroing it out — the standard Barker kernel
+moves by ±z, never by exactly 0, so its transition density (`_barker_logpdf` below) is an
+ordinary, atom-free density; zeroing out (keep-or-drop) instead creates a mixed
+discrete/continuous kernel with no closed form.
+
+The flip decision must use the *actual* proposed whitened increment z = stepsize * η, not the
+unscaled η: the Barker flip probability is P(keep sign | z) = σ(grad_white · z). Using η instead
+of z here would leave the flip probability insensitive to `stepsize`, which defeats the
+stepsize-robustness that is this proposal's whole point (Barker's acceptance-vs-stepsize
+behaviour should be governed by the same z that appears in the increment).
+"""
 function _barker_rand(rng::Random.AbstractRNG, kernel::BarkerKernel)
     n = length(kernel.θ_from)
     η = randn(rng, n)
@@ -461,12 +537,17 @@ function _barker_rand(rng::Random.AbstractRNG, kernel::BarkerKernel)
     return kernel.θ_from .+ kernel.L * ζ
 end
 
-# For a symmetric noise density g (here N(0, stepsize²)) and whitened increment Δ = θ_to_white -
-# θ_from_white, the marginal density of the ± flip-sign move is q(Δ | θ_from) = 2 g(Δ) σ(grad_white·Δ)
-# (Barker, 1965; Livingstone & Zanella, 2022): summing the probability that Δ itself was kept (w.p.
-# σ(grad_white·Δ)) with the probability that -Δ was drawn and flipped (w.p. σ(grad_white·Δ) too,
-# since g(-Δ) = g(Δ)). See _barker_rand above for how θ_to is generated from θ_from — Δ there is
-# `ζ`, the same quantity the flip decision is based on.
+"""
+$(TYPEDSIGNATURES)
+
+Return `log q(θ_to | θ_from)` for the Barker `kernel`. For a symmetric noise density g (here
+N(0, stepsize²)) and whitened increment Δ = θ_to_white - θ_from_white, the marginal density of
+the ± flip-sign move is q(Δ | θ_from) = 2 g(Δ) σ(grad_white·Δ) (Barker, 1965; Livingstone &
+Zanella, 2022): summing the probability that Δ itself was kept (w.p. σ(grad_white·Δ)) with the
+probability that -Δ was drawn and flipped (w.p. σ(grad_white·Δ) too, since g(-Δ) = g(Δ)). See
+`_barker_rand` for how θ_to is generated from θ_from — Δ there is `ζ`, the same quantity the
+flip decision is based on.
+"""
 function _barker_logpdf(kernel::BarkerKernel, θ_to)
     Δ = kernel.L \ (θ_to .- kernel.θ_from)
     e = Δ ./ kernel.stepsize
@@ -495,7 +576,12 @@ function log_transition_density(
     return _barker_logpdf(transition_kernel(sampler, model, θ_from; stepsize = stepsize), θ_to)
 end
 
-# Copy a MCMCState and set accepted = false
+"""
+$(TYPEDSIGNATURES)
+
+Return a copy of `t` with `accepted` set to `false`, used when a Metropolis-Hastings proposal
+is rejected and the chain remains at its previous state.
+"""
 reject_transition(t::MCMCState) = MCMCState(t.params, t.log_density, false)
 
 # Metropolis-Hastings logic. We need to add 2 things to step() implementation in AdvancedMH:
@@ -536,7 +622,7 @@ function AbstractMCMC.step(
 end
 
 # ------------------------------------------------------------------------------------------
-# Extend the record-keeping methods defined in AdvancedMH to include the 
+# Extend the record-keeping methods defined in AdvancedMH to include the
 # MCMCState.accepted field added above.
 
 # A basic chains constructor that works with the Transition struct we defined.
@@ -630,12 +716,19 @@ end
 """
 $(TYPEDEF)
 
-Top-level class holding all configuration information needed for MCMC sampling: the prior, 
-emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in 
+Top-level class holding all configuration information needed for MCMC sampling: the prior,
+emulated likelihood and sampling algorithm (`DensityModel` and `Sampler`, respectively, in
 AbstractMCMC's terminology).
 
 # Fields
 $(TYPEDFIELDS)
+
+# Constructors
+
+See the 4-argument constructor's own docstring for the primary entry point (accepting a
+`prior`, `Observation`, or `ObservationSeries`, plus an `Emulator` or `ForwardMapWrapper`).
+
+$(METHODLIST)
 """
 struct MCMCWrapper{VV1 <: AbstractVector, VV2 <: AbstractVector, VV3 <: AbstractVector}
     "[`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) object describing the prior distribution on parameter values."
@@ -659,14 +752,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-gets the NameTuple of keywords that are passed into the Sampler algorithm
+Return the `NamedTuple` of keywords that are passed into the sampler algorithm.
 """
 get_sample_kwargs(mcmc::MCMCWrapper) = mcmc.sample_kwargs
 
 """
 $(TYPEDSIGNATURES)
 
-gets the stored `encoder_schedule` from an `MCMCWrapper`
+Return the stored `encoder_schedule` from an `MCMCWrapper`.
 """
 get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
 
@@ -674,22 +767,23 @@ get_encoder_schedule(mcmc::MCMCWrapper) = mcmc.encoder_schedule
 """
 $(TYPEDSIGNATURES)
 
-Constructor for [`MCMCWrapper`](@ref) that will perform an MCMC sampling in the encoded space given by `em_or_fmw` (`Emulator` or `ForwardMapWrapper`). It creates and wraps an instance of 
-[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator (predicting means and covariances), and 
+Constructor for [`MCMCWrapper`](@ref) that will perform an MCMC sampling in the encoded space given by `em_or_fmw` (`Emulator` or `ForwardMapWrapper`). It creates and wraps an instance of
+[`EmulatorPosteriorModel`](@ref), for sampling from the Emulator (predicting means and covariances), and
 [`MetropolisHastingsSampler`](@ref), for generating the MC proposals.
 
+# Arguments
 - `mcmc_alg`: [`MCMCProtocol`](@ref) describing the MCMC sampling algorithm to use. Currently
   implemented algorithms are:
 
   - [`RWMHSampling`](@ref): Metropolis-Hastings sampling from a vanilla random walk with
     fixed stepsize.
-  - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned 
+  - [`pCNMHSampling`](@ref): Metropolis-Hastings sampling using the preconditioned
     Crank-Nicholson algorithm, which has a well-behaved small-stepsize limit.
   - [`BarkerSampling`](@ref): Metropolis-Hastings sampling using the Barker
     proposal, which has a robustness to choosing step-size parameters.
 
 - `observation`: Vector (for one sample) or matrix with columns as samples from the observation. Can, e.g., be picked from an `Observation` struct using `get_obs_sample`.
-- `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/) 
+- `prior`: [`ParameterDistribution`](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
   object containing the parameters' prior distributions.
 - `em_or_fmw`: [`Emulator`](@ref) or `ForwardMapWrapper` to sample from.
 - `init_params`: Starting parameter values for MCMC sampling. (defined in unconstrained parameter coordinates)
@@ -818,7 +912,7 @@ sample(mcmc::MCMCWrapper, args...; kwargs...) = sample(Random.GLOBAL_RNG, mcmc, 
 """
 $(TYPEDSIGNATURES)
 
-Fraction of MC proposals in `chain` which were accepted (according to Metropolis-Hastings.)
+Return the fraction of MC proposals in `chain` that were accepted (according to Metropolis-Hastings).
 """
 function accept_ratio(chain::MCMCChains.Chains)
     :accepted in names(chain, :internals) || _throw_accepted_not_recorded(chain)
@@ -953,12 +1047,12 @@ optimize_stepsize(mcmc::MCMCWrapper; kwargs...) = optimize_stepsize(Random.GLOBA
 """
 $(TYPEDSIGNATURES)
 
-Returns a `ParameterDistribution` object corresponding to the empirical distribution of the 
+Return a `ParameterDistribution` object corresponding to the empirical distribution of the
 samples in `chain`.
 
-keyword args
-- `noise_injector_threshold`[`=0.001`]: If the encoded space is lossy, and the lost variability due to encoding exceeds a threshold `noise_injector_threshold`, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.  
-- `noise_injector_scaling`[`=1.0`]: Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
+# Arguments
+- `noise_injector_threshold` (`=0.001`): If the encoded space is lossy, and the lost variability due to encoding exceeds this threshold, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.
+- `noise_injector_scaling` (`=1.0`): Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
 
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
@@ -1012,7 +1106,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Computes the expected squared jump distance of the chain.
+Compute the expected squared jump distance of the chain.
 """
 function esjd(chain::MCMCChains.Chains)
     samples = chain.value[:, :, 1] # N_samples x N_params x n_chains
