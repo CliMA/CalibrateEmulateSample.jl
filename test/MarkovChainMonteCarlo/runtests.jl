@@ -928,7 +928,8 @@ end
             dx = step(grid)
             mean_theory = sum(Δ * q(Δ) for Δ in grid) * dx
             n_draws = 10_000
-            draws = [MCMC._barker_rand(Random.MersenneTwister(99), kernel)[1] for _ in 1:n_draws]
+            rng_local = Random.MersenneTwister(99)
+            draws = [MCMC._barker_rand(rng_local, kernel)[1] for _ in 1:n_draws]
             @test isapprox(mean_theory, sum(draws) / n_draws; atol = 0.1)
         end
 
