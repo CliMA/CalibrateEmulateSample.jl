@@ -26,7 +26,6 @@ sample
 get_posterior
 optimize_stepsize
 get_sample_kwargs
-get_encoder_schedule
 ```
 
 See [AbstractMCMC sampling API](@ref) for background on our use of Turing.jl's 
