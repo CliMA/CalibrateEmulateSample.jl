@@ -696,7 +696,13 @@ end
 
     @testset "optimize_stepsize: branch coverage" begin
         # optimize_stepsize's bracket-and-bisect search has several distinct code paths 
-        mcmc = MCMCWrapper(RWMHSampling(), mcmc_params[:obs_sample], prior, em_1; init_params = vec(collect(mcmc_params[:init_params])))
+        mcmc = MCMCWrapper(
+            RWMHSampling(),
+            mcmc_params[:obs_sample],
+            prior,
+            em_1;
+            init_params = vec(collect(mcmc_params[:init_params])),
+        )
 
         @testset "returns immediately if the initial stepsize is already within tolerance" begin
             step = optimize_stepsize(Random.MersenneTwister(1), mcmc; init_stepsize = 0.125, N = 800, target_acc = 0.25)
@@ -714,7 +720,7 @@ end
         end
 
         @testset "phase 2: bisection is actually reached" begin
-           
+
             step = optimize_stepsize(
                 Random.MersenneTwister(4),
                 mcmc;
@@ -866,9 +872,10 @@ end
 
                 gw_a = L' * (-(C \ a))
                 gw_b = L' * (-(C \ b))
-                e = (L \ (b .- a)) ./ s
+                Δ = L \ (b .- a) # whitened increment (unscaled by stepsize) — the flip decision is a
+                # function of the actual proposed increment, not a stepsize-independent standardization.
                 sigmoid(x) = 1 / (1 + exp(-x))
-                manual = sum(log.(sigmoid.(-gw_b .* e)) .- log.(sigmoid.(gw_a .* e)))
+                manual = sum(log.(sigmoid.(-gw_b .* Δ)) .- log.(sigmoid.(gw_a .* Δ)))
                 @test isapprox(hastings, manual; atol = 1e-8)
             end
         end
@@ -900,6 +907,64 @@ end
             end
         end
 
+        @testset "Barker: flip probability responds to stepsize (regression for stepsize-blind sigmoid bug)" begin
+            # Regression test for a bug where the flip-probability sigmoid used the unscaled
+            # whitened noise η instead of the actual proposed increment Δ = stepsize*η, making the
+            # flip decision (and hence Barker's stepsize-robustness) blind to `stepsize`. The
+            # correct marginal density of the whitened increment Δ is q(Δ) = 2 φ(Δ; 0, stepsize²)
+            # σ(d·Δ) — checked here at stepsize ≠ 1, where the old (buggy) and correct formulas
+            # diverge (they coincide at stepsize = 1, which is why the test above doesn't catch this).
+            d = 1.3
+            s = 2.5
+            L1 = reshape([1.0], 1, 1)
+            kernel = MCMC.BarkerKernel([0.0], [d], L1, s)
+
+            q(Δ) = 2 * pdf(Normal(0, s), Δ) * (1 / (1 + exp(-d * Δ)))
+            for Δtest in (-3.0, -1.0, 0.0, 1.5, 4.0)
+                @test isapprox(exp(MCMC._barker_logpdf(kernel, [Δtest])), q(Δtest); atol = 1e-8)
+            end
+
+            grid = -30:0.001:30
+            dx = step(grid)
+            mean_theory = sum(Δ * q(Δ) for Δ in grid) * dx
+            n_draws = 10_000
+            draws = [MCMC._barker_rand(Random.MersenneTwister(99), kernel)[1] for _ in 1:n_draws]
+            @test isapprox(mean_theory, sum(draws) / n_draws; atol = 0.1)
+        end
+
+        @testset "Barker: recovers the exact 1D conjugate-Gaussian posterior (regression for wrong-variance bug)" begin
+            # Regression test at the full-sampler level, matching a bug report that measured the
+            # posterior variance ~2x too small on an earlier version of this sampler. Prior
+            # θ ~ N(0, 1), single "observation" y ~ N(θ, 0.5) with a zero-error (exact) forward map,
+            # so the posterior is available in closed form: mean = y τ²/(τ²+σ²), var = τ²σ²/(τ²+σ²).
+            # Chosen so mean = 5/3, var = 1/3 exactly.
+            τ2 = 1.0
+            σ2 = 0.5
+            y_obs = 2.5
+            post_mean = 5.0 / 3.0
+            post_var = 1.0 / 3.0
+
+            target_logdensity(θ) = logpdf(Normal(0, sqrt(τ2)), θ[1]) + logpdf(Normal(θ[1], sqrt(σ2)), y_obs)
+            model = AdvancedMH.DensityModel(target_logdensity)
+            L1 = reshape([1.0], 1, 1)
+            barker = MCMC.BarkerMetropolisHastings{typeof(L1), MCMC.ForwardDiffProtocol}(L1)
+
+            rng_local = Random.MersenneTwister(2024)
+            stepsize = 0.7
+            state = MCMC.MCMCState([0.0], AdvancedMH.logdensity(model, [0.0]), true)
+            for _ in 1:1000
+                state, _ = AbstractMCMC.step(rng_local, model, barker, state; stepsize = stepsize)
+            end
+            n_samples = 20_000
+            draws = zeros(n_samples)
+            for i in 1:n_samples
+                state, _ = AbstractMCMC.step(rng_local, model, barker, state; stepsize = stepsize)
+                draws[i] = state.params[1]
+            end
+            @test isapprox(mean(draws), post_mean; rtol = 0.05)
+            @test isapprox(var(draws), post_var; rtol = 0.05)
+        end
+
         @testset "log_transition_density errors loudly for an unimplemented sampler" begin
             # A hypothetical new sampler that forgets to implement log_transition_density must
             # fail loudly (ArgumentError) rather than silently falling back to a symmetric,
@@ -914,7 +979,11 @@ end
     @testset "accept_ratio errors on a chain missing the :accepted internal" begin
         # A Chains object not produced by this module's sample()/optimize_stepsize() (e.g. hand-built,
         # or with internals filtered out) must fail loudly rather than silently mis-reporting.
-        bad_chain = MCMCChains.Chains(rand(5, 3, 1), [:a, :b, :other_internal], (parameters = [:a, :b], internals = [:other_internal]))
+        bad_chain = MCMCChains.Chains(
+            rand(5, 3, 1),
+            [:a, :b, :other_internal],
+            (parameters = [:a, :b], internals = [:other_internal]),
+        )
         let thrown = @test_throws ArgumentError accept_ratio(bad_chain)
             @test contains(thrown.value.msg, "accept_ratio")
             @test contains(thrown.value.msg, "other_internal")

@@ -441,27 +441,36 @@ end
 # Livingstone and Zanella (2022). The elementwise sigmoid selection that defines the Barker
 # proposal is only reversible for *independent* coordinates, so we apply it in the whitened
 # coordinate system u = L⁻¹θ (where the prior-covariance preconditioning L is decorrelated to the
-# identity) and map the increment back with L. We also flip the sign of the whitened noise η
-# rather than zeroing it out — the standard Barker kernel moves by ±η, never by exactly 0, so its
+# identity) and map the increment back with L. We also flip the sign of the whitened noise z
+# rather than zeroing it out — the standard Barker kernel moves by ±z, never by exactly 0, so its
 # transition density (_barker_logpdf below) is an ordinary, atom-free density; zeroing out
 # (keep-or-drop) instead creates a mixed discrete/continuous kernel with no closed form.
+#
+# The flip decision must use the *actual* proposed whitened increment z = stepsize * η, not the
+# unscaled η: the Barker flip probability is P(keep sign | z) = σ(grad_white · z). Using η instead
+# of z here would leave the flip probability insensitive to `stepsize`, which defeats the
+# stepsize-robustness that is this proposal's whole point (Barker's acceptance-vs-stepsize
+# behaviour should be governed by the same z that appears in the increment).
 function _barker_rand(rng::Random.AbstractRNG, kernel::BarkerKernel)
     n = length(kernel.θ_from)
     η = randn(rng, n)
-    flip_prob = 1 ./ (1 .+ exp.(-kernel.grad_white .* η))
+    z = kernel.stepsize .* η
+    flip_prob = 1 ./ (1 .+ exp.(-kernel.grad_white .* z))
     sign = 2 .* (rand(rng, n) .< flip_prob) .- 1
-    ζ = kernel.stepsize .* sign .* η
+    ζ = sign .* z
     return kernel.θ_from .+ kernel.L * ζ
 end
 
-# For a symmetric noise density g (here standard normal) and whitened increment e = ζ/stepsize,
-# the marginal density of the ± flip-sign move is q(e | θ_from) = 2 g(e) σ(grad_white·e) (Barker,
-# 1965; Livingstone & Zanella, 2022): summing the probability that e itself was kept (w.p.
-# σ(grad_white·e)) with the probability that -e was drawn and flipped (w.p. σ(grad_white·e) too,
-# since g(-e) = g(e)). See _barker_rand above for how θ_to is generated from θ_from.
+# For a symmetric noise density g (here N(0, stepsize²)) and whitened increment Δ = θ_to_white -
+# θ_from_white, the marginal density of the ± flip-sign move is q(Δ | θ_from) = 2 g(Δ) σ(grad_white·Δ)
+# (Barker, 1965; Livingstone & Zanella, 2022): summing the probability that Δ itself was kept (w.p.
+# σ(grad_white·Δ)) with the probability that -Δ was drawn and flipped (w.p. σ(grad_white·Δ) too,
+# since g(-Δ) = g(Δ)). See _barker_rand above for how θ_to is generated from θ_from — Δ there is
+# `ζ`, the same quantity the flip decision is based on.
 function _barker_logpdf(kernel::BarkerKernel, θ_to)
-    e = (kernel.L \ (θ_to .- kernel.θ_from)) ./ kernel.stepsize
-    return sum(log(2) .+ logpdf.(Normal(), e) .+ log.(1 ./ (1 .+ exp.(-kernel.grad_white .* e)))) -
+    Δ = kernel.L \ (θ_to .- kernel.θ_from)
+    e = Δ ./ kernel.stepsize
+    return sum(log(2) .+ logpdf.(Normal(), e) .+ log.(1 ./ (1 .+ exp.(-kernel.grad_white .* Δ)))) -
            length(e) * log(kernel.stepsize)
 end
 
@@ -1083,14 +1092,23 @@ Suggestion:
 """))
 end
 
-@noinline function _throw_max_expansions_exceeded(direction::Symbol, n_expand, max_expansions, target_acc, tol, bound_stepsize)
+@noinline function _throw_max_expansions_exceeded(
+    direction::Symbol,
+    n_expand,
+    max_expansions,
+    target_acc,
+    tol,
+    bound_stepsize,
+)
     above = direction == :above
     action = above ? "doublings" : "halvings"
     stayed = above ? "stayed above" : "stayed below"
     monotonic_note =
         above ? "rather than simply needing a larger stepsize" :
         "(e.g. a numerically noisy log-density at very small stepsizes) rather than simply needing a smaller stepsize"
-    throw(ArgumentError("""
+    throw(
+        ArgumentError(
+            """
 optimize_stepsize: acceptance rate $(stayed) target $(target_acc) ± $(tol) after $(max_expansions) $(action) without crossing it.
 
 Expected:
@@ -1104,7 +1122,9 @@ Loop context:
 Suggestion:
     Increase `max_expansions` to search farther. Otherwise, the acceptance-vs-stepsize
     relationship may not be monotonic in this range, $(monotonic_note).
-"""))
+""",
+        ),
+    )
 end
 
 
