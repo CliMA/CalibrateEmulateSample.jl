@@ -12,9 +12,15 @@ MCMCWrapper(
     mcmc_alg::MCMCProtocol,
     observation::AMorAV,
     prior::ParameterDistribution,
-    em::Emulator;
+    em_or_fmw::EorFMW;
+    init_params::AV,
+    burnin::Int,
     kwargs...,
-) where {AV <: AbstractVector, AMorAV <: Union{AbstractVector, AbstractMatrix}}
+) where {
+    AV <: AbstractVector,
+    AMorAV <: Union{AbstractVector, AbstractMatrix},
+    EorFMW <: Union{Emulator, ForwardMapWrapper},
+}
 
 sample
 get_posterior

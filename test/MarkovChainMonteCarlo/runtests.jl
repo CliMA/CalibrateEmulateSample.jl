@@ -3,6 +3,9 @@ using LinearAlgebra
 using Distributions
 using GaussianProcesses
 using Test
+using AdvancedMH
+using AbstractMCMC
+using MCMCChains
 
 using CalibrateEmulateSample.EnsembleKalmanProcesses
 using CalibrateEmulateSample.MarkovChainMonteCarlo
@@ -15,6 +18,10 @@ using CalibrateEmulateSample.Utilities
 
 # range 0->2, with lengthscale of transition 0.5, and y=1 at x=2
 G(x) = 5 * (tanh.((x .- 2) ./ 0.5) .+ 1)
+
+# A minimal MHSampler that deliberately does not implement log_transition_density, used to check
+# that the shared interface errors loudly instead of silently falling back to a wrong value.
+struct _DummyMHSampler <: AdvancedMH.MHSampler end
 
 function test_data(prior; rng_seed = 41, n = 80, var_y = 0.05, rest...)
     # Seed for pseudo-random number generator
@@ -670,7 +677,11 @@ end
         for alg in mcmc_algs
             mcmc_params_ad = deepcopy(mcmc_params)
             mcmc_params_ad[:mcmc_alg] = alg
-            mcmc_params_ad[:target_acc] = 0.6 # should be > 0.5
+            # 0.4 sits comfortably inside the tight, low-variance region of Barker's
+            # acceptance-vs-stepsize curve for this problem; 0.6 sits right at its edge (measured
+            # ceiling ~0.48-0.50 here), which occasionally made optimize_stepsize unable to find a
+            # valid stepsize at all.
+            mcmc_params_ad[:target_acc] = 0.4
 
             @info "testing algorithm: $(typeof(alg))"
             new_step, posterior_mean, chain = mcmc_test_template(prior, σ2_y, em_1b; mcmc_alg = alg, mcmc_params_ad...)
@@ -680,6 +691,303 @@ end
             @testset "Sine GP & ForwardDiff variant:$(typeof(alg))" begin
                 @test isapprox(posterior_mean, mle; atol = 1e-1)
             end
+        end
+    end
+
+    @testset "optimize_stepsize: branch coverage" begin
+        # optimize_stepsize's bracket-and-bisect search has several distinct code paths 
+        mcmc = MCMCWrapper(
+            RWMHSampling(),
+            mcmc_params[:obs_sample],
+            prior,
+            em_1;
+            init_params = vec(collect(mcmc_params[:init_params])),
+        )
+
+        @testset "returns immediately if the initial stepsize is already within tolerance" begin
+            step = optimize_stepsize(Random.MersenneTwister(1), mcmc; init_stepsize = 0.125, N = 800, target_acc = 0.25)
+            @test isapprox(step, 0.125; atol = 1e-8) # no expansion/bisection needed at all
+        end
+
+        @testset "phase 1, 'acceptance too high' branch (expands stepsize upward)" begin
+            step = optimize_stepsize(Random.MersenneTwister(2), mcmc; init_stepsize = 0.001, N = 800, target_acc = 0.25)
+            @test 0.15 <= accept_ratio(MCMC.sample(Random.MersenneTwister(2), mcmc, 800; stepsize = step)) <= 0.35
+        end
+
+        @testset "phase 1, 'acceptance too low' branch (expands stepsize downward)" begin
+            step = optimize_stepsize(Random.MersenneTwister(3), mcmc; init_stepsize = 4.0, N = 800, target_acc = 0.25)
+            @test 0.15 <= accept_ratio(MCMC.sample(Random.MersenneTwister(3), mcmc, 800; stepsize = step)) <= 0.35
+        end
+
+        @testset "phase 2: bisection is actually reached" begin
+
+            step = optimize_stepsize(
+                Random.MersenneTwister(4),
+                mcmc;
+                init_stepsize = 0.0625,
+                N = 1500,
+                target_acc = 0.33,
+                tol = 0.05,
+            )
+            @test 0.0625 < step < 0.125 # strictly inside the bracket -> bisection ran, not just phase 1
+        end
+
+        @testset "max_expansions exceeded: 'stayed above target' (expand-up) branch" begin
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(5),
+                    mcmc;
+                    init_stepsize = 0.25,
+                    N = 300,
+                    target_acc = -0.5,
+                    tol = 0.05,
+                    max_expansions = 3,
+                )
+                @test contains(thrown.value.msg, "stayed above")
+                @test contains(thrown.value.msg, "doublings")
+                @test contains(thrown.value.msg, "max_expansions")
+                @test contains(thrown.value.msg, "-0.5")
+            end
+        end
+
+        @testset "max_expansions exceeded: 'stayed below target' (expand-down) branch" begin
+            # target_acc set above the achievable range (>1), symmetric to the case above.
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(6),
+                    mcmc;
+                    init_stepsize = 0.25,
+                    N = 300,
+                    target_acc = 1.5,
+                    tol = 0.05,
+                    max_expansions = 3,
+                )
+                @test contains(thrown.value.msg, "stayed below")
+                @test contains(thrown.value.msg, "halvings")
+                @test contains(thrown.value.msg, "max_expansions")
+                @test contains(thrown.value.msg, "1.5")
+            end
+        end
+
+        @testset "overall max_iter budget exhausted" begin
+            # A reachable target, but with only 1 sample() call allowed in total: the very first
+            # (non-converging) phase-1 expansion step must hit the n_evals > max_iter guard.
+            let thrown = @test_throws ArgumentError optimize_stepsize(
+                    Random.MersenneTwister(7),
+                    mcmc;
+                    init_stepsize = 4.0,
+                    N = 300,
+                    target_acc = 0.25,
+                    max_iter = 1,
+                )
+                @test contains(thrown.value.msg, "iteration budget")
+                @test contains(thrown.value.msg, "max_iter")
+            end
+        end
+    end
+
+    @testset "Sampler transition-density interface (pCN Hastings-term fix)" begin
+        # Regression tests for: pCN's (and Barker's) log_transition_density must reflect the
+        # *actual* asymmetric proposal kernel, not the symmetric additive random-walk kernel.
+        # Constructed directly at the sampler level (bypassing Emulator/MCMCWrapper) so the
+        # underlying transition-density math can be checked against closed-form references.
+        rng = Random.MersenneTwister(2026)
+        n = 3
+        # A genuinely correlated (non-diagonal) covariance, so the tests exercise the
+        # whitening/off-diagonal structure, not just a diagonal special case.
+        C = [2.0 0.5 0.1; 0.5 1.5 0.3; 0.1 0.3 1.0]
+        L = cholesky(Symmetric(C)).L
+        prior_dist = MvNormal(zeros(n), Symmetric(C))
+
+        a = randn(rng, n)
+        b = randn(rng, n)
+        dummy_model = AdvancedMH.DensityModel(θ -> 0.0)
+
+        @testset "RW: transition density is symmetric" begin
+            rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            for s in (0.1, 1.0, 2.5)
+                @test isapprox(
+                    MCMC.log_transition_density(rw, dummy_model, a, b; stepsize = s),
+                    MCMC.log_transition_density(rw, dummy_model, b, a; stepsize = s),
+                )
+            end
+        end
+
+        @testset "pCN: Hastings term exactly cancels the prior ratio" begin
+            # This is the core bug: reverse - forward must equal logprior(a) - logprior(b)
+            # for every stepsize (every ρ), not silently 0.
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            prev_state = MCMC.MCMCState(a, 0.0, true)
+            for s in (0.05, 0.5, 1.5, 3.9)
+                hastings = AdvancedMH.logratio_proposal_density(pcn, dummy_model, prev_state, b; stepsize = s)
+                @test isapprox(hastings, logpdf(prior_dist, a) - logpdf(prior_dist, b); atol = 1e-8)
+            end
+        end
+
+        @testset "pCN: flat-likelihood chain always accepts" begin
+            # If the "likelihood" is constant, the full posterior log-density is just the prior,
+            # and the correct pCN acceptance log-ratio is then EXACTLY 0 for every proposal
+            # (loglik cancels trivially, and the Hastings term cancels the prior ratio). Under
+            # the pre-fix code (Hastings term silently 0), this would instead fluctuate with the
+            # prior ratio and cause spurious rejections.
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            flat_model = AdvancedMH.DensityModel(θ -> logpdf(prior_dist, θ))
+            θ0 = zeros(n)
+            state = MCMC.MCMCState(θ0, AdvancedMH.logdensity(flat_model, θ0), true)
+            for i in 1:200
+                state, _ = AbstractMCMC.step(rng, flat_model, pcn, state; stepsize = 0.6)
+                @test state.accepted
+            end
+        end
+
+        @testset "RW/pCN: propose draws agree with transition_kernel's analytic mean" begin
+            # propose() and log_transition_density() are now both derived from the single
+            # transition_kernel(...) object (a Distributions.jl MvNormal), so this is really a
+            # sanity check that rand(transition_kernel(...)) behaves as documented, rather than a
+            # check that two independent formulas happen to agree.
+            #
+            # n_draws and atol are chosen together for a ~5σ-safe check (not flaky, but tight
+            # enough to catch a real scaling bug), via the Monte Carlo mean's norm-error RMS
+            # sqrt(tr(Var)/n_draws): RW's Var = stepsize²C gives 5·RMS ≈ 0.053; pCN's Var =
+            # (1-ρ²)C gives 5·RMS ≈ 0.067 (both at stepsize=0.5, n_draws=10_000).
+            rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            state = MCMC.MCMCState(a, 0.0, true)
+            n_draws = 10_000
+            rw_draws = [AdvancedMH.propose(rng, rw, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
+            pcn_draws = [AdvancedMH.propose(rng, pcn, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
+            @test isapprox(mean(rw_draws), a; atol = 0.06)
+            ρ = (1 - 0.5 / 4) / (1 + 0.5 / 4)
+            @test isapprox(mean(pcn_draws), ρ .* a; atol = 0.07)
+        end
+
+        @testset "Barker: transition density matches closed-form gradient formula" begin
+            # Target chosen as the same Gaussian, so ∇log π(θ) = -C⁻¹θ is known in closed form,
+            # letting us check the whitened, flip-sign transition density against hand-derived
+            # algebra rather than trusting the autodiff call alone.
+            target_logdensity(θ) = -0.5 * dot(θ, C \ θ)
+            barker_model = AdvancedMH.DensityModel(target_logdensity)
+            barker = MCMC.BarkerMetropolisHastings{typeof(L), MCMC.ForwardDiffProtocol}(L)
+            prev_state = MCMC.MCMCState(a, 0.0, true)
+            for s in (0.3, 1.0, 2.0)
+                hastings = AdvancedMH.logratio_proposal_density(barker, barker_model, prev_state, b; stepsize = s)
+
+                gw_a = L' * (-(C \ a))
+                gw_b = L' * (-(C \ b))
+                Δ = L \ (b .- a) # whitened increment (unscaled by stepsize) — the flip decision is a
+                # function of the actual proposed increment, not a stepsize-independent standardization.
+                sigmoid(x) = 1 / (1 + exp(-x))
+                manual = sum(log.(sigmoid.(-gw_b .* Δ)) .- log.(sigmoid.(gw_a .* Δ)))
+                @test isapprox(hastings, manual; atol = 1e-8)
+            end
+        end
+
+        @testset "Barker: _barker_rand's marginal matches the 2φ(e)σ(d·e) density" begin
+            # Unlike the Hastings-term check above (which only tests reversibility), this checks
+            # that _barker_rand's actual empirical distribution matches the closed-form q(e) =
+            # 2φ(e)σ(d·e) claimed in its docstring, via a fine-grid quadrature reference — an
+            # independent numerical check, not just internal self-consistency.
+            d = 1.3
+            L1 = reshape([1.0], 1, 1)
+            kernel = MCMC.BarkerKernel([0.0], [d], L1, 1.0)
+
+            grid = -12:0.001:12
+            dx = step(grid)
+            q(e) = 2 * pdf(Normal(), e) * (1 / (1 + exp(-d * e)))
+            total_mass = sum(q(e) for e in grid) * dx
+            mean_theory = sum(e * q(e) for e in grid) * dx / total_mass
+            @test isapprox(total_mass, 1.0; atol = 1e-6)
+
+            # n_draws/atol chosen for a ~5σ-safe check: Var[e] under q (via the same quadrature)
+            # is ≈0.76, so SE(n_draws=10_000) ≈ 0.0087 and 5·SE ≈ 0.044.
+            n_draws = 10_000
+            draws = [MCMC._barker_rand(rng, kernel)[1] for _ in 1:n_draws]
+            @test isapprox(mean_theory, sum(draws) / n_draws; atol = 0.05)
+
+            for etest in (-2.0, -0.5, 0.0, 0.7, 3.0)
+                @test isapprox(exp(MCMC._barker_logpdf(kernel, [etest])), q(etest); atol = 1e-8)
+            end
+        end
+
+        @testset "Barker: flip probability responds to stepsize (regression for stepsize-blind sigmoid bug)" begin
+            # Regression test for a bug where the flip-probability sigmoid used the unscaled
+            # whitened noise η instead of the actual proposed increment Δ = stepsize*η, making the
+            # flip decision (and hence Barker's stepsize-robustness) blind to `stepsize`. The
+            # correct marginal density of the whitened increment Δ is q(Δ) = 2 φ(Δ; 0, stepsize²)
+            # σ(d·Δ) — checked here at stepsize ≠ 1, where the old (buggy) and correct formulas
+            # diverge (they coincide at stepsize = 1, which is why the test above doesn't catch this).
+            d = 1.3
+            s = 2.5
+            L1 = reshape([1.0], 1, 1)
+            kernel = MCMC.BarkerKernel([0.0], [d], L1, s)
+
+            q(Δ) = 2 * pdf(Normal(0, s), Δ) * (1 / (1 + exp(-d * Δ)))
+            for Δtest in (-3.0, -1.0, 0.0, 1.5, 4.0)
+                @test isapprox(exp(MCMC._barker_logpdf(kernel, [Δtest])), q(Δtest); atol = 1e-8)
+            end
+
+            grid = -30:0.001:30
+            dx = step(grid)
+            mean_theory = sum(Δ * q(Δ) for Δ in grid) * dx
+            n_draws = 10_000
+            rng_local = Random.MersenneTwister(99)
+            draws = [MCMC._barker_rand(rng_local, kernel)[1] for _ in 1:n_draws]
+            @test isapprox(mean_theory, sum(draws) / n_draws; atol = 0.1)
+        end
+
+        @testset "Barker: recovers the exact 1D conjugate-Gaussian posterior (regression for wrong-variance bug)" begin
+            # Regression test at the full-sampler level, matching a bug report that measured the
+            # posterior variance ~2x too small on an earlier version of this sampler. Prior
+            # θ ~ N(0, 1), single "observation" y ~ N(θ, 0.5) with a zero-error (exact) forward map,
+            # so the posterior is available in closed form: mean = y τ²/(τ²+σ²), var = τ²σ²/(τ²+σ²).
+            # Chosen so mean = 5/3, var = 1/3 exactly.
+            τ2 = 1.0
+            σ2 = 0.5
+            y_obs = 2.5
+            post_mean = 5.0 / 3.0
+            post_var = 1.0 / 3.0
+
+            target_logdensity(θ) = logpdf(Normal(0, sqrt(τ2)), θ[1]) + logpdf(Normal(θ[1], sqrt(σ2)), y_obs)
+            model = AdvancedMH.DensityModel(target_logdensity)
+            L1 = reshape([1.0], 1, 1)
+            barker = MCMC.BarkerMetropolisHastings{typeof(L1), MCMC.ForwardDiffProtocol}(L1)
+
+            rng_local = Random.MersenneTwister(2024)
+            stepsize = 0.7
+            state = MCMC.MCMCState([0.0], AdvancedMH.logdensity(model, [0.0]), true)
+            for _ in 1:1000
+                state, _ = AbstractMCMC.step(rng_local, model, barker, state; stepsize = stepsize)
+            end
+            n_samples = 20_000
+            draws = zeros(n_samples)
+            for i in 1:n_samples
+                state, _ = AbstractMCMC.step(rng_local, model, barker, state; stepsize = stepsize)
+                draws[i] = state.params[1]
+            end
+            @test isapprox(mean(draws), post_mean; rtol = 0.05)
+            @test isapprox(var(draws), post_var; rtol = 0.05)
+        end
+
+        @testset "log_transition_density errors loudly for an unimplemented sampler" begin
+            # A hypothetical new sampler that forgets to implement log_transition_density must
+            # fail loudly (ArgumentError) rather than silently falling back to a symmetric,
+            # possibly-wrong correction — this is what the shared interface guards against.
+            let thrown = @test_throws ArgumentError MCMC.log_transition_density(_DummyMHSampler(), dummy_model, a, b)
+                @test contains(thrown.value.msg, "_DummyMHSampler")
+                @test contains(thrown.value.msg, "log_transition_density")
+            end
+        end
+    end
+
+    @testset "accept_ratio errors on a chain missing the :accepted internal" begin
+        # A Chains object not produced by this module's sample()/optimize_stepsize() (e.g. hand-built,
+        # or with internals filtered out) must fail loudly rather than silently mis-reporting.
+        bad_chain = MCMCChains.Chains(
+            rand(5, 3, 1),
+            [:a, :b, :other_internal],
+            (parameters = [:a, :b], internals = [:other_internal]),
+        )
+        let thrown = @test_throws ArgumentError accept_ratio(bad_chain)
+            @test contains(thrown.value.msg, "accept_ratio")
+            @test contains(thrown.value.msg, "other_internal")
         end
     end
 end
