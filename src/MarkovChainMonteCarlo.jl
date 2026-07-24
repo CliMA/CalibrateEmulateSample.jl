@@ -552,7 +552,7 @@ function _barker_logpdf(kernel::BarkerKernel, θ_to)
     Δ = kernel.L \ (θ_to .- kernel.θ_from)
     e = Δ ./ kernel.stepsize
     # -softplus(-x) = log.(1 ./ (1 .+ exp.(-x))) 
-    return sum(log(2) .+ logpdf.(Normal(), e) .- softplus(-kernel.grad_white .* Δ)) - length(e) * log(kernel.stepsize)
+    return sum(log(2) .+ logpdf.(Normal(), e) .- softplus.(-kernel.grad_white .* Δ)) - length(e) * log(kernel.stepsize)
 end
 
 # method extending AdvancedMH.propose() for the Barker proposal
