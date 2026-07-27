@@ -83,7 +83,7 @@ function initialize_processor!(
     li::LikelihoodInformed,
     in_data::MM,
     out_data::MM,
-    ::Dict{Symbol, SM1},
+    input_structure_matrices::Dict{Symbol, SM1},
     output_structure_matrices::Dict{Symbol, SM2},
     input_structure_vectors::Dict{Symbol, SV1},
     output_structure_vectors::Dict{Symbol, SV2},
@@ -126,6 +126,15 @@ function initialize_processor!(
             false
         end
         noise_cov_inv = inv(obs_noise_cov)
+
+        if apply_to == "in"
+            input_whitened =
+                haskey(input_structure_matrices, :prior_cov) &&
+                isapprox(Matrix(get_structure_mat(input_structure_matrices, :prior_cov)), I, atol = 1e-8)
+            if !input_whitened
+                @warn "LikelihoodInformed input-space diagnostic assumes whitened inputs (prior covariance ≈ I). Consider decorrelating inputs (e.g. decorrelate_structure_mat on the prior covariance) before likelihood_informed, otherwise the recovered subspace is not the prior-preconditioned LIS."
+            end
+        end
 
         li.apply_to = apply_to
 
@@ -248,8 +257,8 @@ function initialize_processor!(
                 alpha_weight[1:(end - 1)] .+= Δa ./ 2
                 alpha_weight[2:end] .+= Δa ./ 2
                 alpha_weight ./= sum(alpha_weight)
-                diagnostic_mat = sum(alpha_weight[i] * diagnostic_mats[iter] for (i, iter) in enumerate(iters[2:end]))
-                samples_mean = sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
+                diagnostic_mat = sum(alpha_weight[i] * diagnostic_mats[iter] for (i, iter) in enumerate(iters))
+                samples_mean = sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters))
             else
                 diagnostic_mat = diagnostic_mats[iters[1]]
                 samples_mean = samples_means[iters[1]]
@@ -284,7 +293,7 @@ function initialize_processor!(
                 diagnostic_f = (x, Vs) -> sum(w * f(x, Vs) for (f, w) in zip(diagnostic_fs, alpha_weight))
                 diagnostic_egrad =
                     (x, Vs) -> sum(w * egrad(x, Vs) for (egrad, w) in zip(diagnostic_egrads, alpha_weight))
-                samples_mean = sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters[2:end]))
+                samples_mean = sum(alpha_weight[i] * samples_means[iter] for (i, iter) in enumerate(iters))
 
                 # return:
                 diagnostic_f, diagnostic_egrad, samples_mean

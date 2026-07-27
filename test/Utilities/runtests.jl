@@ -290,6 +290,110 @@ end
         @test contains(thrown.value.msg, "Float64")
     end
 
+    # M7 regression test: the composite-trapezoid weights over the α-path must be
+    # paired with their own node, not shifted by one (see full-code-review M7).
+    # Construction: for each of 3 nodes, samples_in is the fixed zero-mean basis
+    # [e1 -e1 e2 -e2] (population covariance 0.5*I), and samples_out = grad_it * samples_in
+    # exactly (no noise), so :linreg regression recovers grad_it exactly. With
+    # obs_noise_cov = I and observation y = 0, the per-node diagnostic matrix reduces
+    # exactly to M_it = (1-α)*G_it + 0.5*α²*G_it² where G_it = grad_it' * grad_it -
+    # this is an exact algebraic identity for this construction, not an approximation.
+    let
+        basis_in = [1.0 -1.0 0.0 0.0; 0.0 0.0 1.0 -1.0] # e1, -e1, e2, -e2 as columns
+        rot(θ) = [cos(θ) -sin(θ); sin(θ) cos(θ)]
+
+        Qs = [rot(0.0), rot(deg2rad(30.0)), rot(deg2rad(70.0))]
+        Ds = [Diagonal([3.0, 1.0]), Diagonal([2.0, 1.0]), Diagonal([2.5, 1.0])]
+        alphas_nodes = [0.0, 0.4, 1.0]
+        grads_it = [Ds[i] * Qs[i]' for i in 1:3]
+        Gs = [g' * g for g in grads_it]
+        Ms = [(1 - alphas_nodes[i]) * Gs[i] + 0.5 * alphas_nodes[i]^2 * Gs[i]^2 for i in 1:3]
+
+        weights_correct = [0.2, 0.5, 0.3] # composite trapezoid weights for alphas [0, 0.4, 1.0]
+        M_correct = sum(weights_correct[i] * Ms[i] for i in 1:3)
+
+        samples_out_it = [grads_it[i] * basis_in for i in 1:3]
+
+        li_m7 = likelihood_informed(retain_info = 1.0, iters = 1:3, grad_type = :linreg)
+        Utilities.initialize_processor!(
+            li_m7,
+            basis_in,
+            zeros(2, 4),
+            Dict(:prior_cov => Matrix{Float64}(I, 2, 2)), # whitened: keep this test focused on M7, not M8
+            Dict(:obs_noise_cov => Matrix{Float64}(I, 2, 2)),
+            Dict(:dt => alphas_nodes, :samples_in => [basis_in, basis_in, basis_in]),
+            Dict(:observation => [zeros(2)], :samples_out => samples_out_it),
+            "in",
+        )
+        encoder_mat_m7 = Matrix(get_encoder_mat(li_m7)[1])
+
+        # encoder_mat's rows are the eigenvectors of the diagnostic matrix the code actually
+        # combined: if weights are correctly aligned with nodes, they diagonalize M_correct.
+        off_diag_correct = encoder_mat_m7 * M_correct * encoder_mat_m7'
+        off_diag_correct -= Diagonal(off_diag_correct)
+        @test norm(off_diag_correct) < 1e-8
+
+        # sanity: the construction actually discriminates - the pre-fix (weight-shifted) combination
+        # does NOT get diagonalized by the same encoder, so this test could not have passed by accident.
+        M_buggy = weights_correct[1] * Ms[2] + weights_correct[2] * Ms[3]
+        off_diag_buggy = encoder_mat_m7 * M_buggy * encoder_mat_m7'
+        off_diag_buggy -= Diagonal(off_diag_buggy)
+        @test norm(off_diag_buggy) > 1e-3
+    end
+
+    # M8 regression test: LikelihoodInformed's input-space diagnostic silently assumed
+    # prior covariance ≈ I; it must now warn when apply_to == "in" and the input
+    # structure matrices' :prior_cov is missing or not ≈ I, and stay silent when it is.
+    let
+        rng_m8 = Random.MersenneTwister(1234)
+        in_dim8 = 3
+        out_dim8 = 2
+        in_data8 = randn(rng_m8, in_dim8, 5)
+        out_data8 = randn(rng_m8, out_dim8, 5)
+        input_vecs8 = Dict(:dt => [0.0])
+        output_mats8 = Dict(:obs_noise_cov => Matrix{Float64}(I, out_dim8, out_dim8))
+        output_vecs8 = Dict{Symbol, Utilities.StructureVector}()
+
+        # non-identity prior_cov => warns (min_level=Warn filters the unrelated @info emitted
+        # at the start of initialize_processor!; the single remaining log must match)
+        non_id_prior = [2.0 0.3 0.0; 0.3 1.5 0.0; 0.0 0.0 1.0]
+        @test_logs (:warn, r"assumes whitened inputs") min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict(:prior_cov => non_id_prior),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
+
+        # missing :prior_cov key => warns
+        @test_logs (:warn, r"assumes whitened inputs") min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict{Symbol, Utilities.StructureMatrix}(),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
+
+        # identity prior_cov => no warning (zero patterns + min_level=Warn: passes iff no
+        # Warn-or-above log is emitted; unrelated @info is filtered out by min_level)
+        @test_logs min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict(:prior_cov => Matrix{Float64}(I, in_dim8, in_dim8)),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
+    end
+
     # test equalities
     cc = canonical_correlation()
     cc_copy = canonical_correlation()
