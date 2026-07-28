@@ -588,7 +588,10 @@ end
             # Paired data processor reduction:
             if name == "canonical-correlation"
                 @test dimm == min(rank(get_inputs(io_pairs)), rank(get_outputs(io_pairs)))
-                @test isapprox(norm(enc_dat * enc_dat' - I), 0.0, atol = tol * dimm^2) # test in or out orthogonality
+                # canonical variates have sample covariance ≈ I (not energy-normalized u*u' ≈ I;
+                # rescaled by √(n_samples-1) in initialize_processor! so this matches every
+                # sibling processor's convention)
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # test in or out orthogonality
 
                 # check cross-orthogonality is diagonal (nb this test will be duplicate)
                 enc_in = get_inputs(encoded_io_pairs)
@@ -617,6 +620,33 @@ end
 
         end
 
+    end
+
+    # G3 regression test: CanonicalCorrelation must not blow up (Inf/NaN, or select the wrong
+    # in/out role) on rank-deficient (collinear-ensemble) data.
+    let
+        rng_deg = Random.MersenneTwister(2026)
+        in_dim_deg = 4
+        out_dim_deg = 3
+        samples_deg = 20
+        x_deg = randn(rng_deg, in_dim_deg - 1, samples_deg)
+        in_data_deg = vcat(x_deg, x_deg[1:1, :]) # duplicate the first row: rank(in_data_deg) == in_dim_deg - 1 == out_dim_deg
+        out_data_deg = randn(rng_deg, out_dim_deg, samples_deg)
+        io_pairs_deg = PairedDataContainer(in_data_deg, out_data_deg)
+
+        cc_deg = canonical_correlation()
+        enc_sch_deg = create_encoder_schedule((cc_deg, "in_and_out"))
+        (encoded_io_pairs_deg, _, _, _, _) = initialize_and_encode_with_schedule!(enc_sch_deg, io_pairs_deg)
+
+        @test all(isfinite, get_inputs(encoded_io_pairs_deg))
+        @test all(isfinite, get_outputs(encoded_io_pairs_deg))
+
+        # both sides have rank 3 == trunc_val here, so neither loses information: round-trip
+        # should be exact (up to numerical rank-truncation tolerance), for both "in" and "out".
+        dec_in_deg = decode_data(enc_sch_deg, get_inputs(encoded_io_pairs_deg), "in")
+        dec_out_deg = decode_data(enc_sch_deg, get_outputs(encoded_io_pairs_deg), "out")
+        @test isapprox(norm(dec_in_deg - in_data_deg), 0.0, atol = 1e-8 * samples_deg)
+        @test isapprox(norm(dec_out_deg - out_data_deg), 0.0, atol = 1e-8 * samples_deg)
     end
 
     # test retrieval of the affine components from the schedule
