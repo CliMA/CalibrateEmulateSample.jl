@@ -184,7 +184,10 @@ via [`MetropolisHastingsSampler`](@ref) applied to a [`pCNMHSampling`](@ref) pro
 
 $(TYPEDFIELDS)
 """
-struct pCNMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct pCNMetropolisHastings{VT, LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    "Mean `m` of the (encoded) prior. pCN's proposal contracts toward this point (not toward 0,
+    which is only correct when the encoded prior happens to be zero-mean)."
+    prior_mean::VT
     "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
     cholesky_L::LT
 end
@@ -193,8 +196,9 @@ function MetropolisHastingsSampler(
     encoded_prior::ParameterDistribution,
     encoder_schedule::VV,
 ) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    m = mean(encoded_prior)
     L = _get_cholesky_factor(encoded_prior, encoder_schedule)
-    return pCNMetropolisHastings{typeof(L), T}(L)
+    return pCNMetropolisHastings{typeof(m), typeof(L), T}(m, L)
 end
 
 #------ The following are gradient-based samplers
@@ -456,11 +460,14 @@ function transition_kernel(
     return MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L')))
 end
 
-# θ_to | θ_from ~ N(ρθ_from, (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017 for the
-# ρ-vs-Euler-stepsize relation). Evaluating this honestly in both directions (via the generic
-# logratio_proposal_density) is what recovers the pCN cancellation log q(θ_from|θ_to) -
-# log q(θ_to|θ_from) = logprior(θ_from) - logprior(θ_to), instead of the silently-symmetric 0
-# the previous implementation returned.
+# θ_to | θ_from ~ N(m + ρ(θ_from - m), (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017
+# for the ρ-vs-Euler-stepsize relation), contracting toward the encoded prior mean `m` rather
+# than toward 0 (correct in general; 0 is only the special case m=0). Evaluating this honestly
+# in both directions (via the generic logratio_proposal_density) is what recovers the pCN
+# cancellation log q(θ_from|θ_to) - log q(θ_to|θ_from) = logprior(θ_from) - logprior(θ_to): the
+# shift v = θ - m turns this kernel into the m=0 case in v-coordinates, where that cancellation
+# is the standard pCN identity, and N(m,C) in θ-coordinates is exactly N(0,C) in v-coordinates,
+# so the identity carries over unchanged.
 function transition_kernel(
     sampler::pCNMetropolisHastings,
     model::AdvancedMH.DensityModel,
@@ -468,8 +475,9 @@ function transition_kernel(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    m = sampler.prior_mean
     L = sampler.cholesky_L
-    return MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L')))
+    return MvNormal(m .+ ρ .* (θ_from .- m), Symmetric((1 - ρ^2) .* (L * L')))
 end
 
 """
