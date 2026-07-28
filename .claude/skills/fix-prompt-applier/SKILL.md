@@ -108,15 +108,53 @@ written for) re-discovers a "bug" that's already closed.
   all of their rows and sections together so the document reflects the whole
   batch consistently, not a half-updated intermediate state.
 
-### 5. Report back
+### 5. Check whether other open prompts just went stale
+
+A fix can change shared code — a struct's fields, a function's signature, a
+calling convention — that some *other*, still-open fix-prompt in the same
+directory also quotes. If so, that prompt's line numbers and snippets are now
+misleading in exactly the way step 2 already tells you to watch out for in
+the prompt you're actively applying — except the next person to pick up that
+other prompt won't have this session's context to notice it. A fix-prompt
+only saves time if it's trustworthy; a stale one costs the next session (or
+model) the same rediscovery work you just did.
+
+Resist the urge to fully rewrite that other prompt, though, even if you can
+see exactly what changed. Re-deriving whether its claimed bug is still real
+against the new code is an audit judgment call — the same adversarial
+re-derivation math-auditor does, not a byproduct of applying an unrelated
+fix — and overwriting its Problem/Required-change text would destroy the
+historical record of what the bug looked like at audit time, for the same
+reason step 4 appends review.md status rather than rewriting a finding.
+
+So, cheaply:
+- Grep the fix-prompts directory for other prompts whose `File`/`Where`
+  section names a file you just edited.
+- Skip any already marked fixed (check `review.md` or the prompt itself).
+- Of the rest, check whether the specific function, struct, or snippet *that
+  prompt quotes* was actually touched by your edit — not just "same file".
+  Most fixes are narrow and won't overlap with what another prompt cares
+  about; this should usually turn up nothing, and that's fine.
+- Where there's real overlap, append (don't rewrite) a short note to that
+  prompt:
+  ```
+  **Note (updated <date>)**: the code this prompt describes may have moved —
+  <what changed, e.g. "the sampler struct fields this prompt references were
+  renamed in the <ID> fix on <date>">. Re-verify the current source before
+  trusting this prompt's line numbers/snippets; do not assume they still match.
+  ```
+
+### 6. Report back
 
 For each fix ID applied, state: what changed and where (`file:line`), which
 test/invariant now pins it, whether any existing test's expected value needed
-updating (and why, citing the README/prompt note that justified it), and
-whether `review.md` was updated (or why it was skipped). Keep this compact —
-one or two lines per ID — the point is a scannable record of what's fixed and
-what now guards it, not a re-explanation of the math (that's already in the
-review and the prompt).
+updating (and why, citing the README/prompt note that justified it), whether
+`review.md` was updated (or why it was skipped), and whether any other
+fix-prompts were flagged as stale (name them, or say none needed it — don't
+pad this line when step 5 found nothing). Keep this compact — one or two
+lines per ID — the point is a scannable record of what's fixed and what now
+guards it, not a re-explanation of the math (that's already in the review and
+the prompt).
 
 ## Improving this skill
 
