@@ -849,13 +849,14 @@ end
             # sqrt(tr(Var)/n_draws): RW's Var = stepsize²C gives 5·RMS ≈ 0.053; pCN's Var =
             # (1-ρ²)C gives 5·RMS ≈ 0.067 (both at stepsize=0.5, n_draws=10_000).
             #
-            # pCN is constructed with a genuinely NON-zero prior mean `m` here (regression test
-            # for the C1 secondary defect: pCN previously always contracted toward 0 regardless of
-            # the encoded prior's actual mean). If `transition_kernel` silently ignored `m` and
-            # contracted toward 0 instead, this test would fail: the analytic reference below is
+            # pCN is constructed with a genuinely NON-zero, fixed (not rng-drawn, so the gap below
+            # is guaranteed rather than incidental) prior mean `m` here (regression test for the C1
+            # secondary defect: pCN previously always contracted toward 0 regardless of the encoded
+            # prior's actual mean). If `transition_kernel` silently ignored `m` and contracted
+            # toward 0 instead, this test would fail: the analytic reference below is
             # `m + ρ(a - m)`, which only coincides with `ρ*a` when `m` happens to be 0.
             rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
-            m = randn(rng, n)
+            m = fill(3.0, n)
             pcn = MCMC.pCNMetropolisHastings{typeof(m), typeof(L), MCMC.GradFreeProtocol}(m, L)
             state = MCMC.MCMCState(a, 0.0, true)
             n_draws = 10_000
@@ -865,7 +866,8 @@ end
             ρ = (1 - 0.5 / 4) / (1 + 0.5 / 4)
             @test isapprox(mean(pcn_draws), m .+ ρ .* (a .- m); atol = 0.07)
             # Sanity: with this m, the (wrong) zero-mean prediction ρ*a is nowhere near the
-            # analytic mean, so this test could not have passed against the pre-fix formula.
+            # analytic mean (gap = norm(m)*(1-ρ) ≈ 1.15, deterministic since m is fixed), so this
+            # test could not have passed against the pre-fix formula.
             @test norm((m .+ ρ .* (a .- m)) .- (ρ .* a)) > 0.5
         end
 
