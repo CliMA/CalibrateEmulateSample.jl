@@ -412,8 +412,20 @@ function build_models!(
     end
 
     # scale up the prior so that default priors are always "reasonable"
-    prior_in_scale = 1.0 ./ std(input_values, dims = 2)
+    in_std = std(input_values, dims = 2)
+    if any(iszero, in_std)
+        const_in_dims = findall(iszero, vec(in_std))
+        @warn "VectorRandomFeature: constant input dimension(s) $(const_in_dims) detected; using scale = 1 for those dimensions."
+        in_std = map(s -> iszero(s) ? one(s) : s, in_std)
+    end
+    prior_in_scale = 1.0 ./ in_std
+
     prior_out_scale = std(output_values, dims = 2)
+    if any(iszero, prior_out_scale)
+        const_out_dims = findall(iszero, vec(prior_out_scale))
+        @warn "VectorRandomFeature: constant output dimension(s) $(const_out_dims) detected; using scale = 1 for those dimensions."
+        prior_out_scale = map(s -> iszero(s) ? one(s) : s, prior_out_scale)
+    end
 
     # Optimize feature cholesky factors with EKP
     # [1.] Split data into test/train (e.g. 80/20)

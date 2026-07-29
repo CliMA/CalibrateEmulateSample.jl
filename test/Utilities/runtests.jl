@@ -649,6 +649,27 @@ end
         @test isapprox(norm(dec_out_deg - out_data_deg), 0.0, atol = 1e-8 * samples_deg)
     end
 
+    # G3 regression test: ElementwiseScaler (ZScore/MinMax/Quartile) must not divide by a zero
+    # scale (constant data dimension) and must warn rather than silently producing NaN/Inf.
+    let
+        rng_deg = Random.MersenneTwister(2027)
+        dim_deg = 3
+        samples_deg = 10
+        data_deg = randn(rng_deg, dim_deg, samples_deg)
+        data_deg[2, :] .= 5.0 # constant row: std = 0, max-min = 0, IQR = 0
+
+        for scaler in (zscore_scale(), minmax_scale(), quartile_scale())
+            enc_sch_deg = create_encoder_schedule((scaler, "in"))
+            io_pairs_deg = PairedDataContainer(data_deg, data_deg)
+            (encoded_io_pairs_deg, _, _, _, _) =
+                @test_logs (:warn, r"constant data dimension") match_mode = :any initialize_and_encode_with_schedule!(
+                    enc_sch_deg,
+                    io_pairs_deg,
+                )
+            @test all(isfinite, get_inputs(encoded_io_pairs_deg))
+        end
+    end
+
     # test retrieval of the affine components from the schedule
     # nothing option
     enc1 = get_encoder_from_schedule([])

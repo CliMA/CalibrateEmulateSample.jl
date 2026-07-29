@@ -198,6 +198,12 @@ function initialize_processor!(es::ElementwiseScaler, data::MM) where {MM <: Abs
         T = get_type(es)
         initialize_processor!(es, data, T)
 
+        scale = get_scale(es)
+        if any(iszero, scale)
+            @warn "ElementwiseScaler: $(count(iszero, scale)) constant data dimension(s) detected; using scale = 1 for those dimensions."
+            scale .= map(s -> iszero(s) ? one(s) : s, scale)
+        end
+
         # we explicitly make the encoder/decoder maps
         data_encoder_map = LinearMap(
             x -> (x .- get_shift(es)) ./ get_scale(es), # Ax
