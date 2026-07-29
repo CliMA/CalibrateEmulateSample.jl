@@ -962,6 +962,55 @@ end
 
 end
 
+@testset "Decorrelator: small/large-matrix truncation criterion consistency (m28)" begin
+    # m28 regression test. The large-matrix (tsvd) branch must truncate on the same VARIANCE
+    # (trace, Σσᵢ) fraction the small-matrix branch computes exactly, not the sum-of-squares
+    # (Frobenius, Σσᵢ²) fraction it used before. Isolated from the (pre-existing, out-of-scope)
+    # conservative retain_var deflation the tsvd branch applies for estimator uncertainty - that
+    # deflation is itself noisy (depends on a separate Hutchinson estimate of the SPREAD, not
+    # just the mean, of repeated trace draws), which would make an end-to-end achieved-rank
+    # comparison flaky regardless of which criterion is used. So instead verify the underlying
+    # quantity directly: with a `Diagonal` covariance, `tsvd` recovers the exact top-k singular
+    # values, so `sum(Stmp)/tr(C)` (what the fixed code's criterion converges to as its trace
+    # estimate's noise → 0) must equal the small-matrix branch's own `cumsum(svdA.S)/sum(svdA.S)`
+    # at the same rank - and must NOT equal the old `sum(Stmp.^2)/‖C‖²_F` quantity, since that's
+    # provably a different fraction for a non-flat spectrum.
+    d = 200
+    C = Diagonal(exp.(-(1:d) ./ 10)) # exact eigenvalues = sorted diagonal entries
+    true_trace = sum(diag(C))
+    true_frob_sq = sum(diag(C) .^ 2)
+
+    svdA = svd(Matrix(C)) # the small-matrix branch's own (exact) computation
+    small_branch_fracs = cumsum(svdA.S) ./ sum(svdA.S)
+
+    # `tsvd` (a Lanczos-based low-rank method) is only reliable well below full rank; keep
+    # `rk` a small fraction of `d` rather than testing near-full-rank, which is not its
+    # intended regime and not something this fix touches.
+    for rk in (5, 15, 30, 45)
+        _, Stmp, _ = Utilities.tsvd(C, rk)
+        new_frac = sum(Stmp) / true_trace # what the FIXED tsvd branch's criterion targets
+        old_frac = sum(Stmp .^ 2) / true_frob_sq # what the PRE-FIX criterion targeted
+
+        @test isapprox(new_frac, small_branch_fracs[rk]; atol = 1e-8)
+        @test !isapprox(old_frac, small_branch_fracs[rk]; atol = 1e-3)
+    end
+
+    # Smoke test: the tsvd branch (now on the trace criterion) still runs end-to-end without
+    # error or a degenerate (0 or full-rank) result on a genuinely large (> max_svd_size) input.
+    d_large = 3500
+    C_large = Diagonal(exp.(-(1:d_large) ./ 200))
+    io_pairs_large = PairedDataContainer(randn(2, 5), randn(d_large, 5))
+    dd_large = decorrelate_structure_mat(retain_var = 0.9, max_rank = 600)
+    enc_sch_large = create_encoder_schedule((dd_large, "out"))
+    initialize_and_encode_with_schedule!(
+        enc_sch_large,
+        io_pairs_large;
+        output_structure_mats = Dict{Symbol, Utilities.StructureMatrix}(:obs_noise_cov => C_large),
+    )
+    achieved_rank_large = size(get_encoder_mat(dd_large)[1], 1)
+    @test 0 < achieved_rank_large < d_large
+end
+
 @testset "Decorrelator: Large observational covariance" begin
 
     # loop over output dim

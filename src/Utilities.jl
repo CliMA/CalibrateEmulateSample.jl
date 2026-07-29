@@ -485,15 +485,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Approximate the `p`-norm of a `LinearMap` `A` using random matrix–vector products,
-satisfying `norm_linear_map(A, p) ≈ norm(Matrix(A), p)`. Can be called via `norm(A, p)`.
+Randomized estimate of the Frobenius norm of a `LinearMap` `A` (`p = 2`); values for
+`p ≠ 2` are heuristic and can be badly wrong for structured operators. Can be called via
+`norm(A, p)`.
 
 # Arguments
 
 - `A`: the `LinearMap` to evaluate.
 - `p` (default `2`): norm order.
 - `n_eval` (keyword, default `nothing`): number of matrix–vector products; defaults to
-  `size(A, 2)` (exact for `p=2`, approximate otherwise).
+  `size(A, 2)`. Even at this default the estimate is randomized (unbiased in squared
+  Frobenius norm, several-percent error in practice), not exact.
 - `rng` (keyword, default `Random.default_rng()`): random number generator.
 """
 function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.default_rng()) where {LM <: LinearMap}
@@ -501,7 +503,7 @@ function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.defa
 
     # use unit-normalized gaussian vectors
     n_basis = isa(n_eval, Nothing) ? n : n_eval
-    samples = randn(n, n_basis)
+    samples = randn(rng, n, n_basis)
     for i in 1:size(samples, 2)
         samples[:, i] /= norm(samples[:, i])
     end
