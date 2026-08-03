@@ -841,6 +841,48 @@ end
 
 end
 
+@testset "M6: encoder schedules do not share fitted processor state" begin
+    rng_m6 = Random.MersenneTwister(20260731)
+    dim_m6 = 3
+    samples_m6 = 30
+
+    builder_list = [(zscore_scale(), "in")] # one builder list, reused for two schedules
+
+    # (a) two schedules built from the SAME builder list must not alias the same processor
+    # instance, and must fit independently to their own data.
+    schA = create_encoder_schedule(builder_list)
+    schB = create_encoder_schedule(builder_list)
+    @test schA[1][1] !== schB[1][1]
+
+    data_meanA = zeros(dim_m6)
+    data_meanB = fill(50.0, dim_m6)
+    io_pairs_A = PairedDataContainer(data_meanA .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+    io_pairs_B = PairedDataContainer(data_meanB .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+
+    initialize_and_encode_with_schedule!(schA, io_pairs_A)
+    (encoded_io_pairs_B, _, _, _, _) = initialize_and_encode_with_schedule!(schB, io_pairs_B)
+
+    # schB fit on its own (mean-50) data, so its encoded data should be centered near 0 -
+    # if it had aliased/reused schA's (mean-0) statistics, this would instead center near 50.
+    @test isapprox(norm(mean(get_inputs(encoded_io_pairs_B), dims = 2)), 0.0, atol = 1e-8)
+
+    # (b) re-initializing an already-fitted schedule must warn, and must NOT refit (existing
+    # semantics preserved). Check this deterministically against the processor's own stored
+    # shift/scale (rather than an encoded-mean tolerance, which would be confounded by
+    # sampling noise in the new data) - they must be BIT-IDENTICAL before and after, since a
+    # refit would recompute them from the new (mean-50) data.
+    shift_before = copy(get_shift(schA[1][1]))
+    scale_before = copy(get_scale(schA[1][1]))
+    io_pairs_A2 = PairedDataContainer(data_meanB .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+    @test_logs (:warn, r"already-initialized") match_mode = :any initialize_and_encode_with_schedule!(schA, io_pairs_A2)
+    @test get_shift(schA[1][1]) == shift_before
+    @test get_scale(schA[1][1]) == scale_before
+
+    # a fresh, never-initialized schedule must NOT warn.
+    sch_fresh = create_encoder_schedule(builder_list)
+    @test_logs min_level = Base.CoreLogging.Warn initialize_and_encode_with_schedule!(sch_fresh, io_pairs_A)
+end
+
 
 
 
@@ -1007,7 +1049,9 @@ end
         io_pairs_large;
         output_structure_mats = Dict{Symbol, Utilities.StructureMatrix}(:obs_noise_cov => C_large),
     )
-    achieved_rank_large = size(get_encoder_mat(dd_large)[1], 1)
+    # `create_encoder_schedule` deepcopies its processor (M6), so the fitted state lives on
+    # the copy inside `enc_sch_large`, not on `dd_large` itself - retrieve it from there.
+    achieved_rank_large = size(get_encoder_mat(enc_sch_large[1][1])[1], 1)
     @test 0 < achieved_rank_large < d_large
 end
 

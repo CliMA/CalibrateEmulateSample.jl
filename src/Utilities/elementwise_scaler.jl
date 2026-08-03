@@ -110,6 +110,14 @@ get_shift(es::ElementwiseScaler) = es.shift
 """
 $(TYPEDSIGNATURES)
 
+Returns `true` if `es` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(es::ElementwiseScaler) = !isempty(get_shift(es))
+
+"""
+$(TYPEDSIGNATURES)
+
 Gets the `scale` field of the `ElementwiseScaler`
 """
 get_scale(es::ElementwiseScaler) = es.scale

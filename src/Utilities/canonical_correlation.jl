@@ -53,6 +53,14 @@ get_encoder_mat(cc::CanonicalCorrelation) = cc.encoder_mat
 """
 $(TYPEDSIGNATURES)
 
+Returns `true` if `cc` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(cc::CanonicalCorrelation) = !isempty(get_encoder_mat(cc))
+
+"""
+$(TYPEDSIGNATURES)
+
 returns the `decoder_mat` field of the `CanonicalCorrelation`.
 """
 get_decoder_mat(cc::CanonicalCorrelation) = cc.decoder_mat

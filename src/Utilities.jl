@@ -37,7 +37,8 @@ export create_encoder_schedule,
     NoiseInjector,
     decode_and_add_noise,
     create_noise_injector,
-    get_encoded_dim
+    get_encoded_dim,
+    is_initialized
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -767,9 +768,9 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
     for (processor, apply_to) in schedule_in
         # converts the string into the extraction of data
         if apply_to ∈ ["in", "out"]
-            push!(encoder_schedule, (processor, apply_to))
+            push!(encoder_schedule, (deepcopy(processor), apply_to))
         elseif apply_to == "in_and_out"
-            push!(encoder_schedule, (processor, "in"))
+            push!(encoder_schedule, (deepcopy(processor), "in"))
             push!(encoder_schedule, (deepcopy(processor), "out"))
         else
             @warn(
@@ -845,6 +846,10 @@ function initialize_and_encode_with_schedule!(
     end
     if !isnothing(samples_out)
         (output_structure_vecs[:samples_out] = samples_out)
+    end
+
+    if any(is_initialized(processor) for (processor, apply_to) in encoder_schedule)
+        @warn "Encoder schedule contains already-initialized processors; they will NOT be refitted to the new data. Create a fresh schedule with create_encoder_schedule to refit."
     end
 
     # apply_to is the string "in", "out" etc.

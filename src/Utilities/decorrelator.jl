@@ -166,6 +166,14 @@ get_encoder_mat(dd::Decorrelator) = dd.encoder_mat
 """
 $(TYPEDSIGNATURES)
 
+Returns `true` if `dd` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(dd::Decorrelator) = !isempty(get_encoder_mat(dd))
+
+"""
+$(TYPEDSIGNATURES)
+
 returns the `decoder_mat` field of the `Decorrelator`.
 """
 get_decoder_mat(dd::Decorrelator) = dd.decoder_mat

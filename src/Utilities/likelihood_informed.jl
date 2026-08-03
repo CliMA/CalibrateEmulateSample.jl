@@ -53,6 +53,14 @@ end
 
 get_encoder_mat(li::LikelihoodInformed) = li.encoder_mat
 get_decoder_mat(li::LikelihoodInformed) = li.decoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+Returns `true` if `li` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(li::LikelihoodInformed) = !isempty(get_encoder_mat(li))
 get_data_mean(li::LikelihoodInformed) = li.data_mean
 
 """
