@@ -460,14 +460,8 @@ function transition_kernel(
     return MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L')))
 end
 
-# θ_to | θ_from ~ N(m + ρ(θ_from - m), (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017
-# for the ρ-vs-Euler-stepsize relation), contracting toward the encoded prior mean `m` rather
-# than toward 0 (correct in general; 0 is only the special case m=0). Evaluating this honestly
-# in both directions (via the generic logratio_proposal_density) is what recovers the pCN
-# cancellation log q(θ_from|θ_to) - log q(θ_to|θ_from) = logprior(θ_from) - logprior(θ_to): the
-# shift v = θ - m turns this kernel into the m=0 case in v-coordinates, where that cancellation
-# is the standard pCN identity, and N(m,C) in θ-coordinates is exactly N(0,C) in v-coordinates,
-# so the identity carries over unchanged.
+# θ_to | θ_from ~ N(m + ρ(θ_from - m), (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017),
+# contracting toward the encoded prior mean `m` rather than toward 0.
 function transition_kernel(
     sampler::pCNMetropolisHastings,
     model::AdvancedMH.DensityModel,

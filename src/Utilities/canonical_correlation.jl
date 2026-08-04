@@ -113,15 +113,7 @@ function initialize_processor!(
         svdi = svd(in_data .- mean(in_data, dims = 2))
         svdo = svd(out_data .- mean(out_data, dims = 2))
 
-        # Truncate to numerical rank so `1 ./ S` below never divides by a (near-)zero singular
-        # value, and so rank-deficient (e.g. collinear-ensemble) data doesn't inflate a
-        # near-null direction. `Ui`/`Vti` (and `Uo`/`Vto`) are then unambiguous by construction
-        # of `svd` on a (dim x n_samples) matrix with n_samples ≥ dim (guaranteed by the
-        # sample-count check above): `Ui` is the data-space factor (in_dim x r_in, orthonormal
-        # columns), `Vti` the sample-space factor (r_in x n_samples, orthonormal rows) - no
-        # size-equality role-guessing needed (that guess breaks once ranks differ under
-        # truncation, which is what made the pre-fix in/out role selection pick the wrong branch
-        # for rank-deficient data).
+        # Truncate to numerical rank so `1 ./ S` below never divides by a (near-)zero singular value.
         rank_rtol = 1e-12
         r_in = count(>(rank_rtol * svdi.S[1]), svdi.S)
         r_out = count(>(rank_rtol * svdo.S[1]), svdo.S)
@@ -139,13 +131,8 @@ function initialize_processor!(
         else
             trunc_val = min(length(svdio.S), rank(in_data), rank(out_data))
         end
-        # svdio.U spans the row-space of `Vti * Vto'` (the "in" role), svdio.V the column-space
-        # (the "out" role) - deterministic from the multiplication order above, not a
-        # size-equality guess.
-        # rescale so encoded variates have sample covariance ≈ I (matching every sibling
-        # processor: Decorrelator, ZScore, ...) instead of the CCA-standard ‖u‖² = 1 energy
-        # normalization, which left CCA-encoded data O(1/√(n_samples-1)) smaller in scale than
-        # everything else in the pipeline.
+        # svdio.U spans the row-space of `Vti * Vto'` (the "in" role), svdio.V the column-space (the "out" role).
+        # rescale so encoded variates have sample covariance ≈ I, matching every sibling processor.
         rescale = sqrt(n_samples - 1)
         if apply_to == "in"
             # mat' * Sx⁻¹ * Uxt
