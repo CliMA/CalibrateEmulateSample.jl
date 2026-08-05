@@ -76,6 +76,9 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test isapprox(norm(decoded_mat - x), 0, atol = tol * p * m)
     @test isapprox(norm(decoded_I - 1.0 * I), 0, atol = tol * d * d)
 
+    # m8: unrecognized `encode` values must throw, not silently behave as `encode = nothing`
+    @test_throws ArgumentError EM.predict(em, x; encode = "In")
+
     # test obs_noise_cov   (check the warning at the start)
     @test_logs (:warn,) (:info,) (:warn,) (:info,) (:warn,) Emulator(gp, io_pairs, obs_noise_cov = Σ)
     @test_logs (:warn,) (:info,) (:warn,) (:info,) (:warn,) Emulator(
@@ -150,6 +153,9 @@ end
     end
     # Resolution test (Step 7c): passing already-encoded inputs with encode = "in" must not throw
     @test EM.predict(fmw, encode_data(fmw, x_test, "in"); encode = "in") isa Tuple
+
+    # m8: unrecognized `encode` values must throw, not silently behave as `encode = nothing`
+    @test_throws ArgumentError EM.predict(fmw, x_test; encode = "In")
 
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))

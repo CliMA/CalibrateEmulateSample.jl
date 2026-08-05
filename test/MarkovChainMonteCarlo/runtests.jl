@@ -646,7 +646,13 @@ end
 
         noise_injector = create_noise_injector(lossless_sch, prior_1d, 0.0, 0.5)
 
-
+        # m20: `decode_and_add_noise` must be reproducible under a shared rng, and
+        # independent of the global RNG state
+        rng1 = MersenneTwister(24)
+        rng2 = MersenneTwister(24)
+        samples_a = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15, ni_scaling; rng = rng1)
+        samples_b = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15, ni_scaling; rng = rng2)
+        @test samples_a == samples_b
     end
 
 

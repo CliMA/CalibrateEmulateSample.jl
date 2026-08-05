@@ -172,6 +172,13 @@ end
     # Resolution test (Step 7c): replacing λI with Diagonal(fill(λ, d)) must not throw
     @test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 
+    # h12: an unsupported block type must throw a clear ArgumentError, not silently
+    # produce a zero-size block (which previously surfaced as a distant BoundsError)
+    let thrown = @test_throws ArgumentError create_compact_linear_map([1])
+        @test contains(thrown.value.msg, "unsupported")
+        @test contains(thrown.value.msg, "Int64")
+    end
+
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing
         tsvd_max_rank = 30 # often only stable small ranks
@@ -289,6 +296,15 @@ end
         @test contains(thrown.value.msg, "eltype(iters)")
         @test contains(thrown.value.msg, "Float64")
     end
+
+    # h12: `==` across different DataContainerProcessor/PairedDataContainerProcessor
+    # concrete types must return false, not throw a FieldError from mismatched fieldnames
+    QQ2 = ElementwiseScaler{QuartileScaling, Vector{Int}, Vector, Vector, Vector, Vector}([1], [2], [3], [4], [5], [6])
+    @test QQ == QQ2
+    @test !(QQ == DD)
+    @test !(DD == QQ)
+    @test !(cc3 == ll3)
+    @test !(ll3 == cc3)
 
     # M7 regression test: the composite-trapezoid weights over the α-path must be
     # paired with their own node, not shifted by one (see full-code-review M7).

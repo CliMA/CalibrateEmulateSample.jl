@@ -456,6 +456,8 @@ function create_compact_linear_map(
             push!(VTs, svda.Vt)
             push!(ds, diaga)
             bsize = length(diaga)
+        else
+            _throw_unsupported_block_type(a, i, length(Avec))
         end
 
         batch = (shift + 1):(shift + bsize)
@@ -599,10 +601,10 @@ function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
 end
 
 Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP1))
+    DCP1 === DCP2 && all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP1))
 
 Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
+    PDCP1 === PDCP2 && all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
 ####
 
 function get_structure_vec(structure_vecs, name = nothing)
@@ -651,7 +653,6 @@ end
 
 # just for reshaping into matrix
 function _encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
-    data_vec = isa(data, DataContainer) ? get_data(data) : data
     if eltype(data) <: Real # one vec
         return _encode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
@@ -1351,7 +1352,8 @@ end
 
 function decode_and_add_noise(
     noise_injector::NorNI,
-    samples::MM,
+    samples::MM;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {NorNI <: Union{Nothing, NoiseInjector}, MM <: AbstractMatrix}
     if isnothing(noise_injector)
         return samples
@@ -1370,7 +1372,7 @@ function decode_and_add_noise(
     if use_noise
         recovered_samples = m .+ K * (samples .- enc_m)
 
-        null_samples = scaling * L * randn(size(L, 1), size(samples, 2))
+        null_samples = scaling * L * randn(rng, size(L, 1), size(samples, 2))
         return recovered_samples + null_samples
     else
         return decode_data(encoder_schedule, samples, "in")
@@ -1389,10 +1391,11 @@ function decode_and_add_noise(
     samples::MM,
     prior::PD,
     noise_injector_threshold::FT,
-    noise_injector_scaling::FT,
+    noise_injector_scaling::FT;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
     noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
-    return decode_and_add_noise(noise_injector, samples)
+    return decode_and_add_noise(noise_injector, samples; rng = rng)
 end
 
 ## Error helpers
@@ -1404,6 +1407,12 @@ Structure matrix $i (of $total) is a `UniformScaling` ("λI"), whose dimension c
 Suggestion:
     Replace `λ * I` with `Diagonal(fill(λ, d))` where `d` is the required matrix dimension.
 """))
+end
+
+@noinline function _throw_unsupported_block_type(a, i::Int, total::Int)
+    throw(ArgumentError(
+        "create_compact_linear_map: block $i (of $total) has unsupported type $(typeof(a)); expected AbstractMatrix, SVD, or SVDplusD.",
+    ))
 end
 
 # Processors

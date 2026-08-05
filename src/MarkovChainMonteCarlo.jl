@@ -1055,6 +1055,7 @@ samples in `chain`.
 # Arguments
 - `noise_injector_threshold` (`=0.001`): If the encoded space is lossy, and the lost variability due to encoding exceeds this threshold, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.
 - `noise_injector_scaling` (`=1.0`): Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
+- `rng` (`=Random.GLOBAL_RNG`): random number generator used to draw the injected null-space noise, when applicable.
 
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
@@ -1064,6 +1065,7 @@ function get_posterior(
     chain::MCMCChains.Chains;
     noise_injector_threshold::FT = 0.001,
     noise_injector_scaling::FT = 1.0,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {FT <: Real}
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
@@ -1083,7 +1085,8 @@ function get_posterior(
         red_samples,
         mcmc.prior,
         noise_injector_threshold,
-        noise_injector_scaling,
+        noise_injector_scaling;
+        rng = rng,
     )
 
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]
