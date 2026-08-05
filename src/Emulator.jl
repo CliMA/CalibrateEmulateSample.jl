@@ -334,7 +334,11 @@ function predict(
     encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
 
     if !(isnothing(encode) || encode ∈ ("in", "out", "in_and_out"))
-        throw(ArgumentError("keyword `encode` must be nothing, \"in\", \"out\", or \"in_and_out\"; received $(repr(encode))"))
+        throw(
+            ArgumentError(
+                "keyword `encode` must be nothing, \"in\", \"out\", or \"in_and_out\"; received $(repr(encode))",
+            ),
+        )
     end
 
     # For the logic below
@@ -512,7 +516,11 @@ function predict(
     encode, add_obs_noise_cov = deprecate_transform_to_real(encode, add_obs_noise_cov, transform_to_real)
 
     if !(isnothing(encode) || encode ∈ ("in", "out", "in_and_out"))
-        throw(ArgumentError("keyword `encode` must be nothing, \"in\", \"out\", or \"in_and_out\"; received $(repr(encode))"))
+        throw(
+            ArgumentError(
+                "keyword `encode` must be nothing, \"in\", \"out\", or \"in_and_out\"; received $(repr(encode))",
+            ),
+        )
     end
 
     # For the logic below

@@ -1410,9 +1410,11 @@ Suggestion:
 end
 
 @noinline function _throw_unsupported_block_type(a, i::Int, total::Int)
-    throw(ArgumentError(
-        "create_compact_linear_map: block $i (of $total) has unsupported type $(typeof(a)); expected AbstractMatrix, SVD, or SVDplusD.",
-    ))
+    throw(
+        ArgumentError(
+            "create_compact_linear_map: block $i (of $total) has unsupported type $(typeof(a)); expected AbstractMatrix, SVD, or SVDplusD.",
+        ),
+    )
 end
 
 # Processors
