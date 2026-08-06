@@ -53,6 +53,14 @@ get_encoder_mat(cc::CanonicalCorrelation) = cc.encoder_mat
 """
 $(TYPEDSIGNATURES)
 
+Returns `true` if `cc` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(cc::CanonicalCorrelation) = !isempty(get_encoder_mat(cc))
+
+"""
+$(TYPEDSIGNATURES)
+
 returns the `decoder_mat` field of the `CanonicalCorrelation`.
 """
 get_decoder_mat(cc::CanonicalCorrelation) = cc.decoder_mat
@@ -99,16 +107,20 @@ function initialize_processor!(
         if size(in_data, 2) < size(in_data, 1) || size(out_data, 2) < size(out_data, 1)
             _throw_insufficient_cca_samples(in_data, out_data)
         end
+        n_samples = size(in_data, 2)
 
         # Individually decompose in and out
         svdi = svd(in_data .- mean(in_data, dims = 2))
         svdo = svd(out_data .- mean(out_data, dims = 2))
 
-        # ensure correct shaping (in_mat = (in_dim x n_samples), out_mat = (out_dim x n_samples))
-        in_mat_sq, in_mat_nonsq = (size(svdi.U, 1) == size(svdi.U, 2)) ? (svdi.U, svdi.Vt) : (svdi.Vt, svdi.U)
-        out_mat_sq, out_mat_nonsq = (size(svdo.U, 1) == size(svdo.U, 2)) ? (svdo.U, svdo.Vt) : (svdo.Vt, svdo.U)
+        # Truncate to numerical rank so `1 ./ S` below never divides by a (near-)zero singular value.
+        rank_rtol = 1e-12
+        r_in = count(>(rank_rtol * svdi.S[1]), svdi.S)
+        r_out = count(>(rank_rtol * svdo.S[1]), svdo.S)
+        Ui, Si, Vti = svdi.U[:, 1:r_in], svdi.S[1:r_in], svdi.Vt[1:r_in, :]
+        Uo, So, Vto = svdo.U[:, 1:r_out], svdo.S[1:r_out], svdo.Vt[1:r_out, :]
 
-        svdio = svd(in_mat_nonsq * out_mat_nonsq')
+        svdio = svd(Vti * Vto')
 
         # retain variance
         ret_var = get_retain_var(cc)
@@ -117,30 +129,31 @@ function initialize_processor!(
             trunc_val = minimum(findall(x -> (x > ret_var), sv_cumsum))
             @info "    truncating at $(trunc_val)/$(length(sv_cumsum)) retaining $(100.0*sv_cumsum[trunc_val])% of the variance in the joint space"
         else
-            trunc_val = min(rank(in_data), rank(out_data))
+            trunc_val = min(length(svdio.S), rank(in_data), rank(out_data))
         end
-        in_dim = size(in_data, 1)
-        in_svdio_mat, out_svdio_mat = (size(svdio.U, 1) == in_dim) ? (svdio.U, svdio.V) : (svdio.V, svdio.U')
+        # svdio.U spans the row-space of `Vti * Vto'` (the "in" role), svdio.V the column-space (the "out" role).
+        # rescale so encoded variates have sample covariance ≈ I, matching every sibling processor.
+        rescale = sqrt(n_samples - 1)
         if apply_to == "in"
             # mat' * Sx⁻¹ * Uxt
-            encoder_mat = in_svdio_mat[:, 1:trunc_val]' * Diagonal(1 ./ svdi.S) * in_mat_sq'
-            decoder_mat = in_mat_sq * Diagonal(svdi.S) * in_svdio_mat[:, 1:trunc_val]
+            encoder_mat = rescale * svdio.U[:, 1:trunc_val]' * Diagonal(1 ./ Si) * Ui'
+            decoder_mat = (1 / rescale) * Ui * Diagonal(Si) * svdio.U[:, 1:trunc_val]
 
         elseif apply_to == "out"
-            out_dim = size(out_data, 1)
             # Vt * Sy⁻¹ * Uyt
-            encoder_mat = out_svdio_mat[:, 1:trunc_val]' * Diagonal(1 ./ svdo.S) * out_mat_sq'
-            decoder_mat = out_mat_sq * Diagonal(svdo.S) * out_svdio_mat[:, 1:trunc_val]
+            encoder_mat = rescale * svdio.V[:, 1:trunc_val]' * Diagonal(1 ./ So) * Uo'
+            decoder_mat = (1 / rescale) * Uo * Diagonal(So) * svdio.V[:, 1:trunc_val]
         end
 
         push!(get_encoder_mat(cc), encoder_mat)
         push!(get_decoder_mat(cc), decoder_mat)
 
-        # Note: To check CCA: 
+        # Note: To check CCA:
         # u = in_encoder * (in_data .- mean(in_data, dims=2))
         # v = out_encoder * (out_data .- mean(out_data, dims=2))
-        # u * u' = v * v' = I, 
-        # v * u' = u * v' = Diagonal(svdio.S[1:trunc_val])
+        # cov(u; dims=2) = cov(v; dims=2) = I  (canonical variates have unit sample variance)
+        # cov(u, v)-style cross term v * u' / (n_samples - 1) = u * v' / (n_samples - 1)
+        #   = Diagonal(svdio.S[1:trunc_val])
     end
 end
 

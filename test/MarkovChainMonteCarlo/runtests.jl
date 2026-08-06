@@ -646,7 +646,13 @@ end
 
         noise_injector = create_noise_injector(lossless_sch, prior_1d, 0.0, 0.5)
 
-
+        # m20: `decode_and_add_noise` must be reproducible under a shared rng, and
+        # independent of the global RNG state
+        rng1 = MersenneTwister(24)
+        rng2 = MersenneTwister(24)
+        samples_a = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15, ni_scaling; rng = rng1)
+        samples_b = decode_and_add_noise(lossy_sch, enc_samples, prior_mv, 0.15, ni_scaling; rng = rng2)
+        @test samples_a == samples_b
     end
 
 
@@ -814,7 +820,7 @@ end
         @testset "pCN: Hastings term exactly cancels the prior ratio" begin
             # This is the core bug: reverse - forward must equal logprior(a) - logprior(b)
             # for every stepsize (every ρ), not silently 0.
-            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            pcn = MCMC.pCNMetropolisHastings{typeof(zeros(n)), typeof(L), MCMC.GradFreeProtocol}(zeros(n), L)
             prev_state = MCMC.MCMCState(a, 0.0, true)
             for s in (0.05, 0.5, 1.5, 3.9)
                 hastings = AdvancedMH.logratio_proposal_density(pcn, dummy_model, prev_state, b; stepsize = s)
@@ -828,7 +834,7 @@ end
             # (loglik cancels trivially, and the Hastings term cancels the prior ratio). Under
             # the pre-fix code (Hastings term silently 0), this would instead fluctuate with the
             # prior ratio and cause spurious rejections.
-            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            pcn = MCMC.pCNMetropolisHastings{typeof(zeros(n)), typeof(L), MCMC.GradFreeProtocol}(zeros(n), L)
             flat_model = AdvancedMH.DensityModel(θ -> logpdf(prior_dist, θ))
             θ0 = zeros(n)
             state = MCMC.MCMCState(θ0, AdvancedMH.logdensity(flat_model, θ0), true)
@@ -848,15 +854,27 @@ end
             # enough to catch a real scaling bug), via the Monte Carlo mean's norm-error RMS
             # sqrt(tr(Var)/n_draws): RW's Var = stepsize²C gives 5·RMS ≈ 0.053; pCN's Var =
             # (1-ρ²)C gives 5·RMS ≈ 0.067 (both at stepsize=0.5, n_draws=10_000).
+            #
+            # pCN is constructed with a genuinely NON-zero, fixed (not rng-drawn, so the gap below
+            # is guaranteed rather than incidental) prior mean `m` here (regression test for the C1
+            # secondary defect: pCN previously always contracted toward 0 regardless of the encoded
+            # prior's actual mean). If `transition_kernel` silently ignored `m` and contracted
+            # toward 0 instead, this test would fail: the analytic reference below is
+            # `m + ρ(a - m)`, which only coincides with `ρ*a` when `m` happens to be 0.
             rw = MCMC.RWMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
-            pcn = MCMC.pCNMetropolisHastings{typeof(L), MCMC.GradFreeProtocol}(L)
+            m = fill(3.0, n)
+            pcn = MCMC.pCNMetropolisHastings{typeof(m), typeof(L), MCMC.GradFreeProtocol}(m, L)
             state = MCMC.MCMCState(a, 0.0, true)
             n_draws = 10_000
             rw_draws = [AdvancedMH.propose(rng, rw, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
             pcn_draws = [AdvancedMH.propose(rng, pcn, dummy_model, state; stepsize = 0.5) for _ in 1:n_draws]
             @test isapprox(mean(rw_draws), a; atol = 0.06)
             ρ = (1 - 0.5 / 4) / (1 + 0.5 / 4)
-            @test isapprox(mean(pcn_draws), ρ .* a; atol = 0.07)
+            @test isapprox(mean(pcn_draws), m .+ ρ .* (a .- m); atol = 0.07)
+            # Sanity: with this m, the (wrong) zero-mean prediction ρ*a is nowhere near the
+            # analytic mean (gap = norm(m)*(1-ρ) ≈ 1.15, deterministic since m is fixed), so this
+            # test could not have passed against the pre-fix formula.
+            @test norm((m .+ ρ .* (a .- m)) .- (ρ .* a)) > 0.5
         end
 
         @testset "Barker: transition density matches closed-form gradient formula" begin
@@ -960,6 +978,44 @@ end
             draws = zeros(n_samples)
             for i in 1:n_samples
                 state, _ = AbstractMCMC.step(rng_local, model, barker, state; stepsize = stepsize)
+                draws[i] = state.params[1]
+            end
+            @test isapprox(mean(draws), post_mean; rtol = 0.05)
+            @test isapprox(var(draws), post_var; rtol = 0.05)
+        end
+
+        @testset "pCN: recovers the exact 1D conjugate-Gaussian posterior for a NON-zero-mean prior (regression for C1 secondary defect)" begin
+            # Full-sampler-level regression test for C1's secondary defect: pCN previously
+            # contracted its proposal toward 0 regardless of the prior's actual mean, which is
+            # only correct in the special case of a zero-mean prior. Here the prior mean m=2 is
+            # deliberately non-zero, isolating exactly this defect (everything else matches the
+            # already-verified Barker keystone test above: same τ², σ², y_obs).
+            # Prior θ ~ N(m, τ²), single observation y ~ N(θ, σ²): posterior mean = V*(m/τ² + y/σ²),
+            # posterior var V = τ²σ²/(τ²+σ²), with V = 1/3, mean = 7/3 exactly for these numbers.
+            τ2 = 1.0
+            σ2 = 0.5
+            m = 2.0
+            y_obs = 2.5
+            post_var = (τ2 * σ2) / (τ2 + σ2)
+            post_mean = post_var * (m / τ2 + y_obs / σ2)
+            @test isapprox(post_mean, 7.0 / 3.0; atol = 1e-12)
+            @test isapprox(post_var, 1.0 / 3.0; atol = 1e-12)
+
+            target_logdensity(θ) = logpdf(Normal(m, sqrt(τ2)), θ[1]) + logpdf(Normal(θ[1], sqrt(σ2)), y_obs)
+            model = AdvancedMH.DensityModel(target_logdensity)
+            L1 = reshape([sqrt(τ2)], 1, 1)
+            pcn = MCMC.pCNMetropolisHastings{typeof([m]), typeof(L1), MCMC.GradFreeProtocol}([m], L1)
+
+            rng_local = Random.MersenneTwister(2025)
+            stepsize = 0.7
+            state = MCMC.MCMCState([m], AdvancedMH.logdensity(model, [m]), true)
+            for _ in 1:1000
+                state, _ = AbstractMCMC.step(rng_local, model, pcn, state; stepsize = stepsize)
+            end
+            n_samples = 20_000
+            draws = zeros(n_samples)
+            for i in 1:n_samples
+                state, _ = AbstractMCMC.step(rng_local, model, pcn, state; stepsize = stepsize)
                 draws[i] = state.params[1]
             end
             @test isapprox(mean(draws), post_mean; rtol = 0.05)

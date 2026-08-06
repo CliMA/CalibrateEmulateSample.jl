@@ -172,6 +172,13 @@ end
     # Resolution test (Step 7c): replacing λI with Diagonal(fill(λ, d)) must not throw
     @test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 
+    # h12: an unsupported block type must throw a clear ArgumentError, not silently
+    # produce a zero-size block (which previously surfaced as a distant BoundsError)
+    let thrown = @test_throws ArgumentError create_compact_linear_map([1])
+        @test contains(thrown.value.msg, "unsupported")
+        @test contains(thrown.value.msg, "Int64")
+    end
+
     for svd_type in ["psvd", "tsvd"]
         psvd_kwargs = (; rtol = 1e-3) # make very small for testing
         tsvd_max_rank = 30 # often only stable small ranks
@@ -288,6 +295,119 @@ end
     let thrown = @test_throws ArgumentError likelihood_informed(iters = 1.3)
         @test contains(thrown.value.msg, "eltype(iters)")
         @test contains(thrown.value.msg, "Float64")
+    end
+
+    # h12: `==` across different DataContainerProcessor/PairedDataContainerProcessor
+    # concrete types must return false, not throw a FieldError from mismatched fieldnames
+    QQ2 = ElementwiseScaler{QuartileScaling, Vector{Int}, Vector, Vector, Vector, Vector}([1], [2], [3], [4], [5], [6])
+    @test QQ == QQ2
+    @test !(QQ == DD)
+    @test !(DD == QQ)
+    @test !(cc3 == ll3)
+    @test !(ll3 == cc3)
+
+    # M7 regression test: the composite-trapezoid weights over the α-path must be
+    # paired with their own node, not shifted by one (see full-code-review M7).
+    # Construction: for each of 3 nodes, samples_in is the fixed zero-mean basis
+    # [e1 -e1 e2 -e2] (population covariance 0.5*I), and samples_out = grad_it * samples_in
+    # exactly (no noise), so :linreg regression recovers grad_it exactly. With
+    # obs_noise_cov = I and observation y = 0, the per-node diagnostic matrix reduces
+    # exactly to M_it = (1-α)*G_it + 0.5*α²*G_it² where G_it = grad_it' * grad_it -
+    # this is an exact algebraic identity for this construction, not an approximation.
+    let
+        basis_in = [1.0 -1.0 0.0 0.0; 0.0 0.0 1.0 -1.0] # e1, -e1, e2, -e2 as columns
+        rot(θ) = [cos(θ) -sin(θ); sin(θ) cos(θ)]
+
+        Qs = [rot(0.0), rot(deg2rad(30.0)), rot(deg2rad(70.0))]
+        Ds = [Diagonal([3.0, 1.0]), Diagonal([2.0, 1.0]), Diagonal([2.5, 1.0])]
+        alphas_nodes = [0.0, 0.4, 1.0]
+        grads_it = [Ds[i] * Qs[i]' for i in 1:3]
+        Gs = [g' * g for g in grads_it]
+        Ms = [(1 - alphas_nodes[i]) * Gs[i] + 0.5 * alphas_nodes[i]^2 * Gs[i]^2 for i in 1:3]
+
+        weights_correct = [0.2, 0.5, 0.3] # composite trapezoid weights for alphas [0, 0.4, 1.0]
+        M_correct = sum(weights_correct[i] * Ms[i] for i in 1:3)
+
+        samples_out_it = [grads_it[i] * basis_in for i in 1:3]
+
+        li_m7 = likelihood_informed(retain_info = 1.0, iters = 1:3, grad_type = :linreg)
+        Utilities.initialize_processor!(
+            li_m7,
+            basis_in,
+            zeros(2, 4),
+            Dict(:prior_cov => Matrix{Float64}(I, 2, 2)), # whitened: keep this test focused on M7, not M8
+            Dict(:obs_noise_cov => Matrix{Float64}(I, 2, 2)),
+            Dict(:dt => alphas_nodes, :samples_in => [basis_in, basis_in, basis_in]),
+            Dict(:observation => [zeros(2)], :samples_out => samples_out_it),
+            "in",
+        )
+        encoder_mat_m7 = Matrix(get_encoder_mat(li_m7)[1])
+
+        # encoder_mat's rows are the eigenvectors of the diagnostic matrix the code actually
+        # combined: if weights are correctly aligned with nodes, they diagonalize M_correct.
+        off_diag_correct = encoder_mat_m7 * M_correct * encoder_mat_m7'
+        off_diag_correct -= Diagonal(off_diag_correct)
+        @test norm(off_diag_correct) < 1e-8
+
+        # sanity: the construction actually discriminates - the pre-fix (weight-shifted) combination
+        # does NOT get diagonalized by the same encoder, so this test could not have passed by accident.
+        M_buggy = weights_correct[1] * Ms[2] + weights_correct[2] * Ms[3]
+        off_diag_buggy = encoder_mat_m7 * M_buggy * encoder_mat_m7'
+        off_diag_buggy -= Diagonal(off_diag_buggy)
+        @test norm(off_diag_buggy) > 1e-3
+    end
+
+    # M8 regression test: LikelihoodInformed's input-space diagnostic silently assumed
+    # prior covariance ≈ I; it must now warn when apply_to == "in" and the input
+    # structure matrices' :prior_cov is missing or not ≈ I, and stay silent when it is.
+    let
+        rng_m8 = Random.MersenneTwister(1234)
+        in_dim8 = 3
+        out_dim8 = 2
+        in_data8 = randn(rng_m8, in_dim8, 5)
+        out_data8 = randn(rng_m8, out_dim8, 5)
+        input_vecs8 = Dict(:dt => [0.0])
+        output_mats8 = Dict(:obs_noise_cov => Matrix{Float64}(I, out_dim8, out_dim8))
+        output_vecs8 = Dict{Symbol, Utilities.StructureVector}()
+
+        # non-identity prior_cov => warns (min_level=Warn filters the unrelated @info emitted
+        # at the start of initialize_processor!; the single remaining log must match)
+        non_id_prior = [2.0 0.3 0.0; 0.3 1.5 0.0; 0.0 0.0 1.0]
+        @test_logs (:warn, r"assumes whitened inputs") min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict(:prior_cov => non_id_prior),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
+
+        # missing :prior_cov key => warns
+        @test_logs (:warn, r"assumes whitened inputs") min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict{Symbol, Utilities.StructureMatrix}(),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
+
+        # identity prior_cov => no warning (zero patterns + min_level=Warn: passes iff no
+        # Warn-or-above log is emitted; unrelated @info is filtered out by min_level)
+        @test_logs min_level = Base.CoreLogging.Warn Utilities.initialize_processor!(
+            likelihood_informed(retain_info = 1.0, iters = [1], grad_type = :linreg),
+            in_data8,
+            out_data8,
+            Dict(:prior_cov => Matrix{Float64}(I, in_dim8, in_dim8)),
+            output_mats8,
+            input_vecs8,
+            output_vecs8,
+            "in",
+        )
     end
 
     # test equalities
@@ -484,7 +604,10 @@ end
             # Paired data processor reduction:
             if name == "canonical-correlation"
                 @test dimm == min(rank(get_inputs(io_pairs)), rank(get_outputs(io_pairs)))
-                @test isapprox(norm(enc_dat * enc_dat' - I), 0.0, atol = tol * dimm^2) # test in or out orthogonality
+                # canonical variates have sample covariance ≈ I (not energy-normalized u*u' ≈ I;
+                # rescaled by √(n_samples-1) in initialize_processor! so this matches every
+                # sibling processor's convention)
+                @test isapprox(norm(pop_cov - I), 0.0, atol = tol * dimm^2) # test in or out orthogonality
 
                 # check cross-orthogonality is diagonal (nb this test will be duplicate)
                 enc_in = get_inputs(encoded_io_pairs)
@@ -513,6 +636,54 @@ end
 
         end
 
+    end
+
+    # G3 regression test: CanonicalCorrelation must not blow up (Inf/NaN, or select the wrong
+    # in/out role) on rank-deficient (collinear-ensemble) data.
+    let
+        rng_deg = Random.MersenneTwister(2026)
+        in_dim_deg = 4
+        out_dim_deg = 3
+        samples_deg = 20
+        x_deg = randn(rng_deg, in_dim_deg - 1, samples_deg)
+        in_data_deg = vcat(x_deg, x_deg[1:1, :]) # duplicate the first row: rank(in_data_deg) == in_dim_deg - 1 == out_dim_deg
+        out_data_deg = randn(rng_deg, out_dim_deg, samples_deg)
+        io_pairs_deg = PairedDataContainer(in_data_deg, out_data_deg)
+
+        cc_deg = canonical_correlation()
+        enc_sch_deg = create_encoder_schedule((cc_deg, "in_and_out"))
+        (encoded_io_pairs_deg, _, _, _, _) = initialize_and_encode_with_schedule!(enc_sch_deg, io_pairs_deg)
+
+        @test all(isfinite, get_inputs(encoded_io_pairs_deg))
+        @test all(isfinite, get_outputs(encoded_io_pairs_deg))
+
+        # both sides have rank 3 == trunc_val here, so neither loses information: round-trip
+        # should be exact (up to numerical rank-truncation tolerance), for both "in" and "out".
+        dec_in_deg = decode_data(enc_sch_deg, get_inputs(encoded_io_pairs_deg), "in")
+        dec_out_deg = decode_data(enc_sch_deg, get_outputs(encoded_io_pairs_deg), "out")
+        @test isapprox(norm(dec_in_deg - in_data_deg), 0.0, atol = 1e-8 * samples_deg)
+        @test isapprox(norm(dec_out_deg - out_data_deg), 0.0, atol = 1e-8 * samples_deg)
+    end
+
+    # G3 regression test: ElementwiseScaler (ZScore/MinMax/Quartile) must not divide by a zero
+    # scale (constant data dimension) and must warn rather than silently producing NaN/Inf.
+    let
+        rng_deg = Random.MersenneTwister(2027)
+        dim_deg = 3
+        samples_deg = 10
+        data_deg = randn(rng_deg, dim_deg, samples_deg)
+        data_deg[2, :] .= 5.0 # constant row: std = 0, max-min = 0, IQR = 0
+
+        for scaler in (zscore_scale(), minmax_scale(), quartile_scale())
+            enc_sch_deg = create_encoder_schedule((scaler, "in"))
+            io_pairs_deg = PairedDataContainer(data_deg, data_deg)
+            (encoded_io_pairs_deg, _, _, _, _) =
+                @test_logs (:warn, r"constant data dimension") match_mode = :any initialize_and_encode_with_schedule!(
+                    enc_sch_deg,
+                    io_pairs_deg,
+                )
+            @test all(isfinite, get_inputs(encoded_io_pairs_deg))
+        end
     end
 
     # test retrieval of the affine components from the schedule
@@ -686,6 +857,48 @@ end
 
 end
 
+@testset "M6: encoder schedules do not share fitted processor state" begin
+    rng_m6 = Random.MersenneTwister(20260731)
+    dim_m6 = 3
+    samples_m6 = 30
+
+    builder_list = [(zscore_scale(), "in")] # one builder list, reused for two schedules
+
+    # (a) two schedules built from the SAME builder list must not alias the same processor
+    # instance, and must fit independently to their own data.
+    schA = create_encoder_schedule(builder_list)
+    schB = create_encoder_schedule(builder_list)
+    @test schA[1][1] !== schB[1][1]
+
+    data_meanA = zeros(dim_m6)
+    data_meanB = fill(50.0, dim_m6)
+    io_pairs_A = PairedDataContainer(data_meanA .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+    io_pairs_B = PairedDataContainer(data_meanB .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+
+    initialize_and_encode_with_schedule!(schA, io_pairs_A)
+    (encoded_io_pairs_B, _, _, _, _) = initialize_and_encode_with_schedule!(schB, io_pairs_B)
+
+    # schB fit on its own (mean-50) data, so its encoded data should be centered near 0 -
+    # if it had aliased/reused schA's (mean-0) statistics, this would instead center near 50.
+    @test isapprox(norm(mean(get_inputs(encoded_io_pairs_B), dims = 2)), 0.0, atol = 1e-8)
+
+    # (b) re-initializing an already-fitted schedule must warn, and must NOT refit (existing
+    # semantics preserved). Check this deterministically against the processor's own stored
+    # shift/scale (rather than an encoded-mean tolerance, which would be confounded by
+    # sampling noise in the new data) - they must be BIT-IDENTICAL before and after, since a
+    # refit would recompute them from the new (mean-50) data.
+    shift_before = copy(get_shift(schA[1][1]))
+    scale_before = copy(get_scale(schA[1][1]))
+    io_pairs_A2 = PairedDataContainer(data_meanB .+ randn(rng_m6, dim_m6, samples_m6), randn(rng_m6, 1, samples_m6))
+    @test_logs (:warn, r"already-initialized") match_mode = :any initialize_and_encode_with_schedule!(schA, io_pairs_A2)
+    @test get_shift(schA[1][1]) == shift_before
+    @test get_scale(schA[1][1]) == scale_before
+
+    # a fresh, never-initialized schedule must NOT warn.
+    sch_fresh = create_encoder_schedule(builder_list)
+    @test_logs min_level = Base.CoreLogging.Warn initialize_and_encode_with_schedule!(sch_fresh, io_pairs_A)
+end
+
 
 
 
@@ -805,6 +1018,57 @@ end
     ekp_kw_custom = encoder_kwargs_from(ekp_mb, prior_mb; samples_in = get_u(ekp_mb), samples_out = get_g(ekp_mb))
     @test size(ekp_kw_custom[:output_structure_vecs][:samples_out][1], 1) == gdim * batch_size
 
+end
+
+@testset "Decorrelator: small/large-matrix truncation criterion consistency (m28)" begin
+    # m28 regression test. The large-matrix (tsvd) branch must truncate on the same VARIANCE
+    # (trace, Σσᵢ) fraction the small-matrix branch computes exactly, not the sum-of-squares
+    # (Frobenius, Σσᵢ²) fraction it used before. Isolated from the (pre-existing, out-of-scope)
+    # conservative retain_var deflation the tsvd branch applies for estimator uncertainty - that
+    # deflation is itself noisy (depends on a separate Hutchinson estimate of the SPREAD, not
+    # just the mean, of repeated trace draws), which would make an end-to-end achieved-rank
+    # comparison flaky regardless of which criterion is used. So instead verify the underlying
+    # quantity directly: with a `Diagonal` covariance, `tsvd` recovers the exact top-k singular
+    # values, so `sum(Stmp)/tr(C)` (what the fixed code's criterion converges to as its trace
+    # estimate's noise → 0) must equal the small-matrix branch's own `cumsum(svdA.S)/sum(svdA.S)`
+    # at the same rank - and must NOT equal the old `sum(Stmp.^2)/‖C‖²_F` quantity, since that's
+    # provably a different fraction for a non-flat spectrum.
+    d = 200
+    C = Diagonal(exp.(-(1:d) ./ 10)) # exact eigenvalues = sorted diagonal entries
+    true_trace = sum(diag(C))
+    true_frob_sq = sum(diag(C) .^ 2)
+
+    svdA = svd(Matrix(C)) # the small-matrix branch's own (exact) computation
+    small_branch_fracs = cumsum(svdA.S) ./ sum(svdA.S)
+
+    # `tsvd` (a Lanczos-based low-rank method) is only reliable well below full rank; keep
+    # `rk` a small fraction of `d` rather than testing near-full-rank, which is not its
+    # intended regime and not something this fix touches.
+    for rk in (5, 15, 30, 45)
+        _, Stmp, _ = Utilities.tsvd(C, rk)
+        new_frac = sum(Stmp) / true_trace # what the FIXED tsvd branch's criterion targets
+        old_frac = sum(Stmp .^ 2) / true_frob_sq # what the PRE-FIX criterion targeted
+
+        @test isapprox(new_frac, small_branch_fracs[rk]; atol = 1e-8)
+        @test !isapprox(old_frac, small_branch_fracs[rk]; atol = 1e-3)
+    end
+
+    # Smoke test: the tsvd branch (now on the trace criterion) still runs end-to-end without
+    # error or a degenerate (0 or full-rank) result on a genuinely large (> max_svd_size) input.
+    d_large = 3500
+    C_large = Diagonal(exp.(-(1:d_large) ./ 200))
+    io_pairs_large = PairedDataContainer(randn(2, 5), randn(d_large, 5))
+    dd_large = decorrelate_structure_mat(retain_var = 0.9, max_rank = 600)
+    enc_sch_large = create_encoder_schedule((dd_large, "out"))
+    initialize_and_encode_with_schedule!(
+        enc_sch_large,
+        io_pairs_large;
+        output_structure_mats = Dict{Symbol, Utilities.StructureMatrix}(:obs_noise_cov => C_large),
+    )
+    # `create_encoder_schedule` deepcopies its processor (M6), so the fitted state lives on
+    # the copy inside `enc_sch_large`, not on `dd_large` itself - retrieve it from there.
+    achieved_rank_large = size(get_encoder_mat(enc_sch_large[1][1])[1], 1)
+    @test 0 < achieved_rank_large < d_large
 end
 
 @testset "Decorrelator: Large observational covariance" begin

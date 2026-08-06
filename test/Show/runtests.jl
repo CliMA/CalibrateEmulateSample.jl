@@ -219,8 +219,8 @@ const MCMC = MarkovChainMonteCarlo
     # ── MarkovChainMonteCarlo ──────────────────────────────────────────────────
 
     @testset "RWMetropolisHastings" begin
-        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        rw = MCMC.RWMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
+        L = cholesky(Symmetric(Matrix{Float64}(I, 2, 2))).L
+        rw = MCMC.RWMetropolisHastings{typeof(L), GradFreeProtocol}(L)
         out = sprint(show, MIME("text/plain"), rw)
         @test occursin("RWMetropolisHastings", out)
         @test count(==('\n'), out) <= 10
@@ -235,8 +235,9 @@ const MCMC = MarkovChainMonteCarlo
     end
 
     @testset "pCNMetropolisHastings" begin
-        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        pcn = MCMC.pCNMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
+        L = cholesky(Symmetric(Matrix{Float64}(I, 2, 2))).L
+        m = zeros(2)
+        pcn = MCMC.pCNMetropolisHastings{typeof(m), typeof(L), GradFreeProtocol}(m, L)
         out = sprint(show, MIME("text/plain"), pcn)
         @test occursin("pCNMetropolisHastings", out)
         @test count(==('\n'), out) <= 10
@@ -251,8 +252,8 @@ const MCMC = MarkovChainMonteCarlo
     end
 
     @testset "BarkerMetropolisHastings" begin
-        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        barkr = MCMC.BarkerMetropolisHastings{typeof(prop), ForwardDiffProtocol}(prop)
+        L = cholesky(Symmetric(Matrix{Float64}(I, 2, 2))).L
+        barkr = MCMC.BarkerMetropolisHastings{typeof(L), ForwardDiffProtocol}(L)
         out = sprint(show, MIME("text/plain"), barkr)
         @test occursin("BarkerMetropolisHastings", out)
         @test count(==('\n'), out) <= 10
@@ -270,8 +271,8 @@ const MCMC = MarkovChainMonteCarlo
         prior = constrained_gaussian("x", 0.0, 1.0, -Inf, Inf; repeats = 2)
         obs = [rand(2) for _ in 1:3]
         log_post = AdvancedMH.DensityModel(x -> -0.5 * sum(x .^ 2))
-        prop = AdvancedMH.RandomWalkProposal(MvNormal(zeros(2), I(2)))
-        rw_sampler = MCMC.RWMetropolisHastings{typeof(prop), GradFreeProtocol}(prop)
+        L = cholesky(Symmetric(Matrix{Float64}(I, 2, 2))).L
+        rw_sampler = MCMC.RWMetropolisHastings{typeof(L), GradFreeProtocol}(L)
         mcmcw =
             MCMCWrapper{typeof(obs), typeof(obs), Vector{Any}}(prior, prior, obs, obs, log_post, rw_sampler, (;), [])
         out = sprint(show, MIME("text/plain"), mcmcw)

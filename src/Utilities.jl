@@ -37,7 +37,8 @@ export create_encoder_schedule,
     NoiseInjector,
     decode_and_add_noise,
     create_noise_injector,
-    get_encoded_dim
+    get_encoded_dim,
+    is_initialized
 
 
 const StructureMatrix = Union{UniformScaling, AbstractMatrix, AbstractVector, LinearMap} # The vector appears due to possible block-structured matrices (build=false)
@@ -455,6 +456,8 @@ function create_compact_linear_map(
             push!(VTs, svda.Vt)
             push!(ds, diaga)
             bsize = length(diaga)
+        else
+            _throw_unsupported_block_type(a, i, length(Avec))
         end
 
         batch = (shift + 1):(shift + bsize)
@@ -485,15 +488,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Approximate the `p`-norm of a `LinearMap` `A` using random matrix–vector products,
-satisfying `norm_linear_map(A, p) ≈ norm(Matrix(A), p)`. Can be called via `norm(A, p)`.
+Randomized estimate of the Frobenius norm of a `LinearMap` `A` (`p = 2`); values for
+`p ≠ 2` are heuristic and can be badly wrong for structured operators. Can be called via
+`norm(A, p)`.
 
 # Arguments
 
 - `A`: the `LinearMap` to evaluate.
 - `p` (default `2`): norm order.
 - `n_eval` (keyword, default `nothing`): number of matrix–vector products; defaults to
-  `size(A, 2)` (exact for `p=2`, approximate otherwise).
+  `size(A, 2)`. Even at this default the estimate is randomized (unbiased in squared
+  Frobenius norm, several-percent error in practice), not exact.
 - `rng` (keyword, default `Random.default_rng()`): random number generator.
 """
 function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.default_rng()) where {LM <: LinearMap}
@@ -501,7 +506,7 @@ function norm_linear_map(A::LM, p::Real = 2; n_eval = nothing, rng = Random.defa
 
     # use unit-normalized gaussian vectors
     n_basis = isa(n_eval, Nothing) ? n : n_eval
-    samples = randn(n, n_basis)
+    samples = randn(rng, n, n_basis)
     for i in 1:size(samples, 2)
         samples[:, i] /= norm(samples[:, i])
     end
@@ -596,10 +601,10 @@ function Base.:(==)(a::LM1, b::LM2) where {LM1 <: LinearMap, LM2 <: LinearMap}
 end
 
 Base.:(==)(a::DCP1, b::DCP2) where {DCP1 <: DataContainerProcessor, DCP2 <: DataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP1))
+    DCP1 === DCP2 && all(getfield(a, f) == getfield(b, f) for f in fieldnames(DCP1))
 
 Base.:(==)(a::PDCP1, b::PDCP2) where {PDCP1 <: PairedDataContainerProcessor, PDCP2 <: PairedDataContainerProcessor} =
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
+    PDCP1 === PDCP2 && all(getfield(a, f) == getfield(b, f) for f in fieldnames(PDCP1))
 ####
 
 function get_structure_vec(structure_vecs, name = nothing)
@@ -648,7 +653,6 @@ end
 
 # just for reshaping into matrix
 function _encode_data(proc::P, data::VV) where {P <: DataProcessor, VV <: AbstractVector}
-    data_vec = isa(data, DataContainer) ? get_data(data) : data
     if eltype(data) <: Real # one vec
         return _encode_data(proc, reshape(data, :, 1)) # reshape to column
     else # vec of vec
@@ -765,9 +769,9 @@ function create_encoder_schedule(schedule_in::VV) where {VV <: AbstractVector}
     for (processor, apply_to) in schedule_in
         # converts the string into the extraction of data
         if apply_to ∈ ["in", "out"]
-            push!(encoder_schedule, (processor, apply_to))
+            push!(encoder_schedule, (deepcopy(processor), apply_to))
         elseif apply_to == "in_and_out"
-            push!(encoder_schedule, (processor, "in"))
+            push!(encoder_schedule, (deepcopy(processor), "in"))
             push!(encoder_schedule, (deepcopy(processor), "out"))
         else
             @warn(
@@ -843,6 +847,10 @@ function initialize_and_encode_with_schedule!(
     end
     if !isnothing(samples_out)
         (output_structure_vecs[:samples_out] = samples_out)
+    end
+
+    if any(is_initialized(processor) for (processor, apply_to) in encoder_schedule)
+        @warn "Encoder schedule contains already-initialized processors; they will NOT be refitted to the new data. Create a fresh schedule with create_encoder_schedule to refit."
     end
 
     # apply_to is the string "in", "out" etc.
@@ -1344,7 +1352,8 @@ end
 
 function decode_and_add_noise(
     noise_injector::NorNI,
-    samples::MM,
+    samples::MM;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {NorNI <: Union{Nothing, NoiseInjector}, MM <: AbstractMatrix}
     if isnothing(noise_injector)
         return samples
@@ -1363,7 +1372,7 @@ function decode_and_add_noise(
     if use_noise
         recovered_samples = m .+ K * (samples .- enc_m)
 
-        null_samples = scaling * L * randn(size(L, 1), size(samples, 2))
+        null_samples = scaling * L * randn(rng, size(L, 1), size(samples, 2))
         return recovered_samples + null_samples
     else
         return decode_data(encoder_schedule, samples, "in")
@@ -1382,10 +1391,11 @@ function decode_and_add_noise(
     samples::MM,
     prior::PD,
     noise_injector_threshold::FT,
-    noise_injector_scaling::FT,
+    noise_injector_scaling::FT;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {MM <: AbstractMatrix, PD <: ParameterDistribution, VV <: AbstractVector, FT <: Real}
     noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
-    return decode_and_add_noise(noise_injector, samples)
+    return decode_and_add_noise(noise_injector, samples; rng = rng)
 end
 
 ## Error helpers
@@ -1397,6 +1407,14 @@ Structure matrix $i (of $total) is a `UniformScaling` ("λI"), whose dimension c
 Suggestion:
     Replace `λ * I` with `Diagonal(fill(λ, d))` where `d` is the required matrix dimension.
 """))
+end
+
+@noinline function _throw_unsupported_block_type(a, i::Int, total::Int)
+    throw(
+        ArgumentError(
+            "create_compact_linear_map: block $i (of $total) has unsupported type $(typeof(a)); expected AbstractMatrix, SVD, or SVDplusD.",
+        ),
+    )
 end
 
 # Processors

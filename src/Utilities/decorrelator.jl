@@ -75,7 +75,7 @@ Constructs the `Decorrelator` struct. Users can add optional keyword arguments:
   - `"combined"`, sums the `"sample_cov"` and `"structure_mat"` matrices
 - `n_totvar_samples`[=`500`]: when retain_var < 1, number of samples to estimate the total variance for performing truncation.
 - `max_rank`[=`100`]: for `retain_var < 1`, the maximum dimension of subspace when using an the `tsvd` algorithm from `TSVD.jl`.
-- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
+- `psvd_kwargs` [= `(; rtol = 1e-5)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
 """
 decorrelate(;
     retain_var::FT = Float64(1.0),
@@ -103,7 +103,7 @@ Constructs the `Decorrelator` struct, setting decorrelate_with = "sample_cov". E
 - `retain_var`[=`1.0`]: to project onto the leading singular vectors such that `retain_var` variance is retained
 - `n_totvar_samples`[=`500`]: when retain_var < 1, number of samples to estimate the total variance for performing truncation.
 - `max_rank`[=`100`]: for `retain_var < 1`, the maximum dimension of subspace when using an the `tsvd` algorithm from `TSVD.jl`.
-- `psvd_kwargs` [= `(; rtol = 1e-3)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
+- `psvd_kwargs` [= `(; rtol = 1e-5)`]: for `retain_var = 1`, the `psvd` algorithm from `LowRankApprox.jl` is used to decorrelate the space. kwargs can be passed in as a `NamedTuple`
 """
 decorrelate_sample_cov(;
     retain_var::FT = Float64(1.0),
@@ -162,6 +162,14 @@ $(TYPEDSIGNATURES)
 returns the `encoder_mat` field of the `Decorrelator`.
 """
 get_encoder_mat(dd::Decorrelator) = dd.encoder_mat
+
+"""
+$(TYPEDSIGNATURES)
+
+Returns `true` if `dd` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(dd::Decorrelator) = !isempty(get_encoder_mat(dd))
 
 """
 $(TYPEDSIGNATURES)
@@ -284,23 +292,28 @@ function initialize_processor!(
             if ret_var < 1.0
                 # tsvd option
 
-                norm_sq_approx = zeros(n_norm_compute)
+                # Hutchinson trace estimator: tr(C) = E[zᵀCz] for z with iid mean-0, var-1
+                # entries. This matches the small-matrix branch's variance-fraction criterion
+                # (Σσᵢ = tr(C)) - a Frobenius-norm estimate (Σσᵢ² = ‖C‖²_F) is a DIFFERENT
+                # quantity and over-weights leading modes, truncating earlier than the stated
+                # `retain_var` variance fraction.
+                trace_approx = zeros(n_norm_compute)
                 for i in 1:n_norm_compute
-                    # approximate frobenius norm^2 (= sum of s.v.^2 = total variance)
-                    norm_sq_approx[i] = norm_linear_map(decorrelation_map, n_eval = n_totvar_samples)^2
+                    z = randn(size(decorrelation_map, 1))
+                    trace_approx[i] = dot(z, decorrelation_map * z)
                 end
-                @info "relative error of total variance $(std(norm_sq_approx)/mean(norm_sq_approx))"
-                retain_var_max = 1 - std(norm_sq_approx) / mean(norm_sq_approx)
+                @info "relative error of total variance $(std(trace_approx)/mean(trace_approx))"
+                retain_var_max = 1 - std(trace_approx) / mean(trace_approx)
 
                 ret_var_tmp = min(ret_var, retain_var_max)
 
                 for rk in 1:max_rank
                     _, Stmp, Vtmp = tsvd(decorrelation_map, rk)
-                    retain_var_current = sum(Stmp .^ 2) / (retain_var_max * mean(norm_sq_approx))
+                    retain_var_current = sum(Stmp) / (retain_var_max * mean(trace_approx))
                     if retain_var_current > ret_var_tmp
                         push!(S, Stmp)
                         push!(Vt, Vtmp')
-                        @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(norm_sq_approx)/mean(norm_sq_approx)))% of the variance of the structure matrix"
+                        @info "    truncating at $(rk)/$(size(data,1)) retaining $(retain_var_current*100)% (+/-$(100*std(trace_approx)/mean(trace_approx)))% of the variance of the structure matrix"
                         break
                     end
                     if rk == max_rank

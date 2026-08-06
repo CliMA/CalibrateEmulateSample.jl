@@ -184,7 +184,10 @@ via [`MetropolisHastingsSampler`](@ref) applied to a [`pCNMHSampling`](@ref) pro
 
 $(TYPEDFIELDS)
 """
-struct pCNMetropolisHastings{LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+struct pCNMetropolisHastings{VT, LT, T <: AutodiffProtocol} <: AdvancedMH.MHSampler
+    "Mean `m` of the (encoded) prior. pCN's proposal contracts toward this point (not toward 0,
+    which is only correct when the encoded prior happens to be zero-mean)."
+    prior_mean::VT
     "Lower Cholesky factor `L` of the (encoded) prior covariance `C = LL'`, shaping the proposal noise."
     cholesky_L::LT
 end
@@ -193,8 +196,9 @@ function MetropolisHastingsSampler(
     encoded_prior::ParameterDistribution,
     encoder_schedule::VV,
 ) where {T <: AutodiffProtocol, VV <: AbstractVector}
+    m = mean(encoded_prior)
     L = _get_cholesky_factor(encoded_prior, encoder_schedule)
-    return pCNMetropolisHastings{typeof(L), T}(L)
+    return pCNMetropolisHastings{typeof(m), typeof(L), T}(m, L)
 end
 
 #------ The following are gradient-based samplers
@@ -456,11 +460,8 @@ function transition_kernel(
     return MvNormal(θ_from, Symmetric((stepsize^2) .* (L * L')))
 end
 
-# θ_to | θ_from ~ N(ρθ_from, (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017 for the
-# ρ-vs-Euler-stepsize relation). Evaluating this honestly in both directions (via the generic
-# logratio_proposal_density) is what recovers the pCN cancellation log q(θ_from|θ_to) -
-# log q(θ_to|θ_from) = logprior(θ_from) - logprior(θ_to), instead of the silently-symmetric 0
-# the previous implementation returned.
+# θ_to | θ_from ~ N(m + ρ(θ_from - m), (1-ρ²)C) — the asymmetric pCN kernel (Beskos et al. 2017),
+# contracting toward the encoded prior mean `m` rather than toward 0.
 function transition_kernel(
     sampler::pCNMetropolisHastings,
     model::AdvancedMH.DensityModel,
@@ -468,8 +469,9 @@ function transition_kernel(
     stepsize::FT = 1.0,
 ) where {FT <: AbstractFloat}
     ρ = (1 - stepsize / 4) / (1 + stepsize / 4)
+    m = sampler.prior_mean
     L = sampler.cholesky_L
-    return MvNormal(ρ .* θ_from, Symmetric((1 - ρ^2) .* (L * L')))
+    return MvNormal(m .+ ρ .* (θ_from .- m), Symmetric((1 - ρ^2) .* (L * L')))
 end
 
 """
@@ -1053,6 +1055,7 @@ samples in `chain`.
 # Arguments
 - `noise_injector_threshold` (`=0.001`): If the encoded space is lossy, and the lost variability due to encoding exceeds this threshold, then in place of decoding posterior samples, additional noise consistent with the prior is injected into the null space of the encoder. See `decode_and_add_noise()` for more detail.
 - `noise_injector_scaling` (`=1.0`): Scales the injected noise; though 1.0 is the only "consistent" value, reduction may be necessary if noise injection causes posterior samples to be unstable in simulations.
+- `rng` (`=Random.GLOBAL_RNG`): random number generator used to draw the injected null-space noise, when applicable.
 
 !!! note
     This method does not currently support combining samples from multiple `Chains`.
@@ -1062,6 +1065,7 @@ function get_posterior(
     chain::MCMCChains.Chains;
     noise_injector_threshold::FT = 0.001,
     noise_injector_scaling::FT = 1.0,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 ) where {FT <: Real}
     p_names = get_name(mcmc.prior)
     p_slices = batch(mcmc.prior)
@@ -1081,7 +1085,8 @@ function get_posterior(
         red_samples,
         mcmc.prior,
         noise_injector_threshold,
-        noise_injector_scaling,
+        noise_injector_scaling;
+        rng = rng,
     )
 
     p_samples = [Samples(full_samples[slice, :], params_are_columns = true) for slice in p_slices]

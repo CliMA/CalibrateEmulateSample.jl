@@ -422,8 +422,19 @@ function build_models!(
             _throw_unknown_multithread(multithread)
         end
         # scale up the prior so that default priors are always "reasonable"
-        prior_in_scale = 1.0 ./ std(input_values, dims = 2)
+        in_std = std(input_values, dims = 2)
+        if any(iszero, in_std)
+            const_in_dims = findall(iszero, vec(in_std))
+            @warn "ScalarRandomFeature: constant input dimension(s) $(const_in_dims) detected; using scale = 1 for those dimensions."
+            in_std = map(s -> iszero(s) ? one(s) : s, in_std)
+        end
+        prior_in_scale = 1.0 ./ in_std
+
         prior_out_scale = std(output_values[i, :])
+        if iszero(prior_out_scale)
+            @warn "ScalarRandomFeature: constant output detected for model $i; using scale = 1."
+            prior_out_scale = one(prior_out_scale)
+        end
 
         prior = build_default_prior(input_dim, kernel_structure)
 

@@ -548,4 +548,99 @@ rng = Random.MersenneTwister(seed)
 
     end
 
+    # G3 regression test: a constant input (or output) dimension must not produce Inf/NaN
+    # scales (and hence NaN/PosDefException deep in the hyperparameter prior); build_models!
+    # should warn and fall back to scale = 1 for the degenerate dimension(s) instead.
+    @testset "Scalar/VectorRandomFeatureInterface: degenerate (constant) input dimension" begin
+        rng_deg = Random.MersenneTwister(20270728)
+        input_dim_deg = 2
+        output_dim_deg = 1
+        n_deg = 30
+        x1_deg = 2.0 * π * rand(rng_deg, n_deg)
+        x_deg = vcat(reshape(x1_deg, 1, n_deg), fill(3.0, 1, n_deg)) # 2nd input dimension constant
+        y_deg = reshape(sin.(x1_deg) + 0.01 * randn(rng_deg, n_deg), 1, n_deg)
+        iopairs_deg = PairedDataContainer(x_deg, y_deg, data_are_columns = true)
+
+        small_opts = Dict("n_cross_val_sets" => 0, "n_iteration" => 1, "n_ensemble" => 10, "n_features_opt" => 10)
+
+        # `encoder_schedule = []` disables the default input decorrelation, which would
+        # otherwise whiten-and-truncate the constant dimension away before `build_models!`
+        # ever sees it - bypassing it here so the guard added inside `build_models!` itself
+        # (for users who configure no input decorrelation) is what's actually exercised.
+        srfi_deg = ScalarRandomFeatureInterface(10, input_dim_deg; rng = rng_deg, optimizer_options = small_opts)
+        em_srfi_deg = @test_logs (:warn, r"constant input dimension") match_mode = :any Emulator(
+            srfi_deg,
+            iopairs_deg;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = 0.01 * I),
+        )
+        μ_s_deg, σ2_s_deg = Emulators.predict(em_srfi_deg, x_deg)
+        @test all(isfinite, μ_s_deg)
+        @test all(isfinite, σ2_s_deg)
+
+        vrfi_deg = VectorRandomFeatureInterface(
+            10,
+            input_dim_deg,
+            output_dim_deg;
+            rng = rng_deg,
+            optimizer_options = small_opts,
+        )
+        em_vrfi_deg = @test_logs (:warn, r"constant input dimension") match_mode = :any Emulator(
+            vrfi_deg,
+            iopairs_deg;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = 0.01 * I),
+        )
+        μ_v_deg, σ2_v_deg = Emulators.predict(em_vrfi_deg, x_deg)
+        @test all(isfinite, μ_v_deg)
+        @test all(isfinite, σ2_v_deg)
+    end
+
+    # G3 regression test, output side: a constant output dimension must not produce Inf/NaN
+    # scales (and hence NaN/PosDefException deep in the hyperparameter prior); build_models!
+    # should warn and fall back to scale = 1 for the degenerate output dimension(s) instead.
+    @testset "Scalar/VectorRandomFeatureInterface: degenerate (constant) output dimension" begin
+        rng_deg = Random.MersenneTwister(20270728)
+        input_dim_deg = 1
+        output_dim_deg = 1
+        n_deg = 30
+        x_deg = reshape(2.0 * π * rand(rng_deg, n_deg), 1, n_deg)
+        y_deg = fill(3.0, 1, n_deg) # output constant for every sample
+        iopairs_deg = PairedDataContainer(x_deg, y_deg, data_are_columns = true)
+
+        small_opts = Dict("n_cross_val_sets" => 0, "n_iteration" => 1, "n_ensemble" => 10, "n_features_opt" => 10)
+
+        # `encoder_schedule = []` disables the default output decorrelation, which would
+        # otherwise whiten-and-truncate the constant output away before `build_models!`
+        # ever sees it - bypassing it here so the guard added inside `build_models!` itself
+        # (for users who configure no output decorrelation) is what's actually exercised.
+        srfi_deg_out = ScalarRandomFeatureInterface(10, input_dim_deg; rng = rng_deg, optimizer_options = small_opts)
+        em_srfi_deg_out = @test_logs (:warn, r"constant output detected") match_mode = :any Emulator(
+            srfi_deg_out,
+            iopairs_deg;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = 0.01 * I),
+        )
+        μ_s_deg_out, σ2_s_deg_out = Emulators.predict(em_srfi_deg_out, x_deg)
+        @test all(isfinite, μ_s_deg_out)
+        @test all(isfinite, σ2_s_deg_out)
+
+        vrfi_deg_out = VectorRandomFeatureInterface(
+            10,
+            input_dim_deg,
+            output_dim_deg;
+            rng = rng_deg,
+            optimizer_options = small_opts,
+        )
+        em_vrfi_deg_out = @test_logs (:warn, r"constant output dimension") match_mode = :any Emulator(
+            vrfi_deg_out,
+            iopairs_deg;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = 0.01 * I),
+        )
+        μ_v_deg_out, σ2_v_deg_out = Emulators.predict(em_vrfi_deg_out, x_deg)
+        @test all(isfinite, μ_v_deg_out)
+        @test all(isfinite, σ2_v_deg_out)
+    end
+
 end

@@ -110,6 +110,14 @@ get_shift(es::ElementwiseScaler) = es.shift
 """
 $(TYPEDSIGNATURES)
 
+Returns `true` if `es` has already been fit to data (and so `initialize_processor!` on it
+is a no-op).
+"""
+is_initialized(es::ElementwiseScaler) = !isempty(get_shift(es))
+
+"""
+$(TYPEDSIGNATURES)
+
 Gets the `scale` field of the `ElementwiseScaler`
 """
 get_scale(es::ElementwiseScaler) = es.scale
@@ -197,6 +205,12 @@ function initialize_processor!(es::ElementwiseScaler, data::MM) where {MM <: Abs
     if length(get_shift(es)) == 0
         T = get_type(es)
         initialize_processor!(es, data, T)
+
+        scale = get_scale(es)
+        if any(iszero, scale)
+            @warn "ElementwiseScaler: $(count(iszero, scale)) constant data dimension(s) detected; using scale = 1 for those dimensions."
+            scale .= map(s -> iszero(s) ? one(s) : s, scale)
+        end
 
         # we explicitly make the encoder/decoder maps
         data_encoder_map = LinearMap(

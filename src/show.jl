@@ -335,56 +335,60 @@ end
 
 # RWMetropolisHastings
 
-function Base.show(io::IO, x::RWMetropolisHastings{PT, ADT}) where {PT, ADT <: AutodiffProtocol}
-    print(io, "RWMetropolisHastings{$(nameof(ADT))}")
+function Base.show(io::IO, x::RWMetropolisHastings{LT, ADT}) where {LT, ADT <: AutodiffProtocol}
+    print(io, "RWMetropolisHastings{$(nameof(ADT))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", x::RWMetropolisHastings{PT, ADT}) where {PT, ADT <: AutodiffProtocol}
+function Base.show(io::IO, ::MIME"text/plain", x::RWMetropolisHastings{LT, ADT}) where {LT, ADT <: AutodiffProtocol}
     if get(io, :compact, false)
         show(io, x)
     else
-        print(io, "RWMetropolisHastings{$(nameof(ADT))}")
+        print(io, "RWMetropolisHastings{$(nameof(ADT))} (dim=$(size(x.cholesky_L, 1)))")
     end
 end
 
-function Base.summary(io::IO, x::RWMetropolisHastings{PT, ADT}) where {PT, ADT <: AutodiffProtocol}
-    print(io, "RWMetropolisHastings{$(nameof(ADT))}")
+function Base.summary(io::IO, x::RWMetropolisHastings{LT, ADT}) where {LT, ADT <: AutodiffProtocol}
+    print(io, "RWMetropolisHastings{$(nameof(ADT))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
 # pCNMetropolisHastings
 
-function Base.show(io::IO, x::pCNMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
-    print(io, "pCNMetropolisHastings{$(nameof(T))}")
+function Base.show(io::IO, x::pCNMetropolisHastings{VT, LT, T}) where {VT, LT, T <: AutodiffProtocol}
+    print(io, "pCNMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", x::pCNMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
+function Base.show(
+    io::IO,
+    ::MIME"text/plain",
+    x::pCNMetropolisHastings{VT, LT, T},
+) where {VT, LT, T <: AutodiffProtocol}
     if get(io, :compact, false)
         show(io, x)
     else
-        print(io, "pCNMetropolisHastings{$(nameof(T))}")
+        print(io, "pCNMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
     end
 end
 
-function Base.summary(io::IO, x::pCNMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
-    print(io, "pCNMetropolisHastings{$(nameof(T))}")
+function Base.summary(io::IO, x::pCNMetropolisHastings{VT, LT, T}) where {VT, LT, T <: AutodiffProtocol}
+    print(io, "pCNMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
 # BarkerMetropolisHastings
 
-function Base.show(io::IO, x::BarkerMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
-    print(io, "BarkerMetropolisHastings{$(nameof(T))}")
+function Base.show(io::IO, x::BarkerMetropolisHastings{LT, T}) where {LT, T <: AutodiffProtocol}
+    print(io, "BarkerMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", x::BarkerMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
+function Base.show(io::IO, ::MIME"text/plain", x::BarkerMetropolisHastings{LT, T}) where {LT, T <: AutodiffProtocol}
     if get(io, :compact, false)
         show(io, x)
     else
-        print(io, "BarkerMetropolisHastings{$(nameof(T))}")
+        print(io, "BarkerMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
     end
 end
 
-function Base.summary(io::IO, x::BarkerMetropolisHastings{D, T}) where {D, T <: AutodiffProtocol}
-    print(io, "BarkerMetropolisHastings{$(nameof(T))}")
+function Base.summary(io::IO, x::BarkerMetropolisHastings{LT, T}) where {LT, T <: AutodiffProtocol}
+    print(io, "BarkerMetropolisHastings{$(nameof(T))} (dim=$(size(x.cholesky_L, 1)))")
 end
 
 # MCMCWrapper
