@@ -21,7 +21,7 @@ export build_models!
 export optimize_hyperparameters!
 export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
-export get_forward_map, get_prior, forward_map_wrapper
+export get_forward_map, get_prior, forward_map_wrapper, get_noise_injector
 """
 $(TYPEDEF)
 
@@ -132,7 +132,7 @@ builds and initialises the encoder schedule automatically from training data.
 
 $(METHODLIST)
 """
-struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: NoiseInjector}
+struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: Union{Nothing, NoiseInjector}}
     "function that represents the forward map"
     forward_map::Function
     "a parameter distribution, containing transformations to constrain the forward map inputs"
@@ -555,8 +555,12 @@ function predict(
 
     var_or_cov = (output_dim == 1) ? "var" : "cov"
     if out_to_be_decoded
-        # uncertainty returned is just `I` in encoded space
-        decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
+        decoded_cov = if add_obs_noise_cov
+            # uncertainty in encoded space is `I`; decode it back to physical space
+            Matrix(decode_structure_matrix(fmw, I(encoded_output_dim), "out"))
+        else
+            zeros(eltype(decoded_outputs), output_dim, output_dim)
+        end
 
         decoded_covariances = zeros(eltype(decoded_outputs), output_dim, output_dim, size(decoded_outputs, 2))
         for i in 1:size(decoded_covariances, 3)
@@ -573,7 +577,7 @@ function predict(
     else # We encode
         encoded_outputs = Matrix(encode_data(fmw, decoded_outputs, "out"))
         encoded_output_dim = size(encoded_outputs, 1)
-        encoded_cov = I(encoded_output_dim)
+        encoded_cov = add_obs_noise_cov ? I(encoded_output_dim) : zeros(encoded_output_dim, encoded_output_dim)
 
         encoded_covariances_mat =
             zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_outputs, 2))

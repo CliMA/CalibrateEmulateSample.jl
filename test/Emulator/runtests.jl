@@ -157,6 +157,34 @@ end
     # m8: unrecognized `encode` values must throw, not silently behave as `encode = nothing`
     @test_throws ArgumentError EM.predict(fmw, x_test; encode = "In")
 
+    # M2: add_obs_noise_cov=false (the default) must return zero covariance for a deterministic map
+    y_pred0, y_cov0 = EM.predict(fmw, x_test)
+    @test all(isapprox(norm(y_pred0 - y_test), 0; atol = sqrt(d * m) * tol))
+    @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov0)
+    y_pred0_enc, y_cov0_enc = EM.predict(fmw, x_test; encode = "out")
+    @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov0_enc)
+
+    # M3: a truncating output encoder must not crash, and add_obs_noise_cov=true must decode `I` in the *encoded* dimension
+    trunc_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_sample_cov(retain_var = 0.5), "out")]
+    fmw_trunc = forward_map_wrapper(G, prior, io_pairs, encoder_schedule = trunc_schedule)
+    @test get_encoded_dim(get_encoder_schedule(fmw_trunc), "out") < d # confirm this encoder actually truncates
+    y_pred_trunc, y_cov_trunc = EM.predict(fmw_trunc, x_test, add_obs_noise_cov = true)
+    D_out, _ = get_decoder_from_schedule(get_encoder_schedule(fmw_trunc), "out")
+    D_out_mat = Matrix(D_out)
+    @test all(isapprox(norm(yc - D_out_mat * D_out_mat'), 0; atol = d * tol) for yc in y_cov_trunc)
+    y_pred_trunc0, y_cov_trunc0 = EM.predict(fmw_trunc, x_test)
+    @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov_trunc0)
+
+    # ForwardMapWrapper must accept a `nothing` noise_injector: an "out"-only encoder schedule
+    # (no "in" processor at all) makes `create_noise_injector` return `nothing`, which must not
+    # violate the struct's type parameter bound.
+    out_only_schedule = (decorrelate_sample_cov(), "out")
+    fmw_out_only = forward_map_wrapper(G, prior, io_pairs, encoder_schedule = out_only_schedule)
+    @test isnothing(get_noise_injector(fmw_out_only))
+    y_pred_out_only, y_cov_out_only = EM.predict(fmw_out_only, x_test)
+    @test all(isapprox(norm(y_pred_out_only - y_test), 0; atol = sqrt(d * m) * tol))
+    @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov_out_only)
+
     # with out enc.
     fmw = forward_map_wrapper(G, prior, io_pairs, encoder_kwargs = (; obs_noise_cov = Σ))
     y_pred, y_cov = EM.predict(fmw, x_test, add_obs_noise_cov = true)
