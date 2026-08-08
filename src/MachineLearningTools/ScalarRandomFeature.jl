@@ -626,13 +626,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Prediction of emulator mean at new inputs (passed in as columns in a matrix), and a prediction of the total covariance at new inputs equal to (emulator covariance + noise covariance). 
+Prediction of emulator mean and (purely latent) covariance at new inputs (passed in as columns in
+a matrix). `predict(::Emulator, ...)` centrally adds the observational noise covariance when its
+`add_obs_noise_cov` keyword is `true`.
 """
 function predict(
     srfi::ScalarRandomFeatureInterface,
     new_inputs::MM;
     multithread = "ensemble",
-    add_obs_noise_cov = false,
     mlt_kwargs...,
 ) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))
@@ -653,16 +654,6 @@ function predict(
             DataContainer(new_inputs),
             tullio_threading = tullio_threading,
         )
-    end
-
-    # add the noise contribution stored within the regularization
-    if add_obs_noise_cov
-        reg = get_regularization(srfi)[1]
-        reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
-
-        for i in 1:M
-            σ2[i, :] .+= reg_diag[i]
-        end
     end
 
     return μ, σ2

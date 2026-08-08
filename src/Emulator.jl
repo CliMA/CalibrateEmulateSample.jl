@@ -132,7 +132,12 @@ builds and initialises the encoder schedule automatically from training data.
 
 $(METHODLIST)
 """
-struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: Union{Nothing, NoiseInjector}}
+struct ForwardMapWrapper{
+    FT <: Real,
+    VV <: AbstractVector,
+    PD <: ParameterDistribution,
+    NI <: Union{Nothing, NoiseInjector},
+}
     "function that represents the forward map"
     forward_map::Function
     "a parameter distribution, containing transformations to constrain the forward map inputs"
@@ -314,13 +319,24 @@ is a column of the matrix.
   - `"in"`         → `Dₒ∘G(z)` — inputs already encoded as `z = Eᵢx`.
   - `"out"`        → `G∘Eᵢ(x)` — outputs returned in encoded space.
   - `"in_and_out"` → `G(z)` — inputs encoded, outputs in encoded space (used internally by `sample`).
-- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds the stored
-  observational noise covariance to the returned uncertainty (used internally by `sample`).
+- `add_obs_noise_cov` (keyword, default `false`, canonical definition — see below): when `true`,
+  adds the stored observational noise covariance to the returned uncertainty (used internally by
+  `sample`).
 - Additional keywords are forwarded to the machine-learning tool `predict` method.
 
 Returns `(mean, cov)` where for `N` inputs:
 - 1-D output: `mean` is `[1 × N]`, `cov` is `[1 × N]` variances.
 - p-D output: `mean` is `[p × N]`, `cov` is a length-N iterator of `[p × p]` covariance matrices.
+
+# `add_obs_noise_cov` semantics (canonical; applies identically to every machine learning tool
+and to [`predict(::ForwardMapWrapper, ...)`](@ref))
+
+`false` always returns the pure latent (epistemic, model-only) uncertainty, with no
+observational noise mixed in, regardless of the machine learning tool or its hyperparameters
+(e.g. `GaussianProcess`'s `noise_learn`). `true` adds exactly the stored observational noise
+covariance on top, added centrally here — never by the machine learning tool itself — because the
+output encoder is designed to whiten that covariance to `I` in encoded space, so the addition is
+always `I(encoded_output_dim)` before decoding back to physical units.
 """
 function predict(
     emulator::Emulator{FT},
@@ -361,32 +377,46 @@ function predict(
     else
         encoded_inputs = new_inputs
     end
-    # predict in encoding space
+    # predict in encoding space (always the pure latent/epistemic uncertainty; no MLT backend
+    # is told about `add_obs_noise_cov` — the observational noise is added once, below)
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(
-        get_machine_learning_tool(emulator),
-        encoded_inputs;
-        add_obs_noise_cov = add_obs_noise_cov,
-        mlt_kwargs...,
-    )
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; mlt_kwargs...)
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
+
+    # promote to full [enc_out_dim x enc_out_dim x n_samples] covariance slices, whether the MLT
+    # backend is scalar (per-dimension variances) or vector (full covariances)
+    encoded_covariances_mat =
+        zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
+    if var_or_cov == "var"
+        for (i, col) in enumerate(eachcol(encoded_uncertainties))
+            encoded_covariances_mat[:, :, i] .= Diagonal(col)
+        end
+    else # == "cov"
+        for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
+            encoded_covariances_mat[:, :, i] .= mat
+        end
+    end
+
+    # Centralize the observational-noise addition: every output encoder is designed to whiten the
+    # observational noise covariance to `I` in encoded space, so "add the observational noise"
+    # always means "add `I(encoded_output_dim)`" here, uniformly across every MLT backend
+    # (mirrors `predict(::ForwardMapWrapper, ...)`, which has no latent model and does the same).
+    if add_obs_noise_cov
+        for i in 1:size(encoded_covariances_mat, 3)
+            encoded_covariances_mat[:, :, i] .+= I(encoded_output_dim)
+        end
+    end
 
     # return decoded or encoded?
     if out_to_be_decoded
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
 
-        decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
-        if var_or_cov == "var"
-            for (i, col) in enumerate(eachcol(encoded_uncertainties))
-                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, Diagonal(col), "out"))
-            end
-        else # == "cov"
-            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
-                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, mat, "out"))
-            end
+        decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_covariances_mat, 3))
+        for (i, mat) in enumerate(eachslice(encoded_covariances_mat, dims = 3))
+            decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, mat, "out"))
         end
 
         if output_dim > 1
@@ -397,19 +427,6 @@ function predict(
         end
 
     else
-
-        encoded_covariances_mat =
-            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
-        if var_or_cov == "var"
-            for (i, col) in enumerate(eachcol(encoded_uncertainties))
-                encoded_covariances_mat[:, :, i] = Diagonal(col)
-            end
-        else # =="cov"
-            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
-                encoded_covariances_mat[:, :, i] = mat
-            end
-        end
-
         if encoded_output_dim > 1
             return encoded_outputs, eachslice(encoded_covariances_mat, dims = 3)
         else
@@ -500,8 +517,9 @@ encoded/decoded as requested.
   - `"in"`         → `G∘Di(z)` — inputs are encoded as `z = Ei(x)`.
   - `"out"`        → `Eo∘G(x)` — outputs returned in encoded space.
   - `"in_and_out"` → `Eo∘G∘Di(z)` — used internally by `sample`.
-- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds observational noise
-  covariance to the returned uncertainty (used internally by `sample`).
+- `add_obs_noise_cov` (keyword, default `false`): see the canonical semantics documented on
+  [`predict(::Emulator, ...)`](@ref) — identical here, adding `I(encoded_output_dim)` before
+  decoding (used internally by `sample`).
 
 Returns `(mean, cov)` with the same shape conventions as [`predict`](@ref).
 """

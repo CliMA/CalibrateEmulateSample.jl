@@ -272,4 +272,65 @@ using CalibrateEmulateSample.Utilities
     @test all(isapprox.(μ4b, μ4_noise_learnt, atol = tol_small))
     @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
+    @testset "M9: add_obs_noise_cov centralization (regression for M1, all three GP backends)" begin
+        # `add_obs_noise_cov` is now added centrally in `predict(::Emulator, ...)`, never by the
+        # GP backend, so `true` minus `false` must equal the decoded observational noise
+        # covariance Σ exactly — independent of `noise_learn` and of which GP backend is used.
+        σ4²_false_learnt =
+            [Matrix(s) for s in Emulators.predict(em4_noise_learnt, new_inputs; add_obs_noise_cov = false)[2]]
+        σ4²_true_learnt = [Matrix(s) for s in σ4²_noise_learnt]
+        @test all(isapprox.(σ4²_true_learnt .- σ4²_false_learnt, [Σ for _ in σ4²_true_learnt], atol = 1e-10))
+
+        σ4b²_false = [Matrix(s) for s in Emulators.predict(em_agp_from_gp4, new_inputs; add_obs_noise_cov = false)[2]]
+        σ4b²_true = [Matrix(s) for s in σ4b²]
+        @test all(isapprox.(σ4b²_true .- σ4b²_false, [Σ for _ in σ4b²_true], atol = 1e-10))
+
+        # M1 regression: with `noise_learn = true`, `add_obs_noise_cov = false` must return a
+        # purely latent (epistemic) variance, much smaller than the known noise variance, for
+        # GPJL, SKLPy, and AGPJL alike — previously the learned white-kernel noise leaked into
+        # this path for all three backends.
+        n_dense = 200
+        x_dense = reshape(collect(range(0, 2π, length = n_dense)), 1, n_dense)
+        σ_noise = 0.05
+        y_dense = reshape(sin.(x_dense[1, :]) .+ σ_noise .* randn(n_dense), 1, n_dense)
+        iopairs_dense = PairedDataContainer(x_dense, y_dense, data_are_columns = true)
+        Σ_dense = σ_noise^2 * ones(1, 1)
+        x_interior = reshape([π], 1, 1) # densely sampled interior point: low epistemic uncertainty
+
+        gp_dense = GaussianProcess(GPJL(); noise_learn = true)
+        em_dense_gpjl = Emulator(gp_dense, iopairs_dense; encoder_kwargs = (; obs_noise_cov = Σ_dense))
+        Emulators.optimize_hyperparameters!(em_dense_gpjl)
+        _, σ2_false_gpjl = Emulators.predict(em_dense_gpjl, x_interior; add_obs_noise_cov = false)
+        _, σ2_true_gpjl = Emulators.predict(em_dense_gpjl, x_interior; add_obs_noise_cov = true)
+        @test only(σ2_false_gpjl) < 0.3 * σ_noise^2
+        @test only(σ2_true_gpjl) - only(σ2_false_gpjl) ≈ σ_noise^2 atol = 1e-10
+
+        gp_dense_sklpy = GaussianProcess(SKLPy(); noise_learn = true)
+        em_dense_sklpy = Emulator(gp_dense_sklpy, iopairs_dense; encoder_kwargs = (; obs_noise_cov = Σ_dense))
+        _, σ2_false_sklpy = Emulators.predict(em_dense_sklpy, x_interior; add_obs_noise_cov = false)
+        _, σ2_true_sklpy = Emulators.predict(em_dense_sklpy, x_interior; add_obs_noise_cov = true)
+        @test only(σ2_false_sklpy) < 0.3 * σ_noise^2
+        @test only(σ2_true_sklpy) - only(σ2_false_sklpy) ≈ σ_noise^2 atol = 1e-10
+
+        gp_dense_params = Emulators.get_params(gp_dense)
+        kernel_params_dense = [
+            Dict(
+                "log_rbf_len" => model_params[1:(end - 2)],
+                "log_std_sqexp" => model_params[end - 1],
+                "log_std_noise" => model_params[end],
+            ) for model_params in gp_dense_params
+        ]
+        agp_dense = GaussianProcess(AGPJL(); noise_learn = true)
+        em_dense_agpjl = Emulator(
+            agp_dense,
+            iopairs_dense;
+            encoder_kwargs = (; obs_noise_cov = Σ_dense),
+            kernel_params = kernel_params_dense,
+        )
+        _, σ2_false_agpjl = Emulators.predict(em_dense_agpjl, x_interior; add_obs_noise_cov = false)
+        _, σ2_true_agpjl = Emulators.predict(em_dense_agpjl, x_interior; add_obs_noise_cov = true)
+        @test only(σ2_false_agpjl) < 0.3 * σ_noise^2
+        @test only(σ2_true_agpjl) - only(σ2_false_agpjl) ≈ σ_noise^2 atol = 1e-10
+    end
+
 end

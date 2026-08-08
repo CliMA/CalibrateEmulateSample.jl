@@ -302,19 +302,29 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::YType) wher
 predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) where {FT <: AbstractFloat} =
     _predict(gp, new_inputs, GaussianProcesses.predict_f)
 
+# Fitted variance of a `Noise` kernel component, searched for recursively through `SumKernel`
+# nodes (0.0 if the composite kernel has no such component, e.g. `noise_learn = false`).
+_white_kernel_variance(k::GaussianProcesses.Noise) = k.σ2
+_white_kernel_variance(k::GaussianProcesses.SumKernel) =
+    _white_kernel_variance(k.kleft) + _white_kernel_variance(k.kright)
+_white_kernel_variance(k) = 0.0
+
 """
 $(TYPEDSIGNATURES)
 
-Predict means and covariances in decorrelated output space using Gaussian process models. The use of stored `FType` and `YType` to control this method is deprecated, the return covariance is now determined by the `predict(` kwarg `add_obs_noise_cov` 
+Predict means and covariances in decorrelated output space using Gaussian process models. Always
+returns the pure latent (noise-free) covariance; `predict(::Emulator, ...)` centrally adds the
+observational noise covariance when its `add_obs_noise_cov` keyword is `true`. The use of stored
+`FType` and `YType` to control this method is deprecated.
 """
-function predict(
-    gp::GaussianProcess{GPJL},
-    new_inputs::AbstractMatrix{FT};
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {FT <: AbstractFloat}
-    pred_type = add_obs_noise_cov ? YType() : FType()
-    return predict(gp, new_inputs, pred_type)
+function predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
+    μ, σ2 = predict(gp, new_inputs, FType())
+    # `predict_f` already includes the fitted white-kernel variance when `noise_learn = true`
+    # (it is part of the composite latent kernel); subtract it so the returned covariance is
+    # purely latent regardless of `noise_learn`.
+    white_var = [_white_kernel_variance(model.kernel) for model in gp.models]
+    σ2 = max.(σ2 .- white_var, 1e-12)
+    return μ, σ2
 end
 
 #now we build the SKLPy implementation
@@ -402,21 +412,26 @@ function _SKLPy_predict_function(gp_model::Py, new_inputs::AbstractMatrix{FT}) w
     σ = pyconvert(Vector{FT}, py_out[1])
     return μ, (σ .* σ)
 end
-function predict(
-    gp::GaussianProcess{SKLPy},
-    new_inputs::AbstractMatrix{FT};
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {FT <: AbstractFloat}
+
+# Fitted variance of a `WhiteKernel` component anywhere in the (possibly nested) fitted sklearn
+# kernel, found via `get_params(deep=true)`'s flattened `__`-joined parameter names (0.0 if the
+# fitted kernel has no such component).
+function _sklearn_white_kernel_variance(fitted_kernel::Py)::Float64
+    params = pyconvert(Dict{String, Any}, fitted_kernel.get_params(true))
+    for (name, value) in params
+        endswith(name, "noise_level") && return value
+    end
+    return 0.0
+end
+
+function predict(gp::GaussianProcess{SKLPy}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKLPy_predict_function)
 
-    # SKLPy does not return the observational noise (even if return_std = true)
-    # we must add contribution depending on whether we learnt the noise or not.
-    if add_obs_noise_cov
-        for i in 1:size(σ2, 2)
-            σ2[:, i] = σ2[:, i] + gp.regularization
-        end
-    end
+    # SKLPy's `.predict(return_std=true)` already includes the fitted WhiteKernel's noise_level
+    # (when `noise_learn = true`) in the returned variance; subtract it so the returned covariance
+    # is purely latent regardless of `noise_learn`.
+    white_var = [_sklearn_white_kernel_variance(model.kernel_) for model in gp.models]
+    σ2 = max.(σ2 .- white_var, 1e-12)
 
     return μ, σ2
 end
@@ -522,12 +537,14 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(
-    gp::GaussianProcess{AGPJL},
-    new_inputs::AM;
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {AM <: AbstractMatrix}
+
+# Fitted variance of a `WhiteKernel` component anywhere in the (possibly nested) `KernelFunctions`
+# composite kernel (0.0 if the composite kernel has no such component).
+_agpjl_white_kernel_variance(k::KernelFunctions.ScaledKernel{<:KernelFunctions.WhiteKernel}) = only(k.σ²)
+_agpjl_white_kernel_variance(k::KernelFunctions.KernelSum) = sum(_agpjl_white_kernel_variance, k.kernels)
+_agpjl_white_kernel_variance(k) = 0.0
+
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; mlt_kwargs...) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)
@@ -538,12 +555,10 @@ function predict(
         pred_gp = gp.models[i]
         pred = pred_gp(new_inputs; obsdim = 2)
         μ[i, :] = mean(pred)
-        σ2[i, :] = var(pred)
-    end
-    if add_obs_noise_cov
-        for i in 1:size(σ2, 2)
-            σ2[:, i] .= σ2[:, i] + gp.regularization
-        end
+        # `var(pred)` already includes the (borrowed, always-present) WhiteKernel variance baked
+        # into the composite prior kernel; subtract it so the returned covariance is purely latent.
+        white_var = _agpjl_white_kernel_variance(pred_gp.prior.kernel)
+        σ2[i, :] = max.(var(pred) .- white_var, 1e-12)
     end
     return μ, σ2
 end
