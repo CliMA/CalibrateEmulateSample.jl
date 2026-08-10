@@ -329,4 +329,121 @@ using CalibrateEmulateSample.Utilities
         @test only(σ2_true_agpjl) - only(σ2_false_agpjl) ≈ σ_noise^2 atol = 1e-10
     end
 
+    @testset "m7: warn when off-diagonal output noise structure is dropped (GP fits one model per encoded dim)" begin
+        # direct unit check of the shared helper, across the exact tolerance boundary the fix
+        # needs to get right (a naive exact `isdiag` reintroduces false positives on numerically
+        # near-diagonal matrices produced by decorrelation)
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulators._warn_if_offdiagonal_structure_mat(
+            [1.0 0.5; 0.5 1.0],
+            "GPJL",
+        )
+        @test_logs Emulators._warn_if_offdiagonal_structure_mat([1.0 0.0; 0.0 1.0], "GPJL") # exactly diagonal: silent
+        @test_logs Emulators._warn_if_offdiagonal_structure_mat([1.0 1e-14; 1e-14 1.0], "GPJL") # numerical residual: silent
+
+        # end-to-end: build_models! actually reaches the warning when the user disables
+        # decorrelation and supplies a correlated noise covariance, for all three backends
+        Σ_corr = [1.0 0.5; 0.5 1.0]
+
+        gp_corr = GaussianProcess(GPJL(); kernel = nothing, noise_learn = false)
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulator(
+            gp_corr,
+            iopairs2;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_corr),
+        )
+
+        gp_corr_sklpy =
+            GaussianProcess(SKLPy(); kernel = pykernels.ConstantKernel(1.0) * pykernels.RBF(1.0), noise_learn = false)
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulator(
+            gp_corr_sklpy,
+            iopairs2;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_corr),
+        )
+
+        agp_corr = GaussianProcess(AGPJL(); noise_learn = false)
+        kernel_params_corr =
+            [Dict("log_rbf_len" => [0.0, 0.0], "log_std_sqexp" => 0.0, "log_std_noise" => log(1e-6)) for _ in 1:2]
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulator(
+            agp_corr,
+            iopairs2;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_corr),
+            kernel_params = kernel_params_corr,
+        )
+    end
+
+    @testset "h11: predict preserves input eltype (no silent Float64 promotion)" begin
+        # GaussianProcesses.jl (GPJL) cannot mix precisions between a fitted model and a query of a
+        # different eltype (it errors deep in its own BLAS calls), so only SKLPy's Python-backed
+        # predict — which explicitly `pyconvert`s to the query eltype — is exercised end-to-end here.
+        # This pins the fix to the `max.(σ2 .- white_var, 1e-12)` promotion (an untyped literal and a
+        # Float64 `white_var` silently upcasting an FT=Float32 result) in both GPJL's and SKLPy's
+        # `predict` wrappers.
+        gp_f32 =
+            GaussianProcess(SKLPy(); kernel = pykernels.ConstantKernel(1.0) * pykernels.RBF(1.0), noise_learn = false)
+        em_f32 = Emulator(gp_f32, iopairs; encoder_schedule = [])
+        new_inputs_f32 = Float32.(reshape([0.0, 1.0, 2.0], 1, 3))
+        μ_f32, σ2_f32 = Emulators.predict(gp_f32, new_inputs_f32)
+        @test eltype(μ_f32) == Float32
+        @test eltype(σ2_f32) == Float32
+    end
+
+    @testset "Analytic GP posterior check (test-coverage gap 3): predict matches closed-form k*'(K+σ²I)⁻¹y" begin
+        # Independent reference: hand-coded squared-exponential GP regression posterior,
+        # k(x,x') = σf² exp(-0.5 (x-x')²/ℓ²), on a tiny fixed dataset, checked against all three
+        # backends with FIXED (non-optimized) hyperparameters. This tests the shared data plumbing
+        # (regularization scaling, encode/decode with encoder_schedule=[]) against the textbook GP
+        # regression equations directly, rather than only cross-checking backends against each other.
+        ℓ_a = 1.3
+        σf_a = 0.9
+        σn2_a = 0.02
+        se_kernel(x, xp) = σf_a^2 * exp(-0.5 * (x - xp)^2 / ℓ_a^2)
+
+        x_train_a = [0.1, 0.4, 0.9, 1.5, 2.2]
+        y_train_a = [0.2, -0.3, 0.5, 0.1, -0.4]
+        x_test_a = [0.3, 1.0, 2.0, 3.0]
+
+        K_a = [se_kernel(xi, xj) for xi in x_train_a, xj in x_train_a]
+        Kn_a = K_a + σn2_a * I
+        alpha_a = Kn_a \ y_train_a
+        Kstar_a = [se_kernel(xi, xj) for xi in x_test_a, xj in x_train_a] # n_test x n_train
+        mean_analytic = Kstar_a * alpha_a
+        var_analytic = [σf_a^2 - Kstar_a[i, :]' * (Kn_a \ Kstar_a[i, :]) for i in 1:length(x_test_a)]
+
+        iopairs_a = PairedDataContainer(reshape(x_train_a, 1, :), reshape(y_train_a, 1, :), data_are_columns = true)
+        Σ_a = σn2_a * ones(1, 1)
+        new_inputs_a = reshape(x_test_a, 1, :)
+
+        # GPJL
+        gp_a_gpjl = GaussianProcess(GPJL(); kernel = SE(log(ℓ_a), log(σf_a)), noise_learn = false)
+        em_a_gpjl = Emulator(gp_a_gpjl, iopairs_a; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ_a))
+        μ_a_gpjl, σ2_a_gpjl = Emulators.predict(em_a_gpjl, new_inputs_a; add_obs_noise_cov = false)
+        @test vec(μ_a_gpjl) ≈ mean_analytic atol = 1e-8
+        @test vec(σ2_a_gpjl) ≈ var_analytic atol = 1e-8
+
+        # SKLPy (bounds fixed so `.fit()` does not re-optimize the given hyperparameters)
+        var_kern_a = pykernels.ConstantKernel(constant_value = σf_a^2, constant_value_bounds = "fixed")
+        rbf_kern_a = pykernels.RBF(length_scale = ℓ_a, length_scale_bounds = "fixed")
+        gp_a_sklpy = GaussianProcess(SKLPy(); kernel = var_kern_a * rbf_kern_a, noise_learn = false)
+        em_a_sklpy = Emulator(gp_a_sklpy, iopairs_a; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = Σ_a))
+        μ_a_sklpy, σ2_a_sklpy = Emulators.predict(em_a_sklpy, new_inputs_a; add_obs_noise_cov = false)
+        @test vec(μ_a_sklpy) ≈ mean_analytic atol = 1e-8
+        @test vec(σ2_a_sklpy) ≈ var_analytic atol = 1e-8
+
+        # AGPJL (kernel_params supplied directly; no internal optimization ever occurs)
+        agp_a = GaussianProcess(AGPJL(); noise_learn = false)
+        kernel_params_a = Dict("log_rbf_len" => [log(ℓ_a)], "log_std_sqexp" => log(σf_a), "log_std_noise" => log(1e-6))
+        em_a_agpjl = Emulator(
+            agp_a,
+            iopairs_a;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_a),
+            kernel_params = kernel_params_a,
+        )
+        μ_a_agpjl, σ2_a_agpjl = Emulators.predict(em_a_agpjl, new_inputs_a; add_obs_noise_cov = false)
+        @test vec(μ_a_agpjl) ≈ mean_analytic atol = 1e-8
+        @test vec(σ2_a_agpjl) ≈ var_analytic atol = 1e-8
+    end
+
 end

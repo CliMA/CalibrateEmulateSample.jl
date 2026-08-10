@@ -170,7 +170,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::GaussianProcess{P}) where {P}
     else
         n = length(x.models)
         println(io, "GaussianProcess{", nameof(P), "}")
-        println(io, "  n_models    : ", n, " (one per output dimension)")
+        println(io, "  n_models    : ", n, " (one per encoded output dimension)")
         println(io, "  noise_learn : ", x.noise_learn)
         print(io, "  pred_type   : ", nameof(typeof(x.prediction_type)))
     end
