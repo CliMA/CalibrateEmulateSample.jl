@@ -408,9 +408,7 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μv - new_outputs), 0, atol = tol_μ)
         @test all(isapprox.(vec(σv²), 0.05^2 * ones(ntest), atol = 1e-2))
 
-        # M9: `add_obs_noise_cov` is added centrally in `predict(::Emulator, ...)`, never by the
-        # MLT backend, so `true` minus `false` must equal the decoded observational noise
-        # covariance (here `0.05^2`) exactly, for both scalar and vector RF interfaces.
+        # `true` minus `false` must equal the decoded noise covariance (here `0.05^2`) exactly
         _, σs²_false = Emulators.predict(em_srfi, new_inputs; add_obs_noise_cov = false)
         @test all(isapprox.(vec(σs²) .- vec(σs²_false), 0.05^2, atol = 1e-10))
 

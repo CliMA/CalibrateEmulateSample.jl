@@ -273,9 +273,7 @@ using CalibrateEmulateSample.Utilities
     @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
     @testset "M9: add_obs_noise_cov centralization (regression for M1, all three GP backends)" begin
-        # `add_obs_noise_cov` is now added centrally in `predict(::Emulator, ...)`, never by the
-        # GP backend, so `true` minus `false` must equal the decoded observational noise
-        # covariance Σ exactly — independent of `noise_learn` and of which GP backend is used.
+        # `true` minus `false` must equal the decoded noise covariance Σ exactly, for any backend
         σ4²_false_learnt =
             [Matrix(s) for s in Emulators.predict(em4_noise_learnt, new_inputs; add_obs_noise_cov = false)[2]]
         σ4²_true_learnt = [Matrix(s) for s in σ4²_noise_learnt]
@@ -285,10 +283,8 @@ using CalibrateEmulateSample.Utilities
         σ4b²_true = [Matrix(s) for s in σ4b²]
         @test all(isapprox.(σ4b²_true .- σ4b²_false, [Σ for _ in σ4b²_true], atol = 1e-10))
 
-        # M1 regression: with `noise_learn = true`, `add_obs_noise_cov = false` must return a
-        # purely latent (epistemic) variance, much smaller than the known noise variance, for
-        # GPJL, SKLPy, and AGPJL alike — previously the learned white-kernel noise leaked into
-        # this path for all three backends.
+        # M1 regression: with `noise_learn = true`, `false` must be a purely latent variance, much
+        # smaller than the known noise variance, for GPJL, SKLPy, and AGPJL alike.
         n_dense = 200
         x_dense = reshape(collect(range(0, 2π, length = n_dense)), 1, n_dense)
         σ_noise = 0.05

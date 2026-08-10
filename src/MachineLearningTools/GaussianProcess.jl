@@ -302,8 +302,7 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::YType) wher
 predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) where {FT <: AbstractFloat} =
     _predict(gp, new_inputs, GaussianProcesses.predict_f)
 
-# Fitted variance of a `Noise` kernel component, searched for recursively through `SumKernel`
-# nodes (0.0 if the composite kernel has no such component, e.g. `noise_learn = false`).
+# fitted variance of a `Noise` kernel component, searched recursively through `SumKernel` nodes
 _white_kernel_variance(k::GaussianProcesses.Noise) = k.σ2
 _white_kernel_variance(k::GaussianProcesses.SumKernel) =
     _white_kernel_variance(k.kleft) + _white_kernel_variance(k.kright)
@@ -319,9 +318,8 @@ observational noise covariance when its `add_obs_noise_cov` keyword is `true`. T
 """
 function predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
     μ, σ2 = predict(gp, new_inputs, FType())
-    # `predict_f` already includes the fitted white-kernel variance when `noise_learn = true`
-    # (it is part of the composite latent kernel); subtract it so the returned covariance is
-    # purely latent regardless of `noise_learn`.
+    # subtract the fitted white-kernel variance so `noise_learn = true` doesn't leak into the
+    # supposedly latent-only covariance
     white_var = [_white_kernel_variance(model.kernel) for model in gp.models]
     σ2 = max.(σ2 .- white_var, 1e-12)
     return μ, σ2
@@ -413,9 +411,7 @@ function _SKLPy_predict_function(gp_model::Py, new_inputs::AbstractMatrix{FT}) w
     return μ, (σ .* σ)
 end
 
-# Fitted variance of a `WhiteKernel` component anywhere in the (possibly nested) fitted sklearn
-# kernel, found via `get_params(deep=true)`'s flattened `__`-joined parameter names (0.0 if the
-# fitted kernel has no such component).
+# fitted WhiteKernel variance, found via `get_params(deep=true)`'s flattened `__`-joined names
 function _sklearn_white_kernel_variance(fitted_kernel::Py)::Float64
     params = pyconvert(Dict{String, Any}, fitted_kernel.get_params(true))
     for (name, value) in params
@@ -427,9 +423,7 @@ end
 function predict(gp::GaussianProcess{SKLPy}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKLPy_predict_function)
 
-    # SKLPy's `.predict(return_std=true)` already includes the fitted WhiteKernel's noise_level
-    # (when `noise_learn = true`) in the returned variance; subtract it so the returned covariance
-    # is purely latent regardless of `noise_learn`.
+    # subtract the fitted WhiteKernel variance, which `.predict(return_std=true)` always includes
     white_var = [_sklearn_white_kernel_variance(model.kernel_) for model in gp.models]
     σ2 = max.(σ2 .- white_var, 1e-12)
 
@@ -538,8 +532,7 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
 end
 
 
-# Fitted variance of a `WhiteKernel` component anywhere in the (possibly nested) `KernelFunctions`
-# composite kernel (0.0 if the composite kernel has no such component).
+# fitted WhiteKernel variance, searched recursively through the `KernelFunctions` composite kernel
 _agpjl_white_kernel_variance(k::KernelFunctions.ScaledKernel{<:KernelFunctions.WhiteKernel}) = only(k.σ²)
 _agpjl_white_kernel_variance(k::KernelFunctions.KernelSum) = sum(_agpjl_white_kernel_variance, k.kernels)
 _agpjl_white_kernel_variance(k) = 0.0
@@ -555,8 +548,7 @@ function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; mlt_kwargs...) wher
         pred_gp = gp.models[i]
         pred = pred_gp(new_inputs; obsdim = 2)
         μ[i, :] = mean(pred)
-        # `var(pred)` already includes the (borrowed, always-present) WhiteKernel variance baked
-        # into the composite prior kernel; subtract it so the returned covariance is purely latent.
+        # subtract the (always-present, borrowed) WhiteKernel variance baked into `var(pred)`
         white_var = _agpjl_white_kernel_variance(pred_gp.prior.kernel)
         σ2[i, :] = max.(var(pred) .- white_var, 1e-12)
     end

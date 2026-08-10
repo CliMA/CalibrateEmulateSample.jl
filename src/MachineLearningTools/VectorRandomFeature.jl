@@ -678,5 +678,14 @@ function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M; mlt_kwargs..
     μ, σ2 = RF.Methods.predict(rfm, ff, DataContainer(new_inputs), tullio_threading = "tullio")
     # μ, σ2 = RF.Methods.predict(rfm, ff, DataContainer(new_inputs), tullio_threading = tullio_threading)
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test)
+
+    # force exact symmetry/positive-definiteness, needed by downstream consumers (e.g. MCMC's `MvNormal`)
+    for i in 1:N_samples
+        σ2[:, :, i] = 0.5 * (σ2[:, :, i] + permutedims(σ2[:, :, i], (2, 1)))
+        if !isposdef(σ2[:, :, i])
+            σ2[:, :, i] = posdef_correct(σ2[:, :, i])
+        end
+    end
+
     return μ, σ2
 end

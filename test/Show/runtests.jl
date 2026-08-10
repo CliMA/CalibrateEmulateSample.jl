@@ -202,7 +202,8 @@ const MCMC = MarkovChainMonteCarlo
         prior = constrained_gaussian("x", 0.0, 1.0, -Inf, Inf; repeats = 3)
         iop = PairedDataContainer(rand(3, 5), rand(2, 5), data_are_columns = true)
         ni = NoiseInjector(rand(2, 3), rand(3, 1), rand(2, 1), nothing, 0.5, true, [])
-        fmw = ForwardMapWrapper{Float64, Vector{Any}, typeof(prior), typeof(ni)}(identity, prior, iop, iop, [], ni)
+        fmw =
+            ForwardMapWrapper{Float64, Vector{Any}, typeof(prior), typeof(ni)}(identity, prior, iop, iop, [], ni, nothing)
         out = sprint(show, MIME("text/plain"), fmw)
         @test occursin("ForwardMapWrapper", out)
         @test count(==('\n'), out) <= 10
