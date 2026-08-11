@@ -615,7 +615,7 @@ function nice_cov(sample_mat::AA; δ::FT = 1.0, verbose = false) where {AA <: Ab
     max_exponent = 2 * 5 # must be even
     interp_steps = 100
     # use find the variability in the corr coeff matrix entries
-    std_corrs = (1 .- corr) / sqrt(n_sample_cov)
+    std_corrs = (1 .- corr .^ 2) / sqrt(n_sample_cov)
 
     std_tol = sqrt(sum(std_corrs .^ 2))
     α_min_exceeded = [max_exponent]
@@ -918,13 +918,17 @@ function estimate_mean_and_coeffnorm_covariance(
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
+    # one independent MersenneTwister stream per sample (not per thread/chunk), so results are
+    # reproducible regardless of JULIA_NUM_THREADS. A concrete stateful RNG type is required here
+    # (rather than reusing the caller's `rng` type) because the default GLOBAL_RNG/TaskLocalRNG is
+    # a task-local singleton with no independent state to deepcopy or seed per-stream.
+    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:n_samples]
 
     chunked_samples = chunks(1:n_samples, n = nthreads) # could probs do without this package. But gives (tid, idx for tid)
 
     Threads.@threads for (tid, s_idx) in enumerate(chunked_samples)
-        rngtmp = rng_list[tid]
         for i in s_idx
+            rngtmp = rng_list[i]
 
             for j in 1:repeats
                 @. mtmp[tid] = 0
@@ -1040,13 +1044,17 @@ function calculate_ensemble_mean_and_coeffnorm(
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
+    # one independent MersenneTwister stream per ensemble member (not per thread/chunk), so results
+    # are reproducible regardless of JULIA_NUM_THREADS. A concrete stateful RNG type is required
+    # here (rather than reusing the caller's `rng` type) because the default GLOBAL_RNG/TaskLocalRNG
+    # is a task-local singleton with no independent state to deepcopy or seed per-stream.
+    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:N_ens]
 
     chunked_ensemble = chunks(1:N_ens, n = nthreads) # could probs do without this. But gives (tid, idx for tid)
 
     Threads.@threads for (tid, s_idx) in enumerate(chunked_ensemble)
-        rngtmp = rng_list[tid]
         for i in s_idx
+            rngtmp = rng_list[i]
             l = lmat[:, i]
             for j in collect(1:repeats)
                 @. mtmp[tid] = 0
@@ -1147,6 +1155,25 @@ Got:
 Suggestion:
     Reduce `n_cross_val_sets` to at most $(Int(floor(n_data / n_test))), or increase
     `train_fraction` to produce smaller test sets.
+"""))
+end
+
+@noinline function _throw_cov_sample_multiplier_too_small(cov_sample_multiplier, n_cov_samples_min, n_cov_samples)
+    throw(ArgumentError("""
+`cov_sample_multiplier` is too small: it produces fewer than 2 samples to estimate the
+hyperparameter-optimization covariance, which yields a NaN sample covariance (division by
+n_cov_samples - 1 ≤ 0).
+
+Expected:
+    n_cov_samples = floor(n_cov_samples_min * cov_sample_multiplier) ≥ 2
+
+Got:
+    cov_sample_multiplier = $cov_sample_multiplier
+    n_cov_samples_min     = $n_cov_samples_min
+    n_cov_samples         = $n_cov_samples
+
+Suggestion:
+    Increase `cov_sample_multiplier` to at least $(ceil(2 / n_cov_samples_min, digits = 4)).
 """))
 end
 

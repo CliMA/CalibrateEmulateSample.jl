@@ -145,6 +145,25 @@ rng = Random.MersenneTwister(seed)
         good_cov = nice_cov(samples, verbose = true)
         @test (cond(good_cov) < 100) && ((good_cov[1] < 5.0) && (good_cov[1] > 0.2))
 
+        # m1 regression: the noise level of the sample correlation coefficient must be estimated
+        # as (1-corr^2)/sqrt(N) (standard asymptotics for the sample correlation coefficient),
+        # not the sign-asymmetric (1-corr)/sqrt(N) previously coded. Monte-Carlo the empirical
+        # std of the sample correlation at a fixed true correlation and check it matches the
+        # corrected formula much more closely than the old, wrong one.
+        rng_nice = Random.MersenneTwister(555)
+        rho_true = 0.8
+        n_mc = 20_000
+        n_per_sample = 50
+        corr_draws = [
+            cor(rand(rng_nice, MvNormal([0.0, 0.0], [1.0 rho_true; rho_true 1.0]), n_per_sample), dims = 2)[1, 2]
+            for _ in 1:n_mc
+        ]
+        empirical_std = std(corr_draws)
+        old_formula_std = (1 - rho_true) / sqrt(n_per_sample)
+        new_formula_std = (1 - rho_true^2) / sqrt(n_per_sample)
+        @test abs(empirical_std - new_formula_std) < abs(empirical_std - old_formula_std)
+        @test isapprox(empirical_std, new_formula_std, rtol = 0.1)
+
     end
 
     @testset "ScalarRandomFeatureInterface" begin
@@ -206,6 +225,86 @@ rng = Random.MersenneTwister(seed)
             end
         end
 
+    end
+
+    @testset "M5: custom hyperparameter prior takes effect (regression)" begin
+        # previously `build_models!` always silently rebuilt `build_default_prior(...)`,
+        # ignoring any user-supplied `optimizer_options["prior"]` (the rebuild-guard branch
+        # `ndims(prior) > n_hp` could never fire since both were computed from the same
+        # input_dim/kernel_structure). Assert that a strongly-shifted custom prior actually
+        # changes the fit relative to the default prior.
+        input_dim = 1
+        n_train = 30
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = reshape(sin.(x) + 0.02 * randn(Random.MersenneTwister(seed + 1), n_train)', 1, n_train)
+        iopairs = PairedDataContainer(x, y, data_are_columns = true)
+        new_inputs = reshape(2.0 * π * rand(Random.MersenneTwister(seed + 2), 20), 1, 20)
+
+        kernel_structure = SeparableKernel(CholeskyFactor(1e-8), OneDimFactor())
+        n_hp = calculate_n_hyperparameters(input_dim, kernel_structure)
+        default_prior = build_default_prior(input_dim, kernel_structure)
+        shifted_prior = constrained_gaussian("shifted_cholesky", 20.0, 1e-6, -Inf, Inf, repeats = n_hp)
+
+        srfi_default = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => default_prior),
+        )
+        em_default = Emulator(srfi_default, iopairs)
+        μ_default, _ = Emulators.predict(em_default, new_inputs)
+
+        srfi_shifted = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => shifted_prior),
+        )
+        em_shifted = Emulator(srfi_shifted, iopairs)
+        μ_shifted, _ = Emulators.predict(em_shifted, new_inputs)
+
+        @test norm(μ_default - μ_shifted) > 1e-3
+
+        # a prior with a stale hyperparameter count (from a since-changed input/kernel_structure)
+        # must still fall back to the default rather than propagating a shape mismatch
+        stale_prior = constrained_gaussian("stale", 0.0, 0.1, -Inf, Inf, repeats = n_hp + 2)
+        srfi_stale = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => stale_prior),
+        )
+        @test_logs (:info,) match_mode = :any Emulator(srfi_stale, iopairs)
+    end
+
+    @testset "h5: cov_sample_multiplier too small throws instead of yielding NaN covariance" begin
+        input_dim = 1
+        n_train = 20
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = reshape(sin.(x) + 0.02 * randn(Random.MersenneTwister(seed + 1), n_train)', 1, n_train)
+        iopairs = PairedDataContainer(x, y, data_are_columns = true)
+
+        srfi_bad = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            rng = rng,
+            optimizer_options = Dict("cov_sample_multiplier" => 0.0),
+        )
+        thrown = @test_throws ArgumentError Emulator(srfi_bad, iopairs)
+        @test contains(thrown.value.msg, "cov_sample_multiplier")
+
+        vrfi_bad = VectorRandomFeatureInterface(
+            100,
+            input_dim,
+            1,
+            rng = rng,
+            optimizer_options = Dict("cov_sample_multiplier" => 0.0),
+        )
+        thrown = @test_throws ArgumentError Emulator(vrfi_bad, iopairs)
+        @test contains(thrown.value.msg, "cov_sample_multiplier")
     end
 
     @testset "VectorRandomFeatureInterface" begin

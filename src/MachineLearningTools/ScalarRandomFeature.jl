@@ -436,10 +436,10 @@ function build_models!(
             prior_out_scale = one(prior_out_scale)
         end
 
-        prior = build_default_prior(input_dim, kernel_structure)
+        prior = optimizer_options["prior"]
 
-        # where prior space has changed we need to rebuild the priors
-        if ndims(prior) > n_hp
+        # where prior space has changed (e.g. truncated encoded dimensions) rebuild the default prior
+        if ndims(prior) != n_hp
 
             # comes from having a truncated output_dimension
             # TODO not really a truncation here, resetting to default
@@ -456,6 +456,8 @@ function build_models!(
         overfit = max(optimizer_options["overfit"], 1e-4)
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
+        n_cov_samples < 2 &&
+            _throw_cov_sample_multiplier_too_small(cov_sample_multiplier, n_cov_samples_min, n_cov_samples)
 
         println("estimating covariances with " * string(n_cov_samples) * " iterations...")
         observation_vec = []

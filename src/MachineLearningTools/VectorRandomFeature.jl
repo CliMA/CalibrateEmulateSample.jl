@@ -146,7 +146,6 @@ Constructs a `VectorRandomFeatureInterface <: MachineLearningTool` interface for
  - `feature_decomposition = "cholesky"` - choice of how to store decompositions of random features, `cholesky` or `svd` available
  - `optimizer_options = nothing` - Dict of options to pass into EKI optimization of hyperparameters (defaults created in `VectorRandomFeatureInterface` constructor):
       - `"prior"`: the prior for the hyperparameter optimization
-      - "prior_in_scale"/"prior_out_scale": use these to tune the input/output prior scale.
       - `"n_ensemble"`: number of ensemble members
       - `"n_iteration"`: number of eki iterations
       - `"scheduler"`: Learning rate Scheduler (a.k.a. EKP timestepper) Default: DataMisfitController
@@ -399,11 +398,11 @@ function build_models!(
     else
         _throw_unknown_multithread(multithread)
     end
-    prior = build_default_prior(input_dim, output_dim, kernel_structure)
+    prior = optimizer_options["prior"]
     rng = get_rng(vrfi)
 
-    # where prior space has changed we need to rebuild the priors [TODO just build them here in the first place?]
-    if ndims(prior) > n_hp
+    # where prior space has changed (e.g. truncated encoded dimensions) rebuild the default prior
+    if ndims(prior) != n_hp
 
         # comes from having a truncated output_dimension
         # TODO not really a truncation here, resetting to default
@@ -490,6 +489,7 @@ function build_models!(
     cov_correction = optimizer_options["cov_correction"]
     overfit = max(optimizer_options["overfit"], 1e-4)
     n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
+    n_cov_samples < 2 && _throw_cov_sample_multiplier_too_small(cov_sample_multiplier, n_cov_samples_min, n_cov_samples)
 
     println("estimating covariances with " * string(n_cov_samples) * " iterations...")
     observation_vec = []
@@ -675,8 +675,7 @@ function predict(vrfi::VectorRandomFeatureInterface, new_inputs::M; mlt_kwargs..
 
     N_samples = size(new_inputs, 2)
     # Predicts columns of inputs: input_dim × N_samples
-    μ, σ2 = RF.Methods.predict(rfm, ff, DataContainer(new_inputs), tullio_threading = "tullio")
-    # μ, σ2 = RF.Methods.predict(rfm, ff, DataContainer(new_inputs), tullio_threading = tullio_threading)
+    μ, σ2 = RF.Methods.predict(rfm, ff, DataContainer(new_inputs), tullio_threading = tullio_threading)
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test)
 
     # force exact symmetry/positive-definiteness, needed by downstream consumers (e.g. MCMC's `MvNormal`)
