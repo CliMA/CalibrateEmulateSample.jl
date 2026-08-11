@@ -1,24 +1,30 @@
+<div align="center">
+  <img src="docs/src/assets/logo.svg" alt="CalibrateEmulateSample.jl Logo" width="128" height="128">
+</div>
+
 # CalibrateEmulateSample.jl
+
 Implements a derivative-free machine-learning-accelerated pipeline for uncertainty quantification.
 
+|                    |                                                                                    |                    |                                         |
+|-------------------:|:-----------------------------------------------------------------------------------|-------------------:|:----------------------------------------|
+| **Documentation** | [![stable][docs-stable-img]][docs-stable-url] [![dev][docs-dev-img]][docs-dev-url] | **Version** | [![version][version-img]][version-url] |
+| **License** | [![license][license-img]][license-url] | **Docs Build** | [![docs build][docs-bld-img]][docs-bld-url] |
+| **Tests** | [![unit tests][unit-tests-img]][unit-tests-url] | **Code Coverage** | [![codecov][codecov-img]][codecov-url] |
+| **Downloads** | [![Downloads][dlt-img]][dlt-url] | **JOSS** | [![DOI][joss-img]][joss-url] |
+| **DOI** | [![zenodo][zenodo-img]][zenodo-url] |  |  |
 
-| **Documentation**    | [![dev][docs-dev-img]][docs-dev-url]             |
-|---------------------:|:-------------------------------------------------|
-| **JOSS**             | [![DOI][joss-img]][joss-url]                     |
-| **DOI**              | [![DOI][zenodo-img]][zenodo-latest-url]          |
-| **Docs Build**       | [![docs build][docs-bld-img]][docs-bld-url]      |
-| **Unit tests**       | [![unit tests][unit-tests-img]][unit-tests-url]  |
-| **Code Coverage**    | [![codecov][codecov-img]][codecov-url]           |
-| **Downloads**        | [![Downloads][dlt-img]][dlt-url]                 |
-
-[joss-img]: https://joss.theoj.org/papers/10.21105/joss.06372/status.svg
-[joss-url]: https://doi.org/10.21105/joss.06372
-
-[zenodo-img]: https://zenodo.org/badge/179573047.svg
-[zenodo-latest-url]: https://zenodo.org/badge/latestdoi/179573047
+[docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
+[docs-stable-url]: https://CliMA.github.io/CalibrateEmulateSample.jl/stable/
 
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
 [docs-dev-url]: https://CliMA.github.io/CalibrateEmulateSample.jl/dev/
+
+[version-img]: https://juliahub.com/docs/General/CalibrateEmulateSample/stable/version.svg
+[version-url]: https://juliahub.com/ui/Packages/General/CalibrateEmulateSample
+
+[license-img]: https://img.shields.io/badge/license-Apache%202.0-blue.svg
+[license-url]: https://github.com/CliMA/CalibrateEmulateSample.jl/blob/main/LICENSE
 
 [docs-bld-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Docs.yml/badge.svg
 [docs-bld-url]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Docs.yml
@@ -26,17 +32,21 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 [unit-tests-img]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Tests.yml/badge.svg
 [unit-tests-url]: https://github.com/CliMA/CalibrateEmulateSample.jl/actions/workflows/Tests.yml
 
-[codecov-img]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl/branch/master/graph/badge.svg
+[codecov-img]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl/branch/main/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/CliMA/CalibrateEmulateSample.jl
 
-[dlm-img]: https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Fmonthly_downloads%2FCalibrateEmulateSample&query=total_requests&suffix=%2Fmonth&label=Downloads
-[dlm-url]: https://juliapkgstats.com/pkg/CalibrateEmulateSample.c
-
 [dlt-img]: https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Ftotal_downloads%2FCalibrateEmulateSample&query=total_requests&label=Downloads
-[dlt-url]: https://juliapkgstats.com/pkg/CalibrateEmulateSample.c
+[dlt-url]: https://juliapkgstats.com/pkg/CalibrateEmulateSample
 
+[joss-img]: https://joss.theoj.org/papers/10.21105/joss.06372/status.svg
+[joss-url]: https://doi.org/10.21105/joss.06372
 
-# Quick links
+[zenodo-img]: https://zenodo.org/badge/179573047.svg
+[zenodo-url]: https://zenodo.org/badge/latestdoi/179573047
+
+`CalibrateEmulateSample.jl` solves parameter estimation problems using accelerated (and approximate) Bayesian inversion. Given an observation `y`, a computer model (forward map) `G`, observational noise covariance `Γ`, and broad prior information on the parameters `θ`, it returns the joint data-informed distribution of "`θ` given `y`" for `y = G(θ) + η`, `η ~ N(0, Γ)`. The framework is not inherently restricted to unimodal distributions and can be applied to computer models that are noisy or chaotic, non-differentiable, or that can only be treated as a black box (interfaced only through parameter files). As the name suggests, the package breaks the problem into three stages — calibration (via [EnsembleKalmanProcesses.jl](https://github.com/CliMA/EnsembleKalmanProcesses.jl)), emulation of the forward map, and sampling of the emulated posterior — following the approach described in [Cleary et al. (2020)](https://arxiv.org/pdf/2001.03689.pdf).
+
+## Quick Links
 
 - [I'm getting errors about the python dependency](https://clima.github.io/CalibrateEmulateSample.jl/dev/installation_instructions/)
 - [How do I build prior distributions?](https://clima.github.io/EnsembleKalmanProcesses.jl/dev/parameter_distributions/)
@@ -45,15 +55,25 @@ Implements a derivative-free machine-learning-accelerated pipeline for uncertain
 - [Where can I walk through the simple example?](https://clima.github.io/CalibrateEmulateSample.jl/dev/examples/sinusoid_example/)
 - [What is the `EnsembleKalmanProcesses.jl` package?](https://clima.github.io/CalibrateEmulateSample.jl/dev/calibrate/)
 - [What are the recommendations/defaults for dimension reduction or data processing?](https://clima.github.io/CalibrateEmulateSample.jl/dev/data_processing/)
-- [How to I plot or interpret the posterior distribution?](https://clima.github.io/CalibrateEmulateSample.jl/dev/sample/)
+- [How do I plot or interpret the posterior distribution?](https://clima.github.io/CalibrateEmulateSample.jl/dev/sample/)
 
+## Features
 
-# What does it look like to use?
-Having installed CES and Plots, you can copy-paste the snippets below to recreate this random experiment (up to random number generation). 
+- **Derivative-free Bayesian inversion**: learns the joint distribution over parameters `θ` given noisy observations `y = G(θ) + η`, without requiring gradients of the forward model `G`.
+- **Works with black-box forward models**: compatible with computer models that are noisy, chaotic, non-differentiable, or only interfaced through parameter files.
+- **Three-stage pipeline**: *Calibrate* with [EnsembleKalmanProcesses.jl](https://github.com/CliMA/EnsembleKalmanProcesses.jl), *Emulate* the forward map with a Gaussian Process or Random Feature interface, and *Sample* the emulated posterior with Markov chain Monte Carlo.
+- **Flexible emulators**: Gaussian Process and Random Feature emulator interfaces, with configurable kernel structures and input/output data encoding and decorrelation schedules.
+- **Dimension reduction and data processing**: recommended defaults for encoding, decorrelating, and reducing high-dimensional input-output pairs before emulation.
+- **Not restricted to unimodal posteriors**: supports flexible numbers of parameters and multimodal joint distributions.
+
+## Quick Example
+
+Having installed CES and Plots, you can copy-paste the snippets below to recreate this random experiment (up to random number generation).
 
 ### Calibrate
+
 Below we will outline the current user experience for using `EnsembleKalmanProcesses.jl`.
-We solve the classic inverse problem where we learn `y = G(u)`, noisy forward map `G` distributed as `N(0,Γ)`. For example, 
+We solve the classic inverse problem where we learn `y = G(u)`, noisy forward map `G` distributed as `N(0,Γ)`. For example,
 ```julia
 
 using LinearAlgebra
@@ -79,7 +99,7 @@ using CalibrateEmulateSample.EnsembleKalmanProcesses.ParameterDistributions
 
 prior_u1 = constrained_gaussian("positive_with_mean_2", 2, 1, 0, Inf)
 prior_u2 = constrained_gaussian("four_with_spread_5", 0, 3, -Inf, Inf, repeats=4)
-prior = combine_distributions([prior_u1, prior_u2]) 
+prior = combine_distributions([prior_u1, prior_u2])
 
 N_ensemble = 50
 initial_ensemble = construct_initial_ensemble(prior, N_ensemble)
@@ -109,11 +129,10 @@ end
 display(p)
 
 ```
-We now hvae a quick and cheap estimate of the mode of the distribution here, but no quantified uncertainty. To postprocess in a way that gives us back uncertainty, we will emulate `G` using our current EKP evaluations, and apply a proper sampling algorithm to the emulator. No more evaluations of `G` are required!
+We now have a quick and cheap estimate of the mode of the distribution here, but no quantified uncertainty. To postprocess in a way that gives us back uncertainty, we will emulate `G` using our current EKP evaluations, and apply a proper sampling algorithm to the emulator. No more evaluations of `G` are required!
 ![quick-readme-calibrate](docs/src/assets/readme_calibrate.png)
 
-
-# Emulate
+### Emulate
 
 We then set up the emulation framework, by getting input-output pairs from the EKP, defining which emulator to use, and defining what space we will train our emulator in. Here, we take a Random Feature emulator, and we decorrelate the training space, using prior (input) and noise (output) covariances. *This stage can take several minutes.*
 ```julia
@@ -200,8 +219,7 @@ display(pp)
 ```
 ![quick-readme-emulate](docs/src/assets/readme_emulate.png)
 
-
-# Sample
+### Sample
 
 Having created a suitable emulator, we can pass everything into the sampler, here a random walk metropolis algorithm (MCMC). We find a suitable step size and then draw 100,000 samples from the emulator-based posterior.
 ```julia
@@ -227,9 +245,8 @@ end
 display(ppp)
 ```
 
-We see that the approximate posterior contains both EKI and the true parameter, and that the the parameter `four_with_spread_5(dim 4)` is highly constrained, while `four_with_spread_5(dims 1)` and `(dim 4)` are least constrained by the observations, coinciding with the EKI performance. More detail on correlation structure can be extracted by pair-plotting, and posterior analysis.
+We see that the approximate posterior contains both EKI and the true parameter, and that the parameter `four_with_spread_5(dim 4)` is highly constrained, while `four_with_spread_5(dims 1)` and `(dim 4)` are least constrained by the observations, coinciding with the EKI performance. More detail on correlation structure can be extracted by pair-plotting, and posterior analysis.
 
 ![quick-readme-sample](docs/src/assets/readme_sample.png)
 
-
-
+More runnable examples (Sinusoid, Lorenz, Cloudy, Darcy, EDMF, GCM, and dimension-reduction configurations) are in the [`examples/`](examples/) directory.
