@@ -76,7 +76,7 @@ struct MLTester <: Emulators.MachineLearningTool end
     @test isapprox(norm(decoded_mat - x), 0, atol = tol * p * m)
     @test isapprox(norm(decoded_I - 1.0 * I), 0, atol = tol * d * d)
 
-    # m8: unrecognized `encode` values must throw, not silently behave as `encode = nothing`
+    # unrecognized `encode` values must throw, not silently behave as `encode = nothing`
     @test_throws ArgumentError EM.predict(em, x; encode = "In")
 
     # test obs_noise_cov   (check the warning at the start)
@@ -154,17 +154,17 @@ end
     # Resolution test (Step 7c): passing already-encoded inputs with encode = "in" must not throw
     @test EM.predict(fmw, encode_data(fmw, x_test, "in"); encode = "in") isa Tuple
 
-    # m8: unrecognized `encode` values must throw, not silently behave as `encode = nothing`
+    # unrecognized `encode` values must throw, not silently behave as `encode = nothing`
     @test_throws ArgumentError EM.predict(fmw, x_test; encode = "In")
 
-    # M2: add_obs_noise_cov=false (the default) must return zero covariance for a deterministic map
+    # add_obs_noise_cov=false (the default) must return zero covariance for a deterministic map
     y_pred0, y_cov0 = EM.predict(fmw, x_test)
     @test all(isapprox(norm(y_pred0 - y_test), 0; atol = sqrt(d * m) * tol))
     @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov0)
     y_pred0_enc, y_cov0_enc = EM.predict(fmw, x_test; encode = "out")
     @test all(isapprox(norm(yc), 0; atol = d * tol) for yc in y_cov0_enc)
 
-    # M3: a truncating output encoder must not crash, and add_obs_noise_cov=true must decode `I` in the *encoded* dimension
+    # a truncating output encoder must not crash, and add_obs_noise_cov=true must decode `I` in the *encoded* dimension
     trunc_schedule = [(decorrelate_sample_cov(), "in"), (decorrelate_sample_cov(retain_var = 0.5), "out")]
     fmw_trunc = forward_map_wrapper(G, prior, io_pairs, encoder_schedule = trunc_schedule)
     @test get_encoded_dim(get_encoder_schedule(fmw_trunc), "out") < d # confirm this encoder actually truncates

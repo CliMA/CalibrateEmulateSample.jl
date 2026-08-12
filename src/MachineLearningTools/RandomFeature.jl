@@ -915,14 +915,11 @@ function estimate_mean_and_coeffnorm_covariance(
 
     # buffers & rng
     moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mean_of_covs_tid = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads] # per-thread accumulator; summed into mean_of_covs after the threaded loop to avoid a shared read-modify-write race across threads
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    # one independent MersenneTwister stream per sample (not per thread/chunk), so results are
-    # reproducible regardless of JULIA_NUM_THREADS. A concrete stateful RNG type is required here
-    # (rather than reusing the caller's `rng` type) because the default GLOBAL_RNG/TaskLocalRNG is
-    # a task-local singleton with no independent state to deepcopy or seed per-stream.
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:n_samples]
+    rng_list = _thread_rng_list(rng, rng_seed, n_samples)
 
     chunked_samples = chunks(1:n_samples, n = nthreads) # could probs do without this package. But gives (tid, idx for tid)
 
@@ -966,9 +963,13 @@ function estimate_mean_and_coeffnorm_covariance(
                 complexity[1, i] += cplxty / repeats
 
                 # update vbles needed for mean
-                @. mean_of_covs += moc_tmp[tid] ./ (repeats * n_samples)
+                @. mean_of_covs_tid[tid] += moc_tmp[tid] ./ (repeats * n_samples)
             end
         end
+    end
+
+    for tid in 1:nthreads # single-threaded reduction avoids the shared read-modify-write race
+        @. mean_of_covs += mean_of_covs_tid[tid]
     end
 
     #put back together after threading
@@ -1041,14 +1042,11 @@ function calculate_ensemble_mean_and_coeffnorm(
 
     # buffers & rng
     moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mean_of_covs_tid = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads] # per-thread accumulator; summed into mean_of_covs after the threaded loop to avoid a shared read-modify-write race across threads
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    # one independent MersenneTwister stream per ensemble member (not per thread/chunk), so results
-    # are reproducible regardless of JULIA_NUM_THREADS. A concrete stateful RNG type is required
-    # here (rather than reusing the caller's `rng` type) because the default GLOBAL_RNG/TaskLocalRNG
-    # is a task-local singleton with no independent state to deepcopy or seed per-stream.
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:N_ens]
+    rng_list = _thread_rng_list(rng, rng_seed, N_ens)
 
     chunked_ensemble = chunks(1:N_ens, n = nthreads) # could probs do without this. But gives (tid, idx for tid)
 
@@ -1084,12 +1082,15 @@ function calculate_ensemble_mean_and_coeffnorm(
                 # v output_dim x output_dim x n_test
                 # c n_features
                 means[:, i, :] += mtmp[tid] ./ repeats
-                @. mean_of_covs += moc_tmp[tid] ./ (repeats * N_ens)
+                @. mean_of_covs_tid[tid] += moc_tmp[tid] ./ (repeats * N_ens)
                 coeffl2norm[1, i] += sqrt(sum(c .^ 2)) / repeats
                 complexity[1, i] += cplxty / repeats
 
             end
         end
+    end
+    for tid in 1:nthreads # single-threaded reduction avoids the shared read-modify-write race
+        @. mean_of_covs += mean_of_covs_tid[tid]
     end
     # put back together after threading
     means = permutedims(means, (3, 2, 1))
@@ -1108,6 +1109,21 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     return vcat(blockmeans, coeffl2norm, complexity), blockcovmat
 
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Builds `n` independent RNG streams, one per sample/ensemble-member index (not per thread or
+chunk), so that `EnsembleThreading` results are reproducible regardless of `Threads.nthreads()`.
+`copy(rng)` (not `deepcopy`) is used deliberately: for a concrete stateful RNG (e.g.
+`MersenneTwister`, `Xoshiro`) it preserves the caller's RNG type; for the task-local
+default/global RNG singleton, `copy` detaches it into an independent, concrete `Xoshiro` (whereas
+`deepcopy` of a `TaskLocalRNG` returns the *same* singleton object, since there is nothing for a
+generic recursive copy to detach) before it is reseeded.
+"""
+function _thread_rng_list(rng::AbstractRNG, seed::Integer, n::Integer)
+    return [Random.seed!(copy(rng), seed + i) for i in 1:n]
 end
 
 ## Error helpers

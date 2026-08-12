@@ -272,7 +272,7 @@ using CalibrateEmulateSample.Utilities
     @test all(isapprox.(μ4b, μ4_noise_learnt, atol = tol_small))
     @test all(isapprox.(σ4b², σ4²_noise_learnt, atol = tol_small))
 
-    @testset "M9: add_obs_noise_cov centralization (regression for M1, all three GP backends)" begin
+    @testset "add_obs_noise_cov centralization (all three GP backends)" begin
         # `true` minus `false` must equal the decoded noise covariance Σ exactly, for any backend
         σ4²_false_learnt =
             [Matrix(s) for s in Emulators.predict(em4_noise_learnt, new_inputs; add_obs_noise_cov = false)[2]]
@@ -283,7 +283,7 @@ using CalibrateEmulateSample.Utilities
         σ4b²_true = [Matrix(s) for s in σ4b²]
         @test all(isapprox.(σ4b²_true .- σ4b²_false, [Σ for _ in σ4b²_true], atol = 1e-10))
 
-        # M1 regression: with `noise_learn = true`, `false` must be a purely latent variance, much
+        # regression: with `noise_learn = true`, `false` must be a purely latent variance, much
         # smaller than the known noise variance, for GPJL, SKLPy, and AGPJL alike.
         n_dense = 200
         x_dense = reshape(collect(range(0, 2π, length = n_dense)), 1, n_dense)
@@ -329,7 +329,7 @@ using CalibrateEmulateSample.Utilities
         @test only(σ2_true_agpjl) - only(σ2_false_agpjl) ≈ σ_noise^2 atol = 1e-10
     end
 
-    @testset "m7: warn when off-diagonal output noise structure is dropped (GP fits one model per encoded dim)" begin
+    @testset "warn when off-diagonal output noise structure is dropped (GP fits one model per encoded dim)" begin
         # direct unit check of the shared helper, across the exact tolerance boundary the fix
         # needs to get right (a naive exact `isdiag` reintroduces false positives on numerically
         # near-diagonal matrices produced by decorrelation)
@@ -373,7 +373,7 @@ using CalibrateEmulateSample.Utilities
         )
     end
 
-    @testset "h11: predict preserves input eltype (no silent Float64 promotion)" begin
+    @testset "predict preserves input eltype (no silent Float64 promotion)" begin
         # GaussianProcesses.jl (GPJL) cannot mix precisions between a fitted model and a query of a
         # different eltype (it errors deep in its own BLAS calls), so only SKLPy's Python-backed
         # predict — which explicitly `pyconvert`s to the query eltype — is exercised end-to-end here.
