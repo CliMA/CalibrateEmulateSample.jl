@@ -159,9 +159,9 @@ end
 # GaussianProcess builds one scalar model per encoded output dimension; warn (once per build)
 # when the output structure matrix (noise covariance) is not diagonal, since only its diagonal
 # is used by the fitting regularization and (via predict(::Emulator,...)) by `add_obs_noise_cov`.
-function _warn_if_offdiagonal_structure_mat(osm::AbstractMatrix, backend::String)
+function _warn_if_offdiagonal_structure_mat(osm::AbstractMatrix, name::String)
     if norm(osm - Diagonal(osm)) > 1e-8 * norm(osm)
-        @warn "GaussianProcess ($backend) fits one scalar model per encoded output dimension: off-diagonal entries of the output structure matrix (noise covariance) are ignored by both the fitting regularization and `add_obs_noise_cov`. Consider a decorrelating output encoder."
+        @warn "$name fits one scalar model per encoded output dimension: off-diagonal entries of the output structure matrix (noise covariance) are ignored by both the fitting regularization and `add_obs_noise_cov`. Consider a decorrelating output encoder."
     end
 end
 
@@ -239,7 +239,7 @@ function build_models!(
         1.0 * ones(N_models)
     else
         osm = Matrix(get_structure_mat(output_structure_mats))
-        _warn_if_offdiagonal_structure_mat(osm, "GPJL")
+        _warn_if_offdiagonal_structure_mat(osm, "GaussianProcess (GPJL)")
         diag(osm)
     end
     regularization_noise = regularization .* gp.alg_reg_noise
@@ -394,7 +394,7 @@ function build_models!(
         1.0 * ones(N_models)
     else
         output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
-        _warn_if_offdiagonal_structure_mat(output_structure_mat, "SKLPy")
+        _warn_if_offdiagonal_structure_mat(output_structure_mat, "GaussianProcess (SKLPy)")
         diag(output_structure_mat)
     end
     regularization_noise_vec = gp.alg_reg_noise .* regularization
@@ -508,7 +508,7 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         1.0 * ones(N_models)
     else
         output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
-        _warn_if_offdiagonal_structure_mat(output_structure_mat, "AGPJL")
+        _warn_if_offdiagonal_structure_mat(output_structure_mat, "GaussianProcess (AGPJL)")
         diag(output_structure_mat)
     end
     regularization_noise = gp.alg_reg_noise .* regularization

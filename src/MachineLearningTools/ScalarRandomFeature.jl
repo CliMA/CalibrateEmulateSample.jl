@@ -398,7 +398,9 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * I(n_rfms)
     else
-        output_structure_mat = Diagonal(Matrix(get_structure_mat(output_structure_mats)))
+        osm = Matrix(get_structure_mat(output_structure_mats))
+        _warn_if_offdiagonal_structure_mat(osm, "ScalarRandomFeatureInterface")
+        output_structure_mat = Diagonal(osm)
     end
 
     @info (

@@ -396,6 +396,47 @@ rng = Random.MersenneTwister(seed)
         end
     end
 
+    @testset "warn when off-diagonal output noise structure is dropped (ScalarRandomFeatureInterface fits one model per output dim)" begin
+        # end-to-end: build_models! reaches the shared helper (the same one GaussianProcess uses,
+        # Emulators._warn_if_offdiagonal_structure_mat) when the user disables decorrelation and
+        # supplies a correlated output noise covariance. ScalarRandomFeatureInterface fits one fully
+        # independent scalar model per output dimension, so off-diagonal noise correlations have
+        # nowhere to enter the regularization -- Diagonal is the only structure it can represent,
+        # not a lossy shortcut, but the user should be warned rather than left silently unaware.
+        input_dim = 1
+        output_dim = 2
+        n_train = 30
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = vcat(sin.(x), cos.(x)) .+ 0.01 .* randn(Random.MersenneTwister(seed + 1), output_dim, n_train)
+        iopairs_corr = PairedDataContainer(x, y, data_are_columns = true)
+        Σ_corr = [1.0 0.5; 0.5 1.0]
+
+        srfi_corr = ScalarRandomFeatureInterface(
+            50,
+            input_dim,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulator(
+            srfi_corr,
+            iopairs_corr;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_corr),
+        )
+
+        # a diagonal output noise covariance must stay silent (no spurious warning)
+        srfi_diag = ScalarRandomFeatureInterface(
+            50,
+            input_dim,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
+        logs, _ = Test.collect_test_logs() do
+            Emulator(srfi_diag, iopairs_corr; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = 1.0 * I))
+        end
+        @test !any(occursin("off-diagonal", l.message) for l in logs)
+    end
+
     @testset "VectorRandomFeatureInterface" begin
 
         rng = Random.MersenneTwister(seed)
