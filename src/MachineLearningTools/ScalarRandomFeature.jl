@@ -487,7 +487,8 @@ function build_models!(
             # blocks:
             Γ = deepcopy(internal_Γ)
             Γ[1:n_test, 1:n_test] += regularization_i(n_test) # approx_σ2
-            Γ[1:n_test, 1:n_test] /= overfit^2 # shrink the data noise artificially
+            Γ[1:n_test, :] ./= overfit # congruence scaling preserves posdef-ness across the data/aux cross-block
+            Γ[:, 1:n_test] ./= overfit
             Γ[(n_test + 1):end, (n_test + 1):end] += I
             # small features this has a larger effect - though doesn't -> I as n-> infty
 

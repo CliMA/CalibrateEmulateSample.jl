@@ -515,10 +515,12 @@ function build_models!(
 
         # Build the covariance
         Γ = deepcopy(internal_Γ)
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] +=
+        n_gamma_data = n_test * output_dim
+        Γ[1:n_gamma_data, 1:n_gamma_data] +=
             isa(regularization, UniformScaling) ? regularization : kron(I(n_test), regularization) # + approx_σ2
-        Γ[1:(n_test * output_dim), 1:(n_test * output_dim)] /= overfit^2
-        Γ[(n_test * output_dim + 1):end, (n_test * output_dim + 1):end] += I
+        Γ[1:n_gamma_data, :] ./= overfit # congruence scaling preserves posdef-ness across the data/aux cross-block
+        Γ[:, 1:n_gamma_data] ./= overfit
+        Γ[(n_gamma_data + 1):end, (n_gamma_data + 1):end] += I
         data = vcat(reshape(get_outputs(input_output_pairs)[:, test_idx[cv_idx]], :, 1), 0.0, 0.0) #flatten data
 
         if !isposdef(Γ)

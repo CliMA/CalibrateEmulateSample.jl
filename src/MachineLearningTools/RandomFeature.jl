@@ -512,7 +512,6 @@ function calculate_mean_cov_and_coeffs(
     )
     fitted_features = RF.Methods.fit(rfm, io_train_cost, decomposition_type = decomp_type)
 
-    #we want to calc 1/var(y-mean)^2 + lambda/m * coeffs^2 in the end
     thread_opt = isa(multithread_type, TullioThreading)
     RF.Methods.predict!(
         rfm,
@@ -525,7 +524,7 @@ function calculate_mean_cov_and_coeffs(
     )
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
-    ## TODO - the theory states that the following should be set:
+    # EKI observable (1/sqrt(m))*coeffs; with target 0 this contributes the coefficient penalty (1/m)*||coeffs||^2 of Dunbar, Nelsen, Mutic (arXiv:2407.00584 eq 34/41)
     scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
 
     if decomp_type == "cholesky"

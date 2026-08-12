@@ -207,6 +207,31 @@ rng = Random.MersenneTwister(seed)
 
     end
 
+    @testset "overfit rescaling of the EKI covariance stays positive-definite" begin
+        # build_models! assembles Γ from a sample covariance internal_Γ (data block correlated
+        # with the trailing coefficient-norm/complexity rows) plus an additive regularization
+        # block, then rescales only the data block by `overfit`. Scaling data rows AND columns
+        # (a congruence) must keep Γ positive-definite regardless of overfit; scaling only the
+        # data-data block (the old code) does not once cross-block correlation is present.
+        rng_pd = Random.MersenneTwister(1357)
+        n_test = 10
+        dim = n_test + 2
+        A = randn(rng_pd, dim, 3 * dim)
+        A[end - 1, :] .= 0.6 .* vec(mean(A[1:n_test, :], dims = 1)) .+ 0.4 .* randn(rng_pd, 3 * dim)
+        A[end, :] .= 0.5 .* A[end - 1, :] .+ 0.5 .* randn(rng_pd, 3 * dim)
+        internal_Γ = cov(A, dims = 2)
+        regularization_block = 0.1 * I(n_test)
+
+        for overfit in (0.5, 1.0, 5.0)
+            Γ = deepcopy(internal_Γ)
+            Γ[1:n_test, 1:n_test] += regularization_block
+            Γ[1:n_test, :] ./= overfit
+            Γ[:, 1:n_test] ./= overfit
+            Γ[(n_test + 1):end, (n_test + 1):end] += I
+            @test isposdef(Γ)
+        end
+    end
+
     @testset "ScalarRandomFeatureInterface" begin
 
         input_dim = 2
