@@ -69,7 +69,7 @@ models.
 $(TYPEDFIELDS)
 
 """
-struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTool
+struct GaussianProcess{GPPackage, FT, VV <: AbstractVector, RNG <: AbstractRNG} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
     models::Vector{Union{<:GaussianProcesses.GPE, <:Py, <:AbstractGPs.PosteriorGP, Nothing}}
     "Kernel object."
@@ -82,6 +82,8 @@ struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTo
     prediction_type::PredictionType
     "Regularization vector for each output dimension (based on alg_reg_noise"
     regularization::VV
+    "Random number generator, used by the `SKLPy` backend to seed scikit-learn's internal optimizer restarts. Ignored by `GPJL`/`AGPJL`, whose fits are already deterministic."
+    rng::RNG
 end
 
 
@@ -97,6 +99,7 @@ Construct a `GaussianProcess` for the chosen backend `package`.
 - `noise_learn`: if `true`, learns additive white noise via the kernel. Default `true`.
 - `alg_reg_noise`: small regularisation added by the fitting algorithm when `noise_learn = true`. Default `1e-3`.
 - `prediction_type`: `YType()` (predict observations) or `FType()` (predict latent function). Default `YType()`.
+- `rng`: random number generator, used by the `SKLPy` backend to seed scikit-learn's internal optimizer restarts (Python's own RNG is otherwise independent of Julia's, so `SKLPy` fits are only reproducible when this is set explicitly). Ignored by `GPJL`/`AGPJL`, whose fits are already deterministic. Default `Random.default_rng()`.
 
 # Backend-dependent WhiteKernel semantics
 
@@ -116,12 +119,14 @@ function GaussianProcess(
     noise_learn = true,
     alg_reg_noise::FT = 1e-3,
     prediction_type::PredictionType = YType(),
+    rng::RNG = Random.default_rng(),
 ) where {
     GPPkg <: GaussianProcessesPackage,
     K <: GaussianProcesses.Kernel,
     KPy <: Py,
     AGPK <: AbstractGPs.Kernel,
     FT <: AbstractFloat,
+    RNG <: AbstractRNG,
 }
 
     if package isa SKLJL
@@ -132,6 +137,7 @@ function GaussianProcess(
             noise_learn = noise_learn,
             alg_reg_noise = alg_reg_noise,
             prediction_type = prediction_type,
+            rng = rng,
         )
     end
 
@@ -146,13 +152,14 @@ function GaussianProcess(
 
     vv = typeof(alg_reg_noise)[]
 
-    return GaussianProcess{typeof(package), FT, typeof(vv)}(
+    return GaussianProcess{typeof(package), FT, typeof(vv), RNG}(
         models,
         kernel,
         noise_learn,
         alg_reg_noise,
         prediction_type,
         vv,
+        rng,
     )
 end
 
@@ -402,7 +409,15 @@ function build_models!(
         regularization_noise_i = regularization_noise_vec[i]
         kernel_i = kern
         data_i = output_values[i, :]
-        m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise_i)
+        # sklearn's random restarts draw from Python's own (Julia-independent) global RNG unless
+        # given a `random_state`; seed one from `gp.rng` so fits are reproducible given a seeded `gp.rng`
+        random_state_i = randperm(gp.rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
+        m = pyGP.GaussianProcessRegressor(
+            kernel = kernel_i,
+            n_restarts_optimizer = 10,
+            alpha = regularization_noise_i,
+            random_state = random_state_i,
+        )
         # `m.fit` arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)

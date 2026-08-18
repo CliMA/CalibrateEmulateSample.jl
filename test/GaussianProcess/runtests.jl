@@ -301,7 +301,9 @@ using CalibrateEmulateSample.Utilities
         @test only(σ2_false_gpjl) < 0.3 * σ_noise^2
         @test only(σ2_true_gpjl) - only(σ2_false_gpjl) ≈ σ_noise^2 atol = 1e-10
 
-        gp_dense_sklpy = GaussianProcess(SKLPy(); noise_learn = true)
+        # pin sklearn's optimizer restarts (otherwise sampled from Python's global, Julia-seed-independent
+        # RNG) so this regression check is reproducible rather than intermittently flaky
+        gp_dense_sklpy = GaussianProcess(SKLPy(); noise_learn = true, rng = Random.MersenneTwister(rng_seed))
         em_dense_sklpy = Emulator(gp_dense_sklpy, iopairs_dense; encoder_kwargs = (; obs_noise_cov = Σ_dense))
         _, σ2_false_sklpy = Emulators.predict(em_dense_sklpy, x_interior; add_obs_noise_cov = false)
         _, σ2_true_sklpy = Emulators.predict(em_dense_sklpy, x_interior; add_obs_noise_cov = true)
