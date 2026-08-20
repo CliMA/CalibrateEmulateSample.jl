@@ -121,8 +121,7 @@ function main()
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.SKLPy()
-            pred_type = Emulators.YType()
-            mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
+            mlt = GaussianProcess(gppackage; noise_learn = false)
 
         elseif case ∈ ["RF-scalar", "Prior"]
             rank = n_dimensions #<= 10 ? n_dimensions : 10

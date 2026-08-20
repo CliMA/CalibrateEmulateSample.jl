@@ -99,9 +99,6 @@ function main()
     # Specify cases to run (e.g., case_mask = [2] only runs the second case)
     case_mask = [1, 2, 3]
 
-    # These settings are the same for all Gaussian Process cases
-    pred_type = YType() # we want to predict data
-
     # These settings are the same for all Random Feature cases
     n_features = 400
     nugget = 1e-8
@@ -131,7 +128,7 @@ function main()
             gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 
             # Define machine learning tool
-            mlt = GaussianProcess(gppackage; kernel = gp_kernel, prediction_type = pred_type, noise_learn = false)
+            mlt = GaussianProcess(gppackage; kernel = gp_kernel, noise_learn = false)
 
         elseif case == "rf-scalar"
 
@@ -181,8 +178,9 @@ function main()
         optimize_hyperparameters!(emulator)
 
         # Check how well the emulator predicts on the true parameters
-        y_mean, y_var = Emulators.predict(emulator, reshape(θ_true, :, 1))
-        y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(test_pairs))
+        # (add_obs_noise_cov=true: we want to predict data, not the latent function)
+        y_mean, y_var = Emulators.predict(emulator, reshape(θ_true, :, 1); add_obs_noise_cov = true)
+        y_mean_test, y_var_test = Emulators.predict(emulator, get_inputs(test_pairs); add_obs_noise_cov = true)
         println("Emulator ($(case)) prediction on true parameters: ")
         println(vec(y_mean))
         println("true data: ")
