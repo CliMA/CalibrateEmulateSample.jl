@@ -39,7 +39,7 @@ described [here](https://clima.github.io/CalibrateEmulateSample.jl/dev/emulate/#
 
 !!! warning "`prediction_type` is legacy"
     The `prediction_type` (`YType()`/`FType()`) constructor keyword is legacy and has no effect on
-    predictions; use `add_obs_noise_cov` on `predict` instead (see [Emulate](@ref)).
+    predictions; use `add_obs_noise_cov` on `predict` instead (see [Emulate](@ref emulate)).
 
 # Kernels
 
