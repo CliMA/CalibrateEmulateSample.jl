@@ -7,6 +7,7 @@ import ..Utilities.encode_data
 import ..Utilities.encode_structure_matrix
 import ..Utilities.decode_data
 import ..Utilities.decode_structure_matrix
+import ..Utilities.get_structure_mat
 
 using DocStringExtensions
 using Statistics
@@ -21,7 +22,8 @@ export build_models!
 export optimize_hyperparameters!
 export predict, encode_data, decode_data, encode_structure_matrix, decode_structure_matrix
 export get_machine_learning_tool, get_io_pairs, get_encoded_io_pairs, get_encoder_schedule
-export get_forward_map, get_prior, forward_map_wrapper
+export get_encoded_obs_noise_cov
+export get_forward_map, get_prior, forward_map_wrapper, get_noise_injector
 """
 $(TYPEDEF)
 
@@ -54,6 +56,14 @@ end
 function build_models!(mlt, iopairs, input_structure_mats, output_structure_mats, mlt_kwargs...)
     throw_define_mlt(mlt)
 end
+
+# The (already-encoded) observational noise covariance, symmetrized since downstream consumers
+# (e.g. MCMC's `MvNormal`) require it exactly.
+function _resolve_encoded_obs_noise_cov(output_structure_mats)
+    isempty(output_structure_mats) && return nothing
+    M = Matrix(get_structure_mat(output_structure_mats))
+    return 0.5 * (M + M')
+end
 function optimize_hyperparameters!(mlt)
     throw_define_mlt(mlt)
 end
@@ -80,6 +90,10 @@ struct Emulator{FT <: AbstractFloat, VV <: AbstractVector}
     encoded_io_pairs::PairedDataContainer{FT}
     "Store of the pipeline to encode (/decode) the data"
     encoder_schedule::VV
+    "The observational noise covariance in encoded space (`nothing` if none was ever provided);
+    `I(encoded_output_dim)` only coincides with this when the output encoder was built to whiten it
+    (the default schedule when observational noise is provided)."
+    encoded_obs_noise_cov::Union{Nothing, Matrix{FT}}
 end
 
 """
@@ -111,6 +125,14 @@ Return the initialised encoder schedule stored in `emulator`.
 """
 get_encoder_schedule(emulator::Emulator) = emulator.encoder_schedule
 
+"""
+$(TYPEDSIGNATURES)
+
+Return the observational noise covariance in encoded space stored in `emulator` (`nothing` if
+none was ever provided at construction).
+"""
+get_encoded_obs_noise_cov(emulator::Emulator) = emulator.encoded_obs_noise_cov
+
 
 ### Forward Map Wrapper
 
@@ -132,7 +154,12 @@ builds and initialises the encoder schedule automatically from training data.
 
 $(METHODLIST)
 """
-struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistribution, NI <: NoiseInjector}
+struct ForwardMapWrapper{
+    FT <: Real,
+    VV <: AbstractVector,
+    PD <: ParameterDistribution,
+    NI <: Union{Nothing, NoiseInjector},
+}
     "function that represents the forward map"
     forward_map::Function
     "a parameter distribution, containing transformations to constrain the forward map inputs"
@@ -145,6 +172,10 @@ struct ForwardMapWrapper{FT <: Real, VV <: AbstractVector, PD <: ParameterDistri
     encoder_schedule::VV
     "For lossy encodings, this determines how to inject noise into the null-space upon decoding"
     noise_injector::NI
+    "The observational noise covariance in encoded space (`nothing` if none was ever provided);
+    `I(encoded_output_dim)` only coincides with this when the output encoder was built to whiten it
+    (the default schedule when observational noise is provided)."
+    encoded_obs_noise_cov::Union{Nothing, Matrix{FT}}
 end
 """
 $(TYPEDSIGNATURES)
@@ -180,6 +211,14 @@ $(TYPEDSIGNATURES)
 Return the initialised encoder schedule stored in `fmw`.
 """
 get_encoder_schedule(fmw::ForwardMapWrapper) = fmw.encoder_schedule
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the observational noise covariance in encoded space stored in `fmw` (`nothing` if none was
+ever provided at construction).
+"""
+get_encoded_obs_noise_cov(fmw::ForwardMapWrapper) = fmw.encoded_obs_noise_cov
 
 """
 $(TYPEDSIGNATURES)
@@ -249,11 +288,15 @@ function Emulator(
 
     # build the machine learning tool in the encoded space
     build_models!(machine_learning_tool, encoded_io_pairs, input_structure_mats, output_structure_mats; mlt_kwargs...)
+
+    encoded_obs_noise_cov = _resolve_encoded_obs_noise_cov(output_structure_mats)
+
     return Emulator{FT, typeof(encoder_schedule)}(
         machine_learning_tool,
         input_output_pairs,
         encoded_io_pairs,
         encoder_schedule,
+        encoded_obs_noise_cov,
     )
 end
 
@@ -314,13 +357,24 @@ is a column of the matrix.
   - `"in"`         → `Dₒ∘G(z)` — inputs already encoded as `z = Eᵢx`.
   - `"out"`        → `G∘Eᵢ(x)` — outputs returned in encoded space.
   - `"in_and_out"` → `G(z)` — inputs encoded, outputs in encoded space (used internally by `sample`).
-- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds the stored
-  observational noise covariance to the returned uncertainty (used internally by `sample`).
+- `add_obs_noise_cov` (keyword, default `false`, canonical definition — see below): when `true`,
+  adds the stored observational noise covariance to the returned uncertainty (used internally by
+  `sample`).
 - Additional keywords are forwarded to the machine-learning tool `predict` method.
 
 Returns `(mean, cov)` where for `N` inputs:
 - 1-D output: `mean` is `[1 × N]`, `cov` is `[1 × N]` variances.
 - p-D output: `mean` is `[p × N]`, `cov` is a length-N iterator of `[p × p]` covariance matrices.
+
+# `add_obs_noise_cov` semantics (canonical; applies identically to every machine learning tool
+and to [`predict(::ForwardMapWrapper, ...)`](@ref))
+
+`false` always returns the pure latent (epistemic, model-only) uncertainty, with no
+observational noise mixed in, regardless of the machine learning tool or its hyperparameters
+(e.g. `GaussianProcess`'s `noise_learn`). `true` adds exactly the stored observational noise
+covariance on top, added centrally here — never by the machine learning tool itself — because the
+output encoder is designed to whiten that covariance to `I` in encoded space, so the addition is
+always `I(encoded_output_dim)` before decoding back to physical units.
 """
 function predict(
     emulator::Emulator{FT},
@@ -361,32 +415,44 @@ function predict(
     else
         encoded_inputs = new_inputs
     end
-    # predict in encoding space
+    # predict in encoding space (always the pure latent uncertainty; the MLT backend never sees
+    # `add_obs_noise_cov` — the observational noise is added centrally, below)
     # returns outputs: [enc_out_dim x n_samples]
     # Scalar-methods uncertainties=variances: [enc_out_dim x n_samples]
     # Vector-methods uncertainties=covariances: [enc_out_dim x enc_out_dim x n_samples)
-    encoded_outputs, encoded_uncertainties = predict(
-        get_machine_learning_tool(emulator),
-        encoded_inputs;
-        add_obs_noise_cov = add_obs_noise_cov,
-        mlt_kwargs...,
-    )
+    encoded_outputs, encoded_uncertainties = predict(get_machine_learning_tool(emulator), encoded_inputs; mlt_kwargs...)
 
     var_or_cov = (ndims(encoded_uncertainties) == 2) ? "var" : "cov"
+
+    # promote to full [enc_out_dim x enc_out_dim x n_samples] covariance slices
+    encoded_covariances_mat =
+        zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
+    if var_or_cov == "var"
+        for (i, col) in enumerate(eachcol(encoded_uncertainties))
+            encoded_covariances_mat[:, :, i] .= Diagonal(col)
+        end
+    else # == "cov"
+        for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
+            encoded_covariances_mat[:, :, i] .= mat
+        end
+    end
+
+    # add the observational noise centrally, uniformly across every MLT backend (falls back to
+    # `I` if the emulator was never given any observational noise information at all)
+    if add_obs_noise_cov
+        noise_to_add = something(get_encoded_obs_noise_cov(emulator), I(encoded_output_dim))
+        for i in 1:size(encoded_covariances_mat, 3)
+            encoded_covariances_mat[:, :, i] .+= noise_to_add
+        end
+    end
 
     # return decoded or encoded?
     if out_to_be_decoded
         decoded_outputs = decode_data(emulator, encoded_outputs, "out")
 
-        decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_uncertainties)[end])
-        if var_or_cov == "var"
-            for (i, col) in enumerate(eachcol(encoded_uncertainties))
-                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, Diagonal(col), "out"))
-            end
-        else # == "cov"
-            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
-                decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, mat, "out"))
-            end
+        decoded_covariances = zeros(eltype(encoded_outputs), output_dim, output_dim, size(encoded_covariances_mat, 3))
+        for (i, mat) in enumerate(eachslice(encoded_covariances_mat, dims = 3))
+            decoded_covariances[:, :, i] .= Matrix(decode_structure_matrix(emulator, mat, "out"))
         end
 
         if output_dim > 1
@@ -397,19 +463,6 @@ function predict(
         end
 
     else
-
-        encoded_covariances_mat =
-            zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_uncertainties)[end])
-        if var_or_cov == "var"
-            for (i, col) in enumerate(eachcol(encoded_uncertainties))
-                encoded_covariances_mat[:, :, i] = Diagonal(col)
-            end
-        else # =="cov"
-            for (i, mat) in enumerate(eachslice(encoded_uncertainties, dims = 3))
-                encoded_covariances_mat[:, :, i] = mat
-            end
-        end
-
         if encoded_output_dim > 1
             return encoded_outputs, eachslice(encoded_covariances_mat, dims = 3)
         else
@@ -471,6 +524,7 @@ function forward_map_wrapper(
     # As we apply FMW in decoded space, it may be that we need to add additional noise if the encoder is suitably lossy (determined by >`noise_injector_threshold`). We create a noise injector which puts noise in the null space, retaining correlations from the prior. Precompute it here:
     noise_injector = create_noise_injector(encoder_schedule, prior, noise_injector_threshold, noise_injector_scaling)
 
+    encoded_obs_noise_cov = _resolve_encoded_obs_noise_cov(output_structure_mats)
 
     return ForwardMapWrapper{FT, typeof(encoder_schedule), typeof(prior), typeof(noise_injector)}(
         forward_map,
@@ -479,6 +533,7 @@ function forward_map_wrapper(
         encoded_io_pairs,
         encoder_schedule,
         noise_injector,
+        encoded_obs_noise_cov,
     )
 end
 
@@ -500,8 +555,9 @@ encoded/decoded as requested.
   - `"in"`         → `G∘Di(z)` — inputs are encoded as `z = Ei(x)`.
   - `"out"`        → `Eo∘G(x)` — outputs returned in encoded space.
   - `"in_and_out"` → `Eo∘G∘Di(z)` — used internally by `sample`.
-- `add_obs_noise_cov` (keyword, default `false`): when `true`, adds observational noise
-  covariance to the returned uncertainty (used internally by `sample`).
+- `add_obs_noise_cov` (keyword, default `false`): see the canonical semantics documented on
+  [`predict(::Emulator, ...)`](@ref) — identical here, adding `I(encoded_output_dim)` before
+  decoding (used internally by `sample`).
 
 Returns `(mean, cov)` with the same shape conventions as [`predict`](@ref).
 """
@@ -555,8 +611,13 @@ function predict(
 
     var_or_cov = (output_dim == 1) ? "var" : "cov"
     if out_to_be_decoded
-        # uncertainty returned is just `I` in encoded space
-        decoded_cov = Matrix(decode_structure_matrix(fmw, I(output_dim), "out"))
+        decoded_cov = if add_obs_noise_cov
+            # decode the resolved observational noise covariance (falls back to `I`)
+            noise_to_add = something(get_encoded_obs_noise_cov(fmw), I(encoded_output_dim))
+            Matrix(decode_structure_matrix(fmw, noise_to_add, "out"))
+        else
+            zeros(eltype(decoded_outputs), output_dim, output_dim)
+        end
 
         decoded_covariances = zeros(eltype(decoded_outputs), output_dim, output_dim, size(decoded_outputs, 2))
         for i in 1:size(decoded_covariances, 3)
@@ -573,7 +634,9 @@ function predict(
     else # We encode
         encoded_outputs = Matrix(encode_data(fmw, decoded_outputs, "out"))
         encoded_output_dim = size(encoded_outputs, 1)
-        encoded_cov = I(encoded_output_dim)
+        encoded_cov =
+            add_obs_noise_cov ? something(get_encoded_obs_noise_cov(fmw), I(encoded_output_dim)) :
+            zeros(encoded_output_dim, encoded_output_dim)
 
         encoded_covariances_mat =
             zeros(eltype(encoded_outputs), encoded_output_dim, encoded_output_dim, size(encoded_outputs, 2))

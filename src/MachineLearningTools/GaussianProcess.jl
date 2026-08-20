@@ -69,7 +69,7 @@ models.
 $(TYPEDFIELDS)
 
 """
-struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTool
+struct GaussianProcess{GPPackage, FT, VV <: AbstractVector, RNG <: AbstractRNG} <: MachineLearningTool
     "The Gaussian Process (GP) Regression model(s) that are fitted to the given input-data pairs."
     models::Vector{Union{<:GaussianProcesses.GPE, <:Py, <:AbstractGPs.PosteriorGP, Nothing}}
     "Kernel object."
@@ -82,6 +82,8 @@ struct GaussianProcess{GPPackage, FT, VV <: AbstractVector} <: MachineLearningTo
     prediction_type::PredictionType
     "Regularization vector for each output dimension (based on alg_reg_noise"
     regularization::VV
+    "Random number generator, used by the `SKLPy` backend to seed scikit-learn's internal optimizer restarts. Ignored by `GPJL`/`AGPJL`, whose fits are already deterministic."
+    rng::RNG
 end
 
 
@@ -96,31 +98,52 @@ Construct a `GaussianProcess` for the chosen backend `package`.
 - `kernel`: kernel object compatible with the chosen backend. Defaults to a squared-exponential kernel.
 - `noise_learn`: if `true`, learns additive white noise via the kernel. Default `true`.
 - `alg_reg_noise`: small regularisation added by the fitting algorithm when `noise_learn = true`. Default `1e-3`.
-- `prediction_type`: `YType()` (predict observations) or `FType()` (predict latent function). Default `YType()`.
+- `prediction_type`: [Deprecated, no effect] previously `YType()` (predict observations) or `FType()`
+  (predict latent function); every backend's `predict` now always returns the pure latent
+  covariance, and passing this keyword emits a deprecation warning. Use the `add_obs_noise_cov`
+  keyword of `predict(::Emulator, ...)`/`predict(::ForwardMapWrapper, ...)` instead.
+- `rng`: random number generator, used by the `SKLPy` backend to seed scikit-learn's internal optimizer restarts (Python's own RNG is otherwise independent of Julia's, so `SKLPy` fits are only reproducible when this is set explicitly). Ignored by `GPJL`/`AGPJL`, whose fits are already deterministic. Default `Random.default_rng()`.
+
+# Backend-dependent WhiteKernel semantics
+
+When `noise_learn = true`, the additive white-noise kernel term behaves differently across
+backends at a query point whose VALUE coincides with a training input: `SKLPy`'s
+`sklearn.gaussian_process.kernels.WhiteKernel` uses object identity (`X is Y`), so a distinct
+query array with the same values as a training point gets zero cross-covariance from the noise
+term; `GPJL` (`GaussianProcesses.jl`'s `Noise`) and `AGPJL` (`KernelFunctions.jl`'s `WhiteKernel`)
+compare by value, so a coincident query point picks up `σ²_noise` from the noise term. With
+identical fitted hyperparameters, the three backends can therefore disagree on the predictive
+variance exactly at (but not near) training inputs. This is inherent to each underlying package's
+kernel implementation and is not something this wrapper corrects.
 """
 function GaussianProcess(
     package::GPPkg;
     kernel::Union{K, KPy, AGPK, Nothing} = nothing,
     noise_learn = true,
     alg_reg_noise::FT = 1e-3,
-    prediction_type::PredictionType = YType(),
+    prediction_type::Union{PredictionType, Nothing} = nothing,
+    rng::RNG = Random.default_rng(),
 ) where {
     GPPkg <: GaussianProcessesPackage,
     K <: GaussianProcesses.Kernel,
     KPy <: Py,
     AGPK <: AbstractGPs.Kernel,
     FT <: AbstractFloat,
+    RNG <: AbstractRNG,
 }
 
+    if !isnothing(prediction_type)
+        Base.depwarn(
+            "`prediction_type` no longer affects `predict` output: every backend's `predict` always returns the pure latent covariance. Use the `add_obs_noise_cov` keyword of `predict(::Emulator, ...)`/`predict(::ForwardMapWrapper, ...)` instead.",
+            :GaussianProcess_prediction_type,
+        )
+    end
+    resolved_prediction_type = something(prediction_type, YType())
+
+    resolved_package = package
     if package isa SKLJL
         Base.depwarn("`SKLJL` is deprecated, use `SKLPy` instead.", :GaussianProcess)
-        return GaussianProcess(
-            SKLPy();
-            kernel = kernel,
-            noise_learn = noise_learn,
-            alg_reg_noise = alg_reg_noise,
-            prediction_type = prediction_type,
-        )
+        resolved_package = SKLPy()
     end
 
     # Initialize vector for GP models
@@ -134,14 +157,24 @@ function GaussianProcess(
 
     vv = typeof(alg_reg_noise)[]
 
-    return GaussianProcess{typeof(package), FT, typeof(vv)}(
+    return GaussianProcess{typeof(resolved_package), FT, typeof(vv), RNG}(
         models,
         kernel,
         noise_learn,
         alg_reg_noise,
-        prediction_type,
+        resolved_prediction_type,
         vv,
+        rng,
     )
+end
+
+# GaussianProcess builds one scalar model per encoded output dimension; warn (once per build)
+# when the output structure matrix (noise covariance) is not diagonal, since only its diagonal
+# is used by the fitting regularization and (via predict(::Emulator,...)) by `add_obs_noise_cov`.
+function _warn_if_offdiagonal_structure_mat(osm::AbstractMatrix, name::String)
+    if norm(osm - Diagonal(osm)) > 1e-8 * norm(osm)
+        @warn "$name fits one scalar model per encoded output dimension: off-diagonal entries of the output structure matrix (noise covariance) are ignored by both the fitting regularization and `add_obs_noise_cov`. Consider a decorrelating output encoder."
+    end
 end
 
 # First we create  the GPJL implementation
@@ -185,7 +218,7 @@ function build_models!(
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
     if length(gp.models) > 0 # check to see if gp already contains models
-        @warn "GaussianProcess already built. skipping..."
+        @warn "GaussianProcess already built. skipping... Note: the Emulator constructor calling this always fits a FRESH encoder schedule to the `input_output_pairs` given to it, regardless of this skip. If that data differs from what the existing models were trained on, predictions will pair the old models with mismatched encoders. Construct a fresh GaussianProcess per Emulator unless you are intentionally reusing identical (already-encoded) training data."
         return
     end
     N_models = size(output_values, 1) #size(transformed_data)[1]
@@ -217,7 +250,9 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * ones(N_models)
     else
-        output_structure_mat = diag(Matrix(get_structure_mat(output_structure_mats)))
+        osm = Matrix(get_structure_mat(output_structure_mats))
+        _warn_if_offdiagonal_structure_mat(osm, "GaussianProcess (GPJL)")
+        diag(osm)
     end
     regularization_noise = regularization .* gp.alg_reg_noise
     logstd_regularization_noise = log.(sqrt.(regularization_noise))
@@ -229,7 +264,6 @@ function build_models!(
         kernel_i = deepcopy(kern)
         println("kernel in GaussianProcess:")
         println(kernel_i)
-        data_i = output_values[i, :]
         # GaussianProcesses.GPE() arguments:
         # input_values:    (input_dim × N_samples)
         # GPdata_i:    (N_samples,)
@@ -286,8 +320,8 @@ function _predict(
     M = length(gp.models)
     N_samples = size(new_inputs, 2)
     # Predicts columns of inputs: input_dim × N_samples
-    μ = zeros(M, N_samples)
-    σ2 = zeros(M, N_samples)
+    μ = zeros(FT, M, N_samples)
+    σ2 = zeros(FT, M, N_samples)
     # predict method ::YType will add gp.regularization back in here, ::FType will not
     for i in 1:M
         μ[i, :], σ2[i, :] = predict_method(gp.models[i], new_inputs)
@@ -302,19 +336,27 @@ predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::YType) wher
 predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}, ::FType) where {FT <: AbstractFloat} =
     _predict(gp, new_inputs, GaussianProcesses.predict_f)
 
+# fitted variance of a `Noise` kernel component, searched recursively through `SumKernel` nodes
+_white_kernel_variance(k::GaussianProcesses.Noise) = k.σ2
+_white_kernel_variance(k::GaussianProcesses.SumKernel) =
+    _white_kernel_variance(k.kleft) + _white_kernel_variance(k.kright)
+_white_kernel_variance(k) = 0.0
+
 """
 $(TYPEDSIGNATURES)
 
-Predict means and covariances in decorrelated output space using Gaussian process models. The use of stored `FType` and `YType` to control this method is deprecated, the return covariance is now determined by the `predict(` kwarg `add_obs_noise_cov` 
+Predict means and covariances in decorrelated output space using Gaussian process models. Always
+returns the pure latent (noise-free) covariance; `predict(::Emulator, ...)` centrally adds the
+observational noise covariance when its `add_obs_noise_cov` keyword is `true`. The use of stored
+`FType` and `YType` to control this method is deprecated.
 """
-function predict(
-    gp::GaussianProcess{GPJL},
-    new_inputs::AbstractMatrix{FT};
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {FT <: AbstractFloat}
-    pred_type = add_obs_noise_cov ? YType() : FType()
-    return predict(gp, new_inputs, pred_type)
+function predict(gp::GaussianProcess{GPJL}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
+    μ, σ2 = predict(gp, new_inputs, FType())
+    # subtract the fitted white-kernel variance so `noise_learn = true` doesn't leak into the
+    # supposedly latent-only covariance
+    white_var = FT[_white_kernel_variance(model.kernel) for model in gp.models]
+    σ2 = max.(σ2 .- white_var, FT(1e-12))
+    return μ, σ2
 end
 
 #now we build the SKLPy implementation
@@ -331,7 +373,7 @@ function build_models!(
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
     if length(gp.models) > 0 # check to see if gp already contains models
-        @warn "GaussianProcess already built. skipping..."
+        @warn "GaussianProcess already built. skipping... Note: the Emulator constructor calling this always fits a FRESH encoder schedule to the `input_output_pairs` given to it, regardless of this skip. If that data differs from what the existing models were trained on, predictions will pair the old models with mismatched encoders. Construct a fresh GaussianProcess per Emulator unless you are intentionally reusing identical (already-encoded) training data."
         return
     end
 
@@ -364,18 +406,23 @@ function build_models!(
         1.0 * ones(N_models)
     else
         output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
-        if isa(output_structure_mat, UniformScaling)
-            output_structure_mat.λ * ones(N_models)
-        else
-            diag(output_structure_mat)
-        end
+        _warn_if_offdiagonal_structure_mat(output_structure_mat, "GaussianProcess (SKLPy)")
+        diag(output_structure_mat)
     end
     regularization_noise_vec = gp.alg_reg_noise .* regularization
     for i in 1:N_models
         regularization_noise_i = regularization_noise_vec[i]
         kernel_i = kern
         data_i = output_values[i, :]
-        m = pyGP.GaussianProcessRegressor(kernel = kernel_i, n_restarts_optimizer = 10, alpha = regularization_noise_i)
+        # sklearn's random restarts draw from Python's own (Julia-independent) global RNG unless
+        # given a `random_state`; seed one from `gp.rng` so fits are reproducible given a seeded `gp.rng`
+        random_state_i = randperm(gp.rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
+        m = pyGP.GaussianProcessRegressor(
+            kernel = kernel_i,
+            n_restarts_optimizer = 10,
+            alpha = regularization_noise_i,
+            random_state = random_state_i,
+        )
         # `m.fit` arguments:
         # input_values:    (N_samples × input_dim)
         # data_i:    (N_samples,)
@@ -402,21 +449,22 @@ function _SKLPy_predict_function(gp_model::Py, new_inputs::AbstractMatrix{FT}) w
     σ = pyconvert(Vector{FT}, py_out[1])
     return μ, (σ .* σ)
 end
-function predict(
-    gp::GaussianProcess{SKLPy},
-    new_inputs::AbstractMatrix{FT};
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {FT <: AbstractFloat}
+
+# fitted WhiteKernel variance, found via `get_params(deep=true)`'s flattened `__`-joined names
+function _sklearn_white_kernel_variance(fitted_kernel::Py)::Float64
+    params = pyconvert(Dict{String, Any}, fitted_kernel.get_params(true))
+    for (name, value) in params
+        endswith(name, "noise_level") && return value
+    end
+    return 0.0
+end
+
+function predict(gp::GaussianProcess{SKLPy}, new_inputs::AbstractMatrix{FT}; mlt_kwargs...) where {FT <: AbstractFloat}
     μ, σ2 = _predict(gp, new_inputs, _SKLPy_predict_function)
 
-    # SKLPy does not return the observational noise (even if return_std = true)
-    # we must add contribution depending on whether we learnt the noise or not.
-    if add_obs_noise_cov
-        for i in 1:size(σ2, 2)
-            σ2[:, i] = σ2[:, i] + gp.regularization
-        end
-    end
+    # subtract the fitted WhiteKernel variance, which `.predict(return_std=true)` always includes
+    white_var = FT[_sklearn_white_kernel_variance(model.kernel_) for model in gp.models]
+    σ2 = max.(σ2 .- white_var, FT(1e-12))
 
     return μ, σ2
 end
@@ -437,7 +485,7 @@ function build_models!(
     # Number of models (We are fitting one model per output dimension, as data is decorrelated)
     models = gp.models
     if length(gp.models) > 0 # check to see if gp already contains models
-        @warn "GaussianProcess already built. skipping..."
+        @warn "GaussianProcess already built. skipping... Note: the Emulator constructor calling this always fits a FRESH encoder schedule to the `input_output_pairs` given to it, regardless of this skip. If that data differs from what the existing models were trained on, predictions will pair the old models with mismatched encoders. Construct a fresh GaussianProcess per Emulator unless you are intentionally reusing identical (already-encoded) training data."
         return
     end
 
@@ -462,8 +510,8 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
    kernel_params = [
        Dict(
            "log_rbf_len" => model_params[1:end-2] # input-dim Vector,
-           "log_std_sqexp" => model_params[end-2] # Float,
-           "log_std_noise" => # Float,
+           "log_std_sqexp" => model_params[end-1] # Float,
+           "log_std_noise" => model_params[end] # Float,
        )
     for model_params in get_params(gp_jl)]
     Note: get_params(gp_jl) returns `output_dim`-vector where each entry is [a, b, c] with:
@@ -480,11 +528,8 @@ AbstractGP currently does not (yet) learn hyperparameters internally. The follow
         1.0 * ones(N_models)
     else
         output_structure_mat = Matrix(get_structure_mat(output_structure_mats))
-        if isa(output_structure_mat, UniformScaling)
-            output_structure_mat.λ * ones(N_models)
-        else
-            diag(output_structure_mat)
-        end
+        _warn_if_offdiagonal_structure_mat(output_structure_mat, "GaussianProcess (AGPJL)")
+        diag(output_structure_mat)
     end
     regularization_noise = gp.alg_reg_noise .* regularization
 
@@ -522,12 +567,13 @@ function optimize_hyperparameters!(gp::GaussianProcess{AGPJL}, args...; kwargs..
     @info "AbstractGP already built. Continuing..."
 end
 
-function predict(
-    gp::GaussianProcess{AGPJL},
-    new_inputs::AM;
-    add_obs_noise_cov = false,
-    mlt_kwargs...,
-) where {AM <: AbstractMatrix}
+
+# fitted WhiteKernel variance, searched recursively through the `KernelFunctions` composite kernel
+_agpjl_white_kernel_variance(k::KernelFunctions.ScaledKernel{<:KernelFunctions.WhiteKernel}) = only(k.σ²)
+_agpjl_white_kernel_variance(k::KernelFunctions.KernelSum) = sum(_agpjl_white_kernel_variance, k.kernels)
+_agpjl_white_kernel_variance(k) = 0.0
+
+function predict(gp::GaussianProcess{AGPJL}, new_inputs::AM; mlt_kwargs...) where {AM <: AbstractMatrix}
 
     N_models = length(gp.models)
     N_samples = size(new_inputs, 2)
@@ -538,12 +584,9 @@ function predict(
         pred_gp = gp.models[i]
         pred = pred_gp(new_inputs; obsdim = 2)
         μ[i, :] = mean(pred)
-        σ2[i, :] = var(pred)
-    end
-    if add_obs_noise_cov
-        for i in 1:size(σ2, 2)
-            σ2[:, i] .= σ2[:, i] + gp.regularization
-        end
+        # subtract the (always-present, borrowed) WhiteKernel variance baked into `var(pred)`
+        white_var = _agpjl_white_kernel_variance(pred_gp.prior.kernel)
+        σ2[i, :] = max.(var(pred) .- white_var, 1e-12)
     end
     return μ, σ2
 end

@@ -398,7 +398,9 @@ function build_models!(
     regularization = if isempty(output_structure_mats)
         1.0 * I(n_rfms)
     else
-        output_structure_mat = Diagonal(Matrix(get_structure_mat(output_structure_mats)))
+        osm = Matrix(get_structure_mat(output_structure_mats))
+        _warn_if_offdiagonal_structure_mat(osm, "ScalarRandomFeatureInterface")
+        output_structure_mat = Diagonal(osm)
     end
 
     @info (
@@ -436,10 +438,10 @@ function build_models!(
             prior_out_scale = one(prior_out_scale)
         end
 
-        prior = build_default_prior(input_dim, kernel_structure)
+        prior = optimizer_options["prior"]
 
-        # where prior space has changed we need to rebuild the priors
-        if ndims(prior) > n_hp
+        # where prior space has changed (e.g. truncated encoded dimensions) rebuild the default prior
+        if ndims(prior) != n_hp
 
             # comes from having a truncated output_dimension
             # TODO not really a truncation here, resetting to default
@@ -456,6 +458,8 @@ function build_models!(
         overfit = max(optimizer_options["overfit"], 1e-4)
         n_cov_samples_min = n_test + 2
         n_cov_samples = Int(floor(n_cov_samples_min * max(cov_sample_multiplier, 0.0)))
+        n_cov_samples < 2 &&
+            _throw_cov_sample_multiplier_too_small(cov_sample_multiplier, n_cov_samples_min, n_cov_samples)
 
         println("estimating covariances with " * string(n_cov_samples) * " iterations...")
         observation_vec = []
@@ -483,7 +487,8 @@ function build_models!(
             # blocks:
             Γ = deepcopy(internal_Γ)
             Γ[1:n_test, 1:n_test] += regularization_i(n_test) # approx_σ2
-            Γ[1:n_test, 1:n_test] /= overfit^2 # shrink the data noise artificially
+            Γ[1:n_test, :] ./= overfit # congruence scaling preserves posdef-ness across the data/aux cross-block
+            Γ[:, 1:n_test] ./= overfit
             Γ[(n_test + 1):end, (n_test + 1):end] += I
             # small features this has a larger effect - though doesn't -> I as n-> infty
 
@@ -626,13 +631,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Prediction of emulator mean at new inputs (passed in as columns in a matrix), and a prediction of the total covariance at new inputs equal to (emulator covariance + noise covariance). 
+Prediction of emulator mean and (purely latent) covariance at new inputs (passed in as columns in
+a matrix). `predict(::Emulator, ...)` centrally adds the observational noise covariance when its
+`add_obs_noise_cov` keyword is `true`.
 """
 function predict(
     srfi::ScalarRandomFeatureInterface,
     new_inputs::MM;
     multithread = "ensemble",
-    add_obs_noise_cov = false,
     mlt_kwargs...,
 ) where {MM <: AbstractMatrix}
     M = length(get_rfms(srfi))
@@ -653,16 +659,6 @@ function predict(
             DataContainer(new_inputs),
             tullio_threading = tullio_threading,
         )
-    end
-
-    # add the noise contribution stored within the regularization
-    if add_obs_noise_cov
-        reg = get_regularization(srfi)[1]
-        reg_diag = isa(reg, UniformScaling) ? reg.λ * ones(M) : diag(reg)
-
-        for i in 1:M
-            σ2[i, :] .+= reg_diag[i]
-        end
     end
 
     return μ, σ2

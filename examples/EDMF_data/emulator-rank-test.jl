@@ -214,11 +214,9 @@ function main()
             if case == "GP"
                 rank_val = 0
                 gppackage = Emulators.SKLPy()
-                pred_type = Emulators.YType()
                 mlt = GaussianProcess(
                     gppackage;
                     kernel = nothing, # use default squared exponential kernel
-                    prediction_type = pred_type,
                     noise_learn = false,
                 )
             elseif case ∈ ["RF-lr-lr"]
