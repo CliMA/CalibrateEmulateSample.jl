@@ -37,19 +37,9 @@ This initializes the prior Gaussian process.
 We train the Gaussian process by feeding the `gauss_proc` alongside the data into the `Emulator` struct and optimizing the hyperparameters,
 described [here](https://clima.github.io/CalibrateEmulateSample.jl/dev/emulate/#Typical-construction-from-Lorenz_example.jl).
 
-# Prediction Type
-
-You can specify the type of prediction when initializing the Gaussian Process emulator.
-The default type of prediction is to predict data, `YType()`. 
-You can create a latent function type prediction with
-
-```julia
-gauss_proc = GaussianProcess(
-    gppackage,
-    prediction_type = FType())
-
-```
-
+!!! warning "`prediction_type` is legacy"
+    The `prediction_type` (`YType()`/`FType()`) constructor keyword is legacy and has no effect on
+    predictions; use `add_obs_noise_cov` on `predict` instead (see [Emulate](@ref)).
 
 # Kernels
 
