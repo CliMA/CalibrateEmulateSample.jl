@@ -135,7 +135,7 @@ function GaussianProcess(
     if !isnothing(prediction_type)
         Base.depwarn(
             "`prediction_type` no longer affects `predict` output: every backend's `predict` always returns the pure latent covariance. Use the `add_obs_noise_cov` keyword of `predict(::Emulator, ...)`/`predict(::ForwardMapWrapper, ...)` instead.",
-            :GaussianProcess,
+            :GaussianProcess_prediction_type,
         )
     end
     resolved_prediction_type = something(prediction_type, YType())
