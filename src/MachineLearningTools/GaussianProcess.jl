@@ -98,7 +98,10 @@ Construct a `GaussianProcess` for the chosen backend `package`.
 - `kernel`: kernel object compatible with the chosen backend. Defaults to a squared-exponential kernel.
 - `noise_learn`: if `true`, learns additive white noise via the kernel. Default `true`.
 - `alg_reg_noise`: small regularisation added by the fitting algorithm when `noise_learn = true`. Default `1e-3`.
-- `prediction_type`: `YType()` (predict observations) or `FType()` (predict latent function). Default `YType()`.
+- `prediction_type`: [Deprecated, no effect] previously `YType()` (predict observations) or `FType()`
+  (predict latent function); every backend's `predict` now always returns the pure latent
+  covariance, and passing this keyword emits a deprecation warning. Use the `add_obs_noise_cov`
+  keyword of `predict(::Emulator, ...)`/`predict(::ForwardMapWrapper, ...)` instead.
 - `rng`: random number generator, used by the `SKLPy` backend to seed scikit-learn's internal optimizer restarts (Python's own RNG is otherwise independent of Julia's, so `SKLPy` fits are only reproducible when this is set explicitly). Ignored by `GPJL`/`AGPJL`, whose fits are already deterministic. Default `Random.default_rng()`.
 
 # Backend-dependent WhiteKernel semantics
@@ -118,7 +121,7 @@ function GaussianProcess(
     kernel::Union{K, KPy, AGPK, Nothing} = nothing,
     noise_learn = true,
     alg_reg_noise::FT = 1e-3,
-    prediction_type::PredictionType = YType(),
+    prediction_type::Union{PredictionType, Nothing} = nothing,
     rng::RNG = Random.default_rng(),
 ) where {
     GPPkg <: GaussianProcessesPackage,
@@ -129,16 +132,18 @@ function GaussianProcess(
     RNG <: AbstractRNG,
 }
 
+    if !isnothing(prediction_type)
+        Base.depwarn(
+            "`prediction_type` no longer affects `predict` output: every backend's `predict` always returns the pure latent covariance. Use the `add_obs_noise_cov` keyword of `predict(::Emulator, ...)`/`predict(::ForwardMapWrapper, ...)` instead.",
+            :GaussianProcess,
+        )
+    end
+    resolved_prediction_type = something(prediction_type, YType())
+
+    resolved_package = package
     if package isa SKLJL
         Base.depwarn("`SKLJL` is deprecated, use `SKLPy` instead.", :GaussianProcess)
-        return GaussianProcess(
-            SKLPy();
-            kernel = kernel,
-            noise_learn = noise_learn,
-            alg_reg_noise = alg_reg_noise,
-            prediction_type = prediction_type,
-            rng = rng,
-        )
+        resolved_package = SKLPy()
     end
 
     # Initialize vector for GP models
@@ -152,12 +157,12 @@ function GaussianProcess(
 
     vv = typeof(alg_reg_noise)[]
 
-    return GaussianProcess{typeof(package), FT, typeof(vv), RNG}(
+    return GaussianProcess{typeof(resolved_package), FT, typeof(vv), RNG}(
         models,
         kernel,
         noise_learn,
         alg_reg_noise,
-        prediction_type,
+        resolved_prediction_type,
         vv,
         rng,
     )
