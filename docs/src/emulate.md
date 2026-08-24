@@ -1,4 +1,4 @@
-# The Emulate stage
+# [The Emulate stage](@id emulate)
 
 Emulation is performed through the construction of an `Emulator` object, which has two components
 1. A wrapper for any statistical emulator,
