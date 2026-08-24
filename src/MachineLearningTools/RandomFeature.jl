@@ -512,7 +512,6 @@ function calculate_mean_cov_and_coeffs(
     )
     fitted_features = RF.Methods.fit(rfm, io_train_cost, decomposition_type = decomp_type)
 
-    #we want to calc 1/var(y-mean)^2 + lambda/m * coeffs^2 in the end
     thread_opt = isa(multithread_type, TullioThreading)
     RF.Methods.predict!(
         rfm,
@@ -525,7 +524,7 @@ function calculate_mean_cov_and_coeffs(
     )
     # sizes (output_dim x n_test), (output_dim x output_dim x n_test) 
 
-    ## TODO - the theory states that the following should be set:
+    # EKI observable (1/sqrt(m))*coeffs; with target 0 this contributes the coefficient penalty (1/m)*||coeffs||^2 of Dunbar, Nelsen, Mutic (arXiv:2407.00584 eq 34/41)
     scaled_coeffs = sqrt(1 / (n_features)) * RF.Methods.get_coeffs(fitted_features)
 
     if decomp_type == "cholesky"
@@ -615,7 +614,7 @@ function nice_cov(sample_mat::AA; δ::FT = 1.0, verbose = false) where {AA <: Ab
     max_exponent = 2 * 5 # must be even
     interp_steps = 100
     # use find the variability in the corr coeff matrix entries
-    std_corrs = (1 .- corr) / sqrt(n_sample_cov)
+    std_corrs = (1 .- corr .^ 2) / sqrt(n_sample_cov)
 
     std_tol = sqrt(sum(std_corrs .^ 2))
     α_min_exceeded = [max_exponent]
@@ -915,16 +914,17 @@ function estimate_mean_and_coeffnorm_covariance(
 
     # buffers & rng
     moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mean_of_covs_tid = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads] # per-thread accumulator; summed into mean_of_covs after the threaded loop to avoid a shared read-modify-write race across threads
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
+    rng_list = _thread_rng_list(rng, rng_seed, n_samples)
 
     chunked_samples = chunks(1:n_samples, n = nthreads) # could probs do without this package. But gives (tid, idx for tid)
 
     Threads.@threads for (tid, s_idx) in enumerate(chunked_samples)
-        rngtmp = rng_list[tid]
         for i in s_idx
+            rngtmp = rng_list[i]
 
             for j in 1:repeats
                 @. mtmp[tid] = 0
@@ -962,9 +962,13 @@ function estimate_mean_and_coeffnorm_covariance(
                 complexity[1, i] += cplxty / repeats
 
                 # update vbles needed for mean
-                @. mean_of_covs += moc_tmp[tid] ./ (repeats * n_samples)
+                @. mean_of_covs_tid[tid] += moc_tmp[tid] ./ (repeats * n_samples)
             end
         end
+    end
+
+    for tid in 1:nthreads # single-threaded reduction avoids the shared read-modify-write race
+        @. mean_of_covs += mean_of_covs_tid[tid]
     end
 
     #put back together after threading
@@ -1037,16 +1041,17 @@ function calculate_ensemble_mean_and_coeffnorm(
 
     # buffers & rng
     moc_tmp = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads]
+    mean_of_covs_tid = [zeros(output_dim, output_dim, n_test) for i in 1:nthreads] # per-thread accumulator; summed into mean_of_covs after the threaded loop to avoid a shared read-modify-write race across threads
     mtmp = [zeros(output_dim, n_test) for i in 1:nthreads]
     buffer = [zeros(n_test, output_dim, n_features) for i in 1:nthreads]
     rng_seed = randperm(rng, 10^5)[1] # dumb way to get a random integer in 1:10^5
-    rng_list = [Random.MersenneTwister(rng_seed + i) for i in 1:nthreads]
+    rng_list = _thread_rng_list(rng, rng_seed, N_ens)
 
     chunked_ensemble = chunks(1:N_ens, n = nthreads) # could probs do without this. But gives (tid, idx for tid)
 
     Threads.@threads for (tid, s_idx) in enumerate(chunked_ensemble)
-        rngtmp = rng_list[tid]
         for i in s_idx
+            rngtmp = rng_list[i]
             l = lmat[:, i]
             for j in collect(1:repeats)
                 @. mtmp[tid] = 0
@@ -1076,12 +1081,15 @@ function calculate_ensemble_mean_and_coeffnorm(
                 # v output_dim x output_dim x n_test
                 # c n_features
                 means[:, i, :] += mtmp[tid] ./ repeats
-                @. mean_of_covs += moc_tmp[tid] ./ (repeats * N_ens)
+                @. mean_of_covs_tid[tid] += moc_tmp[tid] ./ (repeats * N_ens)
                 coeffl2norm[1, i] += sqrt(sum(c .^ 2)) / repeats
                 complexity[1, i] += cplxty / repeats
 
             end
         end
+    end
+    for tid in 1:nthreads # single-threaded reduction avoids the shared read-modify-write race
+        @. mean_of_covs += mean_of_covs_tid[tid]
     end
     # put back together after threading
     means = permutedims(means, (3, 2, 1))
@@ -1100,6 +1108,21 @@ function calculate_ensemble_mean_and_coeffnorm(
     end
     return vcat(blockmeans, coeffl2norm, complexity), blockcovmat
 
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Builds `n` independent RNG streams, one per sample/ensemble-member index (not per thread or
+chunk), so that `EnsembleThreading` results are reproducible regardless of `Threads.nthreads()`.
+`copy(rng)` (not `deepcopy`) is used deliberately: for a concrete stateful RNG (e.g.
+`MersenneTwister`, `Xoshiro`) it preserves the caller's RNG type; for the task-local
+default/global RNG singleton, `copy` detaches it into an independent, concrete `Xoshiro` (whereas
+`deepcopy` of a `TaskLocalRNG` returns the *same* singleton object, since there is nothing for a
+generic recursive copy to detach) before it is reseeded.
+"""
+function _thread_rng_list(rng::AbstractRNG, seed::Integer, n::Integer)
+    return [Random.seed!(copy(rng), seed + i) for i in 1:n]
 end
 
 ## Error helpers
@@ -1147,6 +1170,25 @@ Got:
 Suggestion:
     Reduce `n_cross_val_sets` to at most $(Int(floor(n_data / n_test))), or increase
     `train_fraction` to produce smaller test sets.
+"""))
+end
+
+@noinline function _throw_cov_sample_multiplier_too_small(cov_sample_multiplier, n_cov_samples_min, n_cov_samples)
+    throw(ArgumentError("""
+`cov_sample_multiplier` is too small: it produces fewer than 2 samples to estimate the
+hyperparameter-optimization covariance, which yields a NaN sample covariance (division by
+n_cov_samples - 1 ≤ 0).
+
+Expected:
+    n_cov_samples = floor(n_cov_samples_min * cov_sample_multiplier) ≥ 2
+
+Got:
+    cov_sample_multiplier = $cov_sample_multiplier
+    n_cov_samples_min     = $n_cov_samples_min
+    n_cov_samples         = $n_cov_samples
+
+Suggestion:
+    Increase `cov_sample_multiplier` to at least $(ceil(2 / n_cov_samples_min, digits = 4)).
 """))
 end
 

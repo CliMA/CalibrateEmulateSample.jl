@@ -1,4 +1,4 @@
-# The Emulate stage
+# [The Emulate stage](@id emulate)
 
 Emulation is performed through the construction of an `Emulator` object, which has two components
 1. A wrapper for any statistical emulator,
@@ -67,6 +67,10 @@ function predict(mlt::MyMLTool, new_inputs::Matrix; kwargs...) -> Matrix, Union{
     The `predict` method takes as input, an `input_dim`-by-`N_new` matrix. It return both a predicted mean and a predicted (co)variance at new inputs.
     (i) for scalar-output methods relying on diagonalization, return `output_dim`-by-`N_new` matrices for mean and variance,
     (ii) For vector-output methods, return `output_dim`-by-`N_new` for mean and `output_dim`-by-`output_dim`-by-`N_new` for covariances.
+
+!!! warning "Centralized observational noise addition"
+    `predict(mlt::MyMLTool, ...)` must always return the pure latent (noise-free) (co)variance.
+    Do not implement your own observational noise inflation — this is handled centrally by the `Emulator`.
 
 Please get in touch with our development team when contributing new statistical emulators, to help us ensure the smoothest interface with any new tools.
 

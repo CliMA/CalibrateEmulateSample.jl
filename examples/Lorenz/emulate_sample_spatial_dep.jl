@@ -75,11 +75,9 @@ function main()
         # choice of machine-learning tool in the emulation stage
         if case == "GP"
             gppackage = Emulators.GPJL()
-            pred_type = Emulators.YType()
             mlt = GaussianProcess(
                 gppackage;
                 kernel = nothing, # use default squared exponential kernel
-                prediction_type = pred_type,
                 noise_learn = false,
             )
         elseif case == "RF-scalar"

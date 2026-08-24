@@ -89,11 +89,9 @@ function main()
         nugget = 0.001
         if case == "gp-gpjl"
             gppackage = Emulators.GPJL()
-            pred_type = Emulators.YType()
             mlt = GaussianProcess(
                 gppackage;
                 kernel = nothing, # use default squared exponential kernel
-                prediction_type = pred_type,
                 noise_learn = false,
             )
         elseif case == "rf-lr-scalar"

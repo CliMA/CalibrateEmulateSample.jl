@@ -121,8 +121,7 @@ function main()
         # Build ML tools
         if case == "GP"
             gppackage = Emulators.GPJL()
-            pred_type = Emulators.YType()
-            mlt = GaussianProcess(gppackage; prediction_type = pred_type, noise_learn = false)
+            mlt = GaussianProcess(gppackage; noise_learn = false)
         elseif case == "RF-prior"
             #No optimization
             rf_optimizer_overrides["n_iteration"] = 0

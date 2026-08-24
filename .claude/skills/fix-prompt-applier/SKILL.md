@@ -42,6 +42,22 @@ brief, not a pointer into a conversation you don't have.
 
 ### 2. Apply
 
+- **Confirm the "bug" is actually a bug before changing behavior.** Some
+  findings turn out, on inspection, to be silent-but-correct-by-design rather
+  than a defect — e.g. a finding once claimed a per-output-dimension scalar
+  backend "silently" dropped cross-output noise correlations that its
+  vector-output sibling kept; in fact that backend fits one fully independent
+  model per output dimension, so there's no joint likelihood anywhere in it
+  for a correlation to live in — `Diagonal` is the only structure it can
+  represent, not a lossy shortcut. Check the fix-prompt's own "Do not" section
+  first: the original audit often already made this call (a line like
+  "diagonal-only is the correct capability of ... models" is your signal that
+  the right fix is a warning or docstring, not a behavior change). If the
+  prompt is silent or ambiguous on this, or the code has drifted since the
+  audit, re-derive it yourself from the current source. Getting this wrong
+  runs in both directions: "fixing" correct architecture changes behavior
+  that shouldn't change, while assuming everything is by-design lets a real
+  bug ship as a warned-around silence instead of an actual fix.
 - Find the offending code by the function name and snippet quoted in the
   prompt. Line numbers drift between the audit and the fix session — treat
   them as hints, not anchors; the quoted snippet is what actually locates it.
@@ -59,6 +75,29 @@ brief, not a pointer into a conversation you don't have.
   current code actually does (code drifts between the audit and the fix
   session too), re-read the source and re-derive the math yourself rather than
   guessing. The prompt is the best available hint; the source is ground truth.
+- **Keep fix-prompt IDs out of shipped code.** `C1`, `M7`, `m5`, `h3`, `G4`,
+  and the like are the review's internal shorthand, legible only next to
+  `review.md`'s legend — which the next reader of this source file (a
+  teammate, or the smaller model this skill is written for) won't have open.
+  Never write an ID into a source comment, docstring, or test/testset name,
+  including any test you add to satisfy step 3's Verify section; describe
+  what behavior is being fixed or pinned in plain, self-contained English
+  instead. `review.md` and the fix-prompts themselves are the only place
+  these IDs belong — that's what step 4's Status notes are for.
+- **Comment tersely.** One line pointing at the non-obvious invariant is
+  usually enough; the fuller story — what was wrong, the derivation, prior
+  failed attempts — belongs in review.md's Status note, which has the room
+  for it and is where a reader goes for depth. Reach for more than one line
+  only when the constraint genuinely resists being said in one, and even then
+  keep it short: a source file is where code is read next to, not where a
+  fix's history is told.
+- **New exported methods get a docstring, not a comment above them.** Match
+  the convention neighboring exported functions in the same file already use
+  (check a couple of nearby examples — this package's convention is
+  `$(TYPEDSIGNATURES)` via DocStringExtensions) rather than inventing a new
+  style. Don't also place a comment block above the method: the docstring is
+  the documentation, and a comment duplicating it is redundant on top of
+  fighting the terseness point above.
 
 ### 3. Verify
 
@@ -154,7 +193,10 @@ fix-prompts were flagged as stale (name them, or say none needed it — don't
 pad this line when step 5 found nothing). Keep this compact — one or two
 lines per ID — the point is a scannable record of what's fixed and what now
 guards it, not a re-explanation of the math (that's already in the review and
-the prompt).
+the prompt). If step 2's design-intent check found a finding to be
+correct-by-design, say so plainly rather than reporting it the same way as a
+behavior fix — the reader needs to know a warning/docstring is the whole fix,
+not a partial one.
 
 ## Improving this skill
 

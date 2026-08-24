@@ -172,7 +172,7 @@ end
     # Resolution test (Step 7c): replacing λI with Diagonal(fill(λ, d)) must not throw
     @test size(create_compact_linear_map(Diagonal(fill(3.0, 3)))) == (3, 3)
 
-    # h12: an unsupported block type must throw a clear ArgumentError, not silently
+    # an unsupported block type must throw a clear ArgumentError, not silently
     # produce a zero-size block (which previously surfaced as a distant BoundsError)
     let thrown = @test_throws ArgumentError create_compact_linear_map([1])
         @test contains(thrown.value.msg, "unsupported")
@@ -297,7 +297,7 @@ end
         @test contains(thrown.value.msg, "Float64")
     end
 
-    # h12: `==` across different DataContainerProcessor/PairedDataContainerProcessor
+    # `==` across different DataContainerProcessor/PairedDataContainerProcessor
     # concrete types must return false, not throw a FieldError from mismatched fieldnames
     QQ2 = ElementwiseScaler{QuartileScaling, Vector{Int}, Vector, Vector, Vector, Vector}([1], [2], [3], [4], [5], [6])
     @test QQ == QQ2
@@ -306,8 +306,8 @@ end
     @test !(cc3 == ll3)
     @test !(ll3 == cc3)
 
-    # M7 regression test: the composite-trapezoid weights over the α-path must be
-    # paired with their own node, not shifted by one (see full-code-review M7).
+    # regression test: the composite-trapezoid weights over the α-path must be
+    # paired with their own node, not shifted by one.
     # Construction: for each of 3 nodes, samples_in is the fixed zero-mean basis
     # [e1 -e1 e2 -e2] (population covariance 0.5*I), and samples_out = grad_it * samples_in
     # exactly (no noise), so :linreg regression recovers grad_it exactly. With
@@ -335,7 +335,7 @@ end
             li_m7,
             basis_in,
             zeros(2, 4),
-            Dict(:prior_cov => Matrix{Float64}(I, 2, 2)), # whitened: keep this test focused on M7, not M8
+            Dict(:prior_cov => Matrix{Float64}(I, 2, 2)), # whitened: keep this test focused on the trapezoid-weight fix, not the prior-preconditioning warning
             Dict(:obs_noise_cov => Matrix{Float64}(I, 2, 2)),
             Dict(:dt => alphas_nodes, :samples_in => [basis_in, basis_in, basis_in]),
             Dict(:observation => [zeros(2)], :samples_out => samples_out_it),
@@ -357,7 +357,7 @@ end
         @test norm(off_diag_buggy) > 1e-3
     end
 
-    # M8 regression test: LikelihoodInformed's input-space diagnostic silently assumed
+    # regression test: LikelihoodInformed's input-space diagnostic silently assumed
     # prior covariance ≈ I; it must now warn when apply_to == "in" and the input
     # structure matrices' :prior_cov is missing or not ≈ I, and stay silent when it is.
     let
@@ -638,7 +638,7 @@ end
 
     end
 
-    # G3 regression test: CanonicalCorrelation must not blow up (Inf/NaN, or select the wrong
+    # regression test: CanonicalCorrelation must not blow up (Inf/NaN, or select the wrong
     # in/out role) on rank-deficient (collinear-ensemble) data.
     let
         rng_deg = Random.MersenneTwister(2026)
@@ -665,7 +665,7 @@ end
         @test isapprox(norm(dec_out_deg - out_data_deg), 0.0, atol = 1e-8 * samples_deg)
     end
 
-    # G3 regression test: ElementwiseScaler (ZScore/MinMax/Quartile) must not divide by a zero
+    # regression test: ElementwiseScaler (ZScore/MinMax/Quartile) must not divide by a zero
     # scale (constant data dimension) and must warn rather than silently producing NaN/Inf.
     let
         rng_deg = Random.MersenneTwister(2027)
@@ -857,7 +857,7 @@ end
 
 end
 
-@testset "M6: encoder schedules do not share fitted processor state" begin
+@testset "encoder schedules do not share fitted processor state" begin
     rng_m6 = Random.MersenneTwister(20260731)
     dim_m6 = 3
     samples_m6 = 30
@@ -1020,8 +1020,8 @@ end
 
 end
 
-@testset "Decorrelator: small/large-matrix truncation criterion consistency (m28)" begin
-    # m28 regression test. The large-matrix (tsvd) branch must truncate on the same VARIANCE
+@testset "Decorrelator: small/large-matrix truncation criterion consistency" begin
+    # regression test. The large-matrix (tsvd) branch must truncate on the same VARIANCE
     # (trace, Σσᵢ) fraction the small-matrix branch computes exactly, not the sum-of-squares
     # (Frobenius, Σσᵢ²) fraction it used before. Isolated from the (pre-existing, out-of-scope)
     # conservative retain_var deflation the tsvd branch applies for estimator uncertainty - that
@@ -1065,7 +1065,7 @@ end
         io_pairs_large;
         output_structure_mats = Dict{Symbol, Utilities.StructureMatrix}(:obs_noise_cov => C_large),
     )
-    # `create_encoder_schedule` deepcopies its processor (M6), so the fitted state lives on
+    # `create_encoder_schedule` deepcopies its processor, so the fitted state lives on
     # the copy inside `enc_sch_large`, not on `dd_large` itself - retrieve it from there.
     achieved_rank_large = size(get_encoder_mat(enc_sch_large[1][1])[1], 1)
     @test 0 < achieved_rank_large < d_large

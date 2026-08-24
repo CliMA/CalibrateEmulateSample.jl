@@ -304,9 +304,6 @@ options for the RF emulator. The docs for
 [GPs](https://clima.github.io/CalibrateEmulateSample.jl/dev/GaussianProcessEmulator/) and [RFs](https://clima.github.io/CalibrateEmulateSample.jl/dev/random_feature_emulator/) explain the different options in more detail and provide some useful heuristics for how to customize the settings depending on the problem at hand.
 
 ```julia
-# These settings are the same for all Gaussian Process cases
-pred_type = YType() # we want to predict data
-
 # These settings are the same for all Random Feature cases
 n_features = 400 
 nugget = 1e-8
@@ -335,7 +332,6 @@ gp_kernel = SE(1.0, 1.0) + Mat52Ard(zeros(3), 0.0) + Noise(log(2.0))
 mlt = GaussianProcess(
     gppackage;
     kernel = gp_kernel,
-    prediction_type = pred_type,
     noise_learn = false,
 )
 
@@ -415,9 +411,11 @@ on them).
 
 ```julia
 # Check how well the emulator predicts on the true parameters
+# (add_obs_noise_cov=true: we want to predict data, not the latent function)
 y_mean, y_var = Emulators.predict(
     emulator,
-    reshape(θ_true, :, 1)
+    reshape(θ_true, :, 1);
+    add_obs_noise_cov = true,
 )
 
 println("Emulator ($(case)) prediction on true parameters: ")

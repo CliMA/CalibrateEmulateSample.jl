@@ -646,7 +646,7 @@ end
 
         noise_injector = create_noise_injector(lossless_sch, prior_1d, 0.0, 0.5)
 
-        # m20: `decode_and_add_noise` must be reproducible under a shared rng, and
+        # regression: `decode_and_add_noise` must be reproducible under a shared rng, and
         # independent of the global RNG state
         rng1 = MersenneTwister(24)
         rng2 = MersenneTwister(24)
@@ -856,8 +856,8 @@ end
             # (1-ρ²)C gives 5·RMS ≈ 0.067 (both at stepsize=0.5, n_draws=10_000).
             #
             # pCN is constructed with a genuinely NON-zero, fixed (not rng-drawn, so the gap below
-            # is guaranteed rather than incidental) prior mean `m` here (regression test for the C1
-            # secondary defect: pCN previously always contracted toward 0 regardless of the encoded
+            # is guaranteed rather than incidental) prior mean `m` here (regression test for pCN's
+            # recentering defect: pCN previously always contracted toward 0 regardless of the encoded
             # prior's actual mean). If `transition_kernel` silently ignored `m` and contracted
             # toward 0 instead, this test would fail: the analytic reference below is
             # `m + ρ(a - m)`, which only coincides with `ρ*a` when `m` happens to be 0.
@@ -984,8 +984,8 @@ end
             @test isapprox(var(draws), post_var; rtol = 0.05)
         end
 
-        @testset "pCN: recovers the exact 1D conjugate-Gaussian posterior for a NON-zero-mean prior (regression for C1 secondary defect)" begin
-            # Full-sampler-level regression test for C1's secondary defect: pCN previously
+        @testset "pCN: recovers the exact 1D conjugate-Gaussian posterior for a NON-zero-mean prior (regression for the pCN recentering defect)" begin
+            # Full-sampler-level regression test for pCN's recentering defect: pCN previously
             # contracted its proposal toward 0 regardless of the prior's actual mean, which is
             # only correct in the special case of a zero-mean prior. Here the prior mean m=2 is
             # deliberately non-zero, isolating exactly this defect (everything else matches the

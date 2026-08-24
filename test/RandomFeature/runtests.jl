@@ -145,6 +145,91 @@ rng = Random.MersenneTwister(seed)
         good_cov = nice_cov(samples, verbose = true)
         @test (cond(good_cov) < 100) && ((good_cov[1] < 5.0) && (good_cov[1] > 0.2))
 
+        # regression: the noise level of the sample correlation coefficient must be estimated
+        # as (1-corr^2)/sqrt(N) (standard asymptotics for the sample correlation coefficient),
+        # not the sign-asymmetric (1-corr)/sqrt(N) previously coded. Monte-Carlo the empirical
+        # std of the sample correlation at a fixed true correlation and check it matches the
+        # corrected formula much more closely than the old, wrong one.
+        rng_nice = Random.MersenneTwister(555)
+        rho_true = 0.8
+        n_mc = 20_000
+        n_per_sample = 50
+        corr_draws = [
+            cor(rand(rng_nice, MvNormal([0.0, 0.0], [1.0 rho_true; rho_true 1.0]), n_per_sample), dims = 2)[1, 2]
+            for _ in 1:n_mc
+        ]
+        empirical_std = std(corr_draws)
+        old_formula_std = (1 - rho_true) / sqrt(n_per_sample)
+        new_formula_std = (1 - rho_true^2) / sqrt(n_per_sample)
+        @test abs(empirical_std - new_formula_std) < abs(empirical_std - old_formula_std)
+        @test isapprox(empirical_std, new_formula_std, rtol = 0.1)
+
+        # regression: `_thread_rng_list` builds one independent RNG stream per sample index
+        # (not per thread/chunk), so it must be a pure function of (rng, seed, n) -- its output
+        # for the first k entries cannot change as n grows, i.e. it does NOT depend on however
+        # Threads.nthreads() happens to chunk 1:n at call time.
+        base_seed = 4242
+        list_n3 = Emulators._thread_rng_list(Random.MersenneTwister(1), base_seed, 3)
+        list_n7 = Emulators._thread_rng_list(Random.MersenneTwister(1), base_seed, 7)
+        @test rand.(list_n3) == rand.(list_n7)[1:3]
+
+        # determinism: identical (rng type+state, seed, n) => bit-identical streams
+        @test rand.(Emulators._thread_rng_list(Random.MersenneTwister(11), 100, 5)) ==
+              rand.(Emulators._thread_rng_list(Random.MersenneTwister(11), 100, 5))
+
+        # regression: the caller's concrete RNG *type* is now respected (previously the code
+        # always built `Random.MersenneTwister(seed+i)` regardless of the caller's rng, so this
+        # branch could never be exercised); the incoming rng's pre-existing *state* does not
+        # matter (each stream is explicitly `Random.seed!`-reset), only its type and the `seed`
+        # argument, so a different `seed` argument must give different per-sample streams.
+        list_seed1 = Emulators._thread_rng_list(Random.MersenneTwister(1234), 0, 4)
+        list_seed2 = Emulators._thread_rng_list(Random.MersenneTwister(5678), 0, 4)
+        @test all(isa.(list_seed1, Random.MersenneTwister))
+        @test rand.(list_seed1) == rand.(list_seed2) # same type, same seed arg => same streams regardless of the input instance's own state
+        list_diff_seed = Emulators._thread_rng_list(Random.MersenneTwister(1234), 999, 4)
+        @test rand.(list_seed1) != rand.(list_diff_seed)
+        list_xoshiro = Emulators._thread_rng_list(Random.Xoshiro(1), 0, 3)
+        @test all(isa.(list_xoshiro, Random.Xoshiro))
+
+        # the non-copyable default/global RNG singleton is the case that made a prior `deepcopy`-
+        # based attempt at this fix unsafe (`deepcopy(Random.default_rng()) === Random.default_rng()`,
+        # i.e. not an independent copy). `copy` must detach it into an independent, non-degenerate
+        # stream without perturbing the global RNG's own state.
+        @test deepcopy(Random.default_rng()) === Random.default_rng()
+        Random.seed!(Random.default_rng(), 42)
+        pre_global_draw = rand()
+        Random.seed!(Random.default_rng(), 42)
+        default_streams = Emulators._thread_rng_list(Random.default_rng(), 999, 3)
+        rand(default_streams[1], 1000) # heavily consume one derived stream
+        post_global_draw = rand()
+        @test pre_global_draw == post_global_draw # global stream untouched by consuming a derived one
+        @test length(unique(rand.(default_streams))) == 3 # 3 independent, non-degenerate streams
+
+    end
+
+    @testset "overfit rescaling of the EKI covariance stays positive-definite" begin
+        # build_models! assembles Γ from a sample covariance internal_Γ (data block correlated
+        # with the trailing coefficient-norm/complexity rows) plus an additive regularization
+        # block, then rescales only the data block by `overfit`. Scaling data rows AND columns
+        # (a congruence) must keep Γ positive-definite regardless of overfit; scaling only the
+        # data-data block (the old code) does not once cross-block correlation is present.
+        rng_pd = Random.MersenneTwister(1357)
+        n_test = 10
+        dim = n_test + 2
+        A = randn(rng_pd, dim, 3 * dim)
+        A[end - 1, :] .= 0.6 .* vec(mean(A[1:n_test, :], dims = 1)) .+ 0.4 .* randn(rng_pd, 3 * dim)
+        A[end, :] .= 0.5 .* A[end - 1, :] .+ 0.5 .* randn(rng_pd, 3 * dim)
+        internal_Γ = cov(A, dims = 2)
+        regularization_block = 0.1 * I(n_test)
+
+        for overfit in (0.5, 1.0, 5.0)
+            Γ = deepcopy(internal_Γ)
+            Γ[1:n_test, 1:n_test] += regularization_block
+            Γ[1:n_test, :] ./= overfit
+            Γ[:, 1:n_test] ./= overfit
+            Γ[(n_test + 1):end, (n_test + 1):end] += I
+            @test isposdef(Γ)
+        end
     end
 
     @testset "ScalarRandomFeatureInterface" begin
@@ -206,6 +291,175 @@ rng = Random.MersenneTwister(seed)
             end
         end
 
+    end
+
+    @testset "custom hyperparameter prior takes effect (regression)" begin
+        # previously `build_models!` always silently rebuilt `build_default_prior(...)`,
+        # ignoring any user-supplied `optimizer_options["prior"]` (the rebuild-guard branch
+        # `ndims(prior) > n_hp` could never fire since both were computed from the same
+        # input_dim/kernel_structure). Assert that a strongly-shifted custom prior actually
+        # changes the fit relative to the default prior.
+        input_dim = 1
+        n_train = 30
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = reshape(sin.(x) + 0.02 * randn(Random.MersenneTwister(seed + 1), n_train)', 1, n_train)
+        iopairs = PairedDataContainer(x, y, data_are_columns = true)
+        new_inputs = reshape(2.0 * π * rand(Random.MersenneTwister(seed + 2), 20), 1, 20)
+
+        kernel_structure = SeparableKernel(CholeskyFactor(1e-8), OneDimFactor())
+        n_hp = calculate_n_hyperparameters(input_dim, kernel_structure)
+        default_prior = build_default_prior(input_dim, kernel_structure)
+        shifted_prior = constrained_gaussian("shifted_cholesky", 20.0, 1e-6, -Inf, Inf, repeats = n_hp)
+
+        srfi_default = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => default_prior),
+        )
+        em_default = Emulator(srfi_default, iopairs)
+        μ_default, _ = Emulators.predict(em_default, new_inputs)
+
+        srfi_shifted = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => shifted_prior),
+        )
+        em_shifted = Emulator(srfi_shifted, iopairs)
+        μ_shifted, _ = Emulators.predict(em_shifted, new_inputs)
+
+        @test norm(μ_default - μ_shifted) > 1e-3
+
+        # a prior with a stale hyperparameter count (from a since-changed input/kernel_structure)
+        # must still fall back to the default rather than propagating a shape mismatch
+        stale_prior = constrained_gaussian("stale", 0.0, 0.1, -Inf, Inf, repeats = n_hp + 2)
+        srfi_stale = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            kernel_structure = kernel_structure,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0, "prior" => stale_prior),
+        )
+        @test_logs (:info,) match_mode = :any Emulator(srfi_stale, iopairs)
+    end
+
+    @testset "cov_sample_multiplier too small throws instead of yielding NaN covariance" begin
+        input_dim = 1
+        n_train = 20
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = reshape(sin.(x) + 0.02 * randn(Random.MersenneTwister(seed + 1), n_train)', 1, n_train)
+        iopairs = PairedDataContainer(x, y, data_are_columns = true)
+
+        srfi_bad = ScalarRandomFeatureInterface(
+            100,
+            input_dim,
+            rng = rng,
+            optimizer_options = Dict("cov_sample_multiplier" => 0.0),
+        )
+        thrown = @test_throws ArgumentError Emulator(srfi_bad, iopairs)
+        @test contains(thrown.value.msg, "cov_sample_multiplier")
+
+        vrfi_bad = VectorRandomFeatureInterface(
+            100,
+            input_dim,
+            1,
+            rng = rng,
+            optimizer_options = Dict("cov_sample_multiplier" => 0.0),
+        )
+        thrown = @test_throws ArgumentError Emulator(vrfi_bad, iopairs)
+        @test contains(thrown.value.msg, "cov_sample_multiplier")
+    end
+
+    @testset "EnsembleThreading mean_of_covs reduction is race-free (regression)" begin
+        # `estimate_mean_and_coeffnorm_covariance`/`calculate_ensemble_mean_and_coeffnorm`
+        # (EnsembleThreading methods) used to accumulate into a single shared `mean_of_covs`
+        # array via `@. mean_of_covs += ...` inside `Threads.@threads` -- a data race across
+        # threads. This test environment runs with Threads.nthreads() = $(Threads.nthreads()),
+        # so if the race were still present, re-running the identical seeded fit under real
+        # thread contention could occasionally drop concurrent increments and silently return a
+        # different answer from run to run. After the fix (each thread accumulates into its own
+        # slot; the slots are summed sequentially after the parallel region), repeated runs with
+        # the same seed must be bit-for-bit identical.
+        input_dim = 1
+        n_train = 40
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = reshape(sin.(x) + 0.02 * randn(Random.MersenneTwister(seed + 1), n_train)', 1, n_train)
+        iopairs = PairedDataContainer(x, y, data_are_columns = true)
+        new_inputs = reshape(2.0 * π * rand(Random.MersenneTwister(seed + 2), 10), 1, 10)
+
+        kernel_structure = SeparableKernel(CholeskyFactor(1e-8), OneDimFactor())
+        opts = Dict(
+            "n_ensemble" => 60,
+            "n_iteration" => 3,
+            "n_features_opt" => 60,
+            "cov_sample_multiplier" => 5.0,
+            "multithread" => "ensemble",
+            "n_cross_val_sets" => 1,
+            "verbose" => false,
+        )
+
+        function build_and_predict()
+            srfi = ScalarRandomFeatureInterface(
+                60,
+                input_dim,
+                kernel_structure = kernel_structure,
+                rng = Random.MersenneTwister(20260811),
+                optimizer_options = deepcopy(opts),
+            )
+            em = Emulator(srfi, iopairs)
+            return Emulators.predict(em, new_inputs)
+        end
+
+        μ1, σ1 = build_and_predict()
+        for _ in 1:4
+            μi, σi = build_and_predict()
+            @test μ1 == μi
+            @test σ1 == σi
+        end
+    end
+
+    @testset "warn when off-diagonal output noise structure is dropped (ScalarRandomFeatureInterface fits one model per output dim)" begin
+        # end-to-end: build_models! reaches the shared helper (the same one GaussianProcess uses,
+        # Emulators._warn_if_offdiagonal_structure_mat) when the user disables decorrelation and
+        # supplies a correlated output noise covariance. ScalarRandomFeatureInterface fits one fully
+        # independent scalar model per output dimension, so off-diagonal noise correlations have
+        # nowhere to enter the regularization -- Diagonal is the only structure it can represent,
+        # not a lossy shortcut, but the user should be warned rather than left silently unaware.
+        input_dim = 1
+        output_dim = 2
+        n_train = 30
+        x = reshape(2.0 * π * rand(Random.MersenneTwister(seed), n_train), 1, n_train)
+        y = vcat(sin.(x), cos.(x)) .+ 0.01 .* randn(Random.MersenneTwister(seed + 1), output_dim, n_train)
+        iopairs_corr = PairedDataContainer(x, y, data_are_columns = true)
+        Σ_corr = [1.0 0.5; 0.5 1.0]
+
+        srfi_corr = ScalarRandomFeatureInterface(
+            50,
+            input_dim,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
+        @test_logs (:warn, r"off-diagonal") match_mode = :any Emulator(
+            srfi_corr,
+            iopairs_corr;
+            encoder_schedule = [],
+            encoder_kwargs = (; obs_noise_cov = Σ_corr),
+        )
+
+        # a diagonal output noise covariance must stay silent (no spurious warning)
+        srfi_diag = ScalarRandomFeatureInterface(
+            50,
+            input_dim,
+            rng = Random.MersenneTwister(seed),
+            optimizer_options = Dict("n_cross_val_sets" => 0),
+        )
+        logs, _ = Test.collect_test_logs() do
+            Emulator(srfi_diag, iopairs_corr; encoder_schedule = [], encoder_kwargs = (; obs_noise_cov = 1.0 * I))
+        end
+        @test !any(occursin("off-diagonal", l.message) for l in logs)
     end
 
     @testset "VectorRandomFeatureInterface" begin
@@ -408,6 +662,13 @@ rng = Random.MersenneTwister(seed)
         @test isapprox.(norm(μv - new_outputs), 0, atol = tol_μ)
         @test all(isapprox.(vec(σv²), 0.05^2 * ones(ntest), atol = 1e-2))
 
+        # `true` minus `false` must equal the decoded noise covariance (here `0.05^2`) exactly
+        _, σs²_false = Emulators.predict(em_srfi, new_inputs; add_obs_noise_cov = false)
+        @test all(isapprox.(vec(σs²) .- vec(σs²_false), 0.05^2, atol = 1e-10))
+
+        _, σv²_false = Emulators.predict(em_vrfi, new_inputs; add_obs_noise_cov = false)
+        @test all(isapprox.(vec(σv²) .- vec(σv²_false), 0.05^2, atol = 1e-10))
+
 
 
 
@@ -548,7 +809,7 @@ rng = Random.MersenneTwister(seed)
 
     end
 
-    # G3 regression test: a constant input (or output) dimension must not produce Inf/NaN
+    # regression test: a constant input (or output) dimension must not produce Inf/NaN
     # scales (and hence NaN/PosDefException deep in the hyperparameter prior); build_models!
     # should warn and fall back to scale = 1 for the degenerate dimension(s) instead.
     @testset "Scalar/VectorRandomFeatureInterface: degenerate (constant) input dimension" begin
@@ -596,7 +857,7 @@ rng = Random.MersenneTwister(seed)
         @test all(isfinite, σ2_v_deg)
     end
 
-    # G3 regression test, output side: a constant output dimension must not produce Inf/NaN
+    # regression test, output side: a constant output dimension must not produce Inf/NaN
     # scales (and hence NaN/PosDefException deep in the hyperparameter prior); build_models!
     # should warn and fall back to scale = 1 for the degenerate output dimension(s) instead.
     @testset "Scalar/VectorRandomFeatureInterface: degenerate (constant) output dimension" begin

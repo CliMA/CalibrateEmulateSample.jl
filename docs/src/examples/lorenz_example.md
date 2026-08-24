@@ -170,11 +170,9 @@ truth_params = transform_constrained_to_unconstrained(priors, truth_params_const
 We then set up the structure of the emulator. An example for GP (`GP`)
 ```julia
 gppackage = Emulators.GPJL()
-pred_type = Emulators.YType()
 mlt = GaussianProcess(
     gppackage;
     kernel = nothing, # use default squared exponential kernel
-    prediction_type = pred_type,
     noise_learn = false,
 )
 ```

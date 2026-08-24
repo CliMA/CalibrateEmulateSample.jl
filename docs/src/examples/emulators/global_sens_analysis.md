@@ -110,10 +110,8 @@ mlt = ScalarRandomFeatureInterface(
 For the gaussian process case `GP` we use the sci-kit learn package, a default squared exponential kernel with lengthscale learnt in each input dimensions. We do not learn an additional white kernel for the noise.
 ```julia
 gppackage = Emulators.SKLPy()
-pred_type = Emulators.YType()
 mlt = GaussianProcess(
     gppackage;
-    prediction_type = pred_type,
     noise_learn = false,
 )
 ```

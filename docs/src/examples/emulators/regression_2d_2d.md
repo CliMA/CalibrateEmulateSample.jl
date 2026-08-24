@@ -84,9 +84,6 @@ iopairs = PairedDataContainer(X, Y, data_are_columns = true)
 ```
 We define some common settings for all emulators, e.g. the number of random features to use, and some hyperparameter optimizer options
 ```julia
-# common Gaussian feature setup
-pred_type = YType()
-
 # common random feature setup
 n_features = 150
 optimizer_options = Dict("n_iteration" => 10, "scheduler" => DataMisfitController(on_terminate = "continue"))

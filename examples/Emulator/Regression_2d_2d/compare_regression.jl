@@ -133,9 +133,6 @@ function main()
             -------------
             """
 
-            # common Gaussian feature setup
-            pred_type = YType()
-
             # common random feature setup #large n_features, small n_features_opt
             n_features = 500
             optimizer_options = Dict(

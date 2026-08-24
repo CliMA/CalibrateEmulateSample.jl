@@ -106,10 +106,8 @@ rf_optimizer_overrides = Dict(
 Then we build the machine learning tools. Here we highlight scalar-output Gaussian process (`GP`), where we use the default squared-exponential kernel, and learn a lengthscale hyperparameter in each input dimension. To handle multiple outputs, we will use a decorrelation in the output space, and so will actually train three of these models.
 ```julia
 gppackage = Emulators.GPJL() # use GaussianProcesses.jl
-pred_type = Emulators.YType() # predicted variances are for data not latent function
 mlt = GaussianProcess(
     gppackage;
-    prediction_type = pred_type,
     noise_learn = false, # do not additionally learn a white kernel
 )
 ```
