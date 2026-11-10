@@ -6,7 +6,7 @@ agents:
 env:
   OPENBLAS_NUM_THREADS: 1
   GKSwstype: nul
- 
+
 
 steps:
   - label: "Init Julia + CondaPkg"
@@ -24,7 +24,7 @@ steps:
         CondaPkg.resolve()
         CondaPkg.status()
       '
-      
+
   - wait
 
   - label: "CES - Lorenz"
@@ -40,7 +40,7 @@ steps:
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
-        
+
         println("+++ Running Lorenz")
         include("examples/Lorenz/calibrate.jl")
         include("examples/Lorenz/emulate_sample.jl")
@@ -54,14 +54,14 @@ steps:
       mkdir examples/Emulator/Regression_2d_2d/depot
       export JULIA_DEPOT_PATH="$(pwd)/examples/Emulator/Regression_2d_2d/depot:${JULIA_DEPOT_PATH}"
       echo "JULIA: $$JULIA_DEPOT_PATH"
-      
+
       julia --color=yes --project=examples/Emulator/Regression_2d_2d -e '      
         using Pkg
 
         println("--- Developing Project")
         Pkg.develop(path=".")
         Pkg.instantiate()
-        
+
         println("+++ Running compare_regression")
         include("examples/Emulator/Regression_2d_2d/compare_regression.jl")
       '
