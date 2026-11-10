@@ -806,7 +806,7 @@ function MCMCWrapper(
 }
 
     if length(init_params) == 0
-        init_params = ndims(prior) > 1 ? mean(prior) : [mean(prior)]
+        init_params = vcat(mean(prior))
     end
 
     # make into iterable over vectors
@@ -825,7 +825,7 @@ function MCMCWrapper(
     # encoding initial condition
     encoded_init_params = vec(encode_data(encoder_schedule, reshape(init_params, :, 1), "in"))
     # encoding the prior (Gaussian assumptions)
-    mp = ndims(prior) == 1 ? [mean(prior)] : mean(prior)
+    mp = vcat(mean(prior))
     cp = cov(prior)
     encoded_mean = vec(encode_data(encoder_schedule, reshape(mp, :, 1), "in"))
     encoded_cov = Matrix(encode_structure_matrix(encoder_schedule, cov(prior), "in"))
